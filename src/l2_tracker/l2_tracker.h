@@ -3,6 +3,7 @@
 #include <cryptonote_config.h>
 #include <oxenmq/oxenmq.h>
 
+#include <chrono>
 #include <ethyl/provider.hpp>
 #include <forward_list>
 #include <iterator>
@@ -50,6 +51,7 @@ class L2Tracker {
     std::chrono::steady_clock::time_point next_provider_check = std::chrono::steady_clock::now();
     std::optional<std::chrono::steady_clock::time_point> primary_down;
     std::chrono::steady_clock::time_point primary_last_warned;
+    std::optional<std::chrono::steady_clock::time_point> latest_success;
 
     // Provider state updating: `update_state()` starts a chain of updates, each one triggering the
     // next step in the chain when its response is received.  While such an update is in progress
@@ -132,10 +134,14 @@ class L2Tracker {
 
     // Returns the latest L2 height we know about, i.e. from previous provider updates.
     uint64_t get_latest_height() const;
+
     // Returns the latest L2 height that we have known about for at least 30s (SAFE_BLOCKS); when
     // building a block we use this slight lag so that service nodes that are a few seconds out of
     // sync won't have trouble accepting our block.
     uint64_t get_safe_height() const;
+
+    // Returns the age of the last successful height response we got from an L2 RPC provider.
+    std::optional<std::chrono::nanoseconds> latest_height_age() const;
 
     std::vector<uint64_t> get_non_signers(
             const std::unordered_set<bls_public_key>& bls_public_keys);
@@ -154,7 +160,6 @@ class L2Tracker {
     bool get_vote_for(const event::ServiceNodeExitRequest& unlock) const;
     bool get_vote_for(const event::StakingRequirementUpdated& req_change) const;
     bool get_vote_for(const std::monostate&) const { return false; }
-
 
     // Allow public shared locking of current state.  Note that exclusive locking is *not* publicly
     // exposed, and is used internally when updating the data (holding the shared lock is sufficient

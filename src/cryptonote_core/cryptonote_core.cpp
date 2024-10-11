@@ -193,6 +193,12 @@ static const command_line::arg_flag arg_l2_skip_chainid = {
         "l2-skip-chainid",
         "Skips the oxend startup chainId check that ensures the configured L2 provider(s) are "
         "providing data for the the correct L2 chain."};
+static const command_line::arg_flag arg_l2_skip_proof_check = {
+        "l2-skip-proof-check",
+        "Skips the requirement in HF20 that we have heard from the L2 provider recently before "
+        "sending an uptime proof.  This is a temporary option that will be removed after the HF20 "
+        "transition period."};
+
 static const command_line::arg_descriptor<std::string> arg_block_notify = {
         "block-notify",
         "Run a program for each new block, '%s' will be replaced by the block hash",
@@ -336,6 +342,7 @@ void core::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_l2_check_interval);
     command_line::add_arg(desc, arg_l2_check_threshold);
     command_line::add_arg(desc, arg_l2_skip_chainid);
+    command_line::add_arg(desc, arg_l2_skip_proof_check);
     command_line::add_arg(desc, arg_storage_server_port);
     command_line::add_arg(desc, arg_quorumnet_port);
 
@@ -714,6 +721,9 @@ bool core::init(
                 return false;  // the above already logs critical on failure
         }
     }
+
+    // TODO: remove this after HF21
+    m_skip_proof_l2_check = command_line::get_arg(vm, arg_l2_skip_proof_check);
 
     r = blockchain.init(
             std::move(db),
@@ -2470,7 +2480,7 @@ void core::do_uptime_proof_call() {
                     sn_pks.push_back(sni.pubkey);
 
                 service_node_list.for_each_service_node_info_and_proof(
-                        sn_pks.begin(), sn_pks.end(), [&](auto& pk, auto& sni, auto& proof) {
+                        sn_pks.begin(), sn_pks.end(), [&](auto& pk, auto& /*sni*/, auto& proof) {
                             if (pk != m_service_keys.pub &&
                                 proof.proof->public_ip == m_sn_public_ip &&
                                 (proof.proof->qnet_port == m_quorumnet_port ||
@@ -2518,6 +2528,25 @@ void core::do_uptime_proof_call() {
                             "Failed to submit uptime proof: have not heard from lokinet recently. "
                             "Make sure that it is running! It is required to run alongside the "
                             "Loki daemon");
+                    return;
+                }
+            }
+
+            if (auto hf = blockchain.get_network_version();
+                hf > feature::ETH_TRANSITION ||
+                (hf == feature::ETH_TRANSITION && !m_skip_proof_l2_check)) {
+
+                auto l2_update_age = l2_tracker().latest_height_age();
+                if (!l2_update_age || *l2_update_age > netconf.UPTIME_PROOF_FREQUENCY) {
+                    log::error(
+                            globallogcat,
+                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                            "Failed to submit uptime proof: the L2 RPC provider has not responsed "
+                            "since {}.  Make sure the L2 RPC provider configuration is correct, "
+                            "and consider adding a backup provider for redundancy.",
+                            l2_update_age
+                                    ? "{} ago"_format(tools::friendly_duration(*l2_update_age))
+                                    : "startup");
                     return;
                 }
             }
