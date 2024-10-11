@@ -51,7 +51,7 @@ class L2Tracker {
     std::chrono::steady_clock::time_point next_provider_check = std::chrono::steady_clock::now();
     std::optional<std::chrono::steady_clock::time_point> primary_down;
     std::chrono::steady_clock::time_point primary_last_warned;
-    std::optional<std::chrono::steady_clock::time_point> latest_success;
+    std::optional<std::chrono::steady_clock::time_point> latest_height_ts;
 
     // Provider state updating: `update_state()` starts a chain of updates, each one triggering the
     // next step in the chain when its response is received.  While such an update is in progress
@@ -74,6 +74,7 @@ class L2Tracker {
     // As log entries come in we translate them into oxen state change transactions that we insert
     // into the mempool, to be included if this node is called upon to produce a new block.
     void update_state();
+    void set_height(uint64_t new_height, bool take_lock = true);
     void update_height();
     void update_rewards(std::optional<std::forward_list<uint64_t>> more = std::nullopt);
     void update_logs();

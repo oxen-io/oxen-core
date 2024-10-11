@@ -11,7 +11,6 @@
 #include <oxenmq/oxenmq.h>
 
 #include <chrono>
-#include <concepts>
 #include <utility>
 #include <variant>
 
@@ -62,6 +61,16 @@ void L2Tracker::prune_old_states() {
     recent_req_changes.expire(expiry);
     auto reward_exp = reward_height(expiry, core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS);
     reward_rate.erase(reward_rate.begin(), reward_rate.lower_bound(reward_exp));
+}
+
+void L2Tracker::set_height(uint64_t l2_height, bool take_lock) {
+    std::unique_lock lock{mutex, std::defer_lock};
+    if (take_lock)
+        lock.lock();
+    latest_height = l2_height;
+    latest_height_ts = std::chrono::steady_clock::now();
+    log::debug(logcat, "L2 provider height updated to {}", l2_height);
+    prune_old_states();
 }
 
 void L2Tracker::update_state() {
@@ -191,11 +200,7 @@ void L2Tracker::update_state() {
             for (const auto& hi : height_info) {
                 if (hi.index == primary_index) {
                     if (hi.success) {
-                        {
-                            std::lock_guard lock{mutex};
-                            latest_height = hi.height;
-                            latest_success = std::chrono::steady_clock::now();
-                        }
+                        set_height(hi.height);
                         update_rewards();
                         return;
                     }
@@ -219,18 +224,15 @@ void L2Tracker::update_height() {
         {
             std::lock_guard lock{mutex};
             if (height) {
-                latest_height = *height;
-                latest_success = std::chrono::steady_clock::now();
-                log::debug(logcat, "L2 provider height updated to {}", *height);
-                prune_old_states();
+                set_height(*height, /*take_lock=*/false);
             } else {
                 log::warning(
                         logcat,
                         "Failed to retrieve current height from L2 RPC provider; last successful "
                         "retrieval: {}",
-                        latest_success
+                        latest_height_ts
                                 ? "{} ago"_format(tools::friendly_duration(
-                                          std::chrono::steady_clock::now() - *latest_success))
+                                          std::chrono::steady_clock::now() - *latest_height_ts))
                                 : "never");
             }
             keep_going = latest_height > 0;
@@ -565,9 +567,9 @@ uint64_t L2Tracker::get_latest_height() const {
 }
 
 std::optional<std::chrono::nanoseconds> L2Tracker::latest_height_age() const {
-    std::shared_lock lock{*this};
-    if (latest_success)
-        return std::chrono::steady_clock::now() - *latest_success;
+    std::shared_lock lock{mutex};
+    if (latest_height_ts)
+        return std::chrono::steady_clock::now() - *latest_height_ts;
     return std::nullopt;
 }
 
