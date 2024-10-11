@@ -45,7 +45,7 @@ class L2Tracker {
     RecentEvents<event::ServiceNodeExit> recent_exits;
     RecentEvents<event::StakingRequirementUpdated> recent_req_changes;
     std::map<uint64_t, uint64_t> reward_rate;
-    uint64_t latest_height = 0, synced_height = 0;
+    uint64_t latest_height = 0, synced_height = 0, latest_blockchain_l2_height = 0;
     bool initial = true;
     bool update_in_progress = false;
     std::chrono::steady_clock::time_point next_provider_check = std::chrono::steady_clock::now();

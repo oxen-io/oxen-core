@@ -51,6 +51,14 @@ L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_f
             1ms,
             /*squelch*/ true,
             dedicated_thread);
+
+    core.blockchain.hook_block_post_add([this](const auto& info) {
+        const cryptonote::block& block = info.block;
+        if (block.major_version >= cryptonote::feature::ETH_BLS) {
+            std::lock_guard lock{mutex};
+            latest_blockchain_l2_height = block.l2_height;
+        }
+    });
 }
 
 void L2Tracker::prune_old_states() {
@@ -70,6 +78,21 @@ void L2Tracker::set_height(uint64_t l2_height, bool take_lock) {
     latest_height = l2_height;
     latest_height_ts = std::chrono::steady_clock::now();
     log::debug(logcat, "L2 provider height updated to {}", l2_height);
+
+    // Check against the blockchain height and warn loudly if it looks like we are behind it.  (We
+    // don't worry about a safety buffer here because there's one build-in to the l2_height in a
+    // block, which is already lagged by SAFE_BLOCKS, so a current height should always be ahead of
+    // it).
+    if (core.service_node() && latest_height < latest_blockchain_l2_height) {
+        log::warning(
+                globallogcat,
+                fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                "Latest RPC provider reported height ({}) is too far behind the latest Oxen "
+                "chain reported height ({})",
+                latest_height,
+                latest_blockchain_l2_height);
+    }
+
     prune_old_states();
 }
 
