@@ -1772,10 +1772,6 @@ bool Blockchain::create_block_template_internal(
     uint64_t already_generated_coins;
     uint64_t pool_cookie;
 
-    if (!m_l2_tracker)
-        throw oxen::traced<std::logic_error>{
-                "Cannot create a block template without a configured L2 provider"};
-
     auto lock = tools::shared_locks(tx_pool, *this, *m_l2_tracker);
     if (m_btc_valid) {
         // The pool cookie is atomic. The lack of locking is OK, as if it changes
@@ -1809,6 +1805,11 @@ bool Blockchain::create_block_template_internal(
     std::tie(height, b.prev_id) = get_tail_id();
     ++height;  // Convert to the next block's height
     std::tie(b.major_version, b.minor_version) = get_ideal_block_version(m_nettype, height);
+
+    if (b.major_version >= feature::ETH_BLS && !m_l2_tracker)
+        throw oxen::traced<std::logic_error>{
+                "Cannot create a HF21+ block template without a configured L2 provider"};
+
     median_weight = m_current_block_cumul_weight_limit / 2;
     diffic = get_difficulty_for_next_block(!info.is_miner);
     already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
