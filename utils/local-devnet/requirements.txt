@@ -1,1 +1,2 @@
-web3==7.2.0; python_version >='3.9'
+web3==7.2.0;
+python_version >='3.9'

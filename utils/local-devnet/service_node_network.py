@@ -2,7 +2,20 @@
 
 from daemons import Daemon, Wallet
 import ethereum
-from ethereum import ServiceNodeRewardContract, ContractSeedServiceNode, ContractServiceNodeContributor, ContractServiceNodeStaker
+from ethereum import (
+    SENTContract,
+    ServiceNodeRewardContract,
+    ServiceNodeContributionContract,
+    ServiceNodeContributionFactoryContract,
+    ContractSeedServiceNode,
+    ContractServiceNodeContributor,
+    ContractServiceNodeStaker,
+    BLSPubkey,
+    BLSSignatureParams,
+    ServiceNodeParams,
+    ReservedContributor,
+)
+
 import enum
 import json
 
@@ -66,15 +79,13 @@ class SNExitMode(enum.Enum):
     Liquidation   = 2
 
 class SNNetwork:
+    all_nodes = []
+    wallets   = []
+
     def __init__(self, datadir, *, oxen_bin_dir, anvil_path, eth_sn_contracts_dir, sns=12, nodes=3):
         begin_time = time.perf_counter()
 
-        # Setup directories
-        self.datadir      = datadir
-        self.oxen_bin_dir = oxen_bin_dir
-        if not os.path.exists(self.datadir):
-            os.makedirs(self.datadir)
-
+        # Setup Ethereum ###########################################################################
         # Setup Anvil, a private Ethereum blockchain (if specified)
         if anvil_path is not None:
             if os.path.exists(anvil_path):
@@ -109,12 +120,20 @@ class SNNetwork:
             else:
                 raise RuntimeError('eth-sn-contracts expected file to exist \'{}\' but does not. Exiting'.format(anvil_path))
 
-        sn_rewards_json:       dict = {}
-        reward_rate_pool_json: dict = {}
-        erc20_contract_json:   dict = {}
+        sn_rewards_json:         dict = {}
+        sn_contrib_factory_json: dict = {}
+        sn_contrib_json:         dict = {}
+        reward_rate_pool_json:   dict = {}
+        erc20_contract_json:     dict = {}
 
         with open(eth_sn_contracts_dir / 'artifacts/contracts/ServiceNodeRewards.sol/ServiceNodeRewards.json', 'r') as file:
             sn_rewards_json = json.load(file)
+
+        with open(eth_sn_contracts_dir / 'artifacts/contracts/ServiceNodeContributionFactory.sol/ServiceNodeContributionFactory.json', 'r') as file:
+            sn_contrib_factory_json = json.load(file)
+
+        with open(eth_sn_contracts_dir / 'artifacts/contracts/ServiceNodeContribution.sol/ServiceNodeContribution.json', 'r') as file:
+            sn_contrib_json = json.load(file)
 
         with open(eth_sn_contracts_dir / 'artifacts/contracts/RewardRatePool.sol/RewardRatePool.json', 'r') as file:
             reward_rate_pool_json = json.load(file)
@@ -122,20 +141,37 @@ class SNNetwork:
         with open(eth_sn_contracts_dir / 'artifacts/contracts/SENT.sol/SENT.json', 'r') as file:
             erc20_contract_json = json.load(file)
 
-        # Connect rewards contract proxy to blockchain instance
+        # NOTE: Connect proxy contracts to on-chain instances
+        # SENT ERC20 token
+        self.sent_contract = SENTContract(contract_json=erc20_contract_json)
+
+        # SN Rewards
         self.sn_contract = ServiceNodeRewardContract(sn_rewards_json=sn_rewards_json,
-                                                     reward_rate_pool_json=reward_rate_pool_json,
-                                                     erc20_contract_json=erc20_contract_json)
+                                                     reward_rate_pool_json=reward_rate_pool_json)
 
+        self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
+                                   address=self.sn_contract.contract.address,
+                                   amount=int(999_999 * 1e9))
+
+        # Multi-contrib Factory
+        self.sn_contrib_factory = ServiceNodeContributionFactoryContract(contract_json=sn_contrib_factory_json);
+
+        # Setup Oxen ###############################################################################
+        # Nodes ####################################################################################
+        # Setup directories
+        self.datadir      = datadir
+        self.oxen_bin_dir = oxen_bin_dir
+        if not os.path.exists(self.datadir):
+            os.makedirs(self.datadir)
         vprint("Using '{}' for data files and logs".format(datadir))
-        nodeopts = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
 
-        self.ethsns = [Daemon(service_node=True, **nodeopts) for _ in range(len(SNExitMode) * 2)]
-        self.sns    = [Daemon(service_node=True, **nodeopts) for _ in range(sns)]
-        self.nodes  = [Daemon(**nodeopts) for _ in range(nodes)]
+        nodeopts       = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
+        self.eth_sns   = [Daemon(service_node=True, **nodeopts) for _ in range(len(SNExitMode) * 2)]
+        self.sns       = [Daemon(service_node=True, **nodeopts) for _ in range(sns)]
+        self.nodes     = [Daemon(**nodeopts) for _ in range(nodes)]
+        self.all_nodes = self.sns + self.nodes + self.eth_sns
 
-        self.all_nodes = self.sns + self.nodes + self.ethsns
-
+        # Wallets ##################################################################################
         self.wallets = []
         for name in ('Alice', 'Bob', 'Mike'):
             self.wallets.append(Wallet(
@@ -169,7 +205,7 @@ class SNNetwork:
         vprint("Starting new oxend service nodes with RPC".format(self.sns[0].listen_ip), end="")
         for sn in self.sns:
             futures.append(thread_pool.submit(sn.start))
-        for sn in self.ethsns:
+        for sn in self.eth_sns:
             futures.append(thread_pool.submit(sn.start))
 
         concurrent.futures.wait(futures)
@@ -178,7 +214,7 @@ class SNNetwork:
         for sn in self.sns:
             vprint(" {}".format(sn.rpc_port), end="", flush=True, timestamp=False)
 
-        for sn in self.ethsns:
+        for sn in self.eth_sns:
             vprint(" {}".format(sn.rpc_port), end="", flush=True, timestamp=False)
 
         # Start Oxen Nodes #########################################################################
@@ -318,14 +354,10 @@ class SNNetwork:
             total_staked = 0
 
             for entry in contributors:
-                contributor                    = ContractServiceNodeContributor()
-                contributor.staker.addr        = staker_eth_addr
-                contributor.staker.beneficiary = beneficiary_eth_addr
-
+                contributor = ContractServiceNodeContributor(ContractServiceNodeStaker(staker_eth_addr, beneficiary_eth_addr),
+                                                             int((entry["amount"] / oxen_staking_requirement * contract_staking_requirement)))
                 # Use the oxen amount proportionally as the SENT amount
-                contributor.stakedAmount = int((entry["amount"] / oxen_staking_requirement * contract_staking_requirement))
                 total_staked += contributor.stakedAmount
-
                 node.contributors.append(contributor)
 
             # Assign any left over SENT to be staked to the operator
@@ -342,48 +374,69 @@ class SNNetwork:
         self.sn_contract.start()
         prev_contract_sn_count = self.sn_contract.numberServiceNodes()
 
-        # Register a SN via the Ethereum smart contract
-        for sn in self.ethsns:
+        # Register a SN via the Ethereum smart contract, half as multi-contrib,
+        # half as solo nodes.
+        for index, sn in enumerate(self.eth_sns):
+
             sn_pubkey = sn.get_service_keys().pubkey
             reg_json  = sn.get_ethereum_registration_args(staker_eth_addr_no_0x)
 
-            bls_pubkey = {
-                'X': int(reg_json["bls_pubkey"][:64], 16),
-                'Y': int(reg_json["bls_pubkey"][64:128], 16),
-            }
-            bls_sig = {
-                'sigs0': int(reg_json["proof_of_possession"][:64], 16),
-                'sigs1': int(reg_json["proof_of_possession"][64:128], 16),
-                'sigs2': int(reg_json["proof_of_possession"][128:192], 16),
-                'sigs3': int(reg_json["proof_of_possession"][192:256], 16),
-            }
-            sn_params = {
-                'serviceNodePubkey':     int(reg_json["service_node_pubkey"], 16),
-                'serviceNodeSignature1': int(reg_json["service_node_signature"][:64], 16),
-                'serviceNodeSignature2': int(reg_json["service_node_signature"][64:128], 16),
-                'fee': int(0),
-            }
-            contributors = [{
-                'staker': {
-                    'addr':        staker_eth_addr,
-                    'beneficiary': beneficiary_eth_addr,
-                },
-                'stakedAmount': contract_staking_requirement,
-            }]
+            key = BLSPubkey(
+                X=int(reg_json["bls_pubkey"][:64], 16),
+                Y=int(reg_json["bls_pubkey"][64:128], 16)
+            )
 
-            vprint("Preparing to submit registration to Eth w/ address {} for SN {} ({})\nContributors {}".format(staker_eth_addr,
-                                                                                                                  sn_pubkey,
-                                                                                                                  reg_json,
-                                                                                                                  contributors))
-            self.sn_contract.addBLSPublicKey(bls_pubkey,
-                                             bls_sig,
-                                             sn_params,
-                                             contributors)
+            sig = BLSSignatureParams(
+                sigs0=int(reg_json["proof_of_possession"][:64], 16),
+                sigs1=int(reg_json["proof_of_possession"][64:128], 16),
+                sigs2=int(reg_json["proof_of_possession"][128:192], 16),
+                sigs3=int(reg_json["proof_of_possession"][192:256], 16),
+            )
+
+            params = ServiceNodeParams(
+                serviceNodePubkey=    int(reg_json["service_node_pubkey"], 16),
+                serviceNodeSignature1=int(reg_json["service_node_signature"][:64], 16),
+                serviceNodeSignature2=int(reg_json["service_node_signature"][64:128], 16),
+                fee=int(0),
+            )
+
+            if True or index > len(self.eth_sns) / 2:
+                contributors: list[ContractServiceNodeContributor] = [
+                    ContractServiceNodeContributor(
+                        ContractServiceNodeStaker(addr=staker_eth_addr, beneficiary=beneficiary_eth_addr),
+                        stakedAmount=contract_staking_requirement,
+                    )
+                ]
+
+                vprint("Preparing to submit registration to Eth w/ address {} for SN {} ({})\nContributors {}".format(staker_eth_addr, sn_pubkey, reg_json, contributors))
+                self.sn_contract.addBLSPublicKey(key, sig, params, contributors)
+            else:
+                reserved: list[ReservedContributor] = [
+                    ReservedContributor(addr=self.sn_contract.hardhat_account0.address, amount=int(contract_staking_requirement / 2)),
+                    ReservedContributor(addr=self.sn_contract.hardhat_account1.address, amount=int(contract_staking_requirement / 2)),
+                ]
+
+                self.sn_contrib_factory.deploy(account=self.sn_contract.hardhat_account0,
+                                               key=key,
+                                               sig=sig,
+                                               params=params,
+                                               reserved=reserved,
+                                               manual_finalize=False)
+
+        for contract_addr in self.sn_contrib_factory.deployedContracts:
+            contract = ServiceNodeContributionContract(address=contract_addr, contract_json=sn_contrib_json)
+            contract.contributeFunds(account=self.sn_contract.hardhat_account0,
+                                     amount=int(contract_staking_requirement / 2),
+                                     beneficiary=self.sn_contract.hardhat_account0.address)
+            contract.contributeFunds(account=self.sn_contract.hardhat_account1,
+                                     amount=int(contract_staking_requirement / 2),
+                                     beneficiary=self.sn_contract.hardhat_account1.address)
+
 
         # Advance the Arbitrum blockchain so that the SN registration is observed in oxen
-        ethereum.evm_mine(self.sn_contract.web3)
-        ethereum.evm_mine(self.sn_contract.web3)
-        ethereum.evm_mine(self.sn_contract.web3)
+        ethereum.evm_mine()
+        ethereum.evm_mine()
+        ethereum.evm_mine()
 
         # NOTE: Log all the SNs in the contract ####################################################
         contract_sn_id_it = 0
@@ -397,7 +450,7 @@ class SNNetwork:
 
         # Verify registration was successful
         contract_sn_count          = self.sn_contract.numberServiceNodes()
-        expected_contract_sn_count = prev_contract_sn_count + len(self.ethsns)
+        expected_contract_sn_count = prev_contract_sn_count + len(self.eth_sns)
         vprint("Added node via Eth. Contract has {} SNs\n{}".format(contract_sn_count, contract_sn_dump))
         assert contract_sn_count == expected_contract_sn_count, f"Expected {contract_sn_count} service nodes, received {expected_contract_sn_count}"
 
@@ -405,26 +458,26 @@ class SNNetwork:
         self.sync_nodes(self.mine(1), timeout=120) # Height 171
 
         # Sleep and let pulse quorum do work
-        vprint(f"Sleeping now, awaiting pulse quorum to generate blocks (& rewards for node), blockchain height is {self.ethsns[0].height()}");
+        vprint(f"Sleeping now, awaiting pulse quorum to generate blocks (& rewards for node), blockchain height is {self.eth_sns[0].height()}");
 
         # Wait until the node is able to receive rewards
         total_sleep_time = 0
         sleep_time       = 8
-        while self.ethsns[0].sn_is_payable() == False:
+        while self.eth_sns[0].sn_is_payable() == False:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
 
         # Wait 1 block to receive rewards
-        target_height = self.ethsns[0].height() + 1;
-        while self.ethsns[0].height() < target_height:
+        target_height = self.eth_sns[0].height() + 1;
+        while self.eth_sns[0].height() < target_height:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
 
-        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.ethsns[0].height()}");
+        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.eth_sns[0].height()}");
 
         # NOTE: BLS rewards claim ##################################################################
         # Claim rewards for beneficiary
-        rewards = self.ethsns[0].get_bls_rewards(beneficiary_eth_addr_no_0x)
+        rewards = self.eth_sns[0].get_bls_rewards(beneficiary_eth_addr_no_0x)
         vprint(rewards)
         rewardsAccount = rewards["result"]["address"]
         assert rewardsAccount.lower() == beneficiary_eth_addr_no_0x.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match beneficiary's account '{beneficiary_eth_addr_no_0x.lower()}'. We have the private key for the account and use it to claim rewards from the contract"
@@ -434,8 +487,8 @@ class SNNetwork:
                " for ",
                beneficiary_eth_addr_no_0x)
 
-        vprint("Foundation pool balance: {}".format(self.sn_contract.erc20balance(self.sn_contract.foundation_pool_address)))
-        vprint("Rewards contract balance: {}".format(self.sn_contract.erc20balance(self.sn_contract.contract_address)))
+        vprint("Foundation pool balance: {}".format(self.sent_contract.balanceOf(self.sn_contract.foundation_pool_address)))
+        vprint("Rewards contract balance: {}".format(self.sent_contract.balanceOf(self.sn_contract.contract.address)))
         aggregate_pubkey = self.sn_contract.aggregatePubkey()
         vprint("Aggregate Public Key: {}, {}".format(hex(aggregate_pubkey[0]), hex(aggregate_pubkey[1])))
 
@@ -451,7 +504,7 @@ class SNNetwork:
                " for ",
                beneficiary_eth_addr_no_0x)
 
-        vprint("Balance for '{}' before claim {}".format(beneficiary_eth_addr, self.sn_contract.erc20balance(beneficiary_eth_addr)))
+        vprint("Balance for '{}' before claim {}".format(beneficiary_eth_addr, self.sent_contract.balanceOf(beneficiary_eth_addr)))
 
         # NOTE: Now claim the rewards
         self.sn_contract.claimRewards()
@@ -459,11 +512,11 @@ class SNNetwork:
                self.sn_contract.recipients(beneficiary_eth_addr),
                " for ",
                beneficiary_eth_addr)
-        vprint("Balance for '{}' after claim {}".format(beneficiary_eth_addr, self.sn_contract.erc20balance(beneficiary_eth_addr)))
+        vprint("Balance for '{}' after claim {}".format(beneficiary_eth_addr, self.sent_contract.balanceOf(beneficiary_eth_addr)))
 
         # NOTE: BLS rewards claim ##################################################################
         # Claim rewards for staker
-        rewards = self.ethsns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0]
+        rewards = self.eth_sns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0]
         vprint(vars(rewards))
         assert rewards.balance == 0, "Staker's rewards amount ({}) should be 0 because funds are being paid out to the beneficiary".format(rewards.balance)
 
@@ -471,7 +524,7 @@ class SNNetwork:
         # Make a list of all the nodes, shuffle them and select 3 to remove (remove w/ wait time,
         # remove with signature and liquidate).
         sn_to_remove_indexes = []
-        for i in range(len(self.ethsns)):
+        for i in range(len(self.eth_sns)):
             sn_to_remove_indexes.append(i)
         random.shuffle(sn_to_remove_indexes)
         sn_to_remove_indexes = sn_to_remove_indexes[:len(SNExitMode)] # First 3 (1 for each test)
@@ -480,7 +533,7 @@ class SNNetwork:
         # the expired list when the L2 transaction is witnessed. (If we make the node wait long
         # enough it will also enter the liquidatable list!).
         for mode in SNExitMode:
-            sn_to_remove_bls_pubkey  = self.ethsns[sn_to_remove_indexes[mode.value]].get_service_keys().bls_pubkey
+            sn_to_remove_bls_pubkey  = self.eth_sns[sn_to_remove_indexes[mode.value]].get_service_keys().bls_pubkey
             sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
 
             # Initiate the remove, this will put the node into a mode where it will eventually enter
@@ -491,7 +544,7 @@ class SNNetwork:
 
             # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags
             # behind the tip for safety! In localdev this is configured to 1 block of lag).
-            ethereum.evm_mine(self.sn_contract.web3);
+            ethereum.evm_mine();
 
         # Wait for confirmation of event(s)
         unlocks_confirmed = []
@@ -511,7 +564,7 @@ class SNNetwork:
                 unlocks_confirmed_count = 0
                 for index in SNExitMode:
                     if unlocks_confirmed[index.value] == False:
-                        status_json = self.ethsns[sn_to_remove_indexes[index.value]].sn_status()
+                        status_json = self.eth_sns[sn_to_remove_indexes[index.value]].sn_status()
                         if status_json['service_node_state']['requested_unlock_height'] != 0:
                             max_requested_unlock_height = max(max_requested_unlock_height, status_json['service_node_state']['requested_unlock_height'])
                             unlocks_confirmed[index.value] = True
@@ -538,12 +591,12 @@ class SNNetwork:
         # Do exit via signature and liquidation, aggregate signature from network and apply it on
         # the smart contract
         for mode in SNExitMode:
-            sn_to_remove_pubkey      = self.ethsns[sn_to_remove_indexes[mode.value]].get_service_keys().pubkey
-            sn_to_remove_bls_pubkey  = self.ethsns[sn_to_remove_indexes[mode.value]].get_service_keys().bls_pubkey
+            sn_to_remove_pubkey      = self.eth_sns[sn_to_remove_indexes[mode.value]].get_service_keys().pubkey
+            sn_to_remove_bls_pubkey  = self.eth_sns[sn_to_remove_indexes[mode.value]].get_service_keys().bls_pubkey
             sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
 
             if mode == SNExitMode.WithSignature:
-                exit_request = self.ethsns[0].get_exit_liquidation_request(sn_to_remove_pubkey, liquidate=False)
+                exit_request = self.eth_sns[0].get_exit_liquidation_request(sn_to_remove_pubkey, liquidate=False)
                 vprint("Exit request aggregated: {}".format(exit_request))
                 vprint("Exit request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
 
@@ -578,7 +631,7 @@ class SNNetwork:
                 vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}")
 
                 # Now node was supposed to exit but hasn't in a timely fashion, it can be liquidated
-                exit_request = self.ethsns[0].get_exit_liquidation_request(sn_to_remove_pubkey, liquidate=True)
+                exit_request = self.eth_sns[0].get_exit_liquidation_request(sn_to_remove_pubkey, liquidate=True)
                 vprint("Liquidate request aggregated: {}".format(exit_request))
                 vprint("Liquidate request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
 
@@ -597,7 +650,7 @@ class SNNetwork:
 
             # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags
             # behind the tip for safety! In localdev this is configured to 1 block of lag).
-            ethereum.evm_mine(self.sn_contract.web3);
+            ethereum.evm_mine();
 
         # Verify that deregistration stake is unlocked and claimable
         vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {self.sns[0].height()}")
@@ -635,15 +688,15 @@ class SNNetwork:
         # node will be generated but failed to be applied because the node will generate a signature
         # with the OS clock (which has _not_ been advanced by 31 days).
         days_30_in_seconds = (60 * 60 * 24 * 31)
-        ethereum.evm_increaseTime(self.sn_contract.web3, days_30_in_seconds)
-        ethereum.evm_mine(self.sn_contract.web3)
+        ethereum.evm_increaseTime(days_30_in_seconds)
+        ethereum.evm_mine()
 
 
         # Remove the node from the smart contract (after 31 days has elapsed)
         for mode in SNExitMode:
             if mode == SNExitMode.AfterWaitTime:
-                sn_to_remove_pubkey      = self.ethsns[sn_to_remove_indexes[mode.value]].get_service_keys().pubkey
-                sn_to_remove_bls_pubkey  = self.ethsns[sn_to_remove_indexes[mode.value]].get_service_keys().bls_pubkey
+                sn_to_remove_pubkey      = self.eth_sns[sn_to_remove_indexes[mode.value]].get_service_keys().pubkey
+                sn_to_remove_bls_pubkey  = self.eth_sns[sn_to_remove_indexes[mode.value]].get_service_keys().bls_pubkey
                 sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
 
                 assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == staker_eth_addr
@@ -658,7 +711,7 @@ class SNNetwork:
 
                 # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags
                 # behind the tip for safety! In localdev this is configured to 1 block of lag).
-                ethereum.evm_mine(self.sn_contract.web3);
+                ethereum.evm_mine();
 
 
         # Tests complete ###########################################################################
