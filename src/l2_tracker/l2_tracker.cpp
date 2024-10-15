@@ -325,7 +325,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
     more->pop_front();
     oxen::log::debug(logcat, "Starting query for reward height {}", r_height);
     provider.callReadFunctionJSONAsync(
-            core.get_net_config().ETHEREUM_REWARDS_CONTRACT,
+            core.get_net_config().ETHEREUM_POOL_CONTRACT,
             "0x{:x}"_format(contract::call::Pool_rewardRate),
             [this, r_height, more = std::move(more)](std::optional<nlohmann::json> result) mutable {
                 if (!result)
