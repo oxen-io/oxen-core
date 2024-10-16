@@ -245,6 +245,9 @@ class SNContribContract:
         tx_hash   = submit_unsigned_tx("Reset", account, unsent_tx)
         return tx_hash
 
+    def operator(self):
+        return self.contract.functions.operator().call()
+
 class SENTContract:
     def __init__(self,
                  contract_json: dict):
@@ -253,9 +256,13 @@ class SENTContract:
 
     def approve(self,
                 sender: EthLocalAccount,
-                address: EthChecksumAddress,
-                amount: int):
-        unsent_tx = self.contract.functions.approve(address, amount).build_transaction(basic_build_tx_params(sender))
+                spender: EthChecksumAddress,
+                value: int):
+        unsent_tx = self.contract.functions.approve(spender, value).build_transaction(basic_build_tx_params(sender))
+        submit_unsigned_tx("SENT approval", sender, unsent_tx);
+
+    def transferFrom(self, sender: EthLocalAccount, to: EthChecksumAddress, value: int):
+        unsent_tx = self.contract.functions.transferFrom(sender.address, to, value).build_transaction(basic_build_tx_params(sender))
         submit_unsigned_tx("SENT approval", sender, unsent_tx);
 
     def balanceOf(self, address: EthChecksumAddress):
@@ -301,6 +308,7 @@ class SNRewardsContract:
         return self.contract.functions.aggregatePubkey().call()
 
     def addBLSPublicKey(self,
+                        sender:       EthLocalAccount,
                         key:          BLSPubkey,
                         sig:          BLSSignatureParams,
                         params:       ServiceNodeParams,
@@ -320,8 +328,8 @@ class SNRewardsContract:
             (sig.sigs0, sig.sigs1, sig.sigs2, sig.sigs3),
             (params.serviceNodePubkey, params.serviceNodeSignature1, params.serviceNodeSignature2, params.fee),
             contributors_array
-        ).build_transaction(basic_build_tx_params(self.hardhat_account0))
-        tx_hash = submit_unsigned_tx("Add BLS public key", self.hardhat_account0, unsent_tx)
+        ).build_transaction(basic_build_tx_params(sender))
+        tx_hash = submit_unsigned_tx("Add BLS public key", sender, unsent_tx)
         return tx_hash
 
     def initiateRemoveBLSPublicKey(self, serviceNodeID: int):

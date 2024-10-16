@@ -147,11 +147,14 @@ class SNNetwork:
 
         # SN Rewards
         self.sn_contract = SNRewardsContract(sn_rewards_json=sn_rewards_json,
-                                                     reward_rate_pool_json=reward_rate_pool_json)
+                                             reward_rate_pool_json=reward_rate_pool_json)
+        contract_staking_requirement = self.sn_contract.stakingRequirement()
 
         self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
-                                   address=self.sn_contract.contract.address,
-                                   amount=int(999_999 * 1e9))
+                                   spender=self.sn_contract.contract.address,
+                                   value=int(999_999 * 1e9))
+
+        hh1_required_sent: int = int((contract_staking_requirement / 2) * 5)
 
         # Multi-contrib Factory
         self.sn_contrib_factory = SNContribFactoryContract(contract_json=sn_contrib_factory_json);
@@ -346,7 +349,6 @@ class SNNetwork:
         # Construct the seed list for initiating the smart contract.
         # Note all SNs up to this point (HF < feature::ETH_BLS) had a 100 OXEN staking requirement
         oxen_staking_requirement     = self.sns[0].get_staking_requirement()
-        contract_staking_requirement = self.sn_contract.stakingRequirement()
         seed_node_list      = []
         for sn in self.sns:
             node         = ContractSeedServiceNode(sn.get_service_keys().bls_pubkey, sn.get_service_keys().ed25519_pubkey)
@@ -400,7 +402,12 @@ class SNNetwork:
                 fee=int(0),
             )
 
-            if True or index > len(self.eth_sns) / 2:
+            print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
+            print(vars(key))
+            print(vars(sig))
+            print(vars(params))
+
+            if index > (len(self.eth_sns) / 2):
                 contributors: list[ContractServiceNodeContributor] = [
                     ContractServiceNodeContributor(
                         ContractServiceNodeStaker(addr=staker_eth_addr, beneficiary=beneficiary_eth_addr),
@@ -409,7 +416,11 @@ class SNNetwork:
                 ]
 
                 vprint("Preparing to submit registration to Eth w/ address {} for SN {} ({})\nContributors {}".format(staker_eth_addr, sn_pubkey, reg_json, contributors))
-                self.sn_contract.addBLSPublicKey(key, sig, params, contributors)
+                self.sn_contract.addBLSPublicKey(sender=self.sn_contract.hardhat_account0,
+                                                 key=key,
+                                                 sig=sig,
+                                                 params=params,
+                                                 contributors=contributors)
             else:
                 reserved: list[ReservedContributor] = [
                     ReservedContributor(addr=self.sn_contract.hardhat_account0.address, amount=int(contract_staking_requirement / 2)),
@@ -423,14 +434,42 @@ class SNNetwork:
                                                reserved=reserved,
                                                manual_finalize=False)
 
+        # NOTE: Fund hardhat account 1 w/ enough $SENT to fund their 50% of the
+        # multi-contrib contracts
+        hh1_required_sent: int = int((contract_staking_requirement / 2) * len(self.sn_contrib_factory.deployedContracts))
+
+        print("HH Account 0 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account0.address)))
+        print("HH Account 1 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account1.address)))
+        self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
+                                   spender=self.sn_contract.hardhat_account0.address,
+                                   value=hh1_required_sent)
+        self.sent_contract.transferFrom(sender=self.sn_contract.hardhat_account0,
+                                        to=self.sn_contract.hardhat_account1.address,
+                                        value=hh1_required_sent)
+        print("HH Account 0 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account0.address)))
+        print("HH Account 1 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account1.address)))
+
+
         for contract_addr in self.sn_contrib_factory.deployedContracts:
             contract = SNContribContract(address=contract_addr, contract_json=sn_contrib_json)
+
+            assert contract.operator() == self.sn_contract.hardhat_account0.address, "Operator ({}) should be deployer {}".format(contract.operator(), self.sn_contract.hardhat_account0.address)
+
+            # NOTE: Hardhat account 0 funds the multi-contrib
+            self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
+                                       spender=ethereum.web3_client.to_checksum_address(contract_addr),
+                                       value=int(contract_staking_requirement / 2));
             contract.contributeFunds(account=self.sn_contract.hardhat_account0,
                                      amount=int(contract_staking_requirement / 2),
-                                     beneficiary=self.sn_contract.hardhat_account0.address)
+                                     beneficiary=beneficiary_eth_addr)
+
+            # NOTE: Hardhat account 1 funds the multi-contrib
+            self.sent_contract.approve(sender=self.sn_contract.hardhat_account1,
+                                       spender=ethereum.web3_client.to_checksum_address(contract_addr),
+                                       value=int(contract_staking_requirement / 2));
             contract.contributeFunds(account=self.sn_contract.hardhat_account1,
                                      amount=int(contract_staking_requirement / 2),
-                                     beneficiary=self.sn_contract.hardhat_account1.address)
+                                     beneficiary=beneficiary_eth_addr)
 
 
         # Advance the Arbitrum blockchain so that the SN registration is observed in oxen
