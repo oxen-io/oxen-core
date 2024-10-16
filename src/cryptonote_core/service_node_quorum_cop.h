@@ -97,6 +97,7 @@ struct service_node_test_results {
     bool timesync_status = true;
     bool storage_server_reachable = true;
     bool lokinet_reachable = true;
+    bool recent_l2_height = true;
 
     // Returns a vector of reasons why this node is failing (nullopt if not failing).
     std::optional<std::vector<std::string_view>> why() const;
@@ -104,7 +105,7 @@ struct service_node_test_results {
         return uptime_proved &&
                // single_ip -- deliberately excluded (it only gives ip-change penalties, not deregs)
                checkpoint_participation && pulse_participation && timestamp_participation &&
-               timesync_status && storage_server_reachable && lokinet_reachable;
+               timesync_status && storage_server_reachable && lokinet_reachable && recent_l2_height;
     }
 };
 

@@ -116,6 +116,10 @@ inline constexpr uint64_t L2_REWARD_MAX_INCREASE_DIVISOR = 50000;
 // decrease of 0.004%).
 inline constexpr uint64_t L2_REWARD_MAX_DECREASE_DIVISOR = 25000;
 
+// The maximum a node can be behind with their L2 provider before their uptime proofs start
+// failing checks
+inline constexpr uint64_t L2_HEIGHT_DELAY_THRESHOLD = 1h / 250ms;
+
 // Fallback used in wallet if no fee is available from RPC:
 inline constexpr uint64_t FEE_PER_BYTE_V13 = 215;
 // 0.005 OXEN per tx output (in addition to the per-byte fee), starting in v18:
