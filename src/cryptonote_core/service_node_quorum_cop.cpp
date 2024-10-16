@@ -98,6 +98,8 @@ service_node_test_results quorum_cop::check_service_node(
     bool ss_reachable = true, lokinet_reachable = true;
     uint64_t timestamp = 0;
     decltype(std::declval<proof_info>().public_ips) ips{};
+    uint64_t l2_height = 0;
+    std::chrono::seconds proof_age = 0s;
 
     participation_history<service_nodes::checkpoint_participation_entry> checkpoint_participation{};
     participation_history<service_nodes::pulse_participation_entry> pulse_participation{};
@@ -116,11 +118,19 @@ service_node_test_results quorum_cop::check_service_node(
         pulse_participation = proof.pulse_participation;
         timestamp_participation = proof.timestamp_participation;
         timesync_status = proof.timesync_status;
+        l2_height = proof.proof->l2_height;
+        auto now = std::chrono::system_clock::now();
+        auto proof_timestamp =
+                std::chrono::system_clock::time_point(std::chrono::seconds(proof.proof->timestamp));
+        proof_age = (proof_timestamp > now)
+                          ? 0s
+                          : std::chrono::duration_cast<std::chrono::seconds>(now - proof_timestamp);
     });
     std::chrono::seconds time_since_last_uptime_proof{std::time(nullptr) - timestamp};
 
     bool check_uptime_obligation = true;
     bool check_checkpoint_obligation = true;
+    bool check_l2_height = hf_version >= cryptonote::feature::ETH_BLS;
 
     if (check_uptime_obligation && time_since_last_uptime_proof > netconf.UPTIME_PROOF_VALIDITY) {
         log::info(
@@ -158,6 +168,25 @@ service_node_test_results quorum_cop::check_service_node(
         }
     }
 
+    // Checking if the nodes L2 height is too far behind
+    auto l2_min_acceptable_height = m_core.l2_tracker().get_latest_height();
+    l2_min_acceptable_height -=
+            std::min(proof_age / cryptonote::config::L2_BLOCK_TIME, l2_min_acceptable_height);
+    l2_min_acceptable_height -=
+            std::min(cryptonote::L2_HEIGHT_DELAY_THRESHOLD, l2_min_acceptable_height);
+
+    if (check_l2_height && l2_height < l2_min_acceptable_height) {
+        log::info(
+                logcat,
+                "Service Node: {}, failed l2 height check. Node L2 height: {}, Threshold L2 "
+                "height: {}",
+                pubkey,
+                l2_height,
+                l2_min_acceptable_height);
+        result.recent_l2_height = false;
+    }
+
+    // These checks will not be performed when a node is being considered for recommission
     if (!info.is_decommissioned()) {
         if (check_checkpoint_obligation &&
             checkpoint_participation.failures() > CHECKPOINT_MAX_MISSABLE_VOTES) {
@@ -423,6 +452,9 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                 if (!test_results.timesync_status)
                                     reason |= cryptonote::Decommission_Reason::
                                             timesync_status_out_of_sync;
+                                if (!test_results.recent_l2_height)
+                                    reason |=
+                                            cryptonote::Decommission_Reason::l2_height_out_of_sync;
                                 int64_t credit = calculate_decommission_credit(
                                         m_core.get_nettype(), info, latest_height);
 

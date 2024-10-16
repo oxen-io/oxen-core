@@ -89,6 +89,8 @@ std::vector<std::string> readable_reasons(uint16_t decomm_reason) {
         results.push_back("Time out of sync");
     if (decomm_reason & lokinet_unreachable)
         results.push_back("Lokinet Unreachable");
+    if (decomm_reason & l2_height_out_of_sync)
+        results.push_back("L2 Out of Sync");
     return results;
 }
 
@@ -108,6 +110,8 @@ std::vector<std::string> coded_reasons(uint16_t decomm_reason) {
         results.push_back("timesync");
     if (decomm_reason & lokinet_unreachable)
         results.push_back("lokinet");
+    if (decomm_reason & l2_height_out_of_sync)
+        results.push_back("l2");
     return results;
 }
 
