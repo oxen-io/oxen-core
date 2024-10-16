@@ -329,20 +329,17 @@ class SNRewardsContract:
         tx_hash   = submit_unsigned_tx("Remove BLS public key", self.hardhat_account0, unsent_tx)
         return tx_hash
 
-    def removeBLSPublicKeyWithSignature(self, bls_pubkey, timestamp, blsSig, ids):
-        bls_pubkey = {
-            'X': int(bls_pubkey[:64],    16),
-            'Y': int(bls_pubkey[64:128], 16),
-        }
-
-        bls_signature = {
-            'sigs0': int(blsSig[   :64],  16),
-            'sigs1': int(blsSig[64 :128], 16),
-            'sigs2': int(blsSig[128:192], 16),
-            'sigs3': int(blsSig[192:256], 16),
-        }
-
-        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature(bls_pubkey, timestamp, bls_signature, ids).build_transaction(basic_build_tx_params(self.hardhat_account0))
+    def removeBLSPublicKeyWithSignature(self,
+                                        key:       BLSPubkey,
+                                        timestamp: int,
+                                        sig:       BLSSignatureParams,
+                                        ids:       list[int]):
+        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature(
+            (key.X, key.Y),
+            timestamp,
+            (sig.sigs0, sig.sigs1, sig.sigs2, sig.sigs3),
+            ids
+        ).build_transaction(basic_build_tx_params(self.hardhat_account0))
         tx_hash   = submit_unsigned_tx("Remove BLS public key w/ signature", self.hardhat_account0, unsent_tx)
         return tx_hash
 
@@ -351,23 +348,15 @@ class SNRewardsContract:
         tx_hash   = submit_unsigned_tx("Remove BLS public key after wait time", self.hardhat_account0, unsent_tx)
         return tx_hash
 
-    def liquidateBLSPublicKeyWithSignature(self, bls_pubkey, timestamp, bls_sig, ids):
-        contract_bls_pubkey = {
-            'X': int(bls_pubkey[:64],    16),
-            'Y': int(bls_pubkey[64:128], 16),
-        }
-
-        contract_bls_sig = {
-            'sigs0': int(bls_sig[   :64],  16),
-            'sigs1': int(bls_sig[64 :128], 16),
-            'sigs2': int(bls_sig[128:192], 16),
-            'sigs3': int(bls_sig[192:256], 16),
-        }
-
+    def liquidateBLSPublicKeyWithSignature(self,
+                                           key:       BLSPubkey,
+                                           timestamp: int,
+                                           sig:       BLSSignatureParams,
+                                           ids:       list[int]):
         unsent_tx = self.contract.functions.liquidateBLSPublicKeyWithSignature(
-            contract_bls_pubkey,
+            (key.X, key.Y),
             timestamp,
-            contract_bls_sig,
+            (sig.sigs0, sig.sigs1, sig.sigs2, sig.sigs3),
             ids
         ).build_transaction(basic_build_tx_params(self.hardhat_account0))
         tx_hash = submit_unsigned_tx("Liquidate BLS public key w/ signature", self.hardhat_account0, unsent_tx)
@@ -414,20 +403,18 @@ class SNRewardsContract:
     def numberServiceNodes(self):
         return self.contract.functions.serviceNodesLength().call()
 
-    def recipients(self, address):
+    def recipients(self, address: EthChecksumAddress):
         return self.contract.functions.recipients(address).call()
 
-    def updateRewardsBalance(self, recipientAddress, recipientAmount, blsSig, ids):
-        sig_param = {
-                'sigs0': int(blsSig[:64], 16),
-                'sigs1': int(blsSig[64:128], 16),
-                'sigs2': int(blsSig[128:192], 16),
-                'sigs3': int(blsSig[192:256], 16),
-        }
+    def updateRewardsBalance(self,
+                             recipientAddress: EthChecksumAddress,
+                             recipientAmount:  int,
+                             blsSignature:     BLSSignatureParams,
+                             ids:              list[int]):
         unsent_tx = self.contract.functions.updateRewardsBalance(
-            web3_client.to_checksum_address(recipientAddress),
+            recipientAddress,
             recipientAmount,
-            sig_param,
+            (blsSignature.sigs0, blsSignature.sigs1, blsSignature.sigs2, blsSignature.sigs3),
             ids
         ).build_transaction(basic_build_tx_params(self.hardhat_account0))
         tx_hash = submit_unsigned_tx("Update rewards balance", self.hardhat_account0, unsent_tx)

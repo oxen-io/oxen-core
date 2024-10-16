@@ -477,9 +477,9 @@ class SNNetwork:
 
         # NOTE: BLS rewards claim ##################################################################
         # Claim rewards for beneficiary
-        rewards = self.eth_sns[0].get_bls_rewards(beneficiary_eth_addr_no_0x)
-        vprint(rewards)
-        rewardsAccount = rewards["result"]["address"]
+        rewards_response = self.eth_sns[0].get_bls_rewards(beneficiary_eth_addr_no_0x)
+        vprint(rewards_response)
+        rewardsAccount = rewards_response["result"]["address"]
         assert rewardsAccount.lower() == beneficiary_eth_addr_no_0x.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match beneficiary's account '{beneficiary_eth_addr_no_0x.lower()}'. We have the private key for the account and use it to claim rewards from the contract"
 
         vprint("Beneficiary rewards before updating has ['available', 'claimed'] respectively: ",
@@ -492,12 +492,23 @@ class SNNetwork:
         aggregate_pubkey = self.sn_contract.aggregatePubkey()
         vprint("Aggregate Public Key: {}, {}".format(hex(aggregate_pubkey[0]), hex(aggregate_pubkey[1])))
 
+        # Extract binary parameters
+        sig_str: str = rewards_response['result']['signature'];
+
+        # Convert binary params to contract representation
+        sig = BLSSignatureParams(
+            sigs0=int(sig_str[   :64],  16),
+            sigs1=int(sig_str[64 :128], 16),
+            sigs2=int(sig_str[128:192], 16),
+            sigs3=int(sig_str[192:256], 16),
+        )
+
         # NOTE: Then update the rewards blaance
         self.sn_contract.updateRewardsBalance(
-                beneficiary_eth_addr,
-                rewards["result"]["amount"],
-                rewards["result"]["signature"],
-                rewards["result"]["non_signer_indices"])
+                recipientAddress=beneficiary_eth_addr,
+                recipientAmount=rewards_response["result"]["amount"],
+                blsSignature=sig,
+                ids=rewards_response["result"]["non_signer_indices"])
 
         vprint("Beneficiary rewards update executed, has ['available', 'claimed'] now respectively: ",
                self.sn_contract.recipients(beneficiary_eth_addr),
@@ -516,9 +527,9 @@ class SNNetwork:
 
         # NOTE: BLS rewards claim ##################################################################
         # Claim rewards for staker
-        rewards = self.eth_sns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0]
-        vprint(vars(rewards))
-        assert rewards.balance == 0, "Staker's rewards amount ({}) should be 0 because funds are being paid out to the beneficiary".format(rewards.balance)
+        rewards_response = self.eth_sns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0]
+        vprint(vars(rewards_response))
+        assert rewards_response.balance == 0, "Staker's rewards amount ({}) should be 0 because funds are being paid out to the beneficiary".format(rewards_response.balance)
 
         # Begin exit tests ######################################################################
         # Make a list of all the nodes, shuffle them and select 3 to remove (remove w/ wait time,
@@ -600,12 +611,27 @@ class SNNetwork:
                 vprint("Exit request aggregated: {}".format(exit_request))
                 vprint("Exit request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
 
+                # Extract binary parameters
+                key_str: str = exit_request['result']['bls_pubkey'];
+                sig_str: str = exit_request['result']['signature'];
+
+                # Convert binary params to contract representation
+                key = BLSPubkey(X=int(key_str[:64], 16), Y=int(key_str[64:128], 16))
+                sig = BLSSignatureParams(
+                    sigs0=int(sig_str[   :64],  16),
+                    sigs1=int(sig_str[64 :128], 16),
+                    sigs2=int(sig_str[128:192], 16),
+                    sigs3=int(sig_str[192:256], 16),
+                )
+
+                # Invoke contract
                 assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == staker_eth_addr
                 contract_sn_count_before = self.sn_contract.numberServiceNodes()
-                self.sn_contract.removeBLSPublicKeyWithSignature(exit_request["result"]["bls_pubkey"],
-                                                                 exit_request["result"]["timestamp"],
-                                                                 exit_request["result"]["signature"],
-                                                                 exit_request["result"]["non_signer_indices"])
+                self.sn_contract.removeBLSPublicKeyWithSignature(key=key,
+                                                                 timestamp=exit_request["result"]["timestamp"],
+                                                                 sig=sig,
+                                                                 ids=exit_request["result"]["non_signer_indices"])
+
                 contract_sn_count_after = self.sn_contract.numberServiceNodes()
                 vprint("Node count in contract after exit with signature, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
 
@@ -635,12 +661,25 @@ class SNNetwork:
                 vprint("Liquidate request aggregated: {}".format(exit_request))
                 vprint("Liquidate request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
 
+                # Extract binary parameters
+                key_str: str = exit_request['result']['bls_pubkey'];
+                sig_str: str = exit_request['result']['signature'];
+
+                # Convert binary params to contract representation
+                key = BLSPubkey(X=int(key_str[:64], 16), Y=int(key_str[64:128], 16))
+                sig = BLSSignatureParams(
+                    sigs0=int(sig_str[   :64],  16),
+                    sigs1=int(sig_str[64 :128], 16),
+                    sigs2=int(sig_str[128:192], 16),
+                    sigs3=int(sig_str[192:256], 16),
+                )
+
                 assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == staker_eth_addr
                 contract_sn_count_before = self.sn_contract.numberServiceNodes()
-                self.sn_contract.liquidateBLSPublicKeyWithSignature(exit_request["result"]["bls_pubkey"],
-                                                                    exit_request["result"]["timestamp"],
-                                                                    exit_request["result"]["signature"],
-                                                                    exit_request["result"]["non_signer_indices"])
+                self.sn_contract.liquidateBLSPublicKeyWithSignature(key=key,
+                                                                    timestamp=exit_request["result"]["timestamp"],
+                                                                    sig=sig,
+                                                                    ids=exit_request["result"]["non_signer_indices"])
                 contract_sn_count_after = self.sn_contract.numberServiceNodes()
                 vprint("Node count in contract after liquidation, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
 
