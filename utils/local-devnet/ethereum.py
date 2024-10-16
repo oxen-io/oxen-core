@@ -1,7 +1,14 @@
 import web3
 from web3.types import (
-    TxParams as EthTxParams
+    TxParams as EthTxParams,
+    TxReceipt as EthTxReceipt,
+    TxData as EthTxData,
 )
+
+from hexbytes import (
+    HexBytes,
+)
+
 import urllib.request
 import json
 from eth_typing import (
@@ -102,17 +109,24 @@ def basic_build_tx_params(account: EthLocalAccount, gas=3000000) -> EthTxParams:
     }
     return result
 
-def submit_signed_tx(tx_label: str, signed_tx: EthSignedTransaction):
-    tx_hash    = web3_client.eth.send_raw_transaction(signed_tx.raw_transaction)
-    tx_receipt = web3_client.eth.wait_for_transaction_receipt(tx_hash)
+def submit_unsigned_tx(tx_label: str, account: EthLocalAccount, built_tx: EthTxParams) -> HexBytes:
+    signed_tx:  EthSignedTransaction = web3_client.eth.account.sign_transaction(built_tx, private_key=account.key)
+    tx_hash:    HexBytes             = web3_client.eth.send_raw_transaction(signed_tx.raw_transaction)
+    tx_receipt: EthTxReceipt         = web3_client.eth.wait_for_transaction_receipt(tx_hash)
     web3_client.eth.wait_for_transaction_receipt(tx_hash)
 
     # NOTE: If the TX failed, replay the TX locally and catch the error to log
     # to the user
     if tx_receipt["status"] == 0:
         # build a new transaction to replay:
-        tx_to_replay = web3_client.eth.get_transaction(result)
-        replay_tx = {
+        tx_to_replay: EthTxData = web3_client.eth.get_transaction(tx_hash)
+
+        assert 'to'          in tx_to_replay
+        assert 'from'        in tx_to_replay
+        assert 'value'       in tx_to_replay
+        assert 'input'       in tx_to_replay
+
+        replay_tx: EthTxParams = {
             'to':    tx_to_replay['to'],
             'from':  tx_to_replay['from'],
             'value': tx_to_replay['value'],
@@ -120,16 +134,14 @@ def submit_signed_tx(tx_label: str, signed_tx: EthSignedTransaction):
         }
 
         try: # replay the transaction locally:
-            web3_client.eth.call(replay_tx, tx_to_replay.blockNumber - 1)
+            assert 'blockNumber' in tx_to_replay
+            web3_client.eth.call(replay_tx, tx_to_replay['blockNumber'] - 1)
         except Exception as e:
-            print(f"{tx_label} TX {result} reverted {e}")
+            print(f"{tx_label} TX {tx_hash} reverted: {e}")
 
     return tx_hash
 
-def submit_unsigned_tx(tx_label: str, account: EthLocalAccount, built_tx):
-    signed_tx = web3_client.eth.account.sign_transaction(built_tx, private_key=account.key)
-    return submit_signed_tx(tx_label, signed_tx)
-
+# RPC commands
 def eth_chainId():
     method = "eth_chainId"
     data = json.dumps({
@@ -157,7 +169,7 @@ def evm_mine():
     web3_client.provider.make_request('evm_mine', [])
 
 # Classes ##########################################################################################
-class ServiceNodeContributionFactoryContract:
+class SNContribFactoryContract:
     deployedContracts: list[EthHexAddress] = []
 
     def __init__(self, contract_json: dict): # NOTE: Load the (deterministically hardhat deployed) contract
@@ -199,7 +211,7 @@ class ServiceNodeContributionFactoryContract:
         self.deployedContracts.append(result)
         return result
 
-class ServiceNodeContributionContract:
+class SNContribContract:
     def __init__(self, address: EthHexAddress, contract_json: dict): # NOTE: Load the (deterministically hardhat deployed) contract
         self.contract = web3_client.eth.contract(address=web3_client.to_checksum_address(address), abi=contract_json["abi"])
 
@@ -249,7 +261,7 @@ class SENTContract:
     def balanceOf(self, address: EthChecksumAddress):
         return self.contract.functions.balanceOf(web3_client.to_checksum_address(address)).call()
 
-class ServiceNodeRewardContract:
+class SNRewardsContract:
     def __init__(self,
                  sn_rewards_json:       dict,
                  reward_rate_pool_json: dict):
@@ -309,20 +321,12 @@ class ServiceNodeRewardContract:
             (params.serviceNodePubkey, params.serviceNodeSignature1, params.serviceNodeSignature2, params.fee),
             contributors_array
         ).build_transaction(basic_build_tx_params(self.hardhat_account0))
-
-        signed_tx = web3_client.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
-        tx_hash = submit_signed_tx("Add BLS public key", signed_tx)
+        tx_hash = submit_unsigned_tx("Add BLS public key", self.hardhat_account0, unsent_tx)
         return tx_hash
 
-    def initiateRemoveBLSPublicKey(self, service_node_id):
-        # function initiateRemoveBLSPublicKey(uint64 serviceNodeID) public
-        unsent_tx = self.contract.functions.initiateRemoveBLSPublicKey(service_node_id
-                    ).build_transaction({
-                        "from": self.hardhat_account0.address,
-                        'gas': 2000000,
-                        'nonce': web3_client.eth.get_transaction_count(self.hardhat_account0.address)})
-        signed_tx = web3_client.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
-        tx_hash = submit_signed_tx("Remove BLS public key", signed_tx)
+    def initiateRemoveBLSPublicKey(self, serviceNodeID: int):
+        unsent_tx = self.contract.functions.initiateRemoveBLSPublicKey(serviceNodeID).build_transaction(basic_build_tx_params(self.hardhat_account0))
+        tx_hash   = submit_unsigned_tx("Remove BLS public key", self.hardhat_account0, unsent_tx)
         return tx_hash
 
     def removeBLSPublicKeyWithSignature(self, bls_pubkey, timestamp, blsSig, ids):
@@ -338,23 +342,13 @@ class ServiceNodeRewardContract:
             'sigs3': int(blsSig[192:256], 16),
         }
 
-        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature(bls_pubkey, timestamp, bls_signature, ids).build_transaction({
-            "from": self.hardhat_account0.address,
-            'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': web3_client.eth.get_transaction_count(self.hardhat_account0.address)
-        })
-        signed_tx = web3_client.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
-        tx_hash = submit_signed_tx("Remove BLS public key w/ signature", signed_tx)
+        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature(bls_pubkey, timestamp, bls_signature, ids).build_transaction(basic_build_tx_params(self.hardhat_account0))
+        tx_hash   = submit_unsigned_tx("Remove BLS public key w/ signature", self.hardhat_account0, unsent_tx)
         return tx_hash
 
     def removeBLSPublicKeyAfterWaitTime(self, serviceNodeID: int):
-        unsent_tx = self.contract.functions.removeBLSPublicKeyAfterWaitTime(serviceNodeID).build_transaction({
-            "from": self.hardhat_account0.address,
-            'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': web3_client.eth.get_transaction_count(self.hardhat_account0.address)
-        })
-        signed_tx = web3_client.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
-        tx_hash = submit_signed_tx("Remove BLS public key after wait time", signed_tx)
+        unsent_tx = self.contract.functions.removeBLSPublicKeyAfterWaitTime(serviceNodeID).build_transaction(basic_build_tx_params(self.hardhat_account0))
+        tx_hash   = submit_unsigned_tx("Remove BLS public key after wait time", self.hardhat_account0, unsent_tx)
         return tx_hash
 
     def liquidateBLSPublicKeyWithSignature(self, bls_pubkey, timestamp, bls_sig, ids):
@@ -375,13 +369,8 @@ class ServiceNodeRewardContract:
             timestamp,
             contract_bls_sig,
             ids
-        ).build_transaction({
-            "from": self.hardhat_account0.address,
-            'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': web3_client.eth.get_transaction_count(self.hardhat_account0.address)
-        })
-        signed_tx = web3_client.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
-        tx_hash = submit_signed_tx("Liquidate BLS public key w/ signature", signed_tx)
+        ).build_transaction(basic_build_tx_params(self.hardhat_account0))
+        tx_hash = submit_unsigned_tx("Liquidate BLS public key w/ signature", self.hardhat_account0, unsent_tx)
         return tx_hash
 
     def seedPublicKeyList(self, seed_nodes):
@@ -418,13 +407,8 @@ class ServiceNodeRewardContract:
 
         print(contract_seed_nodes)
 
-        unsent_tx = self.contract.functions.seedPublicKeyList(contract_seed_nodes).build_transaction({
-            "from":  self.hardhat_account0.address,
-            'gas':   6000000,  # Adjust gas limit as necessary
-            'nonce': web3_client.eth.get_transaction_count(self.hardhat_account0.address)
-        })
-        signed_tx = web3_client.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
-        tx_hash   = submit_signed_tx("Seed public key list", signed_tx)
+        unsent_tx = self.contract.functions.seedPublicKeyList(contract_seed_nodes).build_transaction(basic_build_tx_params(account=self.hardhat_account0, gas=6000000))
+        tx_hash   = submit_unsigned_tx("Seed public key list", self.hardhat_account0, unsent_tx)
         return tx_hash
 
     def numberServiceNodes(self):
@@ -445,30 +429,20 @@ class ServiceNodeRewardContract:
             recipientAmount,
             sig_param,
             ids
-        ).build_transaction({
-            "from": self.hardhat_account0.address,
-            'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': web3_client.eth.get_transaction_count(self.hardhat_account0.address)
-        })
-        signed_tx = web3_client.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
-        tx_hash = submit_signed_tx("Update rewards balance", signed_tx)
+        ).build_transaction(basic_build_tx_params(self.hardhat_account0))
+        tx_hash = submit_unsigned_tx("Update rewards balance", self.hardhat_account0, unsent_tx)
         return tx_hash
 
 
     def claimRewards(self):
-        unsent_tx = self.contract.functions.claimRewards().build_transaction({
-            "from": self.hardhat_account0.address,
-            'gas': 2000000,  # Adjust gas limit as necessary
-            'nonce': web3_client.eth.get_transaction_count(self.hardhat_account0.address)
-        })
-        signed_tx = web3_client.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
-        tx_hash = submit_signed_tx("Claim rewards", signed_tx)
+        unsent_tx = self.contract.functions.claimRewards().build_transaction(basic_build_tx_params(account=self.hardhat_account0, gas=2000000))
+        tx_hash   = submit_unsigned_tx("Claim rewards", self.hardhat_account0, unsent_tx)
         return tx_hash
 
     def getServiceNodeID(self, bls_public_key):
         service_node_end_id = 2**64-1
-        service_node_end = self.contract.functions.serviceNodes(service_node_end_id).call()
-        service_node_id = service_node_end[0]
+        service_node_end    = self.contract.functions.serviceNodes(service_node_end_id).call()
+        service_node_id     = service_node_end[0]
         while True:
             service_node = self.contract.functions.serviceNodes(service_node_id).call()
             if hex(service_node[3][0])[2:].zfill(64) + hex(service_node[3][1])[2:].zfill(64) == bls_public_key:
@@ -490,7 +464,7 @@ class ServiceNodeRewardContract:
             service_node_id = service_node[0]
         return non_signers
 
-    def serviceNodes(self, u64_id):
+    def serviceNodes(self, u64_id: int):
         call_result                  = self.contract.functions.serviceNodes(u64_id).call()
         result                       = ContractServiceNode()
         index                        = 0;

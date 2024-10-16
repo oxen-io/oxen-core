@@ -4,9 +4,9 @@ from daemons import Daemon, Wallet
 import ethereum
 from ethereum import (
     SENTContract,
-    ServiceNodeRewardContract,
-    ServiceNodeContributionContract,
-    ServiceNodeContributionFactoryContract,
+    SNRewardsContract,
+    SNContribContract,
+    SNContribFactoryContract,
     ContractSeedServiceNode,
     ContractServiceNodeContributor,
     ContractServiceNodeStaker,
@@ -146,7 +146,7 @@ class SNNetwork:
         self.sent_contract = SENTContract(contract_json=erc20_contract_json)
 
         # SN Rewards
-        self.sn_contract = ServiceNodeRewardContract(sn_rewards_json=sn_rewards_json,
+        self.sn_contract = SNRewardsContract(sn_rewards_json=sn_rewards_json,
                                                      reward_rate_pool_json=reward_rate_pool_json)
 
         self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
@@ -154,7 +154,7 @@ class SNNetwork:
                                    amount=int(999_999 * 1e9))
 
         # Multi-contrib Factory
-        self.sn_contrib_factory = ServiceNodeContributionFactoryContract(contract_json=sn_contrib_factory_json);
+        self.sn_contrib_factory = SNContribFactoryContract(contract_json=sn_contrib_factory_json);
 
         # Setup Oxen ###############################################################################
         # Nodes ####################################################################################
@@ -424,7 +424,7 @@ class SNNetwork:
                                                manual_finalize=False)
 
         for contract_addr in self.sn_contrib_factory.deployedContracts:
-            contract = ServiceNodeContributionContract(address=contract_addr, contract_json=sn_contrib_json)
+            contract = SNContribContract(address=contract_addr, contract_json=sn_contrib_json)
             contract.contributeFunds(account=self.sn_contract.hardhat_account0,
                                      amount=int(contract_staking_requirement / 2),
                                      beneficiary=self.sn_contract.hardhat_account0.address)
