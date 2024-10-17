@@ -558,7 +558,7 @@ BlockchainSQLite::get_all_accrued_rewards() {
 }
 
 void BlockchainSQLite::add_rewards(
-        hf /*hf_version*/,
+        hf hf_version,
         uint64_t distribution_amount,
         const service_nodes::service_node_info& sn_info,
         block_payments& payments) const {
@@ -569,13 +569,28 @@ void BlockchainSQLite::add_rewards(
 
     assert(operator_fee <= distribution_amount);
 
+    // NOTE: Localdev does not have a cryptonote->ETH address step, so, old pre-ETH SN nodes don't
+    // have an address assigned to it. This breaks tests that expect pre-ETH SN's to receive
+    // funds in order to proceed.
+    bool use_eth_address = hf_version >= hf::hf21_eth;
+    if (use_eth_address && m_nettype == network_type::LOCALDEV) {
+        if (!sn_info.operator_ethereum_address)
+            use_eth_address = false;
+    }
+
     // Pay the operator fee to the operator
     if (operator_fee > 0) {
-        auto& balance = sn_info.operator_ethereum_address
-                              ? payments[sn_info.operator_ethereum_address]
-                              : payments[sn_info.operator_address];
-        balance += operator_fee;
+        if (use_eth_address) {
+            assert(sn_info.contributors.size());  // NOTE: Be paranoid, check contributors size
+            eth::address fee_recipient = sn_info.contributors.size()
+                                               ? sn_info.contributors[0].ethereum_beneficiary
+                                               : sn_info.operator_ethereum_address;
+            payments[fee_recipient] += operator_fee;
+        } else {
+            payments[sn_info.operator_address] += operator_fee;
+        }
     }
+
     // Pay the balance to all the contributors (including the operator again)
     uint64_t total_contributed_to_sn = std::accumulate(
             sn_info.contributors.begin(),
@@ -589,8 +604,10 @@ void BlockchainSQLite::add_rewards(
         uint64_t c_reward = mul128_div64(
                 contributor.amount, distribution_amount - operator_fee, total_contributed_to_sn);
         if (c_reward > 0) {
-            auto& balance = contributor.ethereum_address ? payments[contributor.ethereum_address]
-                                                         : payments[contributor.address];
+            // NOTE: At minimum, when we parsed the contributor if no benficiary is set, it should
+            // be assigned to the ethereum address by default.
+            auto& balance = use_eth_address ? payments[contributor.ethereum_beneficiary]
+                                            : payments[contributor.address];
             balance += c_reward;
         }
     }

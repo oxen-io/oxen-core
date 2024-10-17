@@ -773,6 +773,22 @@ namespace {
             }
             set("contributors", contributors);
         }
+        void operator()(const eth::event::NewServiceNodeV2& x) {
+            set("type", "ethereum_new_service_node_v2");
+            set("l2_height", x.l2_height);
+            set("bls_pubkey", x.bls_pubkey);
+            set("service_node_pubkey", x.sn_pubkey);
+            set("signature", x.ed_signature);
+            set("fee", x.fee);
+            auto contributors = json::array();
+            for (auto& contributor : x.contributors) {
+                auto& c = contributors.emplace_back();
+                json_binary_proxy{c["address"], format} = contributor.address;
+                json_binary_proxy{c["beneficiary"], format} = contributor.beneficiary;
+                c["amount"] = contributor.amount;
+            }
+            set("contributors", contributors);
+        }
         void operator()(const eth::event::ServiceNodeExitRequest& x) {
             set("type", "ethereum_service_node_exit_request");
             set("l2_height", x.l2_height);
@@ -2982,9 +2998,11 @@ void core_rpc_server::fill_sn_response_entry(
         auto& contributors = (entry["contributors"] = json::array());
         for (const auto& contributor : info.contributors) {
             auto& c = contributors.emplace_back(json{{"amount", contributor.amount}});
-            if (contributor.ethereum_address)
+            if (contributor.ethereum_address) {
                 json_binary_proxy{c["address"], binary_format} = contributor.ethereum_address;
-            else
+                json_binary_proxy{c["beneficiary"], binary_format} =
+                        contributor.ethereum_beneficiary;
+            } else
                 c["address"] = cryptonote::get_account_address_as_str(
                         m_core.get_nettype(), false /*subaddress*/, contributor.address);
             if (contributor.reserved != contributor.amount)
@@ -3109,9 +3127,25 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
                     res["contributors"] = json::array();
                     auto& contr = res["contributors"];
                     auto contr_hex = res_hex["contributors"];
-                    for (const auto& [addr, amt] : e.contributors) {
-                        contr.push_back(json{{"amount", amt}});
-                        contr_hex.back()["address"] = addr;
+                    for (const auto& it : e.contributors) {
+                        contr.push_back(json{{"amount", it.amount}});
+                        contr_hex.back()["address"] = it.address;
+                    }
+                } else if constexpr (std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
+                    sns.response["registrations"].push_back(std::move(entry));
+                    auto& res = sns.response["registrations"].back();
+                    auto res_hex = sns.response_hex["registrations"].back();
+                    res_hex["sn_pubkey"] = e.sn_pubkey;
+                    res_hex["bls_pubkey"] = e.bls_pubkey;
+                    res_hex["signature"] = e.ed_signature;
+                    res["fee"] = e.fee * 0.01;
+                    res["contributors"] = json::array();
+                    auto& contr = res["contributors"];
+                    auto contr_hex = res_hex["contributors"];
+                    for (const auto& it : e.contributors) {
+                        contr.push_back(json{{"amount", it.amount}});
+                        contr_hex.back()["address"] = it.address;
+                        contr_hex.back()["beneficiary"] = it.beneficiary;
                     }
                 } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
                     sns.response["unlocks"].push_back(std::move(entry));

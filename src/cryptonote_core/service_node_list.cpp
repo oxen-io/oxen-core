@@ -397,13 +397,14 @@ static std::string log_registration_details(
             reg.eth_contributions.size());
 
     for (size_t index = 0; index < reg.eth_contributions.size(); index++) {
-        const eth_contribution& contrib = reg.eth_contributions[index];
+        const eth::event::ContributorV2& contrib = reg.eth_contributions[index];
         fmt::format_to(
                 std::back_inserter(buffer),
-                "  - {:02} [{}, {}]\n",
+                "  - {:02} [{}, {}, {}]\n",
                 index,
-                contrib.first,
-                contrib.second);
+                contrib.address,
+                contrib.beneficiary,
+                contrib.amount);
     }
 
     fmt::format_to(std::back_inserter(buffer), "- BLS Pubkey:      {}\n", reg.bls_pubkey);
@@ -412,22 +413,38 @@ static std::string log_registration_details(
     return result;
 }
 
-static registration_details eth_reg_details(
-        hf hf_version, const eth::event::NewServiceNode& registration) {
+static registration_details eth_reg_v2_details(
+        hf hf_version, const eth::event::NewServiceNodeV2& registration) {
     registration_details reg{};
     reg.service_node_pubkey = registration.sn_pubkey;
     reg.bls_pubkey = registration.bls_pubkey;
-
-    for (const auto& contributor : registration.contributors)
-        reg.eth_contributions.emplace_back(contributor.address, contributor.amount);
-
+    reg.eth_contributions = registration.contributors;
     reg.hf = static_cast<uint64_t>(hf_version);
     reg.uses_portions = false;
-
     reg.fee = registration.fee;
     reg.ed_signature = registration.ed_signature;
-
     return reg;
+}
+
+static eth::event::NewServiceNodeV2 convert_eth_event_new_service_node_to_v2(
+        const eth::event::NewServiceNode& value) {
+    auto result = eth::event::NewServiceNodeV2(value.chain_id, value.l2_height);
+    result.fee = value.fee;
+    result.sn_pubkey = value.sn_pubkey;
+    result.bls_pubkey = value.bls_pubkey;
+    result.contributors.reserve(value.contributors.size());
+    for (auto it : value.contributors)
+        result.contributors.emplace_back(
+                it.address /*address*/, it.address /*beneficiary*/, it.amount);
+    result.ed_signature = value.ed_signature;
+    return result;
+}
+
+static registration_details eth_reg_details(
+        hf hf_version, const eth::event::NewServiceNode& registration) {
+    eth::event::NewServiceNodeV2 v2 = convert_eth_event_new_service_node_to_v2(registration);
+    registration_details result = eth_reg_v2_details(hf_version, v2);
+    return result;
 }
 
 static std::optional<registration_details> eth_reg_tx_extract_fields(
@@ -436,6 +453,14 @@ static std::optional<registration_details> eth_reg_tx_extract_fields(
     if (!cryptonote::get_field_from_tx_extra(tx.extra, registration))
         return std::nullopt;
     return eth_reg_details(hf_version, registration);
+}
+
+static std::optional<registration_details> eth_reg_v2_tx_extract_fields(
+        hf hf_version, const cryptonote::transaction& tx) {
+    eth::event::NewServiceNodeV2 registration;
+    if (!cryptonote::get_field_from_tx_extra(tx.extra, registration))
+        return std::nullopt;
+    return eth_reg_v2_details(hf_version, registration);
 }
 
 uint64_t offset_testing_quorum_height(quorum_type type, uint64_t height) {
@@ -483,7 +508,7 @@ void validate_registration(
                 reg.eth_contributions.begin(),
                 reg.eth_contributions.end(),
                 std::back_inserter(extracted_amounts),
-                [](const std::pair<eth::address, uint64_t>& pair) { return pair.second; });
+                [](const eth::event::ContributorV2& item) { return item.amount; });
     } else {
         if (reg.reserved.empty())
             throw invalid_registration{"No operator contribution given"};
@@ -1446,13 +1471,13 @@ bool is_registration_tx(
 
 static std::pair<crypto::public_key, std::shared_ptr<service_node_info>>
 validate_ethereum_registration(
-        const eth::event::NewServiceNode& new_sn,
+        const eth::event::NewServiceNodeV2& new_sn,
         cryptonote::network_type nettype,
         hf hf_version,
         uint64_t block_height,
         uint32_t index,
         uint64_t staking_requirement) {
-    auto reg = eth_reg_details(hf_version, new_sn);
+    auto reg = eth_reg_v2_details(hf_version, new_sn);
 
     validate_registration(
             hf_version, nettype, staking_requirement, 0 /*block_timestamp not used in HF19+*/, reg);
@@ -1462,7 +1487,7 @@ validate_ethereum_registration(
     auto& info = *result.second;
     info.recommission_credit = get_config(nettype).BLOCKS_IN(DECOMMISSION_INITIAL_CREDIT);
     info.staking_requirement = staking_requirement;
-    info.operator_ethereum_address = reg.eth_contributions[0].first;
+    info.operator_ethereum_address = reg.eth_contributions[0].address;
     info.bls_public_key = reg.bls_pubkey;
     assert(!reg.uses_portions);
     info.portions_for_operator =
@@ -1476,19 +1501,20 @@ validate_ethereum_registration(
     info.last_ip_change_height = block_height;
 
     for (auto it = reg.eth_contributions.begin(); it != reg.eth_contributions.end(); ++it) {
-        auto& [addr, amount] = *it;
         for (auto it2 = std::next(it); it2 != reg.eth_contributions.end(); ++it2)
-            if (it2->first == addr)
+            if (it2->address == it->address)
                 throw oxen::traced<std::runtime_error>(
                         "Invalid registration: Duplicate reserved address in registration for "
                         "SN {}:\n{}"_format(
                                 new_sn.sn_pubkey, log_registration_details(nettype, reg)));
 
         auto& contributor = info.contributors.emplace_back();
-        contributor.reserved = amount;
-        contributor.amount = amount;
+        contributor.reserved = it->amount;
+        contributor.amount = it->amount;
 
-        contributor.ethereum_address = addr;
+        contributor.ethereum_address = it->address;
+        contributor.ethereum_beneficiary = it->beneficiary;
+
         info.total_reserved += contributor.reserved;
         info.total_contributed += contributor.reserved;
     }
@@ -1595,6 +1621,9 @@ static eth::event::StateChangeVariant get_event_from_tx(const cryptonote::transa
     if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
         auto& new_sn = result.emplace<NewServiceNode>();
         success = cryptonote::get_field_from_tx_extra(tx.extra, new_sn);
+    } else if (tx.type == cryptonote::txtype::ethereum_new_service_node_v2) {
+        auto& new_sn = result.emplace<NewServiceNodeV2>();
+        success = cryptonote::get_field_from_tx_extra(tx.extra, new_sn);
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
         auto& remreq = result.emplace<ServiceNodeExitRequest>();
         success = cryptonote::get_field_from_tx_extra(tx.extra, remreq);
@@ -1618,11 +1647,12 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
     auto& [pk, type, val] = result;
     if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
         type = "registration";
-        if (auto reg = eth_reg_tx_extract_fields(hf_version, tx)) {
+        if (auto reg = eth_reg_tx_extract_fields(hf_version, tx))
             pk = reg->service_node_pubkey;
-            if (reg->eth_contributions.size())
-                type += " (op: {})"_format(reg->eth_contributions.front().first);
-        }
+    } else if (tx.type == cryptonote::txtype::ethereum_new_service_node_v2) {
+        type = "registration v2";
+        if (auto reg = eth_reg_v2_tx_extract_fields(hf_version, tx))
+            pk = reg->service_node_pubkey;
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
         type = "unlock";
         if (eth::event::ServiceNodeExitRequest remreq;
@@ -1705,6 +1735,21 @@ void service_node_list::state_t::process_new_ethereum_tx(
 
 bool service_node_list::state_t::process_confirmed_event(
         const eth::event::NewServiceNode& new_sn,
+        cryptonote::network_type nettype,
+        cryptonote::hf hf_version,
+        uint64_t height,
+        uint32_t index,
+        const service_node_keys* my_keys) {
+    // NOTE: Convert to V2 and process it as a V2. Converting a V1 to V2 has no tangible
+    // side-effects other than setting the new 'beneficiary' field that results in the same
+    // behaviour as if V1 was processed but allows us to reuse V2 code to parse both payloads.
+    auto new_sn_v2 = convert_eth_event_new_service_node_to_v2(new_sn);
+    bool result = process_confirmed_event(new_sn_v2, nettype, hf_version, height, index, my_keys);
+    return result;
+}
+
+bool service_node_list::state_t::process_confirmed_event(
+        const eth::event::NewServiceNodeV2& new_sn,
         cryptonote::network_type nettype,
         cryptonote::hf hf_version,
         uint64_t height,
@@ -3254,6 +3299,7 @@ void service_node_list::state_t::update_from_block(
                 process_key_image_unlock_tx(nettype, hf_version, height, tx);
                 break;
             case txtype::ethereum_new_service_node:
+            case txtype::ethereum_new_service_node_v2:
             case txtype::ethereum_service_node_exit:
             case txtype::ethereum_service_node_exit_request:
             case txtype::ethereum_staking_requirement_updated:
@@ -5014,8 +5060,7 @@ bool service_node_list::load(const uint64_t current_height) {
     // are initialised with the new SN info data when nodes transition from the SNL into the
     // `recently_removed_nodes` buffer.
     if (blockchain.nettype() == cryptonote::network_type::STAGENET &&
-        data_in.version < data_for_serialization::version_t::
-                                  version_2_regen_recently_removed_nodes_w_sn_info) {
+        data_in.version < data_for_serialization::version_t::version_3_eth_beneficiary) {
         blockchain.sqlite_db().reset_database();
         return false;
     }

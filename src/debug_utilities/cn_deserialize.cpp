@@ -141,6 +141,21 @@ struct extra_printer {
                 fmt::join(contributors, ", "),
                 x.ed_signature);
     }
+    std::string operator()(const eth::event::NewServiceNodeV2& x) {
+
+        std::vector<std::string> contributors;
+        for (const auto& contributor : x.contributors)
+            contributors.push_back("{{address: {}, beneficiary: {}, amount: {}}}"_format(
+                    contributor.address, contributor.beneficiary, print_money(contributor.amount)));
+        return "New Ethereum Service Node v2: L2 0x{:x}@{}, SN: {}, BLS pub: {}, fee: {}, contributors: [{}], signature: {}"_format(
+                x.chain_id,
+                x.l2_height,
+                x.sn_pubkey,
+                x.bls_pubkey,
+                x.fee,
+                fmt::join(contributors, ", "),
+                x.ed_signature);
+    }
     std::string operator()(const eth::event::ServiceNodeExitRequest& x) {
         return "Ethereum Service Node Exit Request: L2 0x{:x}@{}, BLS pub: {}"_format(
                 x.chain_id, x.l2_height, x.bls_pubkey);

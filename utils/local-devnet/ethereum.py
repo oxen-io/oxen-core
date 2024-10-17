@@ -1,6 +1,15 @@
 from web3 import Web3
 import urllib.request
 import json
+from eth_typing import (
+    ChecksumAddress as EthChecksumAddress
+)
+from eth_account.types import (
+    PrivateKeyType as EthPrivateKeyType
+)
+from eth_account.signers.local import (
+    LocalAccount as EthLocalAccount,
+)
 
 PROVIDER_URL = "http://127.0.0.1:8545"
 
@@ -30,37 +39,44 @@ def evm_increaseTime(web3, seconds):
 def evm_mine(web3):
     web3.provider.make_request('evm_mine', [])
 
+class ContractServiceNodeStaker:
+    addr:        EthChecksumAddress
+    beneficiary: EthChecksumAddress
+
 class ContractServiceNodeContributor:
-    def __init__(self):
-        self.addr              = None
-        self.stakedAmount: int = 0
+    staker:       ContractServiceNodeStaker = ContractServiceNodeStaker()
+    stakedAmount: int = 0
 
 class ContractServiceNode:
-    def __init__(self):
-        self.next: int
-        self.prev: int
-        self.operator = None
-        self.pubkey_x = None
-        self.pubkey_y = None
-        self.leaveRequestTimestamp = None
-        self.deposit: int
-        self.contributors = []
+    next: int
+    prev: int
+    operator = None
+    pubkey_x = None
+    pubkey_y = None
+    leaveRequestTimestamp = None
+    deposit: int
+    contributors = []
 
 class ContractSeedServiceNode:
-    def __init__(self, bls_pubkey_hex):
-        assert len(bls_pubkey_hex) == 128, "BLS pubkey must be 128 hex characters consisting of a 32 byte X & Y component"
-        self.pubkey       = bls_pubkey_hex
-        self.contributors = []
+    def __init__(self, bls_pubkey_hex, ed25519_pubkey):
+        assert len(bls_pubkey_hex) == 128, "BLS pubkey must be 128 hex characters consisting of a 64 byte X & Y component"
+        assert len(ed25519_pubkey) == 64, "Ed25519 pubkey must be 64 hex characters consisting of a 32 byte X & Y component"
+        self.bls_pubkey     = bls_pubkey_hex
+        self.ed25519_pubkey = ed25519_pubkey
+        self.contributors   = []
 
 class ServiceNodeRewardContract:
     def __init__(self):
-        self.provider_url = PROVIDER_URL
-        self.private_key  = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80" # Hardhat account #0
-        self.web3         = Web3(Web3.HTTPProvider(self.provider_url))
+        self.provider_url  = PROVIDER_URL
+        self.web3          = Web3(Web3.HTTPProvider(self.provider_url))
 
         self.contract_address = self.getContractDeployedInLatestBlock()
         self.contract         = self.web3.eth.contract(address=self.contract_address, abi=contract_abi)
-        self.acc              = self.web3.eth.account.from_key(self.private_key)
+
+        self.hardhat_skey0:    EthPrivateKeyType = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+        self.hardhat_skey1:    EthPrivateKeyType = '0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d'
+        self.hardhat_account0: EthLocalAccount   = self.web3.eth.account.from_key(self.hardhat_skey0)
+        self.hardhat_account1: EthLocalAccount   = self.web3.eth.account.from_key(self.hardhat_skey1)
 
         self.foundation_pool_address  = self.contract.functions.foundationPool().call();
         self.foundation_pool_contract = self.web3.eth.contract(address=self.foundation_pool_address, abi=foundation_pool_abi)
@@ -71,20 +87,20 @@ class ServiceNodeRewardContract:
 
         # NOTE: Approve an amount to be sent from the hardhat account to the contract
         unsent_tx = self.erc20_contract.functions.approve(self.contract_address, 1_5001_000_000_000_000_000_000).build_transaction({
-            "from": self.acc.address,
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+            'from': self.hardhat_account0.address,
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)})
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash   = self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
         # SENT Contract Address deployed to: 0x5FbDB2315678afecb367f032d93F642f64180aa3
-        address_check_err_msg = ("If this assert triggers, the rewards contract ABI has been "
-        "changed OR we're reusing a wallet and creating the contract with a different nonce. The "
-        "ABI in this script is hardcoded to the instance of the contract with that hash. Verify "
-        "and re-update the ABI if necessary and any auxiliary contracts if the ABI has changed or "
-        "that the wallets are _not_ being reused.")
+        address_check_err_msg = ('If this assert triggers, the rewards contract ABI has been '
+        'changed OR we\'re reusing a wallet and creating the contract with a different nonce. The '
+        'ABI in this script is hardcoded to the instance of the contract with that hash. Verify '
+        'and re-update the ABI if necessary and any auxiliary contracts if the ABI has changed or '
+        'that the wallets are _not_ being reused.')
 
-        assert self.contract_address.lower()        == "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707".lower(), (f"{address_check_err_msg}\n\nAddress was: {self.contract_address}")
-        assert self.foundation_pool_address.lower() == "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0".lower(), (f"{address_check_err_msg}\n\nAddress was: {self.foundation_pool_address}")
+        assert self.contract_address.lower()        == '0x5FC8d32690cc91D4c39d9d3abcBD16989F875707'.lower(), (f'{address_check_err_msg}\n\nAddress was: {self.contract_address}')
+        assert self.foundation_pool_address.lower() == '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0'.lower(), (f'{address_check_err_msg}\n\nAddress was: {self.foundation_pool_address}')
 
     def call_function(self, function_name, *args, **kwargs):
         contract_function = self.contract.functions[function_name](*args)
@@ -92,9 +108,9 @@ class ServiceNodeRewardContract:
 
     def start(self):
         unsent_tx = self.contract.functions.start().build_transaction({
-            "from": self.acc.address,
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+            "from": self.hardhat_account0.address,
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)})
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         self.web3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
     # Add more methods as needed to interact with the smart contract
@@ -110,9 +126,6 @@ class ServiceNodeRewardContract:
                 continue
 
         raise RuntimeError("No contracts deployed in latest block")
-
-    def hardhatAccountAddress(self):
-        return self.acc.address
 
     def erc20balance(self, address):
         return self.erc20_contract.functions.balanceOf(Web3.to_checksum_address(address)).call()
@@ -145,31 +158,13 @@ class ServiceNodeRewardContract:
 
         return result
 
-    def addBLSPublicKey(self, args):
-        # function addBLSPublicKey(uint256 pkX, uint256 pkY, uint256 sigs0, uint256 sigs1, uint256 sigs2, uint256 sigs3, uint256 serviceNodePubkey, uint256 serviceNodeSignature) public {
+    def addBLSPublicKey(self, bls_pubkey, bls_sig, sn_params, contributors):
         # function addBLSPublicKey(BN256G1.G1Point blsPubkey, BLSSignatureParams blsSignature, ServiceNodeParams serviceNodeParams, Contributor[] contributors)
-        bls_param = {
-                'X': int(args["bls_pubkey"][:64], 16),
-                'Y': int(args["bls_pubkey"][64:128], 16),
-        }
-        sig_param = {
-                'sigs0': int(args["proof_of_possession"][:64], 16),
-                'sigs1': int(args["proof_of_possession"][64:128], 16),
-                'sigs2': int(args["proof_of_possession"][128:192], 16),
-                'sigs3': int(args["proof_of_possession"][192:256], 16),
-        }
-        service_node_params = {
-                'serviceNodePubkey': int(args["service_node_pubkey"], 16),
-                'serviceNodeSignature1': int(args["service_node_signature"][:64], 16),
-                'serviceNodeSignature2': int(args["service_node_signature"][64:128], 16),
-                'fee': int(0),
-                }
-        contributors = []
-        unsent_tx = self.contract.functions.addBLSPublicKey(bls_param, sig_param, service_node_params, contributors).build_transaction({
-                        "from": self.acc.address,
+        unsent_tx = self.contract.functions.addBLSPublicKey(bls_pubkey, bls_sig, sn_params, contributors).build_transaction({
+                        "from": self.hardhat_account0.address,
                         'gas': 2000000,
-                        'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+                        'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)})
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Add BLS public key", signed_tx)
         return tx_hash
 
@@ -177,10 +172,10 @@ class ServiceNodeRewardContract:
         # function initiateRemoveBLSPublicKey(uint64 serviceNodeID) public
         unsent_tx = self.contract.functions.initiateRemoveBLSPublicKey(service_node_id
                     ).build_transaction({
-                        "from": self.acc.address,
+                        "from": self.hardhat_account0.address,
                         'gas': 2000000,
-                        'nonce': self.web3.eth.get_transaction_count(self.acc.address)})
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+                        'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)})
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Remove BLS public key", signed_tx)
         return tx_hash
 
@@ -198,21 +193,21 @@ class ServiceNodeRewardContract:
         }
 
         unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature(bls_pubkey, timestamp, bls_signature, ids).build_transaction({
-            "from": self.acc.address,
+            "from": self.hardhat_account0.address,
             'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Remove BLS public key w/ signature", signed_tx)
         return tx_hash
 
     def removeBLSPublicKeyAfterWaitTime(self, serviceNodeID: int):
         unsent_tx = self.contract.functions.removeBLSPublicKeyAfterWaitTime(serviceNodeID).build_transaction({
-            "from": self.acc.address,
+            "from": self.hardhat_account0.address,
             'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Remove BLS public key after wait time", signed_tx)
         return tx_hash
 
@@ -235,11 +230,11 @@ class ServiceNodeRewardContract:
             contract_bls_sig,
             ids
         ).build_transaction({
-            "from": self.acc.address,
+            "from": self.hardhat_account0.address,
             'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Liquidate BLS public key w/ signature", signed_tx)
         return tx_hash
 
@@ -247,29 +242,42 @@ class ServiceNodeRewardContract:
         contract_seed_nodes = []
         for item in seed_nodes:
             entry = {
-                'pubkey': {
-                    'X': int(item.pubkey[:64],    16),
-                    'Y': int(item.pubkey[64:128], 16),
+                'blsPubkey': {
+                    'X': int(item.bls_pubkey[:64],    16),
+                    'Y': int(item.bls_pubkey[64:128], 16),
                 },
+                'ed25519Pubkey': int(item.ed25519_pubkey[:32], 16),
                 'contributors': [],
             }
 
             for contributor in item.contributors:
-                entry['contributors'].append({
-                    'addr':         contributor.addr,
-                    'stakedAmount': contributor.stakedAmount,
-                })
+                use_contributor_v1 = False
+
+                if use_contributor_v1:
+                    entry['contributors'].append({
+                        'addr':         contributor.staker.addr,
+                        'stakedAmount': contributor.stakedAmount,
+                    })
+
+                else:
+                    entry['contributors'].append({
+                        'staker': {
+                            'addr':        contributor.staker.addr,
+                            'beneficiary': contributor.staker.beneficiary,
+                        },
+                        'stakedAmount': contributor.stakedAmount,
+                    })
 
             contract_seed_nodes.append(entry)
 
         print(contract_seed_nodes)
 
         unsent_tx = self.contract.functions.seedPublicKeyList(contract_seed_nodes).build_transaction({
-            "from":  self.acc.address,
+            "from":  self.hardhat_account0.address,
             'gas':   6000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash   = self.submitSignedTX("Seed public key list", signed_tx)
         return tx_hash
 
@@ -292,22 +300,22 @@ class ServiceNodeRewardContract:
             sig_param,
             ids
         ).build_transaction({
-            "from": self.acc.address,
+            "from": self.hardhat_account0.address,
             'gas': 3000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Update rewards balance", signed_tx)
         return tx_hash
 
 
     def claimRewards(self):
         unsent_tx = self.contract.functions.claimRewards().build_transaction({
-            "from": self.acc.address,
+            "from": self.hardhat_account0.address,
             'gas': 2000000,  # Adjust gas limit as necessary
-            'nonce': self.web3.eth.get_transaction_count(self.acc.address)
+            'nonce': self.web3.eth.get_transaction_count(self.hardhat_account0.address)
         })
-        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.acc.key)
+        signed_tx = self.web3.eth.account.sign_transaction(unsent_tx, private_key=self.hardhat_account0.key)
         tx_hash = self.submitSignedTX("Claim rewards", signed_tx)
         return tx_hash
 
@@ -451,6 +459,11 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
+      "name": "ClaimThresholdExceeded",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "ContractAlreadyStarted",
       "type": "error"
     },
@@ -489,11 +502,22 @@ contract_abi = json.loads("""
         },
         {
           "internalType": "address",
-          "name": "recipient",
+          "name": "contributor",
           "type": "address"
         }
       ],
       "name": "EarlierLeaveRequestMade",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint64",
+          "name": "serviceNodeID",
+          "type": "uint64"
+        }
+      ],
+      "name": "Ed25519PubkeyAlreadyExists",
       "type": "error"
     },
     {
@@ -545,6 +569,16 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
+      "name": "InsufficientContributors",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InsufficientNodes",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "InvalidBLSProofOfPossession",
       "type": "error"
     },
@@ -581,7 +615,22 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
+      "name": "LiquidatorRewardsTooLow",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "MaxClaimExceeded",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "MaxContributorsExceeded",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "MaxPubkeyAggregationsExceeded",
       "type": "error"
     },
     {
@@ -591,7 +640,17 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
-      "name": "NullRecipient",
+      "name": "NullAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NullBLSPubkey",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NullEd25519Pubkey",
       "type": "error"
     },
     {
@@ -614,6 +673,11 @@ contract_abi = json.loads("""
         }
       ],
       "name": "OwnableUnauthorizedAccount",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "PositiveNumberRequirement",
       "type": "error"
     },
     {
@@ -694,7 +758,7 @@ contract_abi = json.loads("""
         },
         {
           "internalType": "address",
-          "name": "recipient",
+          "name": "contributor",
           "type": "address"
         }
       ],
@@ -719,12 +783,51 @@ contract_abi = json.loads("""
       "inputs": [
         {
           "indexed": false,
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "ClaimCycleUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newThreshold",
+          "type": "uint256"
+        }
+      ],
+      "name": "ClaimThresholdUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
           "internalType": "uint64",
           "name": "version",
           "type": "uint64"
         }
       ],
       "name": "Initialized",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "LiquidatorRewardRatioUpdated",
       "type": "event"
     },
     {
@@ -751,8 +854,14 @@ contract_abi = json.loads("""
           ],
           "indexed": false,
           "internalType": "struct BN256G1.G1Point",
-          "name": "pubkey",
+          "name": "blsPubkey",
           "type": "tuple"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "ed25519Pubkey",
+          "type": "uint256"
         }
       ],
       "name": "NewSeededServiceNode",
@@ -762,6 +871,12 @@ contract_abi = json.loads("""
       "anonymous": false,
       "inputs": [
         {
+          "indexed": false,
+          "internalType": "uint8",
+          "name": "version",
+          "type": "uint8"
+        },
+        {
           "indexed": true,
           "internalType": "uint64",
           "name": "serviceNodeID",
@@ -770,7 +885,7 @@ contract_abi = json.loads("""
         {
           "indexed": false,
           "internalType": "address",
-          "name": "recipient",
+          "name": "initiator",
           "type": "address"
         },
         {
@@ -822,9 +937,21 @@ contract_abi = json.loads("""
         {
           "components": [
             {
-              "internalType": "address",
-              "name": "addr",
-              "type": "address"
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "addr",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "beneficiary",
+                  "type": "address"
+                }
+              ],
+              "internalType": "struct IServiceNodeRewards.Staker",
+              "name": "staker",
+              "type": "tuple"
             },
             {
               "internalType": "uint256",
@@ -838,7 +965,7 @@ contract_abi = json.loads("""
           "type": "tuple[]"
         }
       ],
-      "name": "NewServiceNode",
+      "name": "NewServiceNodeV2",
       "type": "event"
     },
     {
@@ -890,6 +1017,32 @@ contract_abi = json.loads("""
         }
       ],
       "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "PoolShareOfLiquidationRatioUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "RecipientRatioUpdated",
       "type": "event"
     },
     {
@@ -948,7 +1101,7 @@ contract_abi = json.loads("""
         {
           "indexed": false,
           "internalType": "address",
-          "name": "recipient",
+          "name": "operator",
           "type": "address"
         },
         {
@@ -985,7 +1138,7 @@ contract_abi = json.loads("""
         {
           "indexed": false,
           "internalType": "address",
-          "name": "recipient",
+          "name": "operator",
           "type": "address"
         },
         {
@@ -1028,7 +1181,7 @@ contract_abi = json.loads("""
         {
           "indexed": false,
           "internalType": "address",
-          "name": "recipient",
+          "name": "contributor",
           "type": "address"
         },
         {
@@ -1159,50 +1312,6 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
-      "name": "_aggregatePubkey",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "X",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "Y",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "_lastHeightPubkeyWasAggregated",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "_numPubkeyAggregationsForHeight",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
       "name": "acceptOwnership",
       "outputs": [],
       "stateMutability": "nonpayable",
@@ -1284,9 +1393,21 @@ contract_abi = json.loads("""
         {
           "components": [
             {
-              "internalType": "address",
-              "name": "addr",
-              "type": "address"
+              "components": [
+                {
+                  "internalType": "address",
+                  "name": "addr",
+                  "type": "address"
+                },
+                {
+                  "internalType": "address",
+                  "name": "beneficiary",
+                  "type": "address"
+                }
+              ],
+              "internalType": "struct IServiceNodeRewards.Staker",
+              "name": "staker",
+              "type": "tuple"
             },
             {
               "internalType": "uint256",
@@ -1300,122 +1421,6 @@ contract_abi = json.loads("""
         }
       ],
       "name": "addBLSPublicKey",
-      "outputs": [],
-      "stateMutability": "nonpayable",
-      "type": "function"
-    },
-    {
-      "inputs": [
-        {
-          "components": [
-            {
-              "internalType": "uint256",
-              "name": "X",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "Y",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct BN256G1.G1Point",
-          "name": "blsPubkey",
-          "type": "tuple"
-        },
-        {
-          "components": [
-            {
-              "internalType": "uint256",
-              "name": "sigs0",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "sigs1",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "sigs2",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "sigs3",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct IServiceNodeRewards.BLSSignatureParams",
-          "name": "blsSignature",
-          "type": "tuple"
-        },
-        {
-          "components": [
-            {
-              "internalType": "uint256",
-              "name": "serviceNodePubkey",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "serviceNodeSignature1",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint256",
-              "name": "serviceNodeSignature2",
-              "type": "uint256"
-            },
-            {
-              "internalType": "uint16",
-              "name": "fee",
-              "type": "uint16"
-            }
-          ],
-          "internalType": "struct IServiceNodeRewards.ServiceNodeParams",
-          "name": "serviceNodeParams",
-          "type": "tuple"
-        },
-        {
-          "components": [
-            {
-              "internalType": "address",
-              "name": "addr",
-              "type": "address"
-            },
-            {
-              "internalType": "uint256",
-              "name": "stakedAmount",
-              "type": "uint256"
-            }
-          ],
-          "internalType": "struct IServiceNodeRewards.Contributor[]",
-          "name": "contributors",
-          "type": "tuple[]"
-        },
-        {
-          "internalType": "uint256",
-          "name": "deadline",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint8",
-          "name": "v",
-          "type": "uint8"
-        },
-        {
-          "internalType": "bytes32",
-          "name": "r",
-          "type": "bytes32"
-        },
-        {
-          "internalType": "bytes32",
-          "name": "s",
-          "type": "bytes32"
-        }
-      ],
-      "name": "addBLSPublicKeyWithPermit",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -1528,9 +1533,74 @@ contract_abi = json.loads("""
     },
     {
       "inputs": [],
+      "name": "claimCycle",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "amount",
+          "type": "uint256"
+        }
+      ],
       "name": "claimRewards",
       "outputs": [],
       "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "claimRewards",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "claimThreshold",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "currentClaimCycle",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "currentClaimTotal",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
       "type": "function"
     },
     {
@@ -1541,6 +1611,25 @@ contract_abi = json.loads("""
           "internalType": "contract IERC20",
           "name": "",
           "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "ed25519Pubkey",
+          "type": "uint256"
+        }
+      ],
+      "name": "ed25519ToServiceNodeID",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "serviceNodeID",
+          "type": "uint64"
         }
       ],
       "stateMutability": "view",
@@ -1636,6 +1725,19 @@ contract_abi = json.loads("""
           "internalType": "bool",
           "name": "",
           "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "lastHeightPubkeyWasAggregated",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -1763,6 +1865,19 @@ contract_abi = json.loads("""
           "internalType": "uint64",
           "name": "",
           "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "numPubkeyAggregationsForHeight",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -2003,15 +2118,32 @@ contract_abi = json.loads("""
                 }
               ],
               "internalType": "struct BN256G1.G1Point",
-              "name": "pubkey",
+              "name": "blsPubkey",
               "type": "tuple"
+            },
+            {
+              "internalType": "uint256",
+              "name": "ed25519Pubkey",
+              "type": "uint256"
             },
             {
               "components": [
                 {
-                  "internalType": "address",
-                  "name": "addr",
-                  "type": "address"
+                  "components": [
+                    {
+                      "internalType": "address",
+                      "name": "addr",
+                      "type": "address"
+                    },
+                    {
+                      "internalType": "address",
+                      "name": "beneficiary",
+                      "type": "address"
+                    }
+                  ],
+                  "internalType": "struct IServiceNodeRewards.Staker",
+                  "name": "staker",
+                  "type": "tuple"
                 },
                 {
                   "internalType": "uint256",
@@ -2038,7 +2170,7 @@ contract_abi = json.loads("""
       "inputs": [
         {
           "internalType": "bytes",
-          "name": "blsPublicKey",
+          "name": "blsPubkey",
           "type": "bytes"
         }
       ],
@@ -2094,7 +2226,7 @@ contract_abi = json.loads("""
                 }
               ],
               "internalType": "struct BN256G1.G1Point",
-              "name": "pubkey",
+              "name": "blsPubkey",
               "type": "tuple"
             },
             {
@@ -2115,9 +2247,21 @@ contract_abi = json.loads("""
             {
               "components": [
                 {
-                  "internalType": "address",
-                  "name": "addr",
-                  "type": "address"
+                  "components": [
+                    {
+                      "internalType": "address",
+                      "name": "addr",
+                      "type": "address"
+                    },
+                    {
+                      "internalType": "address",
+                      "name": "beneficiary",
+                      "type": "address"
+                    }
+                  ],
+                  "internalType": "struct IServiceNodeRewards.Staker",
+                  "name": "staker",
+                  "type": "tuple"
                 },
                 {
                   "internalType": "uint256",
@@ -2128,6 +2272,11 @@ contract_abi = json.loads("""
               "internalType": "struct IServiceNodeRewards.Contributor[]",
               "name": "contributors",
               "type": "tuple[]"
+            },
+            {
+              "internalType": "uint256",
+              "name": "ed25519Pubkey",
+              "type": "uint256"
             }
           ],
           "internalType": "struct IServiceNodeRewards.ServiceNode",
@@ -2160,6 +2309,71 @@ contract_abi = json.loads("""
         }
       ],
       "name": "setBLSNonSignerThresholdMax",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "setClaimCycle",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "newMax",
+          "type": "uint256"
+        }
+      ],
+      "name": "setClaimThreshold",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "setLiquidatorRewardRatio",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "setPoolShareOfLiquidationRatio",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "newValue",
+          "type": "uint256"
+        }
+      ],
+      "name": "setRecipientRatio",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -2257,6 +2471,13 @@ contract_abi = json.loads("""
       "type": "function"
     },
     {
+      "inputs": [],
+      "name": "updateAggregatePubkey",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
           "internalType": "address",
@@ -2309,6 +2530,68 @@ contract_abi = json.loads("""
     {
       "inputs": [],
       "name": "updateServiceNodesLength",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "X",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "Y",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct BN256G1.G1Point",
+          "name": "blsPubkey",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "sigs0",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs1",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs2",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "sigs3",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct IServiceNodeRewards.BLSSignatureParams",
+          "name": "blsSignature",
+          "type": "tuple"
+        },
+        {
+          "internalType": "address",
+          "name": "caller",
+          "type": "address"
+        },
+        {
+          "internalType": "uint256",
+          "name": "serviceNodePubkey",
+          "type": "uint256"
+        }
+      ],
+      "name": "validateProofOfPossession",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"

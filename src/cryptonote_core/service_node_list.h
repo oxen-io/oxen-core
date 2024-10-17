@@ -246,11 +246,12 @@ struct service_node_info  // registration information
     };
 
     struct contributor_t {
-        uint8_t version = 1;
+        uint8_t version = 2;
         uint64_t amount = 0;
         uint64_t reserved = 0;
         cryptonote::account_public_address address{};
         eth::address ethereum_address{};
+        eth::address ethereum_beneficiary{};
         std::vector<contribution_t> locked_contributions;
 
         contributor_t() = default;
@@ -270,7 +271,8 @@ struct service_node_info  // registration information
             field(ar, "locked_contributions", locked_contributions);
             if (version >= 1)
                 field(ar, "ethereum_address", ethereum_address);
-            ;
+            if (version >= 2)
+                field(ar, "ethereum_beneficiary", ethereum_beneficiary);
         }
     };
 
@@ -958,13 +960,14 @@ class service_node_list {
             version_0,
             version_1_create_recently_removed_nodes,
             version_2_regen_recently_removed_nodes_w_sn_info,
+            version_3_eth_beneficiary,
             count,
         };
         static version_t get_version(cryptonote::hf /*hf_version*/) {
-            return version_t::version_2_regen_recently_removed_nodes_w_sn_info;
+            return version_t::version_3_eth_beneficiary;
         }
 
-        version_t version{version_t::version_2_regen_recently_removed_nodes_w_sn_info};
+        version_t version{version_t::version_3_eth_beneficiary};
         std::vector<quorum_for_serialization> quorum_states;
         std::vector<state_serialized> states;
         void clear() {
@@ -1102,6 +1105,13 @@ class service_node_list {
         // if processing the event affects swarms, false if it does not.
         bool process_confirmed_event(
                 const eth::event::NewServiceNode& new_sn,
+                cryptonote::network_type nettype,
+                cryptonote::hf hf_version,
+                uint64_t height,
+                uint32_t index,
+                const service_node_keys* my_keys);
+        bool process_confirmed_event(
+                const eth::event::NewServiceNodeV2& new_sn,
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
                 uint64_t height,
@@ -1328,7 +1338,6 @@ bool tx_get_staking_components_and_amounts(
         staking_components* contribution);
 
 using contribution = std::pair<cryptonote::account_public_address, uint64_t>;
-using eth_contribution = std::pair<eth::address, uint64_t>;
 struct registration_details {
     crypto::public_key service_node_pubkey;
     std::vector<contribution> reserved;
@@ -1342,7 +1351,7 @@ struct registration_details {
         crypto::signature signature;
         crypto::ed25519_signature ed_signature;
     };
-    std::vector<eth_contribution> eth_contributions;
+    std::vector<eth::event::ContributorV2> eth_contributions;
     eth::bls_public_key bls_pubkey;
 };
 

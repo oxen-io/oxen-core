@@ -7,9 +7,11 @@
 #include <vector>
 
 #include "common/formattable.h"
+#include "common/util.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
 #include "cryptonote_basic/txtypes.h"
+#include "serialization/optional.h"
 
 using namespace std::literals;
 
@@ -70,6 +72,72 @@ struct NewServiceNode : L2StateChange {
 
     static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_new_service_node;
     static constexpr std::string_view description = "new SN"sv;
+};
+
+struct ContributorV2 {
+    enum class Version {
+        version_invalid,
+        version_0,
+        _count,
+    };
+
+    eth::address address;
+    eth::address beneficiary;
+    uint64_t amount;
+
+    auto operator<=>(const ContributorV2& o) const = default;
+
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        auto version = tools::enum_top<Version>;
+        field_varint(ar, "version", version, [](auto v) {
+            return v > Version::version_invalid && v < Version::_count;
+        });
+        field(ar, "address", address);
+
+        std::optional<eth::address> serialized_beneficiary;
+        if (Archive::is_serializer && beneficiary != address)
+            serialized_beneficiary = beneficiary;
+        field(ar, "beneficiary", serialized_beneficiary);
+        if (Archive::is_deserializer)
+            beneficiary = serialized_beneficiary ? *serialized_beneficiary : address;
+
+        field_varint(ar, "amount", amount);
+    }
+};
+
+struct NewServiceNodeV2 : L2StateChange {
+    enum class Version { invalid = -1, v0, _count };
+    Version version = Version::v0;
+    crypto::public_key sn_pubkey = crypto::null<crypto::public_key>;
+    bls_public_key bls_pubkey = crypto::null<bls_public_key>;
+    crypto::ed25519_signature ed_signature = crypto::null<crypto::ed25519_signature>;
+    uint64_t fee = 0;
+    std::vector<ContributorV2> contributors;
+
+    explicit NewServiceNodeV2(uint64_t chain_id = 0, uint64_t l2_height = 0) :
+            L2StateChange{chain_id, l2_height} {}
+
+    std::string to_string() const {
+        return "{} [sn_pubkey={}, bls_pubkey={}]"_format(description, sn_pubkey, bls_pubkey);
+    }
+
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field_varint(ar, "version", version);
+        field_varint(ar, "chain_id", chain_id);
+        field_varint(ar, "l2_height", l2_height);
+        field(ar, "service_node_pubkey", sn_pubkey);
+        field(ar, "bls_pubkey", bls_pubkey);
+        field(ar, "signature", ed_signature);
+        field_varint(ar, "fee", fee);
+        field(ar, "contributors", contributors);
+    }
+
+    std::strong_ordering operator<=>(const NewServiceNodeV2& o) const = default;
+
+    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_new_service_node_v2;
+    static constexpr std::string_view description = "new SNv2"sv;
 };
 
 struct ServiceNodeExitRequest : L2StateChange {
@@ -151,6 +219,7 @@ struct StakingRequirementUpdated : L2StateChange {
 using StateChangeVariant = std::variant<
         std::monostate,
         NewServiceNode,
+        NewServiceNodeV2,
         ServiceNodeExitRequest,
         ServiceNodeExit,
         StakingRequirementUpdated>;

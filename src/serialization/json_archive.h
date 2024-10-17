@@ -120,6 +120,9 @@ struct json_archiver : public serializer {
         serialize_blob(blobs.data(), blobs.size() * sizeof(T));
     }
 
+    // writes a literal null value; used by optional.h, only for non-binary serialization.
+    void serialize_null() { set(nullptr); }
+
     void write_variant_tag(std::string_view t) { tag(t); }
 
   private:

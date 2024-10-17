@@ -192,6 +192,8 @@ bool get_encrypted_payment_id_from_tx_extra_nonce(
 bool add_burned_amount_to_tx_extra(std::vector<uint8_t>& tx_extra, uint64_t burn);
 bool add_new_service_node_to_tx_extra(
         std::vector<uint8_t>& tx_extra, const eth::event::NewServiceNode& new_service_node);
+bool add_new_service_node_v2_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::NewServiceNodeV2& new_service_node);
 bool add_service_node_exit_request_to_tx_extra(
         std::vector<uint8_t>& tx_extra, const eth::event::ServiceNodeExitRequest& exit_request);
 bool add_service_node_exit_to_tx_extra(

@@ -57,6 +57,7 @@ L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_f
 void L2Tracker::prune_old_states() {
     const auto expiry = latest_height - std::min(latest_height, HIST_SIZE);
     recent_regs.expire(expiry);
+    recent_regs_v2.expire(expiry);
     recent_unlocks.expire(expiry);
     recent_exits.expire(expiry);
     recent_req_changes.expire(expiry);
@@ -344,6 +345,9 @@ void L2Tracker::add_to_mempool(const event::StateChangeVariant& tx_variant) {
                 if constexpr (std::is_same_v<T, event::NewServiceNode>) {
                     tx.type = txtype::ethereum_new_service_node;
                     add_new_service_node_to_tx_extra(tx.extra, arg);
+                } else if constexpr (std::is_same_v<T, event::NewServiceNodeV2>) {
+                    tx.type = txtype::ethereum_new_service_node_v2;
+                    add_new_service_node_v2_to_tx_extra(tx.extra, arg);
                 } else if constexpr (std::is_same_v<T, event::ServiceNodeExitRequest>) {
                     tx.type = txtype::ethereum_service_node_exit_request;
                     add_service_node_exit_request_to_tx_extra(tx.extra, arg);
@@ -476,20 +480,41 @@ void L2Tracker::update_logs() {
                             add_to_mempool(tx);
                             if (auto* reg = std::get_if<event::NewServiceNode>(&tx))
                                 recent_regs.add(std::move(*reg), *log.blockNumber);
+                            if (auto* reg_v2 = std::get_if<event::NewServiceNodeV2>(&tx))
+                                recent_regs_v2.add(std::move(*reg_v2), *log.blockNumber);
                             else if (auto* ul = std::get_if<event::ServiceNodeExitRequest>(&tx))
                                 recent_unlocks.add(std::move(*ul), *log.blockNumber);
                             else if (auto* exit = std::get_if<event::ServiceNodeExit>(&tx))
                                 recent_exits.add(std::move(*exit), *log.blockNumber);
                             else if (auto* req = std::get_if<event::StakingRequirementUpdated>(&tx))
                                 recent_req_changes.add(std::move(*req), *log.blockNumber);
-                            else
+                            else {
                                 assert(tx.index() == 0);
+                            }
                         } catch (const std::exception& e) {
+
+                            fmt::memory_buffer buffer{};
+                            fmt::format_to(
+                                    std::back_inserter(buffer),
+                                    "The raw blob was (32 byte chunks/line):\n\n");
+                            std::string_view hex = log.data;
+                            while (hex.size()) {
+                                std::string_view chunk = tools::string_safe_substr(
+                                        hex, 0, 64);  // Grab 32 byte chunk
+                                fmt::format_to(
+                                        std::back_inserter(buffer),
+                                        "  {}\n",
+                                        chunk);  // Output the chunk
+                                hex = tools::string_safe_substr(
+                                        hex, 64, hex.size());  // Advance the hex
+                            }
+
                             log::error(
                                     logcat,
                                     "Failed to convert L2 state change transaction to an Oxen "
-                                    "state change transaction: {}",
-                                    e.what());
+                                    "state change transaction: {}\n\n{}",
+                                    e.what(),
+                                    fmt::to_string(buffer));
                             continue;
                         }
                     }
@@ -580,6 +605,9 @@ RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(
 
 bool L2Tracker::get_vote_for(const event::NewServiceNode& reg) const {
     return recent_regs.contains(reg);
+}
+bool L2Tracker::get_vote_for(const event::NewServiceNodeV2& reg) const {
+    return recent_regs_v2.contains(reg);
 }
 bool L2Tracker::get_vote_for(const event::ServiceNodeExit& exit) const {
     return recent_exits.contains(exit);
