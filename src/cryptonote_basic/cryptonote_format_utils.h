@@ -190,14 +190,16 @@ bool get_payment_id_from_tx_extra_nonce(const std::string& extra_nonce, crypto::
 bool get_encrypted_payment_id_from_tx_extra_nonce(
         const std::string& extra_nonce, crypto::hash8& payment_id);
 bool add_burned_amount_to_tx_extra(std::vector<uint8_t>& tx_extra, uint64_t burn);
-bool add_new_service_node_to_tx_extra(
+bool add_l2_event_to_tx_extra(
         std::vector<uint8_t>& tx_extra, const eth::event::NewServiceNode& new_service_node);
-bool add_service_node_exit_request_to_tx_extra(
+bool add_l2_event_to_tx_extra(
         std::vector<uint8_t>& tx_extra, const eth::event::ServiceNodeExitRequest& exit_request);
-bool add_service_node_exit_to_tx_extra(
+bool add_l2_event_to_tx_extra(
         std::vector<uint8_t>& tx_extra, const eth::event::ServiceNodeExit& exit_data);
-bool add_staking_requirement_to_tx_extra(
+bool add_l2_event_to_tx_extra(
         std::vector<uint8_t>& tx_extra, const eth::event::StakingRequirementUpdated& req_change);
+bool add_l2_event_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::ServiceNodePurge& purge);
 uint64_t get_burned_amount_from_tx_extra(const std::vector<uint8_t>& tx_extra);
 bool is_out_to_acc(
         const account_keys& acc,

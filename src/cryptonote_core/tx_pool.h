@@ -734,7 +734,10 @@ class tx_memory_pool {
             txpool_tx_meta_t& txd,
             const crypto::hash& txid,
             const std::string& txblob,
-            transaction& tx) const;
+            transaction& tx,
+            hf version,
+            uint64_t height,
+            std::optional<uint64_t> l2_max) const;
 
     /**
      * @brief mark all transactions double spending the one passed
@@ -834,7 +837,7 @@ class tx_memory_pool {
 
     //! cache/call Blockchain::check_tx_inputs results
     bool check_tx_inputs(
-            const std::function<cryptonote::transaction&()>& get_tx,
+            cryptonote::transaction& tx,
             const crypto::hash& txid,
             uint64_t& max_used_block_height,
             crypto::hash& max_used_block_id,

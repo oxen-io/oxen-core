@@ -72,8 +72,12 @@ inline constexpr network_config config{
         .ETHEREUM_REWARDS_CONTRACT = "0x0000000000000000000000000000000000000000",
         .ETHEREUM_POOL_CONTRACT = "0x0000000000000000000000000000000000000000",
         // Sepolia arbitrum sometimes slows down below the typical 250ms seen on mainnet, so for
-        // testnet/devnet we shorten this by half compared to mainnet:
+        // testnet/devnet we shorten this to a quarter compared to mainnet:
         .L2_REWARD_POOL_UPDATE_BLOCKS = mainnet::config.L2_REWARD_POOL_UPDATE_BLOCKS / 4,
         .L2_TRACKER_SAFE_BLOCKS = mainnet::config.L2_TRACKER_SAFE_BLOCKS,
+        // arb sepolia blocks are (sometimes) slower than mainnet, so reduce this a bit so that
+        // we're probably still somewhere in the 1-2 hour range:
+        .L2_NODE_LIST_PURGE_BLOCKS = mainnet::config.L2_NODE_LIST_PURGE_BLOCKS / 2,
+        .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = mainnet::config.L2_NODE_LIST_PURGE_MIN_OXEN_AGE,
 };
 }  // namespace cryptonote::config::testnet

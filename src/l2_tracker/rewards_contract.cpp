@@ -405,15 +405,37 @@ RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(
         std::optional<uint64_t> height) {
     std::string call_data = "0x{:x}"_format(contract::call::ServiceNodeRewards_allServiceNodeIDs);
     std::string block_num_arg = height ? "0x{:x}"_format(*height) : "latest";
-    nlohmann::json call_result =
-            provider.callReadFunctionJSON(contract_address, call_data, block_num_arg);
 
-    auto call_result_hex = call_result.get<std::string_view>();
+    ServiceNodeIDs result;
+    result.success = false;
+    try {
+        auto call_result =
+                provider.callReadFunctionJSON(contract_address, call_data, block_num_arg);
+        result.success = true;
+        for (const auto& [id, key] :
+             parse_all_service_node_ids(call_result.get<std::string_view>())) {
+            result.ids.push_back(id);
+            result.bls_pubkeys.push_back(key);
+        }
+    } catch (const std::exception& e) {
+        oxen::log::warning(
+                logcat,
+                "Failed to parse contract service node list at block '{}': {}",
+                block_num_arg,
+                e.what());
+    }
+    return result;
+}
+
+std::vector<std::pair<uint64_t, bls_public_key>> RewardsContract::parse_all_service_node_ids(
+        std::string_view call_result_hex) {
+
     if (call_result_hex.starts_with("0x") || call_result_hex.starts_with("0X"))
         call_result_hex.remove_prefix(2);
 
+    std::vector<std::pair<uint64_t, bls_public_key>> result;
+
     // NOTE: Extract the ID payload
-    ServiceNodeIDs result = {};
     const auto [offset_to_ids_bytes, offset_to_keys_bytes, _unused] =
             tools::split_hex_into<u256, u256, std::string_view>(call_result_hex);
     const uint64_t offset_to_ids = tools::decode_integer_be(offset_to_ids_bytes);
@@ -425,7 +447,7 @@ RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(
             tools::split_hex_into<u256, std::string_view>(ids_start_hex);
     uint64_t num_ids = tools::decode_integer_be(num_ids_bytes);
 
-    const size_t ID_SIZE_IN_HEX = sizeof(u256) * 2;
+    constexpr size_t ID_SIZE_IN_HEX = oxenc::to_hex_size(sizeof(u256));
     std::string_view ids_payload =
             tools::string_safe_substr(ids_remainder_hex, 0, num_ids * ID_SIZE_IN_HEX);
 
@@ -436,62 +458,41 @@ RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(
             tools::split_hex_into<u256, std::string_view>(keys_start_hex);
     uint64_t num_keys = tools::decode_integer_be(num_keys_bytes);
 
-    const size_t KEY_SIZE_IN_HEX = sizeof(bls_public_key) * 2;
+    constexpr size_t KEY_SIZE_IN_HEX = oxenc::to_hex_size(sizeof(bls_public_key));
     std::string_view keys_payload =
             tools::string_safe_substr(keys_remainder_hex, 0, num_keys * KEY_SIZE_IN_HEX);
 
     // NOTE: Validate args
-    if (num_keys != num_ids) {
-        oxen::log::warning(
-                logcat,
-                "The number of ids ({}) and bls public keys ({}) returned do not match at block "
-                "'{}'",
-                num_ids,
-                num_keys,
-                block_num_arg);
-        return result;
-    }
+    if (num_keys != num_ids)
+        throw oxen::traced<std::invalid_argument>{
+                "The number of ids ({}) and bls public keys ({}) returned do not match"_format(
+                        num_ids, num_keys)};
 
-    if (ids_payload.size() != (num_ids * ID_SIZE_IN_HEX)) {
-        oxen::log::warning(
-                logcat,
+    if (ids_payload.size() != (num_ids * ID_SIZE_IN_HEX))
+        throw oxen::traced<std::invalid_argument>{
                 "The number of ids ({}) specified when retrieving all SN BLS ids did not "
-                "match the size ({} bytes) of the payload returned at block '{}'",
-                num_ids,
-                ids_payload.size() / 2,
-                block_num_arg);
-        return result;
-    }
+                "match the size ({} bytes) of the response"_format(
+                        num_ids, ids_payload.size() / 2)};
 
-    if (keys_payload.size() != (num_keys * KEY_SIZE_IN_HEX)) {
-        oxen::log::warning(
-                logcat,
+    if (keys_payload.size() != (num_keys * KEY_SIZE_IN_HEX))
+        throw oxen::traced<std::invalid_argument>{
                 "The number of keys ({}) specified when retrieving all SN BLS pubkeys did not "
-                "match the size ({} bytes) of the payload returned at block '{}'",
-                num_keys,
-                keys_payload.size() / 2,
-                block_num_arg);
-        return result;
-    }
+                "match the size ({} bytes) of the response"_format(
+                        num_keys, keys_payload.size() / 2)};
 
-    result.ids.reserve(num_ids);
-    result.bls_pubkeys.reserve(num_keys);
+    result.reserve(num_ids);
     for (size_t index = 0; index < num_ids; index++) {
-        std::string_view id_hex =
-                tools::string_safe_substr(ids_payload, (index * ID_SIZE_IN_HEX), ID_SIZE_IN_HEX);
-        std::string_view key_hex =
-                tools::string_safe_substr(keys_payload, (index * KEY_SIZE_IN_HEX), KEY_SIZE_IN_HEX);
-        auto [id_bytes] = tools::split_hex_into<u256>(id_hex);
-        result.ids.push_back(tools::decode_integer_be(id_bytes));
-        result.bls_pubkeys.push_back(tools::make_from_hex_guts<bls_public_key>(key_hex));
+        result.emplace_back(
+                tools::decode_integer_be(
+                        tools::make_from_hex_guts<u256>(ids_payload.substr(0, ID_SIZE_IN_HEX))),
+                tools::make_from_hex_guts<bls_public_key>(keys_payload.substr(0, KEY_SIZE_IN_HEX)));
+        ids_payload.remove_prefix(ID_SIZE_IN_HEX);
+        keys_payload.remove_prefix(KEY_SIZE_IN_HEX);
 
-#if !defined(NDEBUG)
-        log::trace(
-                logcat, "  {:02d} {{{}, {}}}", index, result.ids.back(), result.bls_pubkeys.back());
-#endif
+        log::trace(logcat, "  {:02d} {{{}, {}}}", index, result.back().first, result.back().second);
     }
+    assert(ids_payload.empty() && keys_payload.empty());
 
-    result.success = true;
     return result;
 }
 

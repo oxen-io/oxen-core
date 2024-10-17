@@ -153,6 +153,10 @@ struct extra_printer {
         return "Ethereum Staking Requirement Update: L2 0x{:x}@{}, new staking requirement: {}"_format(
                 x.chain_id, x.l2_height, print_money(x.staking_requirement));
     }
+    std::string operator()(const eth::event::ServiceNodePurge& x) {
+        return "Ethereum Service Node Purge: L2 0x{:x}@{}, BLS pub: {}"_format(
+                x.chain_id, x.l2_height, x.bls_pubkey);
+    }
 };
 
 static void print_extra_fields(const std::vector<cryptonote::tx_extra_field>& fields) {

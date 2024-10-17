@@ -59,6 +59,7 @@ constexpr uint8_t TX_EXTRA_TAG_PADDING = 0x00, TX_EXTRA_TAG_PUBKEY = 0x01, TX_EX
                   TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE = 0x7C,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT_REQUEST = 0x7D,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT = 0x7F,
+                  TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_PURGE = 0x80,
 
                   TX_EXTRA_MYSTERIOUS_MINERGATE_TAG = 0xDE;
 
@@ -674,6 +675,7 @@ using tx_extra_field = std::variant<
         eth::event::ServiceNodeExitRequest,
         eth::event::ServiceNodeExit,
         eth::event::StakingRequirementUpdated,
+        eth::event::ServiceNodePurge,
         tx_extra_burn,
         tx_extra_merge_mining_tag,
         tx_extra_mysterious_minergate,
@@ -723,3 +725,5 @@ BINARY_VARIANT_TAG(
 BINARY_VARIANT_TAG(
         eth::event::StakingRequirementUpdated,
         cryptonote::TX_EXTRA_TAG_ETHEREUM_STAKING_REQUIREMENT_UPDATED);
+BINARY_VARIANT_TAG(
+        eth::event::ServiceNodePurge, cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_PURGE);

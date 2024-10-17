@@ -73,5 +73,7 @@ inline constexpr network_config config{
         .ETHEREUM_POOL_CONTRACT = "0x84a648F74Eaf037dD9558987F6179E692d5F2566"sv,
         .L2_REWARD_POOL_UPDATE_BLOCKS = testnet::config.L2_REWARD_POOL_UPDATE_BLOCKS,
         .L2_TRACKER_SAFE_BLOCKS = mainnet::config.L2_TRACKER_SAFE_BLOCKS,
+        .L2_NODE_LIST_PURGE_BLOCKS = testnet::config.L2_NODE_LIST_PURGE_BLOCKS,
+        .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = testnet::config.L2_NODE_LIST_PURGE_MIN_OXEN_AGE,
 };
 }  // namespace cryptonote::config::stagenet
