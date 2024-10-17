@@ -175,9 +175,6 @@ namespace literals {
 /// Converts a duration into a human friendlier string, such as "3d7d47m12s" or "347µs"
 std::string friendly_duration(std::chrono::nanoseconds dur);
 
-/// Converts a duration into a shorter, single-unit fractional display such as `42.3min`
-std::string short_duration(std::chrono::duration<double> dur);
-
 /// Given an array of string arguments, look for strings of the format <prefix><value> and return
 /// <value> Returns empty string view if not found.
 template <typename It>

@@ -4200,6 +4200,7 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
             storage_omq_port,
             ss_version,
             quorumnet_port,
+            blockchain.l2_tracker().get_latest_height(),
             lokinet_version,
             keys};
 }
