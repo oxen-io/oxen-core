@@ -240,9 +240,4 @@ class binary_archiver : public serializer {
     std::ios_base::iostate exc_restore_;
 };
 
-// True if Archive is a binary archiver or unarchiver
-template <typename Archive>
-constexpr bool is_binary = std::is_base_of_v<binary_archiver, Archive> ||
-                           std::is_base_of_v<binary_unarchiver, Archive>;
-
 }  // namespace serialization

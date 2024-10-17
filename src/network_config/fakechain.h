@@ -51,5 +51,7 @@ inline constexpr network_config config{
         .ETHEREUM_POOL_CONTRACT = mainnet::config.ETHEREUM_POOL_CONTRACT,
         .L2_REWARD_POOL_UPDATE_BLOCKS = mainnet::config.L2_REWARD_POOL_UPDATE_BLOCKS,
         .L2_TRACKER_SAFE_BLOCKS = mainnet::config.L2_TRACKER_SAFE_BLOCKS,
+        .L2_NODE_LIST_PURGE_BLOCKS = mainnet::config.L2_NODE_LIST_PURGE_BLOCKS,
+        .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = mainnet::config.L2_NODE_LIST_PURGE_MIN_OXEN_AGE,
 };
 }  // namespace cryptonote::config::fakechain

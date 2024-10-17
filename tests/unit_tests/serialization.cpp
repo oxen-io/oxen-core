@@ -34,6 +34,7 @@
 #include <iostream>
 #include <vector>
 #include <boost/archive/portable_binary_iarchive.hpp>
+#include "common/guts.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "ringct/rctSigs.h"
@@ -42,6 +43,7 @@
 #include "serialization/variant.h"
 #include "serialization/vector.h"
 #include "serialization/binary_utils.h"
+#include "serialization/optional.h"
 #include "wallet/wallet2.h"
 #include "gtest/gtest.h"
 #include "unit_tests_utils.h"
@@ -594,6 +596,79 @@ TEST(serialization, serializes_ringct)
   ASSERT_EQ(clsag.c1, clsag1.c1);
   // I is not serialized, they are meant to be reconstructed
   ASSERT_EQ(clsag.D, clsag1.D);
+}
+
+struct XYZ {
+    std::optional<uint32_t> x;
+    std::optional<crypto::hash> y;
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "x", x);
+        field(ar, "y", y);
+    }
+    auto operator<=>(const XYZ&) const = default;
+};
+
+TEST(serialization, optionals) {
+    auto test = []<typename T>(const T& val, std::string_view json, std::string_view binhex) {
+        assert(oxenc::is_hex(binhex));
+        {
+            std::ostringstream bin;
+            serialization::json_archiver ar;
+            serialization::serialize(ar, const_cast<T&>(val));
+            ASSERT_EQ(ar.json().dump(), json);
+
+            serialization::binary_archiver bar{bin};
+            serialization::serialize(bar, const_cast<T&>(val));
+            ASSERT_EQ(oxenc::to_hex(bin.str()), binhex);
+        }
+
+        {
+            std::istringstream bin;
+            bin.str(oxenc::from_hex(binhex));
+            serialization::binary_unarchiver bar{bin};
+            T new_val;
+            serialization::serialize(bar, new_val);
+            ASSERT_EQ(new_val, val);
+        }
+    };
+
+    std::optional<uint32_t> opt_u32 = 123;
+    test(opt_u32, "123", "017b");
+    opt_u32.reset();
+    test(opt_u32, "null", "00");
+
+    std::optional<uint64_t> opt_u64 = 123456789101112;
+    test(opt_u64, "123456789101112", "01b8f4bcb088891c");
+    opt_u64.reset();
+    test(opt_u64, "null", "00");
+
+    std::optional<crypto::hash> opt_hash = tools::make_from_hex_guts<crypto::hash>(
+            "fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff"sv);
+    test(opt_hash,
+         "\"fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff\"",
+         "01fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff");
+    opt_hash.reset();
+    test(opt_hash, "null", "00");
+
+    std::vector<std::optional<uint32_t>> v_opt{{std::nullopt, 2, 3, std::nullopt, 10}};
+    test(v_opt, "[null,2,3,null,10]", "05000102010300010a");
+
+    std::optional<std::vector<uint32_t>> opt_v{{{1, 2, 3}}};
+    test(opt_v, "[1,2,3]", "0103010203");
+    opt_v.reset();
+    test(opt_v, "null", "00");
+
+    XYZ xyz;
+    xyz.x = 66;
+    xyz.y = tools::make_from_hex_guts<crypto::hash>(
+            "fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff"sv);
+    test(xyz,
+         R"({"x":66,"y":"fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff"})",
+         "014201fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff");
+    xyz.x.reset();
+    xyz.y.reset();
+    test(xyz, R"({"x":null,"y":null})", "0000");
 }
 
 // TODO(oxen): These tests are broken because they rely on testnet which has

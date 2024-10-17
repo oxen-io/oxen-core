@@ -68,14 +68,19 @@ inline constexpr network_config config{
         .STORE_LONG_TERM_STATE_INTERVAL = 10'000,
         .STORE_RECENT_REWARDS = 5,
         .ETH_EXIT_BUFFER = 7 * 24h / TARGET_BLOCK_TIME,
+        .ETHEREUM_CHAIN_ID = 42161,  // Arbitrum One
         // TODO: To be set closer to mainnet TGE
-        .ETHEREUM_CHAIN_ID = 0xa4b1,
-        .ETHEREUM_REWARDS_CONTRACT = "0x0000000000000000000000000000000000000000",
-        .ETHEREUM_POOL_CONTRACT = "0x0000000000000000000000000000000000000000",
+        .ETHEREUM_REWARDS_CONTRACT = "",
+        .ETHEREUM_POOL_CONTRACT = "",
         // Update every ~10 minutes with an Arbitrum ~250ms block time:
-        .L2_REWARD_POOL_UPDATE_BLOCKS = 10min / 250ms,
+        .L2_REWARD_POOL_UPDATE_BLOCKS = 10min / L2_BLOCK_TIME,
         // The default is 70s behind with an Arbitrum ~250ms block time, so that pulse nodes using
         // 1min update period will work (with a few seconds for provider and request latencies).
-        .L2_TRACKER_SAFE_BLOCKS = 70s / 250ms,
+        .L2_TRACKER_SAFE_BLOCKS = 70s / L2_BLOCK_TIME,
+        // This relatively infrequent check is only for handling highly unusual cleanup cases where
+        // a L2 disruption or bug between the contract and oxend results in oxend service nodes
+        // state having nodes that *don't* exist in the contract for some reason.
+        .L2_NODE_LIST_PURGE_BLOCKS = 2h / L2_BLOCK_TIME,
+        .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = 24h / TARGET_BLOCK_TIME,
 };
 }  // namespace cryptonote::config::mainnet

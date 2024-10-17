@@ -14,12 +14,16 @@ bool validate_event_tx(
     switch (tx_type) {
         case txtype::ethereum_new_service_node:
             return validate_event_tx<event::NewServiceNode>(hf_version, tx, reason);
+        case txtype::ethereum_new_service_node_v2:
+            return validate_event_tx<event::NewServiceNodeV2>(hf_version, tx, reason);
         case txtype::ethereum_service_node_exit:
             return validate_event_tx<event::ServiceNodeExit>(hf_version, tx, reason);
         case txtype::ethereum_service_node_exit_request:
             return validate_event_tx<event::ServiceNodeExitRequest>(hf_version, tx, reason);
         case txtype::ethereum_staking_requirement_updated:
             return validate_event_tx<event::StakingRequirementUpdated>(hf_version, tx, reason);
+        case txtype::ethereum_purge_missing_service_node:
+            return validate_event_tx<event::ServiceNodePurge>(hf_version, tx, reason);
         default:
             if (reason)
                 *reason = "Invalid or unhandled event tx type {}"_format(tx_type);
@@ -40,6 +44,9 @@ event::StateChangeVariant extract_event(
         case cryptonote::txtype::ethereum_new_service_node:
             success = extract_event(tx, result.emplace<event::NewServiceNode>(), fail_reason);
             break;
+        case cryptonote::txtype::ethereum_new_service_node_v2:
+            success = extract_event(tx, result.emplace<event::NewServiceNodeV2>(), fail_reason);
+            break;
         case cryptonote::txtype::ethereum_service_node_exit_request:
             success =
                     extract_event(tx, result.emplace<event::ServiceNodeExitRequest>(), fail_reason);
@@ -50,6 +57,9 @@ event::StateChangeVariant extract_event(
         case cryptonote::txtype::ethereum_staking_requirement_updated:
             success = extract_event(
                     tx, result.emplace<event::StakingRequirementUpdated>(), fail_reason);
+            break;
+        case cryptonote::txtype::ethereum_purge_missing_service_node:
+            success = extract_event(tx, result.emplace<event::ServiceNodePurge>(), fail_reason);
             break;
         default: assert(!"Unhandled ethereum event tx type");
     }

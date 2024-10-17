@@ -35,6 +35,7 @@ oxen_add_library(cncrypto
   crypto-ops-data.c
   crypto-ops.c
   crypto.cpp
+  eth.cpp
   groestl.c
   hash-extra-blake.c
   hash-extra-groestl.c

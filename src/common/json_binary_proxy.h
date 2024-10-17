@@ -35,8 +35,10 @@ template <>
 inline constexpr bool json_is_binary<eth::bls_public_key> = true;
 template <>
 inline constexpr bool json_is_binary<eth::bls_signature> = true;
-template <>
-inline constexpr bool json_is_binary<eth::address> = true;
+// eth::address gets handled specially: we parse as binary in, but not on the way out, because on
+// the way out we want it always 0x prefixed and checksum formatted.
+// template <>
+// inline constexpr bool json_is_binary<eth::address> = true;
 template <>
 inline constexpr bool json_is_binary<crypto::key_image> = true;
 template <>
@@ -70,7 +72,8 @@ void load_binary_parameter_impl(
 
 // Loads a binary value from a string_view which may contain hex, base64, and (optionally) raw
 // bytes.
-template <binary_json T>
+template <typename T>
+    requires binary_json<T> || std::same_as<T, eth::address>
 void load_binary_parameter(std::string_view bytes, bool allow_raw, T& val) {
     load_binary_parameter_impl(bytes, sizeof(T), allow_raw, reinterpret_cast<uint8_t*>(&val));
 }
@@ -155,7 +158,8 @@ class json_binary_proxy {
 // them encoded in hex or base64.  These may *not* be used for serialization, and will throw if so
 // invoked; for serialization you need to use RPC_COMMAND::response_hex (or _b64) instead.
 namespace nlohmann {
-template <tools::binary_json T>
+template <typename T>
+    requires tools::binary_json<T> || std::same_as<T, eth::address>
 struct adl_serializer<T> {
     static_assert(std::is_trivially_copyable_v<T> && std::has_unique_object_representations_v<T>);
 

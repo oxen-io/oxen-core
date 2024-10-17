@@ -3,12 +3,15 @@
 #include <cryptonote_config.h>
 #include <oxenmq/oxenmq.h>
 
+#include <chrono>
 #include <ethyl/provider.hpp>
 #include <forward_list>
 #include <iterator>
 #include <shared_mutex>
 #include <unordered_set>
 
+#include "crypto/eth.h"
+#include "events.h"
 #include "recent_events.h"
 #include "rewards_contract.h"
 
@@ -40,16 +43,20 @@ class L2Tracker {
 
     // l2_height => recent events at that height
     RecentEvents<event::NewServiceNode> recent_regs;
+    RecentEvents<event::NewServiceNodeV2> recent_regs_v2;
     RecentEvents<event::ServiceNodeExitRequest> recent_unlocks;
     RecentEvents<event::ServiceNodeExit> recent_exits;
     RecentEvents<event::StakingRequirementUpdated> recent_req_changes;
+    std::unordered_set<eth::bls_public_key> in_contract;
     std::map<uint64_t, uint64_t> reward_rate;
-    uint64_t latest_height = 0, synced_height = 0;
+    uint64_t latest_height = 0, synced_height = 0, latest_blockchain_l2_height = 0,
+             latest_purge_check = 0;
     bool initial = true;
     bool update_in_progress = false;
     std::chrono::steady_clock::time_point next_provider_check = std::chrono::steady_clock::now();
     std::optional<std::chrono::steady_clock::time_point> primary_down;
     std::chrono::steady_clock::time_point primary_last_warned;
+    std::optional<std::chrono::steady_clock::time_point> latest_height_ts;
 
     // Provider state updating: `update_state()` starts a chain of updates, each one triggering the
     // next step in the chain when its response is received.  While such an update is in progress
@@ -58,23 +65,38 @@ class L2Tracker {
     // This is called periodically automatically.
     //
     // We request:
-    // - current height of all providers (only if we are using multiple providers and it has been a
-    //   while since we last checked).  Once we get this response, we choose a best provider and set
-    //   up the provider to prioritize that one.  Then we call `update_state()` again to continue.
-    // - current height
-    // - the most recent reward rate (for the most recent divisible-by-L2_REWARD_POOL_UPDATE_BLOCKS
-    //   L2 height).  We may need to repeat this, depending on HIST_SIZE and what info we already
-    //   have.
-    // - logs for up to 1000 blocks since our last updated height
-    // - repeated log requests for up to 100 blocks at a time until we get everything up to the
-    //   height we got in the first stage.
+    // 1. if we have multiple provider and we haven't checked the height of all of them in a while
+    //    (PROVIDERS_CHECK_INTERVAL) then fetch the height from all of them and use to decide
+    //    whether we need to switch our active provider (i.e. if the primary provider is too far
+    //    behind, or we're on a backup but the primary looks good again).  Whatever node we end
+    //    deciding to use defines our new current height, and we proceed to step 3.
+    // 2. otherwise (no multiple providers, or we aren't due to rechecked them) fetch the updated
+    //    height from our current active provider.  Proceed to 3.
+    // 3. If we are missing reward info for a recent reward height block (i.e. those divisible by
+    //    L2_REWARD_POOL_UPDATE_BLOCKS), fetch the updated reward data.  We generally keep the most
+    //    recent and second-most recent on hand, and so this step will repeat if we need both.  Once
+    //    we've done any reward updates (or if none were needed) proceed to 4.
+    // 4. Log updating.  We fetch logs, starting at the next block height after the most recent log
+    //    fetch (or HIST_SIZE ago, if that is later), giving us ethereum events for node actions.
+    //    We fetch at most 100 (by default, but confirable) at a time, and as each set of logs comes
+    //    back repeat this step until we have fetched all logs up to the current height.  Any such
+    //    witnessed events are added to the mempool for inclusion in new blocks and are used for
+    //    confirm (or deny) L2 events that are still awaiting confirmation.
+    // 5. If the height passed a new L2_NODE_LIST_PURGE_BLOCKS height interval since the last purge
+    //    check we performed then we fetch the full set of current nodes from the contract; any
+    //    nodes present in the oxend service node list that are neither present in the contract nor
+    //    present in the list of recent removal/liquidation events becauses a node to be purged.
+    //    This follows the same confirmation voting process as events from step 4 for removing the
+    //    node from the network.  If this request fails because the height is quite old then we
+    //    retry the request for the current height (but don't load Purge txes if using that
+    //    fallback).
     //
-    // As log entries come in we translate them into oxen state change transactions that we insert
-    // into the mempool, to be included if this node is called upon to produce a new block.
     void update_state();
+    void set_height(uint64_t new_height, bool take_lock = true);
     void update_height();
     void update_rewards(std::optional<std::forward_list<uint64_t>> more = std::nullopt);
     void update_logs();
+    void update_purge_list(bool curr_height_fallback = false);
     void add_to_mempool(const event::StateChangeVariant& state_change);
 
   public:
@@ -89,6 +111,12 @@ class L2Tracker {
     // time), plus a buffer so that pulse quorum nodes can properly recognize L2 events from the
     // past hour (for achieving pulse consensus).
     uint64_t HIST_SIZE = 70min / 250ms;
+
+    // The "safe" number of blocks ago within which we expect to be able to issue recent historic
+    // contract calls.  On arbitrum most provider nodes have only 30min of contract state history
+    // available, and so we use 10min of typical 250ms blocks as a safe buffer (partly because
+    // Arbitrum blocks sometimes go slower, particularly on testnet).
+    uint64_t SAFE_HISTORY_BLOCKS = 10min / 250ms;
 
     // How many blocks worth of logs we fetch at once.  Various providers impose various limits on
     // this based on the free/paid tier, and so there is no perfect default.  1000 blocks at once
@@ -132,10 +160,14 @@ class L2Tracker {
 
     // Returns the latest L2 height we know about, i.e. from previous provider updates.
     uint64_t get_latest_height() const;
+
     // Returns the latest L2 height that we have known about for at least 30s (SAFE_BLOCKS); when
     // building a block we use this slight lag so that service nodes that are a few seconds out of
     // sync won't have trouble accepting our block.
     uint64_t get_safe_height() const;
+
+    // Returns the age of the last successful height response we got from an L2 RPC provider.
+    std::optional<std::chrono::nanoseconds> latest_height_age() const;
 
     std::vector<uint64_t> get_non_signers(
             const std::unordered_set<bls_public_key>& bls_public_keys);
@@ -150,13 +182,12 @@ class L2Tracker {
     // Returns true/false for whether we have recently observed the given event from the L2 tracker
     // logs.  This is used for pulse confirmation voting.
     bool get_vote_for(const event::NewServiceNode& reg) const;
+    bool get_vote_for(const event::NewServiceNodeV2& reg) const;
     bool get_vote_for(const event::ServiceNodeExit& exit) const;
     bool get_vote_for(const event::ServiceNodeExitRequest& unlock) const;
     bool get_vote_for(const event::StakingRequirementUpdated& req_change) const;
+    bool get_vote_for(const event::ServiceNodePurge& purge) const;
     bool get_vote_for(const std::monostate&) const { return false; }
-
-    // TODO FIXME: the entire L2Tracker shouldn't be here if there are no clients
-    bool provider_has_clients() const { return provider.numClients(); }
 
     // Allow public shared locking of current state.  Note that exclusive locking is *not* publicly
     // exposed, and is used internally when updating the data (holding the shared lock is sufficient
@@ -168,5 +199,10 @@ class L2Tracker {
   private:
     // Must hold mutex (in exclusive mode) while calling!
     void prune_old_states();
+
+    // Must hold shared lock (or stronger) on the l2 tracker *and* the blockchain while calling!
+    // This is the meat of get_vote_for ServiceNodePurge, but is also used internally when deciding
+    // whether to put things in the mempool.
+    bool is_node_purgeable(const bls_public_key& bls_pubkey) const;
 };
 }  // namespace eth

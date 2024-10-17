@@ -32,6 +32,7 @@ class Proof {
     crypto::ed25519_public_key pubkey_ed25519{};
     crypto::ed25519_signature sig_ed25519{};
     eth::bls_public_key pubkey_bls{};
+    uint64_t l2_height{};
 
     // Our proof of possession here is the BLS signature of H(pubkey_bls || service_node_pubkey); we
     // can't use the same PoP that we use for the smart contract because for transitioning nodes in
@@ -62,6 +63,7 @@ class Proof {
           uint16_t sn_storage_omq_port,
           std::array<uint16_t, 3> ss_version,
           uint16_t quorumnet_port,
+          uint64_t l2_height,
           std::array<uint16_t, 3> lokinet_version,
           const service_nodes::service_node_keys& keys);
 

@@ -932,6 +932,9 @@ class core final {
     bool m_pad_transactions;
     bool m_has_ip_check_disabled;
 
+    // TODO: remove this after HF20:
+    bool m_skip_proof_l2_check = false;
+
     struct {
         std::shared_mutex mutex;
         bool building = false;

@@ -768,7 +768,23 @@ namespace {
             auto contributors = json::array();
             for (auto& contributor : x.contributors) {
                 auto& c = contributors.emplace_back();
-                json_binary_proxy{c["address"], format} = contributor.address;
+                c["address"] = "{}"_format(contributor.address);
+                c["amount"] = contributor.amount;
+            }
+            set("contributors", contributors);
+        }
+        void operator()(const eth::event::NewServiceNodeV2& x) {
+            set("type", "ethereum_new_service_node_v2");
+            set("l2_height", x.l2_height);
+            set("bls_pubkey", x.bls_pubkey);
+            set("service_node_pubkey", x.sn_pubkey);
+            set("signature", x.ed_signature);
+            set("fee", x.fee);
+            auto contributors = json::array();
+            for (auto& contributor : x.contributors) {
+                auto& c = contributors.emplace_back();
+                c["address"] = "{}"_format(contributor.address);
+                c["beneficiary"] = "{}"_format(contributor.beneficiary);
                 c["amount"] = contributor.amount;
             }
             set("contributors", contributors);
@@ -788,6 +804,11 @@ namespace {
             set("type", "ethereum_staking_requirement_update");
             set("l2_height", x.l2_height);
             set("staking_requirement", x.staking_requirement);
+        }
+        void operator()(const eth::event::ServiceNodePurge& x) {
+            set("type", "ethereum_service_node_purge");
+            set("l2_height", x.l2_height);
+            set("bls_pubkey", x.bls_pubkey);
         }
 
         // Ignore these fields:
@@ -2578,7 +2599,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
                 rpc.request.address, static_cast<uint64_t>(rpc.request.height));
         set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
         rpc.response["status"] = STATUS_OK;
-        rpc.response_hex["address"] = response.addr;
+        rpc.response["address"] = "{}"_format(response.addr);
         rpc.response["amount"] = response.amount;
         rpc.response["height"] = response.height;
     } catch (const std::exception& e) {
@@ -2589,7 +2610,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
     auto list = nlohmann::json::array();
     using node_t = service_nodes::service_node_list::recently_removed_node;
-    for (const node_t& elem : m_core.service_node_list.recently_removed_nodes()) {
+    m_core.service_node_list.for_each_recently_removed_node([&list](const node_t& elem) {
         // NOTE: Serialise to JSON
         serialization::json_archiver ar;
         serialize(ar, const_cast<node_t&>(elem));
@@ -2631,18 +2652,15 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
 
         // NOTE: Assign the type
         switch (elem.type) {
-            case service_nodes::service_node_list::recently_removed_node::type_t::voluntary_exit:
-                serialized["type"] = "exit";
-                break;
-
-            case service_nodes::service_node_list::recently_removed_node::type_t::deregister:
-                serialized["type"] = "deregister";
-                break;
+            case node_t::type_t::voluntary_exit: serialized["type"] = "exit"; break;
+            case node_t::type_t::deregister: serialized["type"] = "deregister"; break;
+            case node_t::type_t::purged:
+                assert(!"Internal error: found invalid purged node in recently_removed_nodes");
         }
 
         // NOTE: Store the object into the RPC response array
-        list.emplace_back(std::move(serialized));
-    }
+        list.push_back(std::move(serialized));
+    });
 
     rpc.response = std::move(list);
 }
@@ -2668,7 +2686,7 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_REQUEST& rpc, rpc_context) {
 void core_rpc_server::invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context) {
     const auto response = m_core.bls_registration(rpc.request.address);
     rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["address"] = response.addr;
+    rpc.response["address"] = "{}"_format(response.addr);
     rpc.response_hex["bls_pubkey"] = response.bls_pubkey;
     rpc.response_hex["proof_of_possession"] = response.proof_of_possession;
     rpc.response_hex["service_node_pubkey"] = response.sn_pubkey;
@@ -2798,7 +2816,7 @@ void core_rpc_server::fill_sn_response_entry(
 
     if (requested(reqed, "operator_address")) {
         if (info.operator_ethereum_address)
-            binary["operator_address"] = info.operator_ethereum_address;
+            entry["operator_address"] = "{}"_format(info.operator_ethereum_address);
         else
             entry["operator_address"] = cryptonote::get_account_address_as_str(
                     m_core.get_nettype(), false /*subaddress*/, info.operator_address);
@@ -2982,9 +3000,10 @@ void core_rpc_server::fill_sn_response_entry(
         auto& contributors = (entry["contributors"] = json::array());
         for (const auto& contributor : info.contributors) {
             auto& c = contributors.emplace_back(json{{"amount", contributor.amount}});
-            if (contributor.ethereum_address)
-                json_binary_proxy{c["address"], binary_format} = contributor.ethereum_address;
-            else
+            if (contributor.ethereum_address) {
+                c["address"] = "{}"_format(contributor.ethereum_address);
+                c["beneficiary"] = "{}"_format(contributor.ethereum_beneficiary);
+            } else
                 c["address"] = cryptonote::get_account_address_as_str(
                         m_core.get_nettype(), false /*subaddress*/, contributor.address);
             if (contributor.reserved != contributor.amount)
@@ -3085,45 +3104,58 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
     sns.response["registrations"] = json::array();
     sns.response["unlocks"] = json::array();
     sns.response["exits"] = json::array();
-    m_core.service_node_list.for_each_pending_l2_state(
-            [&sns]<typename Event>(const Event& e, const auto& info) {
-                json entry{
-                        {"l2_height", e.l2_height},
-                        {"chain_id", e.chain_id},
-                        {"height", info.height_added},
-                        {"confirmations", info.confirmations / (double)info.FULL_SCORE},
-                        {"denials", info.denials / (double)info.FULL_SCORE},
-                        {"required",
-                         (std::max(info.denials * 2, info.denials + 5 * info.FULL_SCORE) -
-                          info.confirmations) /
-                                 (double)info.FULL_SCORE}};
+    m_core.service_node_list.for_each_pending_l2_state([&sns]<typename Event>(
+                                                               const Event& e, const auto& info) {
+        json entry{
+                {"l2_height", e.l2_height},
+                {"chain_id", e.chain_id},
+                {"height", info.height_added},
+                {"confirmations", info.confirmations / (double)info.FULL_SCORE},
+                {"denials", info.denials / (double)info.FULL_SCORE},
+                {"required",
+                 (std::max(info.denials * 2, info.denials + 5 * info.FULL_SCORE) -
+                  info.confirmations) /
+                         (double)info.FULL_SCORE}};
 
-                if constexpr (std::is_same_v<Event, eth::event::NewServiceNode>) {
-                    sns.response["registrations"].push_back(std::move(entry));
-                    auto& res = sns.response["registrations"].back();
-                    auto res_hex = sns.response_hex["registrations"].back();
-                    res_hex["sn_pubkey"] = e.sn_pubkey;
-                    res_hex["bls_pubkey"] = e.bls_pubkey;
-                    res_hex["signature"] = e.ed_signature;
-                    res["fee"] = e.fee * 0.01;
-                    res["contributors"] = json::array();
-                    auto& contr = res["contributors"];
-                    auto contr_hex = res_hex["contributors"];
-                    for (const auto& [addr, amt] : e.contributors) {
-                        contr.push_back(json{{"amount", amt}});
-                        contr_hex.back()["address"] = addr;
-                    }
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
-                    sns.response["unlocks"].push_back(std::move(entry));
-                    sns.response_hex["unlocks"].back()["bls_pubkey"] = e.bls_pubkey;
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExit>) {
-                    sns.response["exits"].push_back(std::move(entry));
-                    sns.response_hex["exits"].back()["bls_pubkey"] = e.bls_pubkey;
-                    sns.response["returned_amount"] = e.returned_amount;
-                } else {
-                    log::error(logcat, "Got unknown event type in rpc GET_PENDING_EVENTS handler!");
-                }
-            });
+        if constexpr (std::is_same_v<Event, eth::event::NewServiceNode>) {
+            sns.response["registrations"].push_back(std::move(entry));
+            auto& res = sns.response["registrations"].back();
+            auto res_hex = sns.response_hex["registrations"].back();
+            res_hex["sn_pubkey"] = e.sn_pubkey;
+            res_hex["bls_pubkey"] = e.bls_pubkey;
+            res_hex["signature"] = e.ed_signature;
+            res["fee"] = e.fee * 0.01;
+            res["contributors"] = json::array();
+            auto& contr = res["contributors"];
+            for (const auto& it : e.contributors)
+                contr.push_back(json{{"amount", it.amount}, {"address", "{}"_format(it.address)}});
+        } else if constexpr (std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
+            sns.response["registrations"].push_back(std::move(entry));
+            auto& res = sns.response["registrations"].back();
+            auto res_hex = sns.response_hex["registrations"].back();
+            res_hex["sn_pubkey"] = e.sn_pubkey;
+            res_hex["bls_pubkey"] = e.bls_pubkey;
+            res_hex["signature"] = e.ed_signature;
+            res["fee"] = e.fee * 0.01;
+            res["contributors"] = json::array();
+            auto& contr = res["contributors"];
+            for (const auto& it : e.contributors)
+                contr.push_back(json{
+                        {"amount", it.amount},
+                        {"address", "{}"_format(it.address)},
+                        {"beneficiary", "{}"_format(it.beneficiary)},
+                });
+        } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
+            sns.response["unlocks"].push_back(std::move(entry));
+            sns.response_hex["unlocks"].back()["bls_pubkey"] = e.bls_pubkey;
+        } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExit>) {
+            sns.response["exits"].push_back(std::move(entry));
+            sns.response_hex["exits"].back()["bls_pubkey"] = e.bls_pubkey;
+            sns.response["returned_amount"] = e.returned_amount;
+        } else {
+            log::error(logcat, "Got unknown event type in rpc GET_PENDING_EVENTS handler!");
+        }
+    });
 }
 
 namespace {

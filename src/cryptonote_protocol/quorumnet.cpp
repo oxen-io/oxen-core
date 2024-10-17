@@ -932,8 +932,8 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
         peer_info::exclude_set relay_exclude;
         if (!received_from.empty()) {
-            auto pubkey = qnet.core.service_node_list.get_pubkey_from_x25519(
-                    x25519_from_string(received_from));
+            auto pubkey =
+                    qnet.core.service_node_list.find_public_key(x25519_from_string(received_from));
             if (pubkey)
                 relay_exclude.insert(std::move(pubkey));
         }
@@ -1201,7 +1201,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
                 blink_quorums.begin(),
                 blink_quorums.end(),
                 true /*opportunistic*/,
-                {qnet.core.service_node_list.get_pubkey_from_x25519(x25519_from_string(
+                {qnet.core.service_node_list.find_public_key(x25519_from_string(
                         m.conn.pubkey()))}  // exclude the peer that just sent it to us
         };
 
