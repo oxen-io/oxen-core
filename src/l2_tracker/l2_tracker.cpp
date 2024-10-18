@@ -11,7 +11,6 @@
 #include <oxenmq/oxenmq.h>
 
 #include <chrono>
-#include <concepts>
 #include <utility>
 #include <variant>
 
@@ -52,6 +51,14 @@ L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_f
             1ms,
             /*squelch*/ true,
             dedicated_thread);
+
+    core.blockchain.hook_block_post_add([this](const auto& info) {
+        const cryptonote::block& block = info.block;
+        if (block.major_version >= cryptonote::feature::ETH_BLS) {
+            std::lock_guard lock{mutex};
+            latest_blockchain_l2_height = block.l2_height;
+        }
+    });
 }
 
 void L2Tracker::prune_old_states() {
@@ -62,6 +69,31 @@ void L2Tracker::prune_old_states() {
     recent_req_changes.expire(expiry);
     auto reward_exp = reward_height(expiry, core.get_net_config().L2_REWARD_POOL_UPDATE_BLOCKS);
     reward_rate.erase(reward_rate.begin(), reward_rate.lower_bound(reward_exp));
+}
+
+void L2Tracker::set_height(uint64_t l2_height, bool take_lock) {
+    std::unique_lock lock{mutex, std::defer_lock};
+    if (take_lock)
+        lock.lock();
+    latest_height = l2_height;
+    latest_height_ts = std::chrono::steady_clock::now();
+    log::debug(logcat, "L2 provider height updated to {}", l2_height);
+
+    // Check against the blockchain height and warn loudly if it looks like we are behind it.  (We
+    // don't worry about a safety buffer here because there's one build-in to the l2_height in a
+    // block, which is already lagged by SAFE_BLOCKS, so a current height should always be ahead of
+    // it).
+    if (core.service_node() && latest_height < latest_blockchain_l2_height) {
+        log::warning(
+                globallogcat,
+                fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                "Latest RPC provider reported height ({}) is too far behind the latest Oxen "
+                "chain reported height ({})",
+                latest_height,
+                latest_blockchain_l2_height);
+    }
+
+    prune_old_states();
 }
 
 void L2Tracker::update_state() {
@@ -191,10 +223,7 @@ void L2Tracker::update_state() {
             for (const auto& hi : height_info) {
                 if (hi.index == primary_index) {
                     if (hi.success) {
-                        {
-                            std::lock_guard lock{mutex};
-                            latest_height = hi.height;
-                        }
+                        set_height(hi.height);
                         update_rewards();
                         return;
                     }
@@ -218,13 +247,34 @@ void L2Tracker::update_height() {
         {
             std::lock_guard lock{mutex};
             if (height) {
-                latest_height = *height;
-                log::debug(logcat, "L2 provider height updated to {}", *height);
-                prune_old_states();
+                set_height(*height, /*take_lock=*/false);
             } else {
-                log::warning(logcat, "Failed to retrieve current height from provider");
+                log::warning(
+                        logcat,
+                        "Failed to retrieve current height from L2 RPC provider; last successful "
+                        "retrieval: {}",
+                        latest_height_ts
+                                ? "{} ago"_format(tools::friendly_duration(
+                                          std::chrono::steady_clock::now() - *latest_height_ts))
+                                : "never");
             }
             keep_going = latest_height > 0;
+        }
+
+        // If the contract addresses aren't set yet (i.e. for HF20 before the contract is deployed)
+        // then there's nothing else to actually update yet and so we're done.
+        const auto& conf = core.get_net_config();
+        if (keep_going &&
+            (conf.ETHEREUM_POOL_CONTRACT.empty() || conf.ETHEREUM_REWARDS_CONTRACT.empty())) {
+            if (core.blockchain.get_network_version() >= cryptonote::feature::ETH_BLS) {
+                log::critical(
+                        globallogcat,
+                        "Error: we are on HF21, but pool and/or reward contract addresses are not "
+                        "set!");
+                assert(!"missing contract addresses");
+            }
+            oxen::log::debug(logcat, "No L2 contract addresses yet to update; L2 update finished.");
+            keep_going = false;
         }
 
         if (keep_going)
@@ -275,7 +325,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
     more->pop_front();
     oxen::log::debug(logcat, "Starting query for reward height {}", r_height);
     provider.callReadFunctionJSONAsync(
-            contract::pool_address(core.get_nettype()),
+            core.get_net_config().ETHEREUM_POOL_CONTRACT,
             "0x{:x}"_format(contract::call::Pool_rewardRate),
             [this, r_height, more = std::move(more)](std::optional<nlohmann::json> result) mutable {
                 if (!result)
@@ -553,6 +603,13 @@ std::optional<uint64_t> L2Tracker::get_reward_rate(uint64_t height) const {
 uint64_t L2Tracker::get_latest_height() const {
     std::shared_lock lock{mutex};
     return latest_height;
+}
+
+std::optional<std::chrono::nanoseconds> L2Tracker::latest_height_age() const {
+    std::shared_lock lock{mutex};
+    if (latest_height_ts)
+        return std::chrono::steady_clock::now() - *latest_height_ts;
+    return std::nullopt;
 }
 
 uint64_t L2Tracker::get_safe_height() const {

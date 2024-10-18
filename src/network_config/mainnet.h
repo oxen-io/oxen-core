@@ -68,10 +68,10 @@ inline constexpr network_config config{
         .STORE_LONG_TERM_STATE_INTERVAL = 10'000,
         .STORE_RECENT_REWARDS = 5,
         .ETH_EXIT_BUFFER = 7 * 24h / TARGET_BLOCK_TIME,
+        .ETHEREUM_CHAIN_ID = 42161,  // Arbitrum One
         // TODO: To be set closer to mainnet TGE
-        .ETHEREUM_CHAIN_ID = 0xa4b1,
-        .ETHEREUM_REWARDS_CONTRACT = "0x0000000000000000000000000000000000000000",
-        .ETHEREUM_POOL_CONTRACT = "0x0000000000000000000000000000000000000000",
+        .ETHEREUM_REWARDS_CONTRACT = "",
+        .ETHEREUM_POOL_CONTRACT = "",
         // Update every ~10 minutes with an Arbitrum ~250ms block time:
         .L2_REWARD_POOL_UPDATE_BLOCKS = 10min / 250ms,
         // The default is 70s behind with an Arbitrum ~250ms block time, so that pulse nodes using
