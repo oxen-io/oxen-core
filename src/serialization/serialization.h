@@ -114,8 +114,8 @@
  *     public:
  *       template <class Archive>
  *       void serialize_object(Archive& ar) {
- *         field(ar, v1);
- *         field(ar, v2);
+ *         field(ar, "v1", v1);
+ *         field(ar, "v2", v2);
  *       }
  *     };
  *
@@ -368,5 +368,13 @@ void serialize(Archive& ar, T& v) {
     value(ar, v);
     done(ar);
 }
+
+class binary_archiver;
+class binary_unarchiver;
+
+// True if Archive is a binary archiver or unarchiver
+template <typename Archive>
+constexpr bool is_binary = std::is_base_of_v<binary_archiver, Archive> ||
+                           std::is_base_of_v<binary_unarchiver, Archive>;
 
 }  // namespace serialization
