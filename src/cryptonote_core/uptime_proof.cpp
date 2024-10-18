@@ -49,7 +49,10 @@ Proof::Proof(
     if (hardfork == feature::ETH_TRANSITION) {
         assert(keys.pub_bls);
         pop_bls = eth::sign(
-                nettype, keys.key_bls, tools::concat_guts<uint8_t>(keys.pub_bls, keys.pub));
+                nettype,
+                keys.key_bls,
+                tools::concat_guts<uint8_t>(keys.pub_bls, keys.pub),
+                &crypto::null<eth::address>);
     }
 
     serialized_proof = bt_encode_uptime_proof(hardfork);

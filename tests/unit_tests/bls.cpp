@@ -81,8 +81,8 @@ TEST(BLS, signatures) {
             "{}"_format(hash2), "dc85a6bbfd4658040ef305c9333cf0d5a82ede2854f112549f3925df6b2c0e71");
 
     constexpr auto mainnet = cryptonote::network_type::MAINNET;
-    auto sig1 = eth::sign(mainnet, sk, hash1);
-    EXPECT_TRUE(eth::verify(mainnet, sig1, pk, hash1));
+    auto sig1 = eth::sign(mainnet, sk, hash1, &crypto::null<eth::address>);
+    EXPECT_TRUE(eth::verify(mainnet, sig1, pk, hash1, &crypto::null<eth::address>));
 
     EXPECT_EQ(
             "{}"_format(sig1),
@@ -91,22 +91,49 @@ TEST(BLS, signatures) {
             "25c76fabbab649f9e786d727cc4c5123e1ec677087b920cc3bcd7e6701ed3953"
             "236410a224c9ba5eccf6189533838c9ef8e0b4354ae11556c705650b9d6a7cc6");
 
-    auto sig2 = eth::sign(mainnet, sk, hash2);
+    auto sig2 = eth::sign(mainnet, sk, hash2, &crypto::null<eth::address>);
     EXPECT_EQ(
             "{}"_format(sig2),
             "04da80bc677397dbd11c1a1a68ba0525e5e461c0eed3011af2445173c5331536"
             "2f72a0cb8043ac3f5345b218e0cb4d5e2a76da9450d18eeccc8b10a0e97abed7"
             "2bd7d00154ca33fa1491457dddfcd3874c2892a1e7bead5b4a9b8a588bb8edfe"
             "23b92cef33ef5fe950f166b4902ac98d6b96c7bc6a537c275bc9044c6b42ff3d");
-    EXPECT_TRUE(eth::verify(mainnet, sig2, pk, hash2));
-    EXPECT_FALSE(eth::verify(mainnet, sig1, pk, hash2));
-    EXPECT_FALSE(eth::verify(mainnet, sig2, pk, hash1));
-    EXPECT_FALSE(eth::verify(mainnet, sig1, get_pubkey(eth::generate_bls_key()), hash1));
+    EXPECT_TRUE(eth::verify(mainnet, sig2, pk, hash2, &crypto::null<eth::address>));
+    EXPECT_FALSE(eth::verify(mainnet, sig1, pk, hash2, &crypto::null<eth::address>));
+    EXPECT_FALSE(eth::verify(mainnet, sig2, pk, hash1, &crypto::null<eth::address>));
+    EXPECT_FALSE(eth::verify(
+            mainnet,
+            sig1,
+            get_pubkey(eth::generate_bls_key()),
+            hash1,
+            &crypto::null<eth::address>));
 
     auto sig1_broken = sig1;
     *(sig1_broken.data() + 127) = 0xc7;
     auto sig2_broken = sig2;
     *(sig2_broken.data() + 25) = 0x42;
-    EXPECT_FALSE(eth::verify(mainnet, sig1_broken, pk, hash1));
-    EXPECT_FALSE(eth::verify(mainnet, sig2_broken, pk, hash2));
+    EXPECT_FALSE(eth::verify(mainnet, sig1_broken, pk, hash1, &crypto::null<eth::address>));
+    EXPECT_FALSE(eth::verify(mainnet, sig2_broken, pk, hash2, &crypto::null<eth::address>));
+
+    // Test that a different contract results in different signature/verification:
+    auto contract_addr =
+            tools::make_from_hex_guts<eth::address>("0x3433798131A72d99C5779E2B4998B17039941F7b"sv);
+    auto sig2b = eth::sign(mainnet, sk, hash2, &contract_addr);
+    EXPECT_NE("{}"_format(sig2), "{}"_format(sig2b));
+    EXPECT_TRUE(eth::verify(mainnet, sig2b, pk, hash2, &contract_addr));
+    EXPECT_FALSE(eth::verify(mainnet, sig2, pk, hash2, &contract_addr));
+    EXPECT_EQ(
+            "{}"_format(sig2b),
+            "219efae61cb5c45e0d5a253a1438d03006f324971668579bd31494390b02982e"
+            "0341f283f79d1c2adfa74005a2948c0092a3ed4d683e6488880047c31b4811e5"
+            "1684a9fe7e85c7aaca017c770294aa08fa9303e659773f11b1369cd541c395b1"
+            "2a66ecf20e0372b8cff3a52f65442c96c5eb3fe066bdb50f1f1c82898d80df9e");
+
+    // Test that omitting the argument isn't the same as specifying a null address.
+    constexpr auto devnet = cryptonote::network_type::DEVNET;
+    auto sig3 = eth::sign(devnet, sk, hash2);
+    auto sig3b = eth::sign(devnet, sk, hash2, &crypto::null<eth::address>);
+    EXPECT_NE("{}"_format(sig3), "{}"_format(sig3b));
+    EXPECT_TRUE(eth::verify(devnet, sig3, pk, hash2));
+    EXPECT_FALSE(eth::verify(devnet, sig3b, pk, hash2));
 }

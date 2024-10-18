@@ -4419,7 +4419,12 @@ bool service_node_list::handle_uptime_proof(
         }
 
         auto pop = tools::concat_guts<uint8_t>(proof->pubkey_bls, proof->pubkey);
-        if (!eth::verify(blockchain.nettype(), proof->pop_bls, proof->pubkey_bls, pop)) {
+        if (!eth::verify(
+                    blockchain.nettype(),
+                    proof->pop_bls,
+                    proof->pubkey_bls,
+                    pop,
+                    &crypto::null<eth::address>)) {
             log::debug(
                     logcat,
                     "Rejecting uptime proof from {}: BLS proof of possession verification "

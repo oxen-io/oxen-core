@@ -360,11 +360,15 @@ namespace {
         return bn256::g2{t0.add(t1).add(t2).add(t3)};
     }
 
-    bn256::g2 signed_g2_base(std::span<const uint8_t> msg, cryptonote::network_type nettype) {
+    bn256::g2 signed_g2_base(
+            std::span<const uint8_t> msg,
+            cryptonote::network_type nettype,
+            const eth::address* contract_addr = nullptr) {
 
         // Map the message + tag to g2, then multiply by the cofactor to clear the cofactor
         //
-        return mul_by_cofactor(map_to_g2(msg, build_tag_hash(tag::HASH_TO_G2, nettype)));
+        return mul_by_cofactor(
+                map_to_g2(msg, build_tag_hash(tag::HASH_TO_G2, nettype, contract_addr)));
     }
 
     // bn256 takes scalars as u64x4 arrays, with the 4 array elements in little endian order and the
@@ -435,12 +439,15 @@ bls_public_key get_pubkey(const bls_secret_key& seckey) {
 /// the network type (e.g. cryptonote::network_type::MAINNET) as the network type is used in the
 /// signature tag so that testnet signatures aren't usable on mainnet and vice versa.
 bls_signature sign(
-        cryptonote::network_type nettype, const bls_secret_key& key, std::span<const uint8_t> msg) {
+        cryptonote::network_type nettype,
+        const bls_secret_key& key,
+        std::span<const uint8_t> msg,
+        const eth::address* contract_addr) {
 
     bls_signature sig;
 
     // Get the public hash-to-G2 point of the value:
-    signed_g2_base(msg, nettype)
+    signed_g2_base(msg, nettype, contract_addr)
             // and then multiply by the secret key scalar to get the signature G2 point
             .scalar_mult(load_u256(tools::span_guts(key)))
             // and write it out to our waiting bls_signature
@@ -457,7 +464,8 @@ bool verify(
         cryptonote::network_type nettype,
         const bls_signature& signature,
         const bls_public_key& pubkey,
-        std::span<const uint8_t> msg) {
+        std::span<const uint8_t> msg,
+        const eth::address* contract_addr) {
 
     std::array<bn256::g1, 2> g1;
     g1[0] = bn256::g1::curve_gen;
@@ -470,7 +478,7 @@ bool verify(
     }
 
     std::array<bn256::g2, 2> g2;
-    g2[1] = signed_g2_base(msg, nettype);
+    g2[1] = signed_g2_base(msg, nettype, contract_addr);
     {
         // Swap inner u256 values from the order the contract expects into the order bn256 expects:
         auto sig_swapped = swap_xy(tools::span_guts(signature));
@@ -535,15 +543,17 @@ bls_signature proof_of_possession(
     return sign(nettype, key, msg);
 }
 
-/// Constructs a keccak 32-byte hash of `baseTag` on network `nettype`.  This tag is used for domain
-/// separation of different signature types and networks, and typically is called automatically by
-/// the above functions.
-crypto::hash build_tag_hash(std::string_view base_tag, cryptonote::network_type nettype) {
+crypto::hash build_tag_hash(
+        std::string_view base_tag,
+        cryptonote::network_type nettype,
+        const eth::address* contract_addr) {
     const auto config = get_config(nettype);
     return crypto::keccak(
             base_tag,
             tools::encode_integer_be<32>(config.ETHEREUM_CHAIN_ID),
-            tools::make_from_hex_guts<eth::address>(config.ETHEREUM_REWARDS_CONTRACT));
+            contract_addr
+                    ? *contract_addr
+                    : tools::make_from_hex_guts<eth::address>(config.ETHEREUM_REWARDS_CONTRACT));
 }
 
 pubkey_aggregator::pubkey_aggregator() = default;

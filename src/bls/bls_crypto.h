@@ -22,8 +22,14 @@ bls_public_key get_pubkey(const bls_secret_key& seckey);
 /// Gets a signature (G2 point) from the given secret key signing a message.  The `nettype` gives
 /// the network type (e.g. cryptonote::network_type::MAINNET) as the network type is used in the
 /// signature tag so that testnet signatures aren't usable on mainnet and vice versa.
+/// The contract address is also used in the signature; omitting (or passing nullptr) uses the
+/// ServiceNodeRewards contract address, which is usually what you want (HF20 uptime proofs
+/// excepted).
 bls_signature sign(
-        cryptonote::network_type nettype, const bls_secret_key& key, std::span<const uint8_t> msg);
+        cryptonote::network_type nettype,
+        const bls_secret_key& key,
+        std::span<const uint8_t> msg,
+        const eth::address* contract_addr = nullptr);
 
 /// Obtains a proof-of-possession signature of an operator address, BLS pubkey, and service node
 /// pubkey.  This is used when submitting a new BLS key for a service node to the smart contract.
@@ -40,12 +46,19 @@ bool verify(
         cryptonote::network_type nettype,
         const bls_signature& signature,
         const bls_public_key& pubkey,
-        std::span<const uint8_t> msg);
+        std::span<const uint8_t> msg,
+        const eth::address* contract_addr = nullptr);
 
 /// Constructs a keccak 32-byte hash of `baseTag` on network `nettype`.  This tag is used for domain
 /// separation of different signature types and networks, and typically is called automatically by
-/// the above functions.
-crypto::hash build_tag_hash(std::string_view base_tag, cryptonote::network_type nettype);
+/// the above functions.  The pointer to the contract address can be used to override the contract
+/// address that gets used in the signature, if non-nullptr (this is used, in particular, by HF20
+/// uptime proofs to use a null eth address because HF20 nodes will be deployed before the contract
+/// address is known).
+crypto::hash build_tag_hash(
+        std::string_view base_tag,
+        cryptonote::network_type nettype,
+        const eth::address* contract_addr = nullptr);
 
 /// Help class that aggregates pubkeys.  Construct it, then call it repeatedly with all the pubkeys
 /// to be aggregated, then retrieve the aggregate.
