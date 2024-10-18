@@ -2008,7 +2008,7 @@ void main(void* quorumnet_state, cryptonote::core& core) {
         return;
     }
 
-    if (uint64_t height = blockchain.get_current_blockchain_height(true /*lock*/); height < *hf16) {
+    if (uint64_t height = blockchain.get_current_blockchain_height(); height < *hf16) {
         for (static bool once = true; once; once = !once)
             log::debug(
                     logcat,

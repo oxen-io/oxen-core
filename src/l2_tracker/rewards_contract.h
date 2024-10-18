@@ -31,7 +31,7 @@ struct ContractServiceNode {
     uint64_t addedTimestamp;
     uint64_t leaveRequestTimestamp;
     uint64_t deposit;
-    std::array<event::Contributor, oxen::MAX_CONTRIBUTORS_HF19> contributors;
+    std::array<event::ContributorV2, oxen::MAX_CONTRIBUTORS_HF19> contributors;
     size_t contributorsSize;
 };
 
@@ -54,6 +54,9 @@ class RewardsContract {
         std::vector<uint64_t> ids;
         std::vector<bls_public_key> bls_pubkeys;
     };
+
+    static std::vector<std::pair<uint64_t, bls_public_key>> parse_all_service_node_ids(
+            std::string_view call_result_hex);
 
     // Executes `allServiceNodeIDs` on the smart contract and retrieve all the BLS public keys and
     // the ID allocated for each key in the contract

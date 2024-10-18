@@ -2312,10 +2312,8 @@ struct GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES : PUBLIC, NO_ARGS {
 /// Outputs:
 ///
 /// - `list` -- The list of nodes that can be removed or liquidated
-struct BLS_EXIT_LIQUIDATION_LIST : PUBLIC {
+struct BLS_EXIT_LIQUIDATION_LIST : PUBLIC, NO_ARGS {
     static constexpr auto names() { return NAMES("bls_exit_liquidation_list"); }
-    struct request_parameters {
-    } request;
 };
 
 /// RPC: service_node/bls_rewards_request

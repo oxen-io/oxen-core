@@ -36,10 +36,5 @@ struct std::hash<eth::address> : crypto::raw_hasher<eth::address> {};
 template <>
 struct fmt::formatter<eth::address> : formattable::hex_span_formatter {
     fmt::format_context::iterator default_format(
-            std::span<const unsigned char> val, fmt::format_context& ctx) const override {
-        auto out = ctx.out();
-        *out++ = '0';
-        *out++ = 'x';
-        return oxenc::to_hex(val.begin(), val.end(), out);
-    }
+            std::span<const unsigned char> val, fmt::format_context& ctx) const override;
 };

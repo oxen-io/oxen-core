@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <stdexcept>
 
 #include "blockchain.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
@@ -397,13 +398,14 @@ static std::string log_registration_details(
             reg.eth_contributions.size());
 
     for (size_t index = 0; index < reg.eth_contributions.size(); index++) {
-        const eth_contribution& contrib = reg.eth_contributions[index];
+        const eth::event::ContributorV2& contrib = reg.eth_contributions[index];
         fmt::format_to(
                 std::back_inserter(buffer),
-                "  - {:02} [{}, {}]\n",
+                "  - {:02} [{}, {}, {}]\n",
                 index,
-                contrib.first,
-                contrib.second);
+                contrib.address,
+                contrib.beneficiary,
+                contrib.amount);
     }
 
     fmt::format_to(std::back_inserter(buffer), "- BLS Pubkey:      {}\n", reg.bls_pubkey);
@@ -412,22 +414,38 @@ static std::string log_registration_details(
     return result;
 }
 
-static registration_details eth_reg_details(
-        hf hf_version, const eth::event::NewServiceNode& registration) {
+static registration_details eth_reg_v2_details(
+        hf hf_version, const eth::event::NewServiceNodeV2& registration) {
     registration_details reg{};
     reg.service_node_pubkey = registration.sn_pubkey;
     reg.bls_pubkey = registration.bls_pubkey;
-
-    for (const auto& contributor : registration.contributors)
-        reg.eth_contributions.emplace_back(contributor.address, contributor.amount);
-
+    reg.eth_contributions = registration.contributors;
     reg.hf = static_cast<uint64_t>(hf_version);
     reg.uses_portions = false;
-
     reg.fee = registration.fee;
     reg.ed_signature = registration.ed_signature;
-
     return reg;
+}
+
+static eth::event::NewServiceNodeV2 convert_eth_event_new_service_node_to_v2(
+        const eth::event::NewServiceNode& value) {
+    auto result = eth::event::NewServiceNodeV2(value.chain_id, value.l2_height);
+    result.fee = value.fee;
+    result.sn_pubkey = value.sn_pubkey;
+    result.bls_pubkey = value.bls_pubkey;
+    result.contributors.reserve(value.contributors.size());
+    for (auto it : value.contributors)
+        result.contributors.emplace_back(
+                it.address /*address*/, it.address /*beneficiary*/, it.amount);
+    result.ed_signature = value.ed_signature;
+    return result;
+}
+
+static registration_details eth_reg_details(
+        hf hf_version, const eth::event::NewServiceNode& registration) {
+    eth::event::NewServiceNodeV2 v2 = convert_eth_event_new_service_node_to_v2(registration);
+    registration_details result = eth_reg_v2_details(hf_version, v2);
+    return result;
 }
 
 static std::optional<registration_details> eth_reg_tx_extract_fields(
@@ -436,6 +454,14 @@ static std::optional<registration_details> eth_reg_tx_extract_fields(
     if (!cryptonote::get_field_from_tx_extra(tx.extra, registration))
         return std::nullopt;
     return eth_reg_details(hf_version, registration);
+}
+
+static std::optional<registration_details> eth_reg_v2_tx_extract_fields(
+        hf hf_version, const cryptonote::transaction& tx) {
+    eth::event::NewServiceNodeV2 registration;
+    if (!cryptonote::get_field_from_tx_extra(tx.extra, registration))
+        return std::nullopt;
+    return eth_reg_v2_details(hf_version, registration);
 }
 
 uint64_t offset_testing_quorum_height(quorum_type type, uint64_t height) {
@@ -483,7 +509,7 @@ void validate_registration(
                 reg.eth_contributions.begin(),
                 reg.eth_contributions.end(),
                 std::back_inserter(extracted_amounts),
-                [](const std::pair<eth::address, uint64_t>& pair) { return pair.second; });
+                [](const eth::event::ContributorV2& item) { return item.amount; });
     } else {
         if (reg.reserved.empty())
             throw invalid_registration{"No operator contribution given"};
@@ -1446,13 +1472,13 @@ bool is_registration_tx(
 
 static std::pair<crypto::public_key, std::shared_ptr<service_node_info>>
 validate_ethereum_registration(
-        const eth::event::NewServiceNode& new_sn,
+        const eth::event::NewServiceNodeV2& new_sn,
         cryptonote::network_type nettype,
         hf hf_version,
         uint64_t block_height,
         uint32_t index,
         uint64_t staking_requirement) {
-    auto reg = eth_reg_details(hf_version, new_sn);
+    auto reg = eth_reg_v2_details(hf_version, new_sn);
 
     validate_registration(
             hf_version, nettype, staking_requirement, 0 /*block_timestamp not used in HF19+*/, reg);
@@ -1462,7 +1488,7 @@ validate_ethereum_registration(
     auto& info = *result.second;
     info.recommission_credit = get_config(nettype).BLOCKS_IN(DECOMMISSION_INITIAL_CREDIT);
     info.staking_requirement = staking_requirement;
-    info.operator_ethereum_address = reg.eth_contributions[0].first;
+    info.operator_ethereum_address = reg.eth_contributions[0].address;
     info.bls_public_key = reg.bls_pubkey;
     assert(!reg.uses_portions);
     info.portions_for_operator =
@@ -1476,19 +1502,20 @@ validate_ethereum_registration(
     info.last_ip_change_height = block_height;
 
     for (auto it = reg.eth_contributions.begin(); it != reg.eth_contributions.end(); ++it) {
-        auto& [addr, amount] = *it;
         for (auto it2 = std::next(it); it2 != reg.eth_contributions.end(); ++it2)
-            if (it2->first == addr)
+            if (it2->address == it->address)
                 throw oxen::traced<std::runtime_error>(
                         "Invalid registration: Duplicate reserved address in registration for "
                         "SN {}:\n{}"_format(
                                 new_sn.sn_pubkey, log_registration_details(nettype, reg)));
 
         auto& contributor = info.contributors.emplace_back();
-        contributor.reserved = amount;
-        contributor.amount = amount;
+        contributor.reserved = it->amount;
+        contributor.amount = it->amount;
 
-        contributor.ethereum_address = addr;
+        contributor.ethereum_address = it->address;
+        contributor.ethereum_beneficiary = it->beneficiary;
+
         info.total_reserved += contributor.reserved;
         info.total_contributed += contributor.reserved;
     }
@@ -1592,19 +1619,21 @@ static eth::event::StateChangeVariant get_event_from_tx(const cryptonote::transa
     using namespace eth::event;
     StateChangeVariant result;
     bool success = false;
-    if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
-        auto& new_sn = result.emplace<NewServiceNode>();
-        success = cryptonote::get_field_from_tx_extra(tx.extra, new_sn);
-    } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
-        auto& remreq = result.emplace<ServiceNodeExitRequest>();
-        success = cryptonote::get_field_from_tx_extra(tx.extra, remreq);
-    } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit) {
-        auto& exit = result.emplace<ServiceNodeExit>();
-        success = cryptonote::get_field_from_tx_extra(tx.extra, exit);
-    } else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated) {
-        auto& req = result.emplace<StakingRequirementUpdated>();
-        success = cryptonote::get_field_from_tx_extra(tx.extra, req);
-    }
+    if (tx.type == cryptonote::txtype::ethereum_new_service_node)
+        success = cryptonote::get_field_from_tx_extra(tx.extra, result.emplace<NewServiceNode>());
+    else if (tx.type == cryptonote::txtype::ethereum_new_service_node_v2)
+        success = cryptonote::get_field_from_tx_extra(tx.extra, result.emplace<NewServiceNodeV2>());
+    else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request)
+        success = cryptonote::get_field_from_tx_extra(
+                tx.extra, result.emplace<ServiceNodeExitRequest>());
+    else if (tx.type == cryptonote::txtype::ethereum_service_node_exit)
+        success = cryptonote::get_field_from_tx_extra(tx.extra, result.emplace<ServiceNodeExit>());
+    else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated)
+        success = cryptonote::get_field_from_tx_extra(
+                tx.extra, result.emplace<StakingRequirementUpdated>());
+    else if (tx.type == cryptonote::txtype::ethereum_purge_missing_service_node)
+        success = cryptonote::get_field_from_tx_extra(tx.extra, result.emplace<ServiceNodePurge>());
+
     if (!success)
         result.emplace<std::monostate>();
     return result;
@@ -1618,38 +1647,42 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
     auto& [pk, type, val] = result;
     if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
         type = "registration";
-        if (auto reg = eth_reg_tx_extract_fields(hf_version, tx)) {
+        if (auto reg = eth_reg_tx_extract_fields(hf_version, tx))
             pk = reg->service_node_pubkey;
-            if (reg->eth_contributions.size())
-                type += " (op: {})"_format(reg->eth_contributions.front().first);
-        }
+    } else if (tx.type == cryptonote::txtype::ethereum_new_service_node_v2) {
+        type = "registration v2";
+        if (auto reg = eth_reg_v2_tx_extract_fields(hf_version, tx))
+            pk = reg->service_node_pubkey;
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
         type = "unlock";
         if (eth::event::ServiceNodeExitRequest remreq;
-            cryptonote::get_field_from_tx_extra(tx.extra, remreq))
-            try {
-                pk = snl.public_key_lookup(remreq.bls_pubkey);
-                type += " (key: {})"_format(pk);
-            } catch (...) {
-            }
+            cryptonote::get_field_from_tx_extra(tx.extra, remreq) &&
+            (pk = snl.find_public_key(remreq.bls_pubkey)))
+            type += " (key: {})"_format(pk);
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit) {
         type = "exit";
-        if (eth::event::ServiceNodeExit exit; cryptonote::get_field_from_tx_extra(tx.extra, exit))
-            try {
-                pk = snl.public_key_lookup(exit.bls_pubkey);
-                eth::address op = {};
-                for (auto it : snl.recently_removed_nodes()) {
-                    if (it.service_node_pubkey == pk && it.info.contributors.size())
-                        op = it.info.contributors.front().ethereum_address;
+        if (eth::event::ServiceNodeExit exit; cryptonote::get_field_from_tx_extra(tx.extra, exit) &&
+                                              (pk = snl.find_public_key(exit.bls_pubkey))) {
+            eth::address op = {};
+            snl.for_each_recently_removed_node([&](const auto& node) {
+                if (node.service_node_pubkey == pk && node.info.contributors.size()) {
+                    op = node.info.contributors.front().ethereum_address;
+                    return true;
                 }
-                type += " (op: {}; key: {}; returned: {})"_format(op, pk, exit.returned_amount);
-            } catch (...) {
-            }
+                return false;
+            });
+            type += " (op: {}; key: {}; returned: {})"_format(op, pk, exit.returned_amount);
+        }
     } else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated) {
         type = "staking requirement";
         if (eth::event::StakingRequirementUpdated req;
             cryptonote::get_field_from_tx_extra(tx.extra, req))
             val = req.staking_requirement;
+    } else if (tx.type == cryptonote::txtype::ethereum_purge_missing_service_node) {
+        type = "sn purge";
+        if (eth::event::ServiceNodePurge purge;
+            cryptonote::get_field_from_tx_extra(tx.extra, purge))
+            type += " (bls: {})"_format(purge.bls_pubkey);
     }
     return result;
 }
@@ -1687,11 +1720,11 @@ void service_node_list::state_t::process_new_ethereum_tx(
     else
         log::info(
                 logcat,
-                "New service node {} tx ({}) from ethereum: {} @ height: {}"
+                "New service node {} tx ({}) from ethereum{} @ height: {}"
                 "; awaiting confirmations",
                 type,
                 cryptonote::get_transaction_hash(tx),
-                snpk,
+                snpk ? ": {}"_format(snpk) : "",
                 block_height);
 
     if (auto [it, ins] = unconfirmed_l2_txes.emplace(
@@ -1705,6 +1738,21 @@ void service_node_list::state_t::process_new_ethereum_tx(
 
 bool service_node_list::state_t::process_confirmed_event(
         const eth::event::NewServiceNode& new_sn,
+        cryptonote::network_type nettype,
+        cryptonote::hf hf_version,
+        uint64_t height,
+        uint32_t index,
+        const service_node_keys* my_keys) {
+    // NOTE: Convert to V2 and process it as a V2. Converting a V1 to V2 has no tangible
+    // side-effects other than setting the new 'beneficiary' field that results in the same
+    // behaviour as if V1 was processed but allows us to reuse V2 code to parse both payloads.
+    auto new_sn_v2 = convert_eth_event_new_service_node_to_v2(new_sn);
+    bool result = process_confirmed_event(new_sn_v2, nettype, hf_version, height, index, my_keys);
+    return result;
+}
+
+bool service_node_list::state_t::process_confirmed_event(
+        const eth::event::NewServiceNodeV2& new_sn,
         cryptonote::network_type nettype,
         cryptonote::hf hf_version,
         uint64_t height,
@@ -1767,25 +1815,38 @@ bool service_node_list::state_t::process_confirmed_event(
         cryptonote::network_type nettype,
         cryptonote::hf,
         uint64_t height,
-        uint32_t,
+        uint32_t index,
         const service_node_keys* my_keys) {
 
-    crypto::public_key snode_pk;
-    try {
-        snode_pk = sn_list->public_key_lookup(remreq.bls_pubkey);
-    } catch (...) {
-        // Error already logged by the above
+    crypto::public_key snode_pk = find_public_key(remreq.bls_pubkey);
+    if (!snode_pk) {
+        log::info(
+                logcat,
+                "Ignoring L2 exit request for unregistered BLS pubkey {} @ {}[{}]",
+                remreq.bls_pubkey,
+                height,
+                index);
         return false;
     }
+
     auto it = service_nodes_infos.find(snode_pk);
-    if (it == service_nodes_infos.end())
+    if (it == service_nodes_infos.end()) {
+        log::info(
+                logcat,
+                "Ignoring L2 exit request for recently removed BLS pubkey {} @ {}[{}]",
+                remreq.bls_pubkey,
+                height,
+                index);
         return false;
+    }
 
     const auto& node_info = *it->second;
     if (node_info.requested_unlock_height) {
         log::info(
                 logcat,
-                "Duplicate unlock L2 event: Node {} is already unlocking at height {}",
+                "Duplicate unlock L2 event @ {}[{}]: Node {} is already unlocking at height {}",
+                height,
+                index,
                 snode_pk,
                 node_info.requested_unlock_height);
         return false;
@@ -1797,16 +1858,18 @@ bool service_node_list::state_t::process_confirmed_event(
         log::info(
                 globallogcat,
                 fg(fmt::terminal_color::yellow),
-                "Service node exit initiated for {} (THIS NODE) @ height {}; exit height: {}",
+                "Service node exit initiated for {} (THIS NODE) @ {}[{}]; exit height: {}",
                 snode_pk,
                 height,
+                index,
                 unlock_height);
     else
         log::info(
                 logcat,
-                "Service node exit initiated for {} @ height {}; exit height: {}",
+                "Service node exit initiated for {} @ {}[{}]; exit height: {}",
                 snode_pk,
                 height,
+                index,
                 unlock_height);
 
     duplicate_info(it->second).requested_unlock_height = unlock_height;
@@ -1825,10 +1888,7 @@ bool service_node_list::state_t::process_confirmed_event(
     auto node = std::find_if(
             recently_removed_nodes.begin(),
             recently_removed_nodes.end(),
-            [&exit](const auto& item) {
-                bool result = item.info.bls_public_key == exit.bls_pubkey;
-                return result;
-            });
+            [&exit](const auto& item) { return item.info.bls_public_key == exit.bls_pubkey; });
 
     if (node == recently_removed_nodes.end()) {
         log::warning(
@@ -1952,6 +2012,10 @@ bool service_node_list::state_t::process_confirmed_event(
     // fully unlocked..
     sn_list->blockchain.sqlite_db().return_staked_amount_to_user(returned_stakes, block_delay);
 
+    // NOTE: Remove the x25519/bls lookup entries:
+    x25519_map.erase(snpk_to_xpk(node->service_node_pubkey));
+    bls_map.erase(exit.bls_pubkey);
+
     // NOTE: Remove the node from the staging area (successfully liquidated/exited)
     recently_removed_nodes.erase(node);
 
@@ -1990,6 +2054,64 @@ bool service_node_list::state_t::process_confirmed_event(
     }
 
     return false;  // This doesn't affect swarm composition
+}
+
+bool service_node_list::state_t::process_confirmed_event(
+        const eth::event::ServiceNodePurge& purge,
+        cryptonote::network_type,
+        cryptonote::hf,
+        uint64_t height,
+        uint32_t index,
+        const service_node_keys* my_keys) {
+
+    auto pk = find_public_key(purge.bls_pubkey);
+    if (!pk) {
+        log::info(
+                logcat,
+                "Ignoring L2 SN purge for unregistered BLS pubkey {} @ {}[{}]",
+                purge.bls_pubkey,
+                height,
+                index);
+        return false;
+    }
+
+    auto it = service_nodes_infos.find(pk);
+    if (it == service_nodes_infos.end()) {
+        log::info(
+                logcat,
+                "Ignoring L2 SN purge for recently removed BLS pubkey {} @ {}[{}]",
+                purge.bls_pubkey,
+                height,
+                index);
+        return false;
+    }
+
+    bool is_me = my_keys && my_keys->pub == pk;
+    if (is_me)
+        log::warning(
+                globallogcat,
+                fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                "Forced purge of service node (yours): {} (bls: {}): SN is missing from L2 reward "
+                "contract @ {}[{}], L2 height {}",
+                pk,
+                purge.bls_pubkey,
+                height,
+                index,
+                purge.l2_height);
+    else
+        log::info(
+                logcat,
+                "Forced purge of service node: {} (bls: {}): SN is missing from L2 reward contract "
+                "@ {}[{}], L2 height {}",
+                pk,
+                purge.bls_pubkey,
+                height,
+                index,
+                purge.l2_height);
+
+    erase_info(it, recently_removed_node::type_t::purged);
+
+    return true;  // True: removing a SN affects swarms
 }
 
 bool service_node_list::state_t::process_contribution_tx(
@@ -3234,16 +3356,16 @@ void service_node_list::state_t::update_from_block(
     }
 
     //
-    // If our x25519 map is empty then try populating it (which only does something if we're into
-    // the unified-pubkey-and-ed-pubkey hardfork).  In normal operation, this only happens once (for
-    // the first post-unified-keys hard fork state block).
+    // If our x25519/bls maps are empty then try populating it (which only does something if we're
+    // into the unified-pubkey-and-ed-pubkey hardfork).  In normal operation, this only happens once
+    // (for the first post-unified-keys hard fork state block).
     //
     // NOTE: We initialise the XPK map _first_ before processing transactions because if there's a
     // registration in the block, then that'll seed the XPK map and make the `empty` check fail
     // hence failing to migrate over all the keys.
     //
-    if (x25519_map.empty())
-        initialize_xpk_map();
+    if (x25519_map.empty() && bls_map.empty())
+        initialize_alt_pk_maps();
 
     //
     // Process TXs in the Block
@@ -3274,9 +3396,11 @@ void service_node_list::state_t::update_from_block(
                 process_key_image_unlock_tx(nettype, hf_version, height, tx);
                 break;
             case txtype::ethereum_new_service_node:
+            case txtype::ethereum_new_service_node_v2:
             case txtype::ethereum_service_node_exit:
             case txtype::ethereum_service_node_exit_request:
             case txtype::ethereum_staking_requirement_updated:
+            case txtype::ethereum_purge_missing_service_node:
                 log::debug(logcat, "Processing new (unconfirmed) eth tx");
                 process_new_ethereum_tx(block, tx, my_keys);
                 break;
@@ -4220,6 +4344,7 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
             storage_omq_port,
             ss_version,
             quorumnet_port,
+            blockchain.l2_tracker().get_latest_height(),
             lokinet_version,
             keys};
 }
@@ -4439,7 +4564,12 @@ bool service_node_list::handle_uptime_proof(
         }
 
         auto pop = tools::concat_guts<uint8_t>(proof->pubkey_bls, proof->pubkey);
-        if (!eth::verify(blockchain.nettype(), proof->pop_bls, proof->pubkey_bls, pop)) {
+        if (!eth::verify(
+                    blockchain.nettype(),
+                    proof->pop_bls,
+                    proof->pubkey_bls,
+                    pop,
+                    &crypto::null<eth::address>)) {
             log::debug(
                     logcat,
                     "Rejecting uptime proof from {}: BLS proof of possession verification "
@@ -4609,31 +4739,44 @@ void service_node_list::cleanup_proofs() {
     }
 }
 
-crypto::public_key service_node_list::get_pubkey_from_x25519(
+crypto::public_key service_node_list::find_public_key(
         const crypto::x25519_public_key& x25519) const {
     if (cryptonote::is_hard_fork_at_least(
                 blockchain.nettype(),
                 feature::SN_PK_IS_ED25519,
                 blockchain.get_current_blockchain_height())) {
         std::lock_guard lock{m_sn_mutex};
-        auto it = m_state.x25519_map.find(x25519);
-        if (it != m_state.x25519_map.end())
+        if (auto it = m_state.x25519_map.find(x25519); it != m_state.x25519_map.end())
             return it->second;
 
-        // NOTE: Try the recently removed list (linear scan but this list will
-        // always be relatively tiny).
-        for (const auto& it : m_state.recently_removed_nodes) {
-            crypto::x25519_public_key rederived_x25519 = snpk_to_xpk(it.service_node_pubkey);
-            if (rederived_x25519 == x25519)
-                return it.service_node_pubkey;
-        }
     } else {
+        // TODO: this can be dropped post-HF21
         std::shared_lock lock{m_x25519_map_mutex};
-        auto it = x25519_to_pub.find(x25519);
-        if (it != x25519_to_pub.end())
+        if (auto it = x25519_to_pub.find(x25519); it != x25519_to_pub.end())
             return it->second.first;
     }
     return crypto::null<crypto::public_key>;
+}
+
+crypto::public_key service_node_list::state_t::find_public_key(
+        const eth::bls_public_key& bls_pubkey) const {
+    if (auto it = bls_map.find(bls_pubkey); it != bls_map.end())
+        return it->second;
+    return crypto::null<crypto::public_key>;
+}
+
+crypto::public_key service_node_list::find_public_key(const eth::bls_public_key& bls_pubkey) const {
+    std::lock_guard lock{m_sn_mutex};
+    return m_state.find_public_key(bls_pubkey);
+}
+
+crypto::public_key service_node_list::find_public_key_registered(
+        const eth::bls_public_key& bls_pubkey) const {
+    std::lock_guard lock{m_sn_mutex};
+    auto pk = m_state.find_public_key(bls_pubkey);
+    if (pk && !m_state.service_nodes_infos.count(pk))
+        pk = crypto::null<crypto::public_key>;
+    return pk;
 }
 
 crypto::public_key service_node_list::get_random_pubkey() {
@@ -4665,7 +4808,7 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
         return "";
     auto x25519_pub = tools::make_from_guts<crypto::x25519_public_key>(xpk);
 
-    auto pubkey = get_pubkey_from_x25519(x25519_pub);
+    auto pubkey = find_public_key(x25519_pub);
     if (!pubkey) {
         log::debug(
                 logcat,
@@ -4696,23 +4839,6 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
     }
 
     return "tcp://" + epee::string_tools::get_ip_string_from_int32(ip) + ":" + std::to_string(port);
-}
-
-crypto::public_key service_node_list::public_key_lookup(
-        const eth::bls_public_key& bls_pubkey) const {
-    // FIXME: we should have a map for this so that we don't need a linear scan.
-    {
-        std::lock_guard lock{m_sn_mutex};
-        for (const auto& [snpk, info] : m_state.service_nodes_infos)
-            if (info->bls_public_key == bls_pubkey)
-                return snpk;
-
-        for (const auto& it : m_state.recently_removed_nodes)
-            if (it.info.bls_public_key == bls_pubkey)
-                return it.service_node_pubkey;
-    }
-
-    throw oxen::traced<std::runtime_error>("Could not find SN for BLS key: {}"_format(bls_pubkey));
 }
 
 void service_node_list::record_checkpoint_participation(
@@ -4920,65 +5046,84 @@ service_node_list::state_t::state_t(service_node_list& snl, state_serialized&& s
         service_nodes_infos.emplace(std::move(pubkey_info.pubkey), std::move(pubkey_info.info));
     }
 
-    initialize_xpk_map();
+    initialize_alt_pk_maps();
 
     quorums = quorum_for_serialization_to_quorum_manager(state.quorums);
 }
 
-void service_node_list::state_t::initialize_xpk_map() {
+void service_node_list::state_t::initialize_alt_pk_maps() {
     // Compute the x25519 -> pubkey mappings for this state for post-merged-pubkey hardforks.
     // (Before that the primary and Ed keys might differ, and we need the Ed key to get the correct
     // X key, which only happens once we get a proof).
     assert(x25519_map.empty());
-    if (sn_list && cryptonote::is_hard_fork_at_least(
-                           sn_list->blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
-        for (const auto& [snpk, _ignore] : service_nodes_infos)
-            x25519_map[snpk_to_xpk(snpk)] = snpk;
+    if (!sn_list ||
+        !cryptonote::is_hard_fork_at_least(sn_list->blockchain.nettype(), feature::ETH_BLS, height))
+        return;
+
+    for (const auto& [snpk, info] : service_nodes_infos) {
+        x25519_map.emplace(snpk_to_xpk(snpk), snpk);
+        bls_map.emplace(info->bls_public_key, snpk);
+    }
+
+    for (const auto& it : recently_removed_nodes) {
+        x25519_map.emplace(snpk_to_xpk(it.service_node_pubkey), it.service_node_pubkey);
+        bls_map.emplace(it.info.bls_public_key, it.service_node_pubkey);
+    }
 }
 
 void service_node_list::state_t::insert_info(
         const crypto::public_key& pubkey, std::shared_ptr<service_node_info>&& info_ptr) {
-    service_nodes_infos[pubkey] = std::move(info_ptr);
+    auto& info = service_nodes_infos[pubkey];
+    info = std::move(info_ptr);
 
     if (sn_list && cryptonote::is_hard_fork_at_least(
-                           sn_list->blockchain.nettype(), feature::SN_PK_IS_ED25519, height))
+                           sn_list->blockchain.nettype(), feature::SN_PK_IS_ED25519, height)) {
         x25519_map[snpk_to_xpk(pubkey)] = pubkey;
+        bls_map[info->bls_public_key] = pubkey;
+    }
 }
 
 service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
         const service_nodes_infos_t::iterator& it, recently_removed_node::type_t exit_type) {
     const auto& snpk = it->first;
 
-    // NOTE: Cleanup the x25519 map
     cryptonote::network_type nettype =
             sn_list ? sn_list->blockchain.nettype() : cryptonote::network_type::FAKECHAIN;
-    if (cryptonote::is_hard_fork_at_least(nettype, feature::SN_PK_IS_ED25519, height))
-        x25519_map.erase(snpk_to_xpk(snpk));
 
-    // NOTE: Add node to the recently removed list
     if (cryptonote::is_hard_fork_at_least(nettype, feature::ETH_BLS, height)) {
-        uint32_t public_ip = 0;
-        uint16_t qnet_port = 0;
-        if (sn_list) {
-            auto proof_it = sn_list->proofs.find(snpk);
-            if (proof_it != sn_list->proofs.end()) {
-                const std::unique_ptr<uptime_proof::Proof>& proof = proof_it->second.proof;
-                if (proof) {
-                    public_ip = proof->public_ip;
-                    qnet_port = proof->qnet_port;
+
+        if (exit_type == recently_removed_node::type_t::purged) {
+            // If purging then the node gets hard deleted so we remove its map entries now.  If we
+            // go into the two-step process, below, then it happens later, in step 2.
+            x25519_map.erase(snpk_to_xpk(snpk));
+            bls_map.erase(it->second->bls_public_key);
+        } else {
+            // This is step 1 of removal: we move the SN details from the registered SN list to
+            // recently removed nodes.  Step 2 happens later once the corresponding ServiceNodeExit
+            // comes in.
+
+            uint32_t public_ip = 0;
+            uint16_t qnet_port = 0;
+            if (sn_list) {
+                auto proof_it = sn_list->proofs.find(snpk);
+                if (proof_it != sn_list->proofs.end()) {
+                    const std::unique_ptr<uptime_proof::Proof>& proof = proof_it->second.proof;
+                    if (proof) {
+                        public_ip = proof->public_ip;
+                        qnet_port = proof->qnet_port;
+                    }
                 }
             }
-        }
 
-        const auto& netconf = get_config(nettype);
-        recently_removed_nodes.emplace_back(recently_removed_node{
-                .height = height,
-                .liquidation_height = height + netconf.ETH_EXIT_BUFFER,
-                .type = exit_type,
-                .public_ip = public_ip,
-                .qnet_port = qnet_port,
-                .service_node_pubkey = snpk,
-                .info = *it->second});
+            recently_removed_nodes.emplace_back(recently_removed_node{
+                    .height = height,
+                    .liquidation_height = height + get_config(nettype).ETH_EXIT_BUFFER,
+                    .type = exit_type,
+                    .public_ip = public_ip,
+                    .qnet_port = qnet_port,
+                    .service_node_pubkey = snpk,
+                    .info = *it->second});
+        }
     }
 
     return service_nodes_infos.erase(it);
@@ -5034,8 +5179,7 @@ bool service_node_list::load(const uint64_t current_height) {
     // are initialised with the new SN info data when nodes transition from the SNL into the
     // `recently_removed_nodes` buffer.
     if (blockchain.nettype() == cryptonote::network_type::STAGENET &&
-        data_in.version < data_for_serialization::version_t::
-                                  version_2_regen_recently_removed_nodes_w_sn_info) {
+        data_in.version < data_for_serialization::version_t::version_3_eth_beneficiary) {
         blockchain.sqlite_db().reset_database();
         return false;
     }

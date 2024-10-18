@@ -6,6 +6,10 @@
 
 namespace cryptonote {
 
+namespace config {
+    inline constexpr auto L2_BLOCK_TIME = 250ms;
+}
+
 struct network_config final {
     // The network type of this config.
     const network_type NETWORK_TYPE;
@@ -145,6 +149,16 @@ struct network_config final {
     // height for state change inclusions when building pulse blocks (so that we don't send things
     // that are too new that other nodes might not know about yet).
     const uint64_t L2_TRACKER_SAFE_BLOCKS;
+
+    // Fetch the list of all contract nodes to perform a sync check of contract/oxen chain node
+    // lists at every L2 height divisible by this number.
+    const uint64_t L2_NODE_LIST_PURGE_BLOCKS;
+
+    // The minimum age in oxen blocks since a node's oxen service node list registration height
+    // before we consider it for purging for not being in the contract.  This must be safely longer
+    // (in terms of expected block time) than the L2_NODE_LIST_PURGE_BLOCKS because the purge list
+    // can be up to that amount out of date.
+    const uint64_t L2_NODE_LIST_PURGE_MIN_OXEN_AGE;
 
     constexpr std::string_view governance_wallet_address(hf hard_fork_version) const {
         const auto wallet_switch =
