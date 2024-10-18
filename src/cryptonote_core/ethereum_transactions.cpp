@@ -20,6 +20,8 @@ bool validate_event_tx(
             return validate_event_tx<event::ServiceNodeExitRequest>(hf_version, tx, reason);
         case txtype::ethereum_staking_requirement_updated:
             return validate_event_tx<event::StakingRequirementUpdated>(hf_version, tx, reason);
+        case txtype::ethereum_purge_missing_service_node:
+            return validate_event_tx<event::ServiceNodePurge>(hf_version, tx, reason);
         default:
             if (reason)
                 *reason = "Invalid or unhandled event tx type {}"_format(tx_type);
@@ -50,6 +52,9 @@ event::StateChangeVariant extract_event(
         case cryptonote::txtype::ethereum_staking_requirement_updated:
             success = extract_event(
                     tx, result.emplace<event::StakingRequirementUpdated>(), fail_reason);
+            break;
+        case cryptonote::txtype::ethereum_purge_missing_service_node:
+            success = extract_event(tx, result.emplace<event::ServiceNodePurge>(), fail_reason);
             break;
         default: assert(!"Unhandled ethereum event tx type");
     }

@@ -54,7 +54,6 @@ void parse_request(START_MINING& start_mining, rpc_input in);
 void parse_request(STORAGE_SERVER_PING& storage_server_ping, rpc_input in);
 void parse_request(SUBMIT_TRANSACTION& tx, rpc_input in);
 void parse_request(BLS_REWARDS_REQUEST& cmd, rpc_input in);
-void parse_request(BLS_EXIT_LIQUIDATION_LIST& cmd, rpc_input in);
 void parse_request(BLS_EXIT_LIQUIDATION_REQUEST& cmd, rpc_input in);
 void parse_request(BLS_REGISTRATION_REQUEST& cmd, rpc_input in);
 }  // namespace cryptonote::rpc

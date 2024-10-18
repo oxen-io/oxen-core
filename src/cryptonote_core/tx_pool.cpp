@@ -447,7 +447,7 @@ bool tx_memory_pool::add_tx(
     cryptonote::txpool_tx_meta_t meta{};
 
     bool inputs_okay = check_tx_inputs(
-            [&tx]() -> cryptonote::transaction& { return tx; },
+            tx,
             id,
             max_used_block_height,
             max_used_block_id,
@@ -1570,7 +1570,7 @@ bool tx_memory_pool::have_tx_keyimg_as_spent(const crypto::key_image& key_im) co
 }
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::check_tx_inputs(
-        const std::function<cryptonote::transaction&()>& get_tx,
+        cryptonote::transaction& tx,
         const crypto::hash& txid,
         uint64_t& max_used_block_height,
         crypto::hash& max_used_block_id,
@@ -1591,7 +1591,7 @@ bool tx_memory_pool::check_tx_inputs(
     std::unordered_set<crypto::key_image> key_image_conflicts;
 
     bool ret = m_blockchain.check_tx_inputs(
-            get_tx(),
+            tx,
             tvc,
             max_used_block_id,
             max_used_block_height,
@@ -1689,24 +1689,34 @@ bool tx_memory_pool::is_transaction_ready_to_go(
         txpool_tx_meta_t& txd,
         const crypto::hash& txid,
         const std::string& txblob,
-        transaction& tx) const {
-    struct transction_parser {
-        transction_parser(const std::string& txblob, const crypto::hash& txid, transaction& tx) :
-                txblob(txblob), txid(txid), tx(tx), parsed(false) {}
-        cryptonote::transaction& operator()() {
-            if (!parsed) {
-                if (!parse_and_validate_tx_from_blob(txblob, tx))
-                    throw oxen::traced<std::runtime_error>("failed to parse transaction blob");
-                tx.set_hash(txid);
-                parsed = true;
-            }
-            return tx;
+        transaction& tx,
+        hf version,
+        uint64_t height,
+        std::optional<uint64_t> l2_max) const {
+
+    if (!parse_and_validate_tx_from_blob(txblob, tx))
+        throw oxen::traced<std::runtime_error>{"failed to parse transaction blob"};
+    tx.set_hash(txid);
+
+    if (txd.l2_height != 0) {
+        if (l2_max && txd.l2_height > *l2_max) {
+            log::debug(
+                    logcat,
+                    "  state change from L2 height {} is not in in admissable L2 heights <= {}",
+                    txd.l2_height,
+                    *l2_max);
+            return false;
         }
-        const std::string& txblob;
-        const crypto::hash& txid;
-        transaction& tx;
-        bool parsed;
-    } lazy_tx(txblob, txid, tx);
+        if (!l2_max) {
+            log::debug(
+                    logcat,
+                    "  state change from L2 height {} skipped; L2 transactions not requested "
+                    "for this block",
+                    txd.l2_height,
+                    *l2_max);
+            return false;
+        }
+    }
 
     // not the best implementation at this time, sorry :(
     // check is ring_signature already checked ?
@@ -1718,8 +1728,7 @@ bool tx_memory_pool::is_transaction_ready_to_go(
             return false;  // we already sure that this tx is broken for this height
 
         tx_verification_context tvc;
-        if (!check_tx_inputs(
-                    lazy_tx, txid, txd.max_used_block_height, txd.max_used_block_id, tvc)) {
+        if (!check_tx_inputs(tx, txid, txd.max_used_block_height, txd.max_used_block_id, tvc)) {
             txd.last_failed_height = m_blockchain.get_current_blockchain_height() - 1;
             txd.last_failed_id = m_blockchain.get_block_id_by_height(txd.last_failed_height);
             return false;
@@ -1734,19 +1743,37 @@ bool tx_memory_pool::is_transaction_ready_to_go(
             // check ring signature again, it is possible (with very small chance) that this
             // transaction become again valid
             tx_verification_context tvc;
-            if (!check_tx_inputs(
-                        lazy_tx, txid, txd.max_used_block_height, txd.max_used_block_id, tvc)) {
+            if (!check_tx_inputs(tx, txid, txd.max_used_block_height, txd.max_used_block_id, tvc)) {
                 txd.last_failed_height = m_blockchain.get_current_blockchain_height() - 1;
                 txd.last_failed_id = m_blockchain.get_block_id_by_height(txd.last_failed_height);
                 return false;
             }
         }
     }
-    // if we here, transaction seems valid, but, anyway, check for key_images collisions with
-    // blockchain, just to be sure
-    if (m_blockchain.have_tx_keyimges_as_spent(lazy_tx())) {
+
+    // check for key_images collisions with blockchain, just to be sure
+    if (m_blockchain.have_tx_keyimges_as_spent(tx)) {
         txd.double_spend_seen = true;
         return false;
+    }
+
+    // TODO oxen delete this after HF20 has occurred:
+    if (m_blockchain.service_node_list.is_premature_unlock(
+                m_blockchain.nettype(), version, height, tx))
+        return false;
+
+    // If this is an event then only include it if we have an active l2 tracker and double-check
+    // that it's an event we would actually vote for, so that we don't propose a block (as a pulse
+    // leader) that we would ourselves reject.  This is important for purge pseudo-events (which can
+    // go into the mempool but might be affected by subsequent SN changes that no longer warrant its
+    // inclusion), but could also matter in weird cases (and never hurts) for other events.
+    if (is_l2_event_tx(tx.type)) {
+        auto* l2_tracker = m_blockchain.maybe_l2_tracker();
+        if (!l2_tracker ||
+            !std::visit(
+                    [&l2_tracker](const auto& e) { return l2_tracker->get_vote_for(e); },
+                    eth::extract_event(tx)))
+            return false;
     }
 
     // transaction is ok.
@@ -1905,25 +1932,6 @@ bool tx_memory_pool::fill_block_template(
                 max_total_weight,
                 print_money(best_reward));
 
-        if (meta.l2_height != 0) {
-            if (l2_max && meta.l2_height > *l2_max) {
-                log::debug(
-                        logcat,
-                        "  state change from L2 height {} is not in in admissable L2 heights <= {}",
-                        meta.l2_height,
-                        *l2_max);
-                continue;
-            } else if (!l2_max) {
-                log::debug(
-                        logcat,
-                        "  state change from L2 height {} skipped; L2 transactions not requested "
-                        "for this block",
-                        meta.l2_height,
-                        *l2_max);
-                continue;
-            }
-        }
-
         // Can not exceed maximum block weight
         if (total_weight + meta.weight > max_total_weight) {
             log::debug(logcat, "  would exceed maximum block weight");
@@ -1977,13 +1985,7 @@ bool tx_memory_pool::fill_block_template(
         const cryptonote::txpool_tx_meta_t original_meta = meta;
         bool ready = false;
         try {
-            ready = is_transaction_ready_to_go(meta, txid, txblob, tx);
-            // TODO oxen delete this after HF20 has occurred
-            // after here
-            if (ready)
-                ready = !m_blockchain.service_node_list.is_premature_unlock(
-                        m_blockchain.nettype(), version, height, tx);
-            // before here
+            ready = is_transaction_ready_to_go(meta, txid, txblob, tx, version, height, l2_max);
         } catch (const std::exception& e) {
             log::error(logcat, "Failed to check transaction readiness: {}", e.what());
             // continue, not fatal

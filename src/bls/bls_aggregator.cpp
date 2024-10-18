@@ -146,17 +146,15 @@ namespace {
     // as a snapshot of the rewards contract's 'allServiceNodeIDs' issued
     // at the invocation of this call.
     void debug_redo_bls_aggregation_steps_locally(
-            const service_nodes::service_node_list& service_node_list,
-            L2Tracker& l2_tracker,
-            std::span<const bls_public_key> signature_signers) {
+            cryptonote::core& core, std::span<const bls_public_key> signature_signers) {
         const RewardsContract::ServiceNodeIDs contract_ids =
-                l2_tracker.get_all_service_node_ids(std::nullopt);
+                core.l2_tracker().get_all_service_node_ids(std::nullopt);
 
         // NOTE: Detect if the smart contract state has diverged.
         {
             // NOTE: Check if key is in Oxen but not the smart contract
             std::vector<service_nodes::service_node_pubkey_info> sn_list_info =
-                    service_node_list.get_service_node_list_state();
+                    core.service_node_list.get_service_node_list_state();
             size_t missing_count = 0;
             for (const auto& sn_info : sn_list_info) {
                 bool found = false;
@@ -235,11 +233,65 @@ namespace {
 
             // NOTE: Dump the key we re-derived (e.g. includes the non-signers)
             oxen::log::debug(
-                    logcat, "Re-derived BLS aggregate public key {}", cpp_agg_pubkey.get());
+                    logcat,
+                    "Re-derived (via subtraction) BLS aggregate public key {}",
+                    cpp_agg_pubkey.get());
         }
     }
 #endif
 
+    void log_aggregation_result(
+            std::string_view agg_type,
+            std::span<const bls_public_key> signers,
+            std::chrono::high_resolution_clock::time_point started,
+            const bls_signature& sig,
+            // Used only in a debug build:
+            [[maybe_unused]] cryptonote::core& core,
+            [[maybe_unused]] std::span<const uint8_t> msg) {
+#ifndef NDEBUG
+        eth::bls_public_key agg_pub;
+        {
+            eth::pubkey_aggregator aggregator;
+            for (const auto& blspk : signers)
+                aggregator.add(blspk);
+            agg_pub = aggregator.get();
+        }
+#endif
+        auto elapsed = std::chrono::duration_cast<std::chrono::duration<float>>(
+                               std::chrono::high_resolution_clock::now() - started)
+                               .count();
+        oxen::log::debug(
+                logcat,
+                "BLS aggregate pubkey for {} requests: {} ({} aggregations) with signature {} "
+                "in {:.2f}s",
+                agg_type,
+#if defined(NDEBUG)
+                "",
+#else
+                agg_pub,
+#endif
+                signers.size(),
+                sig,
+                elapsed);
+
+#ifndef NDEBUG
+
+        debug_redo_bls_aggregation_steps_locally(core, signers);
+
+        if (eth::verify(core.get_nettype(), sig, agg_pub, msg)) {
+            oxen::log::debug(logcat, "BLS final aggregate signature verification confirmed");
+        } else {
+            oxen::log::warning(
+                    logcat,
+                    "{} BLS final aggregate signature verifivation FAILED:"
+                    "\nagg bls pub: {}\nagg bls sig: {}\nmessage:     {}",
+                    agg_type,
+                    agg_pub,
+                    sig,
+                    oxenc::to_hex(msg.begin(), msg.end()));
+        }
+#endif
+    }
 }  // namespace
 
 std::string bls_exit_liquidation_response::to_string() const {
@@ -492,8 +544,6 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
             addr,
             height);
 
-    const auto& service_node_list = core.service_node_list;
-
     if (!maybe_amount)
         throw oxen::traced<std::invalid_argument>(fmt::format(
                 "Aggregating a rewards request for '{}' at height {} is invalid because "
@@ -506,7 +556,7 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
         throw oxen::traced<std::invalid_argument>(
                 "Aggregating a rewards request for the zero address for {} SENT at height {} is "
                 "invalid. Request rejected"_format(
-                        addr, amount, height, service_node_list.height()));
+                        addr, amount, height, core.service_node_list.height()));
     }
 
     if (amount == 0) {
@@ -638,35 +688,14 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
 
     result.signature = agg_sig.get();
 
-    // NOTE: Dump the aggregate pubkey that was generated
-    {
-#ifndef NDEBUG
-        eth::pubkey_aggregator agg_pub;
-        for (const auto& blspk : result.signers_bls_pubkeys)
-            agg_pub.add(blspk);
-#endif
-
-        using fseconds = std::chrono::duration<float>;
-
-        auto elapsed_ts = std::chrono::high_resolution_clock::now() - begin_ts;
-        oxen::log::debug(
-                logcat,
-                "BLS aggregate pubkey for reward requests: {} ({} aggregations) with signature {} "
-                "in {:.1f}s",
-#if defined(NDEBUG)
-                "",
-#else
-                agg_pub.get(),
-#endif
-                result.signers_bls_pubkeys.size(),
-                result.signature,
-                std::chrono::duration_cast<fseconds>(elapsed_ts).count());
-    }
-
-#ifndef NDEBUG
-    debug_redo_bls_aggregation_steps_locally(
-            service_node_list, core.l2_tracker(), result.signers_bls_pubkeys);
-#endif
+    // NOTE: Dump the aggregate pubkey and other info that was generated
+    log_aggregation_result(
+            "rewards",
+            result.signers_bls_pubkeys,
+            begin_ts,
+            result.signature,
+            core,
+            result.msg_to_sign);
 
     // NOTE: Store the response in to the cache if the number of non-signers is small enough to
     // constitute a valid signature.
@@ -721,16 +750,19 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
         const crypto::public_key& pubkey, bls_exit_type type) {
 
     // NOTE: Trace entry into function
-    oxen::log::trace(logcat, "Initiating {} request for SN {}", type, pubkey);
+    oxen::log::debug(logcat, "Initiating {} request for SN {}", type, pubkey);
+
+    auto begin_ts = std::chrono::high_resolution_clock::now();
 
     // NOTE: Lookup the BLS pubkey associated with the Ed25519 pubkey.
     std::optional<eth::bls_public_key> maybe_bls_pubkey{};
-    for (const auto& it : core.service_node_list.recently_removed_nodes()) {
-        if (it.service_node_pubkey == pubkey) {
-            maybe_bls_pubkey = it.info.bls_public_key;
-            break;
+    core.service_node_list.for_each_recently_removed_node([&](const auto& node) {
+        if (node.service_node_pubkey == pubkey) {
+            maybe_bls_pubkey = node.info.bls_public_key;
+            return true;
         }
-    }
+        return false;
+    });
 
     if (!maybe_bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
@@ -759,7 +791,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
             if (response.type == type && now_unix_ts >= cache_ts) {
                 std::chrono::seconds cache_age = now_unix_ts - cache_ts;
                 if (cache_age <= contract::REWARDS_EXIT_SIGNATURE_EXPIRY) {
-                    log::trace(
+                    log::debug(
                             logcat,
                             "Serving {} response from cache for SN {} (cached {})\n{}",
                             type,
@@ -859,7 +891,7 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
 
                     partially_parsed = false;
 
-                    oxen::log::trace(
+                    oxen::log::debug(
                             logcat,
                             "{} response accepted from {} (BLS {} XKEY {} {}:{})\nWe "
                             "requested: {}\nThe response had: {}",
@@ -887,10 +919,14 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
 
     result.signature = agg_sig.get();
 
-#ifndef NDEBUG
-    debug_redo_bls_aggregation_steps_locally(
-            core.service_node_list, core.l2_tracker(), result.signers_bls_pubkeys);
-#endif
+    // NOTE: Dump the aggregate pubkey and other info that was generated
+    log_aggregation_result(
+            type == bls_exit_type::normal ? "exit" : "liquidation",
+            result.signers_bls_pubkeys,
+            begin_ts,
+            result.signature,
+            core,
+            result.msg_to_sign);
 
     // NOTE: Store the response in to the cache if the number of non-signers is small enough to
     // constitute a valid signature.

@@ -1177,17 +1177,18 @@ bool core::is_node_liquidatable(const eth::bls_public_key& node_bls_pubkey) {
     // NOTE: Node exists in the smart contract but not the oxen service node
     // list, it's been deregistered from _OR_ it voluntarily exited the SNL.
     uint64_t height = blockchain.get_current_blockchain_height();
-    for (const service_nodes::service_node_list::recently_removed_node& it :
-         service_node_list.recently_removed_nodes()) {
-        assert(it.info.bls_public_key &&
+    bool result = false;
+    service_node_list.for_each_recently_removed_node([&](const auto& node) {
+        assert(node.info.bls_public_key &&
                "Invalid null key got inserted into the recently removed list");
-        if (it.info.bls_public_key == node_bls_pubkey) {
-            bool result = height >= it.liquidation_height;
-            return result;
+        if (node.info.bls_public_key == node_bls_pubkey) {
+            result = height >= node.liquidation_height;
+            return true;
         }
-    }
+        return false;
+    });
 
-    return false;
+    return result;
 }
 
 void core::start_oxenmq() {
@@ -2434,7 +2435,7 @@ void core::do_uptime_proof_call() {
             if ((uint64_t)std::time(nullptr) < next_proof_time)
                 return;
 
-            auto pubkey = service_node_list.get_pubkey_from_x25519(m_service_keys.pub_x25519);
+            auto pubkey = service_node_list.find_public_key(m_service_keys.pub_x25519);
             if (pubkey && pubkey != m_service_keys.pub &&
                 service_node_list.is_service_node(pubkey, false /*don't require active*/)) {
                 log::error(

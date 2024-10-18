@@ -4,6 +4,7 @@
 #include <common/guts.h>
 #include <common/lock.h>
 #include <crypto/crypto.h>
+#include <crypto/eth.h>
 #include <cryptonote_basic/cryptonote_format_utils.h>
 #include <cryptonote_core/cryptonote_core.h>
 #include <fmt/color.h>
@@ -11,21 +12,15 @@
 #include <oxenmq/oxenmq.h>
 
 #include <chrono>
-#include <concepts>
 #include <utility>
 #include <variant>
 
 #include "contracts.h"
+#include "events.h"
 
 namespace eth {
 
 static auto logcat = log::Cat("l2_tracker");
-
-// For any given l2 height, we calculate the reward using the last height (inclusive) that was
-// divisible by (netconfig).L2_REWARD_POOL_UPDATE_BLOCKS:
-static inline uint64_t reward_height(uint64_t l2_height, uint64_t reward_update_blocks) {
-    return l2_height - (l2_height % reward_update_blocks);
-}
 
 L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_frequency) :
         core{core_},
@@ -54,6 +49,12 @@ L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_f
             dedicated_thread);
 }
 
+// For any given l2 height, we calculate the reward using the last height (inclusive) that was
+// divisible by (netconfig).L2_REWARD_POOL_UPDATE_BLOCKS:
+static inline uint64_t reward_height(uint64_t l2_height, uint64_t reward_update_blocks) {
+    return l2_height - (l2_height % reward_update_blocks);
+}
+
 void L2Tracker::prune_old_states() {
     const auto expiry = latest_height - std::min(latest_height, HIST_SIZE);
     recent_regs.expire(expiry);
@@ -72,7 +73,7 @@ void L2Tracker::update_state() {
         return;
     update_in_progress = true;
 
-    log::trace(logcat, "L2 update state commencing");
+    log::debug(logcat, "L2 update commencing");
     if (provider.numClients() > 1 && std::chrono::steady_clock::now() >= next_provider_check) {
         log::debug(logcat, "update_state initiating all-providers sync check");
         provider.getAllHeightsAsync([this](std::vector<ethyl::HeightInfo> height_info) {
@@ -234,7 +235,7 @@ void L2Tracker::update_height() {
             // nothing else further in the update chain we can do, so just stop here.
             std::unique_lock lock{mutex};
             update_in_progress = false;
-            oxen::log::trace(logcat, "L2 update step finished");
+            log::debug(logcat, "L2 update finished (L2 height unchanged)");
         }
     });
 }
@@ -273,7 +274,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
     std::shared_lock lock{mutex};
     auto r_height = more->front();
     more->pop_front();
-    oxen::log::debug(logcat, "Starting query for reward height {}", r_height);
+    log::debug(logcat, "Starting query for reward height {}", r_height);
     provider.callReadFunctionJSONAsync(
             contract::pool_address(core.get_nettype()),
             "0x{:x}"_format(contract::call::Pool_rewardRate),
@@ -316,7 +317,7 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
                     }
                 }
 
-                oxen::log::debug(
+                log::debug(
                         logcat,
                         "Finished querying reward for height {}, there is more: {}",
                         r_height,
@@ -329,71 +330,6 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
             "0x{:x}"_format(r_height));
 }
 
-void L2Tracker::add_to_mempool(const event::StateChangeVariant& tx_variant) {
-    if (tx_variant.index() == 0)  // monostate, i.e. not a state change log
-        return;
-
-    using namespace cryptonote;
-
-    const auto hf_version = core.blockchain.get_network_version();
-    transaction tx;
-    tx.version = transaction_prefix::get_max_version_for_hf(hf_version);
-
-    std::visit(
-            [&tx]<typename T>(const T& arg) {
-                if constexpr (std::is_same_v<T, event::NewServiceNode>) {
-                    tx.type = txtype::ethereum_new_service_node;
-                    add_new_service_node_to_tx_extra(tx.extra, arg);
-                } else if constexpr (std::is_same_v<T, event::ServiceNodeExitRequest>) {
-                    tx.type = txtype::ethereum_service_node_exit_request;
-                    add_service_node_exit_request_to_tx_extra(tx.extra, arg);
-                } else if constexpr (std::is_same_v<T, event::ServiceNodeExit>) {
-                    tx.type = txtype::ethereum_service_node_exit;
-                    add_service_node_exit_to_tx_extra(tx.extra, arg);
-                } else if constexpr (std::is_same_v<T, event::StakingRequirementUpdated>) {
-                    tx.type = txtype::ethereum_staking_requirement_updated;
-                    add_staking_requirement_to_tx_extra(tx.extra, arg);
-                } else {
-                    static_assert(
-                            std::is_same_v<T, std::monostate>,
-                            "Unhandled state change variant type");
-                }
-            },
-            tx_variant);
-    const size_t tx_weight = get_transaction_weight(tx);
-    const crypto::hash tx_hash = get_transaction_hash(tx);
-    tx_verification_context tvc = {};
-
-    // Add transaction to memory pool
-    if (!core.mempool.add_tx(
-                tx,
-                tx_hash,
-                cryptonote::tx_to_blob(tx),
-                tx_weight,
-                tvc,
-                tx_pool_options::new_tx(/*do_not_relay=*/true),
-                hf_version,
-                nullptr)) {
-        if (tvc.m_verifivation_failed) {
-            if (tvc.m_duplicate_nonstandard)
-                log::debug(
-                        log::Cat("verify"), "Transaction was already in the mempool: {}", tx_hash);
-            else
-                log::error(
-                        log::Cat("verify"),
-                        "Transaction verification failed for {}: {}",
-                        tx_hash,
-                        cryptonote::print_tx_verification_context(tvc));
-        } else if (tvc.m_verifivation_impossible) {
-            log::error(
-                    log::Cat("verify"),
-                    "Transaction verification impossible for {}: {}",
-                    tx_hash,
-                    cryptonote::print_tx_verification_context(tvc));
-        }
-    }
-}
-
 void L2Tracker::update_logs() {
     std::shared_lock lock{mutex};
 
@@ -401,7 +337,7 @@ void L2Tracker::update_logs() {
     // about if the previous one is too old.
     uint64_t from = std::max(
             synced_height + 1, latest_height >= HIST_SIZE ? latest_height - HIST_SIZE + 1 : 0);
-    oxen::log::trace(
+    log::trace(
             logcat,
             "L2Tracker::{} synced_height={}, latest_height={}, HIST_SIZE={}, from={}",
             __func__,
@@ -411,14 +347,11 @@ void L2Tracker::update_logs() {
             from);
 
     if (latest_height < from) {
-        oxen::log::trace(logcat, "L2Tracker upgrading shared lock to exclusive");
-        auto ex_lock = tools::upgrade_lock(lock);
-        update_in_progress = false;
-        oxen::log::debug(logcat, "L2 update logs finished; nothing to update");
+        update_purge_list();
         return;
     }
 
-    uint64_t to = std::min(latest_height, from + GETLOGS_MAX_BLOCKS);
+    uint64_t to = std::min(latest_height, from + GETLOGS_MAX_BLOCKS - 1);
 
     log::debug(
             logcat,
@@ -453,7 +386,9 @@ void L2Tracker::update_logs() {
                     if (!logs) {
                         log::warning(logcat, "Failed to retrieve L2 logs for {}-{}", from, to);
                         update_in_progress = false;
-                        oxen::log::debug(logcat, "L2 update step finished");
+                        log::debug(logcat, "L2 update finished");
+                        // End without calling update_purge_list because we want to be sure we've
+                        // seen any pending events before we start considering purges.
                         return;
                     }
                     log::debug(
@@ -496,16 +431,247 @@ void L2Tracker::update_logs() {
 
                     synced_height = to;
 
-                    if (to >= latest_height) {
-                        update_in_progress = false;
-                        oxen::log::debug(logcat, "L2 update step finished");
-                    } else {
-                        keep_going = true;
-                    }
+                    keep_going = to < latest_height;
                 }
                 if (keep_going)
                     update_logs();
+                else
+                    // NB: there is a `return` statement above that will bypass this on fetch error,
+                    // but that is desirable: we want the purge list update to always follow a full
+                    // log update so that we don't add nodes to the purge list that are undergoing a
+                    // normal contract exit, and so we need any pending regular exits to be noticed
+                    // before we consider purging.
+                    update_purge_list();
             });
+}
+
+void L2Tracker::update_purge_list(bool curr_height_fallback) {
+    std::shared_lock lock{mutex};
+
+    auto purge_height = latest_height;
+    if (!curr_height_fallback)
+        purge_height -= latest_height % core.get_net_config().L2_NODE_LIST_PURGE_BLOCKS;
+
+    log::trace(
+            logcat,
+            "Current l2 height {} requires SN list computed @ height {}{}; last purge height is {}",
+            latest_height,
+            purge_height,
+            curr_height_fallback ? " (fallback)" : "",
+            latest_purge_check);
+
+    if (purge_height > latest_purge_check) {
+        provider.callReadFunctionJSONAsync(
+                contract::rewards_address(core.get_nettype()),
+                "0x{:x}"_format(contract::call::ServiceNodeRewards_allServiceNodeIDs),
+                [this, purge_height, curr_height_fallback](
+                        std::optional<nlohmann::json> maybe_result) mutable {
+                    auto locks = tools::unique_locks(mutex, core.blockchain, core.mempool);
+                    bool make_fallback_request = false;
+                    auto update_finisher = oxen::defer([&] {
+                        if (make_fallback_request) {
+                            std::apply([](auto&... lock) { (lock.unlock(), ...); }, locks);
+                            update_purge_list(true);
+                        } else {
+                            update_in_progress = false;
+                            log::debug(logcat, "L2 update finished");
+                        }
+                    });
+
+                    if (!maybe_result) {
+                        log::warning(
+                                logcat,
+                                "Failed to fetch contract node list for L2 height {}",
+                                purge_height);
+                        if (!curr_height_fallback)
+                            make_fallback_request = true;
+                        return;
+                    }
+                    if (!maybe_result->is_string()) {
+                        log::warning(
+                                logcat,
+                                "Failed to parse contract node list response for L2 height {}: "
+                                "expected a string, got: {}",
+                                purge_height,
+                                maybe_result->dump());
+                        if (!curr_height_fallback)
+                            make_fallback_request = true;
+                        return;
+                    }
+
+                    auto result_hex = maybe_result->get<std::string_view>();
+                    std::vector<std::pair<uint64_t, bls_public_key>> result;
+                    try {
+                        result = RewardsContract::parse_all_service_node_ids(result_hex);
+                    } catch (const std::exception& e) {
+                        log::warning(
+                                logcat,
+                                "Failed to parse service node id list from contract for L2 height "
+                                "{}: {}",
+                                purge_height,
+                                e.what());
+                    }
+
+                    if (!result.empty()) {
+                        in_contract.clear();
+                        for (const auto& [id, blspk] : result)
+                            in_contract.insert(blspk);
+
+                        latest_purge_check = purge_height;
+
+                        log::debug(
+                                logcat,
+                                "purge node list update completed for L2 height {} with {} "
+                                "contract nodes",
+                                purge_height,
+                                in_contract.size());
+
+                        // Only insert into the mempool if it looks like we're a fully synced SN on
+                        // HF21+.  If we *aren't* synced, we could end up putting nodes in because
+                        // they look like they shouldn't be in oxend, but that's just because we're
+                        // still syncing and haven't come across the transactions where they
+                        // actually left the SN list.  (It isn't catastrophic if we do, but it could
+                        // cause a missed pulse block or some denial votes to get rid of it).
+                        if (core.blockchain.get_network_version() < cryptonote::feature::ETH_BLS ||
+                            !core.service_node() || core.offline() ||
+                            core.get_target_blockchain_height() >
+                                    core.blockchain.get_current_blockchain_height()) {
+                            log::debug(
+                                    logcat,
+                                    "Synced HF21+ service node checks failed; not constructing "
+                                    "purge txes");
+                            return;
+                        }
+
+                        // If we are in the fallback attempt then don't put it in the mempool
+                        // because we only want to create mempool transactions at the configured
+                        // purge interval L2 heights, and doing an out-of-band update on some height
+                        // not on that interval could lead to duplicate purge transactions (which
+                        // aren't harmful, but are a bit messy).
+                        if (curr_height_fallback) {
+                            log::debug(
+                                    logcat,
+                                    "Synced contract node list at fallback L2 height {}; "
+                                    "not constructing purge txes",
+                                    purge_height);
+                            return;
+                        }
+
+                        // We only add nodes in the mempool here, on a fresh fetch of data.  It's
+                        // possible that conditions change that make it purgeable before our next
+                        // fetch, but if so that's okay: it'll get to live slightly longer to next
+                        // update but we'll catch it then.
+                        //
+                        // Note that, unlike events, we will still confirm a purge (as a pulse
+                        // validator) even if we don't have it in our mempool as long as the
+                        // purgeable conditions are met when we vote on it.
+                        std::vector<std::pair<crypto::public_key, bls_public_key>> to_purge;
+                        core.service_node_list.for_each_service_node(
+                                [this, &to_purge](
+                                        const crypto::public_key& pubkey,
+                                        const service_nodes::service_node_info& info) {
+                                    if (is_node_purgeable(info.bls_public_key))
+                                        to_purge.emplace_back(pubkey, info.bls_public_key);
+                                });
+
+                        if (!to_purge.empty()) {
+                            event::ServiceNodePurge purge{chain_id, purge_height};
+                            for (auto& [pk, bls] : to_purge) {
+                                log::warning(
+                                        logcat,
+                                        "service node {} (bls: {}) is not in the L2 rewards "
+                                        "contract; generating a purge tx",
+                                        pk,
+                                        bls);
+                                purge.bls_pubkey = bls;
+                                add_to_mempool(purge);
+                            }
+                        }
+                    } else {
+                        if (!curr_height_fallback) {
+                            // We failed to get the target height, so lets retry using the current
+                            // height (perhaps the target is too old for the Arb node to have
+                            // available).  As per above, we won't initiate purges for such data,
+                            // but we'll still be able to confirm/deny them.
+                            log::info(
+                                    logcat,
+                                    "service node list for purge checks @ {} failed; retrying "
+                                    "at current height {}",
+                                    purge_height,
+                                    latest_height);
+                            make_fallback_request = true;
+                        } else {
+                            // We got an error *twice*, which indicates some error with our L2
+                            // provider.  We clear the node list, rather than keeping an old, stale
+                            // one that might lead us to incorrectly purge new nodes based on
+                            // data that is too old.
+                            in_contract.clear();
+                            log::warning(
+                                    logcat,
+                                    "Unexpected service node list retrieval result for SN purge "
+                                    "checks failed (twice): {}",
+                                    maybe_result->dump());
+                        }
+                    }
+                },
+
+                "0x{:x}"_format(purge_height));
+    } else {
+        update_in_progress = false;
+        log::debug(logcat, "L2 update step finished");
+    }
+}
+
+void L2Tracker::add_to_mempool(const event::StateChangeVariant& tx_variant) {
+    if (tx_variant.index() == 0)  // monostate, i.e. not a state change log
+        return;
+
+    using namespace cryptonote;
+
+    const auto hf_version = core.blockchain.get_network_version();
+    transaction tx;
+    tx.version = transaction_prefix::get_max_version_for_hf(hf_version);
+
+    std::visit(
+            [&tx]<typename T>(const T& arg) {
+                if constexpr (!std::is_same_v<T, std::monostate>) {
+                    tx.type = arg.txtype;
+                    add_l2_event_to_tx_extra(tx.extra, arg);
+                }
+            },
+            tx_variant);
+    const size_t tx_weight = get_transaction_weight(tx);
+    const crypto::hash tx_hash = get_transaction_hash(tx);
+    tx_verification_context tvc = {};
+
+    // Add transaction to memory pool
+    if (!core.mempool.add_tx(
+                tx,
+                tx_hash,
+                cryptonote::tx_to_blob(tx),
+                tx_weight,
+                tvc,
+                tx_pool_options::new_tx(/*do_not_relay=*/true),
+                hf_version,
+                nullptr)) {
+        if (tvc.m_verifivation_failed) {
+            if (tvc.m_duplicate_nonstandard)
+                log::debug(
+                        log::Cat("verify"), "Transaction was already in the mempool: {}", tx_hash);
+            else
+                log::error(
+                        log::Cat("verify"),
+                        "Transaction verification failed for {}: {}",
+                        tx_hash,
+                        cryptonote::print_tx_verification_context(tvc));
+        } else if (tvc.m_verifivation_impossible) {
+            log::error(
+                    log::Cat("verify"),
+                    "Transaction verification impossible for {}: {}",
+                    tx_hash,
+                    cryptonote::print_tx_verification_context(tvc));
+        }
+    }
 }
 
 bool L2Tracker::check_chain_id() const {
@@ -579,16 +745,52 @@ RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(
 }
 
 bool L2Tracker::get_vote_for(const event::NewServiceNode& reg) const {
+    std::shared_lock lock{mutex};
     return recent_regs.contains(reg);
 }
 bool L2Tracker::get_vote_for(const event::ServiceNodeExit& exit) const {
+    std::shared_lock lock{mutex};
     return recent_exits.contains(exit);
 }
 bool L2Tracker::get_vote_for(const event::ServiceNodeExitRequest& unlock) const {
+    std::shared_lock lock{mutex};
     return recent_unlocks.contains(unlock);
 }
 bool L2Tracker::get_vote_for(const event::StakingRequirementUpdated& req_change) const {
+    std::shared_lock lock{mutex};
     return recent_req_changes.contains(req_change);
+}
+bool L2Tracker::get_vote_for(const event::ServiceNodePurge& purge) const {
+    // This works a little differently from votes for real L2 events, above: unlike real events,
+    // there isn't an L2 authority that we are confirming, but rather this is an oxen-generated
+    // event that we either agree or disagree with.
+    auto locks = tools::shared_locks(mutex, core.blockchain);
+    return is_node_purgeable(purge.bls_pubkey);
+}
+bool L2Tracker::is_node_purgeable(const bls_public_key& bls_pubkey) const {
+    if (in_contract.empty())
+        return false;  // we've somehow failed to get any node list
+
+    if (in_contract.count(bls_pubkey))
+        return false;  // something changed, and the node is in the contract now
+
+    auto pk = core.service_node_list.find_public_key(bls_pubkey);
+    if (!pk)
+        return false;  // Doesn't exist on the oxen side anymore
+
+    std::optional<uint64_t> reg_height;
+    core.service_node_list.if_service_node(
+            pk, [&](const auto& info) { reg_height = info.registration_height; });
+    if (!reg_height)
+        return false;  // Not a registered service node
+
+    if (*reg_height + core.get_net_config().L2_NODE_LIST_PURGE_MIN_OXEN_AGE >=
+        core.blockchain.get_current_blockchain_height())
+        return false;  // Too young: our current contract node list can be a bit outdated and
+                       // we don't want to catch brand new registrations that aren't in our
+                       // potentially outdated list.
+
+    return true;
 }
 
 }  // namespace eth

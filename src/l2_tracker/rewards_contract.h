@@ -55,6 +55,9 @@ class RewardsContract {
         std::vector<bls_public_key> bls_pubkeys;
     };
 
+    static std::vector<std::pair<uint64_t, bls_public_key>> parse_all_service_node_ids(
+            std::string_view call_result_hex);
+
     // Executes `allServiceNodeIDs` on the smart contract and retrieve all the BLS public keys and
     // the ID allocated for each key in the contract
     ServiceNodeIDs all_service_node_ids(std::optional<uint64_t> block_number = std::nullopt);

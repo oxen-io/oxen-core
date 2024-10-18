@@ -360,11 +360,9 @@ class Blockchain {
     /**
      * @brief get the current height of the blockchain
      *
-     * @param lock lock the blockchain before querying the lock
-     *
      * @return the height
      */
-    uint64_t get_current_blockchain_height(bool lock = false) const;
+    uint64_t get_current_blockchain_height() const;
 
     /**
      * @brief get the height and hash of the most recent block on the blockchain
@@ -1152,6 +1150,11 @@ class Blockchain {
     /// NOTE: unchecked access; should only be called in service node more where this is guaranteed
     /// to be set.
     eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
+
+    /// Returns a pointer to the L2 tracker; this will be nullptr if no L2 tracker is configured (an
+    /// L2 tracker is required for service nodes, and optional for nodes not running in service node
+    /// mode).
+    eth::L2Tracker* maybe_l2_tracker() { return m_l2_tracker; }
 
     /**
      * @brief flush the invalid blocks set

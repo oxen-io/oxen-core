@@ -156,19 +156,11 @@ Blockchain::~Blockchain() {
 //------------------------------------------------------------------
 bool Blockchain::have_tx(const crypto::hash& id) const {
     log::trace(logcat, "Blockchain::{}", __func__);
-    // WARNING: this function does not take m_blockchain_lock, and thus should only call read only
-    // m_db functions which do not depend on one another (ie, no getheight + gethash(height-1), as
-    // well as not accessing class members, even read only (ie, m_invalid_blocks). The caller must
-    // lock if it is otherwise needed.
     return m_db->tx_exists(id);
 }
 //------------------------------------------------------------------
 bool Blockchain::have_tx_keyimg_as_spent(const crypto::key_image& key_im) const {
     log::trace(logcat, "Blockchain::{}", __func__);
-    // WARNING: this function does not take m_blockchain_lock, and thus should only call read only
-    // m_db functions which do not depend on one another (ie, no getheight + gethash(height-1), as
-    // well as not accessing class members, even read only (ie, m_invalid_blocks). The caller must
-    // lock if it is otherwise needed.
     return m_db->has_key_image(key_im);
 }
 //------------------------------------------------------------------
@@ -316,15 +308,8 @@ bool Blockchain::scan_outputkeys_for_indexes(
     return true;
 }
 //------------------------------------------------------------------
-uint64_t Blockchain::get_current_blockchain_height(bool lock) const {
+uint64_t Blockchain::get_current_blockchain_height() const {
     log::trace(logcat, "Blockchain::{}", __func__);
-    // WARNING: this function does not take m_blockchain_lock, and thus should only call read only
-    // m_db functions which do not depend on one another (ie, no getheight + gethash(height-1), as
-    // well as not accessing class members, even read only (ie, m_invalid_blocks). The caller must
-    // lock if it is otherwise needed or set lock to true.
-    std::unique_lock lock_{*this, std::defer_lock};
-    if (lock)
-        lock_.lock();
     return m_db->height();
 }
 //------------------------------------------------------------------
@@ -942,10 +927,6 @@ void Blockchain::get_short_chain_history(std::list<crypto::hash>& ids) const {
 //------------------------------------------------------------------
 crypto::hash Blockchain::get_block_id_by_height(uint64_t height) const {
     log::trace(logcat, "Blockchain::{}", __func__);
-    // WARNING: this function does not take m_blockchain_lock, and thus should only call read only
-    // m_db functions which do not depend on one another (ie, no getheight + gethash(height-1), as
-    // well as not accessing class members, even read only (ie, m_invalid_blocks). The caller must
-    // lock if it is otherwise needed.
     try {
         return m_db->get_block_hash_from_height(height);
     } catch (const BLOCK_DNE& e) {
@@ -3026,10 +3007,6 @@ bool Blockchain::find_blockchain_supplement(
 //------------------------------------------------------------------
 uint64_t Blockchain::block_difficulty(uint64_t i) const {
     log::trace(logcat, "Blockchain::{}", __func__);
-    // WARNING: this function does not take m_blockchain_lock, and thus should only call read only
-    // m_db functions which do not depend on one another (ie, no getheight + gethash(height-1), as
-    // well as not accessing class members, even read only (ie, m_invalid_blocks). The caller must
-    // lock if it is otherwise needed.
     try {
         return m_db->get_block_difficulty(i);
     } catch (const BLOCK_DNE& e) {
@@ -3372,7 +3349,8 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
                         static_assert(
                                 std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
                                 std::is_same_v<Event, eth::event::ServiceNodeExit> ||
-                                std::is_same_v<Event, eth::event::StakingRequirementUpdated>);
+                                std::is_same_v<Event, eth::event::StakingRequirementUpdated> ||
+                                std::is_same_v<Event, eth::event::ServiceNodePurge>);
                     }
                 });
 
@@ -3415,18 +3393,17 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
             std::optional<uint64_t> unlock_or_dereg_height = {};
             uint32_t ip = 0;
             uint16_t port = 0;
-            for (const service_nodes::service_node_list::recently_removed_node&
-                         recently_removed_it : service_node_list.recently_removed_nodes()) {
-                if (it != recently_removed_it.info.bls_public_key)
-                    continue;
+            service_node_list.for_each_recently_removed_node([&](const auto& node) {
+                if (it != node.info.bls_public_key)
+                    return false;
                 protocol_dereg =
-                        recently_removed_it.type ==
+                        node.type ==
                         service_nodes::service_node_list::recently_removed_node::type_t::deregister;
-                unlock_or_dereg_height = recently_removed_it.height;
-                ip = recently_removed_it.public_ip;
-                port = recently_removed_it.qnet_port;
-                break;
-            }
+                unlock_or_dereg_height = node.height;
+                ip = node.public_ip;
+                port = node.qnet_port;
+                return true;
+            });
 
             // NOTE: Generate a reason string
             std::string removable_reason;
@@ -3474,10 +3451,6 @@ bool Blockchain::have_block(const crypto::hash& id) const {
 //------------------------------------------------------------------
 size_t Blockchain::get_total_transactions() const {
     log::trace(logcat, "Blockchain::{}", __func__);
-    // WARNING: this function does not take m_blockchain_lock, and thus should only call read only
-    // m_db functions which do not depend on one another (ie, no getheight + gethash(height-1), as
-    // well as not accessing class members, even read only (ie, m_invalid_blocks). The caller must
-    // lock if it is otherwise needed.
 
     return m_db->get_tx_count();
 }
