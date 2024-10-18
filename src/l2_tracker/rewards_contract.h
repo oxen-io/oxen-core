@@ -31,7 +31,7 @@ struct ContractServiceNode {
     uint64_t addedTimestamp;
     uint64_t leaveRequestTimestamp;
     uint64_t deposit;
-    std::array<event::Contributor, oxen::MAX_CONTRIBUTORS_HF19> contributors;
+    std::array<event::ContributorV2, oxen::MAX_CONTRIBUTORS_HF19> contributors;
     size_t contributorsSize;
 };
 

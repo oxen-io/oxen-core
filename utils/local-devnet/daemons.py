@@ -290,8 +290,8 @@ class Daemon(RPCDaemon):
     def get_exit_liquidation_request(self, ed25519_pubkey, liquidate=False):
         return self.json_rpc("bls_exit_liquidation_request", {"pubkey": ed25519_pubkey, "liquidate": liquidate}, timeout=1000).json()
 
-    def get_accrued_rewards(self, ed25519_keys) -> list[AccruedRewards]:
-        json                         = self.json_rpc("get_accrued_rewards", {"addresses": ed25519_keys}).json()
+    def get_accrued_rewards(self, addresses) -> list[AccruedRewards]:
+        json                         = self.json_rpc("get_accrued_rewards", {"addresses": addresses}).json()
         balance_array                = json['result']['balances']
         result: list[AccruedRewards] = []
         for address, balance in balance_array.items():

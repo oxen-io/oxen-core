@@ -554,15 +554,15 @@ void pubkey_aggregator::add(const bls_public_key& pubkey, bool _negate) {
     if (auto ec = g1.unmarshal(tools::span_guts(pubkey)); ec != std::error_code{})
         throw oxen::traced<std::invalid_argument>{"Invalid BLS public key: " + ec.message()};
     if (_negate)
-        g1.neg();
+        g1 = g1.neg();
 
     if (!aggregate_)
         aggregate_ = std::make_unique<bn256::g1>(std::move(g1));
     else
-        aggregate_->add(g1);
+        *aggregate_ = aggregate_->add(g1);
 }
 void pubkey_aggregator::subtract(const bls_public_key& pubkey) {
-    return add(pubkey, true);
+    add(pubkey, true);
 }
 
 bls_public_key pubkey_aggregator::get() const {
@@ -583,11 +583,11 @@ void signature_aggregator::add(const bls_signature& signature, bool _negate) {
     if (auto ec = g2.unmarshal(sig_swapped); ec != std::error_code{})
         throw oxen::traced<std::invalid_argument>{"Invalid BLS signature: " + ec.message()};
     if (_negate)
-        g2.neg();
+        g2 = g2.neg();
     if (!aggregate_)
         aggregate_ = std::make_unique<bn256::g2>(std::move(g2));
     else
-        aggregate_->add(g2);
+        *aggregate_ = aggregate_->add(g2);
 }
 void signature_aggregator::subtract(const bls_signature& signature) {
     return add(signature, true);
