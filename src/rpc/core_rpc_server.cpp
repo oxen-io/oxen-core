@@ -768,7 +768,7 @@ namespace {
             auto contributors = json::array();
             for (auto& contributor : x.contributors) {
                 auto& c = contributors.emplace_back();
-                json_binary_proxy{c["address"], format} = contributor.address;
+                c["address"] = "{}"_format(contributor.address);
                 c["amount"] = contributor.amount;
             }
             set("contributors", contributors);
@@ -2578,7 +2578,7 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
                 rpc.request.address, static_cast<uint64_t>(rpc.request.height));
         set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
         rpc.response["status"] = STATUS_OK;
-        rpc.response_hex["address"] = response.addr;
+        rpc.response["address"] = "{}"_format(response.addr);
         rpc.response["amount"] = response.amount;
         rpc.response["height"] = response.height;
     } catch (const std::exception& e) {
@@ -2668,7 +2668,7 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_REQUEST& rpc, rpc_context) {
 void core_rpc_server::invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context) {
     const auto response = m_core.bls_registration(rpc.request.address);
     rpc.response["status"] = STATUS_OK;
-    rpc.response_hex["address"] = response.addr;
+    rpc.response["address"] = "{}"_format(response.addr);
     rpc.response_hex["bls_pubkey"] = response.bls_pubkey;
     rpc.response_hex["proof_of_possession"] = response.proof_of_possession;
     rpc.response_hex["service_node_pubkey"] = response.sn_pubkey;
@@ -2798,7 +2798,7 @@ void core_rpc_server::fill_sn_response_entry(
 
     if (requested(reqed, "operator_address")) {
         if (info.operator_ethereum_address)
-            binary["operator_address"] = info.operator_ethereum_address;
+            entry["operator_address"] = "{}"_format(info.operator_ethereum_address);
         else
             entry["operator_address"] = cryptonote::get_account_address_as_str(
                     m_core.get_nettype(), false /*subaddress*/, info.operator_address);
@@ -2983,7 +2983,7 @@ void core_rpc_server::fill_sn_response_entry(
         for (const auto& contributor : info.contributors) {
             auto& c = contributors.emplace_back(json{{"amount", contributor.amount}});
             if (contributor.ethereum_address)
-                json_binary_proxy{c["address"], binary_format} = contributor.ethereum_address;
+                c["address"] = "{}"_format(contributor.ethereum_address);
             else
                 c["address"] = cryptonote::get_account_address_as_str(
                         m_core.get_nettype(), false /*subaddress*/, contributor.address);
@@ -3108,10 +3108,8 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
                     res["fee"] = e.fee * 0.01;
                     res["contributors"] = json::array();
                     auto& contr = res["contributors"];
-                    auto contr_hex = res_hex["contributors"];
                     for (const auto& [addr, amt] : e.contributors) {
-                        contr.push_back(json{{"amount", amt}});
-                        contr_hex.back()["address"] = addr;
+                        contr.push_back(json{{"amount", amt}, {"address", "{}"_format(addr)}});
                     }
                 } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
                     sns.response["unlocks"].push_back(std::move(entry));
