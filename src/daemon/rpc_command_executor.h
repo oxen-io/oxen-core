@@ -248,10 +248,7 @@ class rpc_command_executor final {
 
     bool prepare_registration(bool force_registration = false);
 
-    bool prepare_eth_registration(
-            std::string_view operator_address,
-            std::string_view contract_address,
-            bool print = false);
+    bool prepare_eth_registration(std::string_view operator_address, bool print = false);
 
     bool print_sn(const std::vector<std::string>& args, bool self = false);
 
