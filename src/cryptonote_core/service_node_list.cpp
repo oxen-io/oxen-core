@@ -3227,6 +3227,26 @@ void service_node_list::state_t::update_from_block(
     ++height;
     block_hash = cryptonote::get_block_hash(block);
 
+    // Remove incomplete oxen registrations at hf20, as oxen contributions are no
+    // longer allowed at this point.  Contributions to these nodes will be unlocked.
+    auto hf20_height = hard_fork_begins(nettype, hf::hf20_eth_transition);
+    if (hf20_height && height == *hf20_height) {
+        auto info_iter = service_nodes_infos.begin();
+        while (info_iter != service_nodes_infos.end()) {
+            if (!info_iter->second->is_fully_funded()) {
+                log::info(
+                        globallogcat,
+                        fg(fmt::terminal_color::yellow) | fmt::emphasis::bold,
+                        "Removing partially funded node: {} at hf20",
+                        info_iter->first);
+                // NOTE: will not be added to recently_removed_nodes, but this argument is required
+                info_iter = erase_info(info_iter, recently_removed_node::type_t::deregister);
+                continue;
+            }
+            info_iter++;
+        }
+    }
+
     //
     // Remove expired blacklisted key images
     //
