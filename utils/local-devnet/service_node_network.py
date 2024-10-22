@@ -370,11 +370,11 @@ class SNNetwork:
             seed_node_list.append(node)
 
         self.sn_contract.seedPublicKeyList(seed_node_list)
-        vprint("Seeded BLS public keys into contract. Contract has {} SNs".format(self.sn_contract.numberServiceNodes()))
+        vprint("Seeded BLS public keys into contract. Contract has {} SNs".format(self.sn_contract.totalNodes()))
 
         # Start the rewards contract after seeding the BLS public keys
         self.sn_contract.start()
-        prev_contract_sn_count = self.sn_contract.numberServiceNodes()
+        prev_contract_sn_count = self.sn_contract.totalNodes()
 
         # Register a SN via the Ethereum smart contract, half as multi-contrib,
         # half as solo nodes.
@@ -488,7 +488,7 @@ class SNNetwork:
                 break
 
         # Verify registration was successful
-        contract_sn_count          = self.sn_contract.numberServiceNodes()
+        contract_sn_count          = self.sn_contract.totalNodes()
         expected_contract_sn_count = prev_contract_sn_count + len(self.eth_sns)
         vprint("Added node via Eth. Contract has {} SNs\n{}".format(contract_sn_count, contract_sn_dump))
         assert contract_sn_count == expected_contract_sn_count, f"Expected {contract_sn_count} service nodes, received {expected_contract_sn_count}"
@@ -665,13 +665,13 @@ class SNNetwork:
 
                 # Invoke contract
                 assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == staker_eth_addr
-                contract_sn_count_before = self.sn_contract.numberServiceNodes()
+                contract_sn_count_before = self.sn_contract.totalNodes()
                 self.sn_contract.removeBLSPublicKeyWithSignature(key=key,
                                                                  timestamp=exit_request["result"]["timestamp"],
                                                                  sig=sig,
                                                                  ids=exit_request["result"]["non_signer_indices"])
 
-                contract_sn_count_after = self.sn_contract.numberServiceNodes()
+                contract_sn_count_after = self.sn_contract.totalNodes()
                 vprint("Node count in contract after exit with signature, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
 
                 zero_account = "0x0000000000000000000000000000000000000000";
@@ -714,12 +714,12 @@ class SNNetwork:
                 )
 
                 assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == staker_eth_addr
-                contract_sn_count_before = self.sn_contract.numberServiceNodes()
+                contract_sn_count_before = self.sn_contract.totalNodes()
                 self.sn_contract.liquidateBLSPublicKeyWithSignature(key=key,
                                                                     timestamp=exit_request["result"]["timestamp"],
                                                                     sig=sig,
                                                                     ids=exit_request["result"]["non_signer_indices"])
-                contract_sn_count_after = self.sn_contract.numberServiceNodes()
+                contract_sn_count_after = self.sn_contract.totalNodes()
                 vprint("Node count in contract after liquidation, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
 
                 zero_account = "0x0000000000000000000000000000000000000000";
@@ -778,9 +778,9 @@ class SNNetwork:
                 sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
 
                 assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == staker_eth_addr
-                contract_sn_count_before = self.sn_contract.numberServiceNodes()
+                contract_sn_count_before = self.sn_contract.totalNodes()
                 self.sn_contract.removeBLSPublicKeyAfterWaitTime(sn_to_remove_contract_id)
-                contract_sn_count_after = self.sn_contract.numberServiceNodes()
+                contract_sn_count_after = self.sn_contract.totalNodes()
                 vprint("Node count in contract after wait time exit, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
 
                 zero_account = "0x0000000000000000000000000000000000000000";

@@ -173,7 +173,7 @@ class SNContribFactoryContract:
     deployedContracts: list[EthHexAddress] = []
 
     def __init__(self, contract_json: dict): # NOTE: Load the (deterministically hardhat deployed) contract
-        self.contract = web3_client.eth.contract(address=web3_client.to_checksum_address(EthHexStr('0x0165878A594ca255338adfa4d48449f69242Eb8F')), abi=contract_json["abi"])
+        self.contract = web3_client.eth.contract(address=web3_client.to_checksum_address(EthHexStr('0xa513E6E4b8f2a923D98304ec87F64353C4D5C853')), abi=contract_json["abi"])
 
     def deploy(self,
                account:         EthLocalAccount,
@@ -408,8 +408,8 @@ class SNRewardsContract:
         tx_hash   = submit_unsigned_tx("Seed public key list", self.hardhat_account0, unsent_tx)
         return tx_hash
 
-    def numberServiceNodes(self):
-        return self.contract.functions.serviceNodesLength().call()
+    def totalNodes(self):
+        return self.contract.functions.totalNodes().call()
 
     def recipients(self, address: EthChecksumAddress):
         return self.contract.functions.recipients(address).call()
