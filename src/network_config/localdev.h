@@ -78,7 +78,7 @@ inline constexpr network_config config{
         // Foundry's Anvil) which is also running locally hence we have a very
         // low threshold for the number of blocks to trail the tip by.
         .L2_TRACKER_SAFE_BLOCKS = 1,
-        .L2_NODE_LIST_PURGE_BLOCKS = 6,
-        .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = 5,
+        .L2_NODE_LIST_PURGE_BLOCKS = 20,
+        .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = 19,
 };
 }  // namespace cryptonote::config::localdev

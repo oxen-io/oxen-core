@@ -2173,6 +2173,7 @@ bool core::handle_uptime_proof(
     try {
         proof = std::make_unique<uptime_proof::Proof>(
                 get_network_version(m_nettype, blockchain.get_current_blockchain_height()),
+                m_nettype,
                 req.proof);
 
         // devnet/stagenet don't have storage server or lokinet, so these should be 0; everywhere

@@ -9,7 +9,7 @@ namespace event {
             "(address,uint256)[])"sv);
 
     const crypto::hash NewServiceNodeV2 = crypto::keccak(
-            "NewServiceNodeV2(uint8,uint64,address,(uint256,uint256),(uint256,uint256,uint256,"
+            "NewServiceNodeV2(uint64,address,(uint256,uint256),(uint256,uint256,uint256,"
             "uint16),((address,address),uint256)[])"sv);
 
     // TODO: Rename the contract event from Removal to Exit as this follows the terminology we've

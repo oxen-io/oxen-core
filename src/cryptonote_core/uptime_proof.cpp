@@ -48,7 +48,7 @@ Proof::Proof(
         storage_omq_port{sn_storage_omq_port},
         qnet_port{quorumnet_port} {
 
-    if (hardfork == feature::ETH_TRANSITION) {
+    if (hardfork == feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV) {
         assert(keys.pub_bls);
         pop_bls = eth::sign(
                 nettype,
@@ -57,7 +57,7 @@ Proof::Proof(
                 &crypto::null<eth::address>);
     }
 
-    serialized_proof = bt_encode_uptime_proof(hardfork);
+    serialized_proof = bt_encode_uptime_proof(hardfork, nettype);
     proof_hash = crypto::keccak(serialized_proof);
 
     if (hardfork < feature::SN_PK_IS_ED25519)
@@ -74,7 +74,7 @@ Proof::Proof(
 }
 
 // Deserialize from a btencoded string into our Proof instance
-Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
+Proof::Proof(cryptonote::hf hardfork, cryptonote::network_type nettype, std::string_view serialized_proof) {
 
     proof_hash = crypto::keccak(serialized_proof);
 
@@ -83,7 +83,7 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
     auto proof = oxenc::bt_dict_consumer{serialized_proof};
     // NB: we must consume in sorted key order
 
-    if (hardfork == feature::ETH_TRANSITION) {
+    if (hardfork == feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV) {
         pubkey_bls =
                 tools::make_from_guts<eth::bls_public_key>(proof.require<std::string_view>("bk"sv));
         pop_bls =
@@ -138,7 +138,7 @@ Proof::Proof(cryptonote::hf hardfork, std::string_view serialized_proof) {
     }
 }
 
-std::string Proof::bt_encode_uptime_proof(hf hardfork) const {
+std::string Proof::bt_encode_uptime_proof(hf hardfork, cryptonote::network_type nettype) const {
     // NOTE: After Oxen 11, new fields can be added to the encoded proof without breaking older
     // clients (i.e. no need to hardfork-gate additions): the signature applies over the entire
     // encoded proof, not just known fields in that proof.  (This is not the case for Oxen 11
@@ -148,7 +148,7 @@ std::string Proof::bt_encode_uptime_proof(hf hardfork) const {
     // NB: must append in ascii order
     oxenc::bt_dict_producer proof;
 
-    if (hardfork == cryptonote::feature::ETH_TRANSITION) {
+    if (hardfork == cryptonote::feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV) {
         proof.append("bk", tools::view_guts(pubkey_bls));
         proof.append("bp", tools::view_guts(pop_bls));
     }

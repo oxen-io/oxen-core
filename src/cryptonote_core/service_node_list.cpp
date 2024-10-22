@@ -3237,8 +3237,10 @@ void service_node_list::state_t::update_from_block(
                 log::info(
                         globallogcat,
                         fg(fmt::terminal_color::yellow) | fmt::emphasis::bold,
-                        "Removing partially funded node: {} at hf20",
-                        info_iter->first);
+                        "Removing partially funded node: {} at hf20 (staked: {}, required: {})",
+                        info_iter->first,
+                        info_iter->second->total_contributed,
+                        info_iter->second->staking_requirement);
                 // NOTE: will not be added to recently_removed_nodes, but this argument is required
                 info_iter = erase_info(info_iter, recently_removed_node::type_t::deregister);
                 continue;
@@ -4629,10 +4631,8 @@ bool service_node_list::handle_uptime_proof(
         // the node has the secret key. This code will only permit an 'early' proof if the
         // receipient has not received the BLS key for the sender yet.
         bool reject_proof = true;
-        if (netconf.NETWORK_TYPE == cryptonote::network_type::LOCALDEV &&
-            vers.first == feature::ETH_TRANSITION)
-            reject_proof = it->second->bls_public_key != crypto::null<eth::bls_public_key> &&
-                           proof->qnet_port != 0;
+        if (netconf.NETWORK_TYPE == cryptonote::network_type::LOCALDEV)
+            reject_proof = it->second->bls_public_key && proof->qnet_port;
 
         if (reject_proof) {
             log::debug(
@@ -4664,7 +4664,7 @@ bool service_node_list::handle_uptime_proof(
                     proof->pubkey);
     }
 
-    if (vers.first == feature::ETH_TRANSITION) {
+    if (vers.first == feature::ETH_TRANSITION || netconf.NETWORK_TYPE == cryptonote::network_type::LOCALDEV) {
         // NOTE: In the transition, we're collecting the BLS pubkeys, we will persist these into the
         // service node info to bootstrap the keys. Post transition, Arbitrum is activated and BLS
         // keys of a node will be available in the registration and updated when a node is

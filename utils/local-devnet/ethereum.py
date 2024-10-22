@@ -297,6 +297,19 @@ class SNRewardsContract:
         'that the wallets are _not_ being reused.')
         assert self.foundation_pool_address.lower() == '0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0'.lower(), (f'{address_check_err_msg}\n\nAddress was: {self.foundation_pool_address}')
 
+        # Increase the signature expiry to 10hrs. We don't have a mechanism to fake time
+        # advancement in the Oxen layer. In the liquidate test, a signature produced by the network
+        # is only valid for 10 minutes by default this increases it to 10 hrs.
+        #
+        # The reason for this is that when we try and execute a liquidation, we need to advance the
+        # blockchain by at least 2 hours because there's a minimum time before a liquidation can be
+        # executed on a node.
+        #
+        # If we advance the blockchain by 2 hours, then a signature with a 10 min expiry, will
+        # expire immediately blocking us from testing the functionality. So we set it to 10 hours,
+        # arbitrarily high to ensure we never hit that scenario.
+        self.setSignatureExpiry(60*60*10)
+
     def start(self):
         unsent_tx = self.contract.functions.start().build_transaction(basic_build_tx_params(self.hardhat_account0))
         submit_unsigned_tx("Start SN rewards", self.hardhat_account0, unsent_tx);
@@ -432,6 +445,11 @@ class SNRewardsContract:
     def claimRewards(self):
         unsent_tx = self.contract.functions.claimRewards().build_transaction(basic_build_tx_params(account=self.hardhat_account0, gas=2000000))
         tx_hash   = submit_unsigned_tx("Claim rewards", self.hardhat_account0, unsent_tx)
+        return tx_hash
+
+    def setSignatureExpiry(self, duration_s: int):
+        unsent_tx = self.contract.functions.setSignatureExpiry(duration_s).build_transaction(basic_build_tx_params(account=self.hardhat_account0))
+        tx_hash   = submit_unsigned_tx("Signature expiry", self.hardhat_account0, unsent_tx)
         return tx_hash
 
     def getServiceNodeID(self, bls_public_key):

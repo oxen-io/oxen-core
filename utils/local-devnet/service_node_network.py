@@ -319,10 +319,13 @@ class SNNetwork:
         # Register the last SN through Bobs wallet (Has not done any others)
         # and also get 9 other wallets to contribute the rest of the node with a 10% operator fee
         self.bob.register_sn_for_contributions(sn=self.sns[-1], cut=10, amount=coins(28), staking_requirement=self.sns[0].get_staking_requirement())
-        self.sync_nodes(self.mine(21), timeout=120) # Height 170
+        self.sync_nodes(self.mine(20), timeout=120) # Height 169
         self.print_wallet_balances()
         for wallet in self.extrawallets:
             wallet.contribute_to_sn(self.sns[-1], coins(8))
+
+        # Submit block to enter the BLS transition ##################################################
+        self.sync_nodes(self.mine(1), timeout=120) # Height 170
 
         vprint("Sending fake lokinet/ss pings")
         for sn in self.sns:
@@ -375,6 +378,9 @@ class SNNetwork:
         # Start the rewards contract after seeding the BLS public keys
         self.sn_contract.start()
         prev_contract_sn_count = self.sn_contract.totalNodes()
+
+        # Submit block to enter the BLS hardfork ###################################################
+        self.sync_nodes(self.mine(1), timeout=120) # Height 171
 
         # Register a SN via the Ethereum smart contract, half as multi-contrib,
         # half as solo nodes.
@@ -493,9 +499,6 @@ class SNNetwork:
         vprint("Added node via Eth. Contract has {} SNs\n{}".format(contract_sn_count, contract_sn_dump))
         assert contract_sn_count == expected_contract_sn_count, f"Expected {contract_sn_count} service nodes, received {expected_contract_sn_count}"
 
-        # Submit block to enter the BLS hardfork ###################################################
-        self.sync_nodes(self.mine(1), timeout=120) # Height 171
-
         # Sleep and let pulse quorum do work
         vprint(f"Sleeping now, awaiting pulse quorum to generate blocks (& rewards for node), blockchain height is {self.eth_sns[0].height()}");
 
@@ -519,7 +522,7 @@ class SNNetwork:
         rewards_response = self.eth_sns[0].get_bls_rewards(beneficiary_eth_addr_no_0x)
         vprint(rewards_response)
         rewardsAccount = rewards_response["result"]["address"]
-        assert rewardsAccount.lower() == beneficiary_eth_addr_no_0x.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match beneficiary's account '{beneficiary_eth_addr_no_0x.lower()}'. We have the private key for the account and use it to claim rewards from the contract"
+        assert rewardsAccount.lower() == beneficiary_eth_addr.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match beneficiary's account '{beneficiary_eth_addr_no_0x.lower()}'. We have the private key for the account and use it to claim rewards from the contract"
 
         vprint("Beneficiary rewards before updating has ['available', 'claimed'] respectively: ",
                self.sn_contract.recipients(beneficiary_eth_addr),
@@ -712,6 +715,11 @@ class SNNetwork:
                     sigs2=int(sig_str[128:192], 16),
                     sigs3=int(sig_str[192:256], 16),
                 )
+
+                # Advance time by 3 hrs, this is neede in the liquidation test later
+                # where there's a min wait time before liquidation can occur
+                ethereum.evm_increaseTime(60 * 60 * 3)
+                ethereum.evm_mine();
 
                 assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == staker_eth_addr
                 contract_sn_count_before = self.sn_contract.totalNodes()

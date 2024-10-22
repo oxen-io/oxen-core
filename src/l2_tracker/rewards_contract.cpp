@@ -405,8 +405,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
         }
 
         case EventType::NewServiceNodeV2: {
-            // event NewServiceNode(
-            //      uint8 version,
+            // event NewServiceNodeV2(
             //      uint64 indexed serviceNodeID,
             //      address initiator,
             //      { // struct ServiceNodeParams
@@ -431,10 +430,9 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
 
             auto& item = result.emplace<event::NewServiceNodeV2>(chain_id, l2_height);
 
-            u256 version256, fee256, c_offset, c_len;
+            u256 fee256, c_offset, c_len;
             std::string_view contrib_hex;
             std::tie(
-                    version256,
                     item.bls_pubkey,
                     item.sn_pubkey,
                     item.ed_signature,
@@ -443,7 +441,6 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
                     c_len,
                     contrib_hex) =
                     tools::split_hex_into<
-                            u256,
                             skip<12 + 20>,
                             bls_public_key,
                             crypto::public_key,
@@ -452,21 +449,6 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
                             u256,
                             u256,
                             std::string_view>(log.data);
-
-            // NOTE: Decode version
-            int8_t const top_version =
-                    static_cast<int8_t>(tools::enum_top<event::NewServiceNodeV2::Version>);
-            int8_t const version = tools::decode_integer_be(version256);
-
-            if (version <= static_cast<int8_t>(event::NewServiceNodeV2::Version::invalid) ||
-                version > top_version) {
-                throw oxen::traced<std::invalid_argument>{
-                        "Invalid NewServiceNodeV2 data: version {} out of bounds, must be between [0, {}]"_format(
-                                version,
-                                static_cast<int8_t>(
-                                        tools::enum_count<event::NewServiceNodeV2::Version>))};
-            }
-            item.version = static_cast<event::NewServiceNodeV2::Version>(version);
 
             // NOTE: Decode fee and that it is within acceptable range
             item.fee = tools::decode_integer_be(fee256);
@@ -502,9 +484,8 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             // NOTE: Verify that the offset to the dynamic part of the
             // contributors array is correct.
             const uint64_t c_offset_value = tools::decode_integer_be(c_offset);
-            const uint64_t expected_c_offset_value = 32 /*version*/ + 32 /*ID*/ + 32 /*recipient*/ +
-                                                     64 /*BLS Key*/ + 32 /*SN Key*/ +
-                                                     64 /*SN Sig*/ + 32 /*Fee*/;
+            const uint64_t expected_c_offset_value = 32 /*ID*/ + 32 /*recipient*/ + 64 /*BLS Key*/ +
+                                                     32 /*SN Key*/ + 64 /*SN Sig*/ + 32 /*Fee*/;
             if (c_offset_value != expected_c_offset_value) {
                 throw oxen::traced<std::invalid_argument>(
                         "Invalid NewServiceNodeV2 data: The offset to the contributor payload ({} "
