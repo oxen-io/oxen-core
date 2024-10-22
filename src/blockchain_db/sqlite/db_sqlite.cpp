@@ -272,17 +272,32 @@ void BlockchainSQLite::upgrade_schema() {
             INSERT INTO batched_payments_accrued_recent SELECT *, NEW.height FROM batched_payments_accrued;
             DELETE FROM batched_payments_accrued_recent WHERE height < NEW.height - {};
         END;
-
-        DROP TRIGGER IF EXISTS clear_recent;
-        CREATE TRIGGER clear_recent AFTER UPDATE ON batch_db_info
-        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
-            DELETE FROM batched_payments_accrued_recent WHERE height >= NEW.height;
-        END;
         )",
                 netconf.STORE_RECENT_REWARDS + 1
                 // +1 here because the trigger above copies the *current* height after it's updated,
                 // but we want to store current plus STORE_RECENT_REWARDS recent ones.
                 ));
+        transaction.commit();
+    }
+
+    // This can be moved back into the relevant `if` clauses above eventually,
+    // but the easiest way to make sure existing databases have the corrected triggers
+    // is to just drop and recreate them unconditionally
+    {
+        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
+        db.exec(R"(
+        DROP TRIGGER IF EXISTS clear_archive;
+        CREATE TRIGGER clear_archive AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
+            DELETE FROM batched_payments_accrued_archive WHERE archive_height > NEW.height;
+        END;
+
+        DROP TRIGGER IF EXISTS clear_recent;
+        CREATE TRIGGER clear_recent AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
+            DELETE FROM batched_payments_accrued_recent WHERE height > NEW.height;
+        END;
+        )");
         transaction.commit();
     }
 }
