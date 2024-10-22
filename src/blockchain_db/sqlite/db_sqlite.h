@@ -81,6 +81,7 @@ class BlockchainSQLite : public db::Database {
     std::mutex address_str_cache_mutex;
 
     bool table_exists(const std::string& name);
+    bool trigger_exists(const std::string& name);
 
   public:
     // Retrieves the amount (in atomic SENT) that has been accrued to the Ethereum `address`.

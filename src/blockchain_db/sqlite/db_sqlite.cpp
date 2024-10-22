@@ -128,6 +128,11 @@ bool BlockchainSQLite::table_exists(const std::string& table_name) {
             "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)", table_name);
 }
 
+bool BlockchainSQLite::trigger_exists(const std::string& trigger_name) {
+    return prepared_get<int>(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?)", trigger_name);
+}
+
 void BlockchainSQLite::upgrade_schema() {
     bool have_offset = false;
     SQLite::Statement msg_cols{db, "PRAGMA main.table_info(batched_payments_accrued)"};
@@ -204,6 +209,18 @@ void BlockchainSQLite::upgrade_schema() {
         CREATE TRIGGER delayed_payments_prune AFTER UPDATE ON batch_db_info
         FOR EACH ROW BEGIN
             DELETE FROM delayed_payments WHERE payout_height < (NEW.height - 10000);
+        END;
+
+        )");
+        transaction.commit();
+    }
+
+    if (!trigger_exists("delayed_payments_after_blocks_removed")) {
+        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
+        db.exec(R"(
+        CREATE TRIGGER delayed_payments_after_blocks_removed AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
+            DELETE FROM delayed_payments WHERE entry_height >= NEW.height;
         END;
         )");
         transaction.commit();
@@ -343,8 +360,8 @@ void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
         return;
     int64_t revert_to_height = new_height - 1;
     auto maybe_prev_interval = prepared_maybe_get<int64_t>(
-            "SELECT DISTINCT archive_height FROM batched_payments_accrued_archive WHERE "
-            "archive_height <= ? ORDER BY archive_height DESC LIMIT 1",
+            "SELECT MAX(archive_height) FROM batched_payments_accrued_archive "
+            "WHERE archive_height <= ?",
             revert_to_height);
 
     if (!maybe_prev_interval) {
@@ -365,10 +382,6 @@ void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
       INSERT INTO batched_payments_accrued
         SELECT address, amount, payout_offset
         FROM batched_payments_accrued_archive WHERE archive_height = {0};
-
-      DELETE FROM batched_payments_accrued_archive WHERE archive_height >= {0};
-
-      DELETE FROM batched_payments_accrued_recent WHERE height >= {0};
       )",
             prev_interval));
     update_height(prev_interval);
