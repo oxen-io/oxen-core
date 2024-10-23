@@ -399,6 +399,7 @@ void L2Tracker::update_logs() {
             from);
 
     if (latest_height < from) {
+        lock.unlock();
         update_purge_list();
         return;
     }
@@ -517,7 +518,7 @@ void L2Tracker::update_logs() {
 }
 
 void L2Tracker::update_purge_list(bool curr_height_fallback) {
-    std::unique_lock lock{mutex};
+    std::shared_lock lock{mutex};
 
     auto purge_height = latest_height;
     if (!curr_height_fallback)
@@ -688,6 +689,7 @@ void L2Tracker::update_purge_list(bool curr_height_fallback) {
 
                 "0x{:x}"_format(purge_height));
     } else {
+        auto ulock = tools::upgrade_lock(lock);
         update_in_progress = false;
         log::debug(logcat, "L2 update step finished");
     }
