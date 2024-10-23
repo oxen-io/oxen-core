@@ -126,21 +126,6 @@ struct extra_printer {
         return "SN state change: {} for block height {}, SN index {}"_format(
                 type, x.block_height, x.service_node_index);
     }
-    std::string operator()(const eth::event::NewServiceNode& x) {
-
-        std::vector<std::string> contributors;
-        for (const auto& contributor : x.contributors)
-            contributors.push_back("{{address: {}, amount: {}}}"_format(
-                    contributor.address, print_money(contributor.amount)));
-        return "New Ethereum Service Node: L2 0x{:x}@{}, SN: {}, BLS pub: {}, fee: {}, contributors: [{}], signature: {}"_format(
-                x.chain_id,
-                x.l2_height,
-                x.sn_pubkey,
-                x.bls_pubkey,
-                x.fee,
-                fmt::join(contributors, ", "),
-                x.ed_signature);
-    }
     std::string operator()(const eth::event::NewServiceNodeV2& x) {
 
         std::vector<std::string> contributors;
