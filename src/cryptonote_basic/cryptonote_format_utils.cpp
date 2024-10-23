@@ -971,16 +971,6 @@ bool add_burned_amount_to_tx_extra(std::vector<uint8_t>& tx_extra, uint64_t burn
 }
 //---------------------------------------------------------------
 bool add_l2_event_to_tx_extra(
-        std::vector<uint8_t>& tx_extra, const eth::event::NewServiceNode& new_service_node) {
-    tx_extra_field field = new_service_node;
-    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
-        log::info(logcat, "failed to serialize tx extra for new service node transaction");
-        return false;
-    }
-    return true;
-}
-//---------------------------------------------------------------
-bool add_l2_event_to_tx_extra(
         std::vector<uint8_t>& tx_extra, const eth::event::NewServiceNodeV2& new_service_node) {
     tx_extra_field field = new_service_node;
     if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
@@ -1739,7 +1729,7 @@ crypto::hash get_tx_tree_hash(const block& b) {
     std::vector<crypto::hash> txs_ids;
     txs_ids.reserve(1 + b.tx_hashes.size());
     if (b.major_version < feature::ETH_BLS) {
-        assert(b.miner_tx);
+        CHECK_AND_ASSERT_THROW_MES( b.miner_tx, "Failed to calculate miner transaction hash");
         auto& h = txs_ids.emplace_back();
         CHECK_AND_ASSERT_THROW_MES(
                 get_transaction_hash(*b.miner_tx, h, nullptr),

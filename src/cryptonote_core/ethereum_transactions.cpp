@@ -12,8 +12,6 @@ bool validate_event_tx(
         std::string* reason) {
     using cryptonote::txtype;
     switch (tx_type) {
-        case txtype::ethereum_new_service_node:
-            return validate_event_tx<event::NewServiceNode>(hf_version, tx, reason);
         case txtype::ethereum_new_service_node_v2:
             return validate_event_tx<event::NewServiceNodeV2>(hf_version, tx, reason);
         case txtype::ethereum_service_node_exit:
@@ -41,9 +39,6 @@ event::StateChangeVariant extract_event(
     }
     bool success = false;
     switch (tx.type) {
-        case cryptonote::txtype::ethereum_new_service_node:
-            success = extract_event(tx, result.emplace<event::NewServiceNode>(), fail_reason);
-            break;
         case cryptonote::txtype::ethereum_new_service_node_v2:
             success = extract_event(tx, result.emplace<event::NewServiceNodeV2>(), fail_reason);
             break;

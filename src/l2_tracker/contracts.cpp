@@ -4,10 +4,6 @@ namespace eth::contract {
 
 namespace event {
 
-    const crypto::hash NewServiceNode = crypto::keccak(
-            "NewServiceNode(uint64,address,(uint256,uint256),(uint256,uint256,uint256,uint16),"
-            "(address,uint256)[])"sv);
-
     const crypto::hash NewServiceNodeV2 = crypto::keccak(
             "NewServiceNodeV2(uint64,address,(uint256,uint256),(uint256,uint256,uint256,"
             "uint16),((address,address),uint256)[])"sv);

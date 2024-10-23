@@ -65,7 +65,6 @@ static inline uint64_t reward_height(uint64_t l2_height, uint64_t reward_update_
 
 void L2Tracker::prune_old_states() {
     const auto expiry = latest_height - std::min(latest_height, HIST_SIZE);
-    recent_regs.expire(expiry);
     recent_regs_v2.expire(expiry);
     recent_unlocks.expire(expiry);
     recent_exits.expire(expiry);
@@ -462,8 +461,6 @@ void L2Tracker::update_logs() {
                         try {
                             auto tx = get_log_event(chain_id, log);
                             add_to_mempool(tx);
-                            if (auto* reg = std::get_if<event::NewServiceNode>(&tx))
-                                recent_regs.add(std::move(*reg), *log.blockNumber);
                             if (auto* reg_v2 = std::get_if<event::NewServiceNodeV2>(&tx))
                                 recent_regs_v2.add(std::move(*reg_v2), *log.blockNumber);
                             else if (auto* ul = std::get_if<event::ServiceNodeExitRequest>(&tx))
@@ -825,10 +822,6 @@ RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(
     return result;
 }
 
-bool L2Tracker::get_vote_for(const event::NewServiceNode& reg) const {
-    std::shared_lock lock{mutex};
-    return recent_regs.contains(reg);
-}
 bool L2Tracker::get_vote_for(const event::NewServiceNodeV2& reg) const {
     return recent_regs_v2.contains(reg);
 }

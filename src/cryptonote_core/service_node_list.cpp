@@ -427,35 +427,6 @@ static registration_details eth_reg_v2_details(
     return reg;
 }
 
-static eth::event::NewServiceNodeV2 convert_eth_event_new_service_node_to_v2(
-        const eth::event::NewServiceNode& value) {
-    auto result = eth::event::NewServiceNodeV2(value.chain_id, value.l2_height);
-    result.fee = value.fee;
-    result.sn_pubkey = value.sn_pubkey;
-    result.bls_pubkey = value.bls_pubkey;
-    result.contributors.reserve(value.contributors.size());
-    for (auto it : value.contributors)
-        result.contributors.emplace_back(
-                it.address /*address*/, it.address /*beneficiary*/, it.amount);
-    result.ed_signature = value.ed_signature;
-    return result;
-}
-
-static registration_details eth_reg_details(
-        hf hf_version, const eth::event::NewServiceNode& registration) {
-    eth::event::NewServiceNodeV2 v2 = convert_eth_event_new_service_node_to_v2(registration);
-    registration_details result = eth_reg_v2_details(hf_version, v2);
-    return result;
-}
-
-static std::optional<registration_details> eth_reg_tx_extract_fields(
-        hf hf_version, const cryptonote::transaction& tx) {
-    eth::event::NewServiceNode registration;
-    if (!cryptonote::get_field_from_tx_extra(tx.extra, registration))
-        return std::nullopt;
-    return eth_reg_details(hf_version, registration);
-}
-
 static std::optional<registration_details> eth_reg_v2_tx_extract_fields(
         hf hf_version, const cryptonote::transaction& tx) {
     eth::event::NewServiceNodeV2 registration;
@@ -1619,9 +1590,7 @@ static eth::event::StateChangeVariant get_event_from_tx(const cryptonote::transa
     using namespace eth::event;
     StateChangeVariant result;
     bool success = false;
-    if (tx.type == cryptonote::txtype::ethereum_new_service_node)
-        success = cryptonote::get_field_from_tx_extra(tx.extra, result.emplace<NewServiceNode>());
-    else if (tx.type == cryptonote::txtype::ethereum_new_service_node_v2)
+    if (tx.type == cryptonote::txtype::ethereum_new_service_node_v2)
         success = cryptonote::get_field_from_tx_extra(tx.extra, result.emplace<NewServiceNodeV2>());
     else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request)
         success = cryptonote::get_field_from_tx_extra(
@@ -1645,11 +1614,7 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
         hf hf_version, const service_node_list& snl, const cryptonote::transaction& tx) {
     auto result = std::make_tuple(crypto::null<crypto::public_key>, "unknown"s, uint64_t{0});
     auto& [pk, type, val] = result;
-    if (tx.type == cryptonote::txtype::ethereum_new_service_node) {
-        type = "registration";
-        if (auto reg = eth_reg_tx_extract_fields(hf_version, tx))
-            pk = reg->service_node_pubkey;
-    } else if (tx.type == cryptonote::txtype::ethereum_new_service_node_v2) {
+    if (tx.type == cryptonote::txtype::ethereum_new_service_node_v2) {
         type = "registration v2";
         if (auto reg = eth_reg_v2_tx_extract_fields(hf_version, tx))
             pk = reg->service_node_pubkey;
@@ -1734,21 +1699,6 @@ void service_node_list::state_t::process_new_ethereum_tx(
         !ins)
         throw oxen::traced<std::logic_error>{
                 "Internal error: incoming eth tx was processed multiple times!"};
-}
-
-bool service_node_list::state_t::process_confirmed_event(
-        const eth::event::NewServiceNode& new_sn,
-        cryptonote::network_type nettype,
-        cryptonote::hf hf_version,
-        uint64_t height,
-        uint32_t index,
-        const service_node_keys* my_keys) {
-    // NOTE: Convert to V2 and process it as a V2. Converting a V1 to V2 has no tangible
-    // side-effects other than setting the new 'beneficiary' field that results in the same
-    // behaviour as if V1 was processed but allows us to reuse V2 code to parse both payloads.
-    auto new_sn_v2 = convert_eth_event_new_service_node_to_v2(new_sn);
-    bool result = process_confirmed_event(new_sn_v2, nettype, hf_version, height, index, my_keys);
-    return result;
 }
 
 bool service_node_list::state_t::process_confirmed_event(
@@ -3397,7 +3347,6 @@ void service_node_list::state_t::update_from_block(
                 log::debug(logcat, "Processing key image unlock tx");
                 process_key_image_unlock_tx(nettype, hf_version, height, tx);
                 break;
-            case txtype::ethereum_new_service_node:
             case txtype::ethereum_new_service_node_v2:
             case txtype::ethereum_service_node_exit:
             case txtype::ethereum_service_node_exit_request:

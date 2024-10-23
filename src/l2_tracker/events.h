@@ -39,49 +39,6 @@ struct L2StateChange {
     }
 };
 
-struct Contributor {
-    eth::address address;
-    uint64_t amount;
-
-    auto operator<=>(const Contributor& o) const = default;
-
-    template <class Archive>
-    void serialize_object(Archive& ar) {
-        field(ar, "address", address);
-        field_varint(ar, "amount", amount);
-    }
-};
-
-struct NewServiceNode : L2StateChange {
-    crypto::public_key sn_pubkey = crypto::null<crypto::public_key>;
-    bls_public_key bls_pubkey = crypto::null<bls_public_key>;
-    crypto::ed25519_signature ed_signature = crypto::null<crypto::ed25519_signature>;
-    uint64_t fee = 0;
-    std::vector<Contributor> contributors;
-
-    explicit NewServiceNode(uint64_t chain_id = 0, uint64_t l2_height = 0) :
-            L2StateChange{chain_id, l2_height} {}
-
-    std::string to_string() const {
-        return "{} [sn_pubkey={}, bls_pubkey={}]"_format(description, sn_pubkey, bls_pubkey);
-    }
-
-    template <class Archive>
-    void serialize_object(Archive& ar) {
-        serialize_base_fields(ar, nullptr);
-        field(ar, "service_node_pubkey", sn_pubkey);
-        field(ar, "bls_pubkey", bls_pubkey);
-        field(ar, "signature", ed_signature);
-        field_varint(ar, "fee", fee);
-        field(ar, "contributors", contributors);
-    }
-
-    std::strong_ordering operator<=>(const NewServiceNode& o) const = default;
-
-    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_new_service_node;
-    static constexpr std::string_view description = "new SN"sv;
-};
-
 struct ContributorV2 {
     enum class Version {
         version_invalid,
@@ -246,7 +203,6 @@ struct ServiceNodePurge : L2StateChange {
 
 using StateChangeVariant = std::variant<
         std::monostate,
-        NewServiceNode,
         NewServiceNodeV2,
         ServiceNodeExitRequest,
         ServiceNodeExit,

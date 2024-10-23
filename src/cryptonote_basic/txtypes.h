@@ -27,7 +27,6 @@ enum class txtype : uint16_t {
     key_image_unlock,
     stake,
     oxen_name_system,
-    ethereum_new_service_node,
     ethereum_service_node_exit_request,
     ethereum_service_node_exit,
     ethereum_staking_requirement_updated,
@@ -37,7 +36,7 @@ enum class txtype : uint16_t {
 };
 
 inline constexpr bool is_l2_event_tx(txtype type) {
-    return type >= txtype::ethereum_new_service_node &&
+    return type >= txtype::ethereum_service_node_exit_request &&
            type <= txtype::ethereum_new_service_node_v2;
 }
 
@@ -58,7 +57,6 @@ inline constexpr std::string_view to_string(txtype type) {
         case txtype::key_image_unlock: return "key_image_unlock"sv;
         case txtype::stake: return "stake"sv;
         case txtype::oxen_name_system: return "oxen_name_system"sv;
-        case txtype::ethereum_new_service_node: return "ethereum_new_service_node"sv;
         case txtype::ethereum_new_service_node_v2: return "ethereum_new_service_node_V2"sv;
         case txtype::ethereum_service_node_exit_request:
             return "ethereum_service_node_exit_request"sv;

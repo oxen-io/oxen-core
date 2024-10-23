@@ -18,7 +18,6 @@ namespace {
 auto logcat = oxen::log::Cat("l2_tracker");
 
 enum class EventType {
-    NewServiceNode,
     NewServiceNodeV2,
     ServiceNodeExitRequest,
     ServiceNodeExit,
@@ -28,7 +27,6 @@ enum class EventType {
 
 static constexpr std::string_view to_string(EventType type) {
     switch (type) {
-        case EventType::NewServiceNode: return "NewServiceNode";
         case EventType::NewServiceNodeV2: return "NewServiceNodeV2";
         case EventType::ServiceNodeExitRequest: return "ServiceNodeExitRequest";
         case EventType::ServiceNodeExit: return "ServiceNodeExit";
@@ -43,8 +41,6 @@ EventType get_log_type(const ethyl::LogEntry& log) {
         throw std::runtime_error("No topics in log entry");
 
     auto event_sig = tools::make_from_hex_guts<crypto::hash>(log.topics[0]);
-    if (event_sig == eth::contract::event::NewServiceNode)
-        return EventType::NewServiceNode;
     if (event_sig == eth::contract::event::ServiceNodeExitRequest)
         return EventType::ServiceNodeExitRequest;
     if (event_sig == eth::contract::event::ServiceNodeExit)
@@ -91,48 +87,6 @@ static std::string log_more_contributors_than_allowed(
                          bls_pk,
                          block_number ? "{}"_format(*block_number) : "(latest)");
     }
-    return result;
-}
-
-static std::string log_new_service_node_tx(
-        const event::NewServiceNode& item, std::string_view hex) {
-    fmt::memory_buffer buffer{};
-    fmt::format_to(
-            std::back_inserter(buffer),
-            "New SN TX components were:\n"
-            "- SN Public Key:     {}\n"
-            "- BLS Public Key:    {}\n"
-            "- ED25519 Signature: {}\n"
-            "- Fee:               {}\n"
-            "- Contributor(s):    {}\n",
-            item.sn_pubkey,
-            item.bls_pubkey,
-            item.ed_signature,
-            item.fee,
-            item.contributors.size());
-
-    for (size_t index = 0; index < item.contributors.size(); index++) {
-        const auto& contributor = item.contributors[index];
-        fmt::format_to(
-                std::back_inserter(buffer),
-                "  - {:02} [address: {}, amount: {}]\n",
-                index,
-                contributor.address,
-                contributor.amount);
-    }
-
-    fmt::format_to(std::back_inserter(buffer), "\nThe raw blob was (32 byte chunks/line):\n\n");
-    std::string_view it = hex;
-    if (it.starts_with("0x") || it.starts_with("0X"))
-        it.remove_prefix(2);
-
-    while (it.size()) {
-        std::string_view chunk = tools::string_safe_substr(it, 0, 64);  // Grab 32 byte chunk
-        fmt::format_to(std::back_inserter(buffer), "  {}\n", chunk);    // Output the chunk
-        it = tools::string_safe_substr(it, 64, it.size());              // Advance the it
-    }
-
-    std::string result = fmt::to_string(buffer);
     return result;
 }
 
@@ -286,124 +240,6 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
     log::trace(logcat, "Parsing L2 log {} ({}) at height {}", event_type, log.topics[0], l2_height);
 
     switch (event_type) {
-        case EventType::NewServiceNode: {
-            // event NewServiceNode(
-            //      uint64 indexed serviceNodeID,
-            //      address initiator,
-            //      { // struct ServiceNodeParams
-            //          BN256G1.G1Point pubkey,
-            //          uint256 serviceNodePubkey,
-            //          (uint256,uint256) serviceNodeSignature,
-            //          uint256 fee,
-            //      },
-            //      [ // Contributors contributors[]
-            //        {
-            //          address addr,
-            //          uint256 stakeAmount,
-            //        }
-            //      ]
-            //
-            // Note:
-            // - address is 32 bytes, the first 12 of which are padding
-            // - fee is between 0 and 10000, despite being packed into a gigantic 256-bit int.
-
-            auto& item = result.emplace<event::NewServiceNode>(chain_id, l2_height);
-
-            u256 fee256, c_offset, c_len;
-            std::string_view contrib_hex;
-            std::tie(
-                    item.bls_pubkey,
-                    item.sn_pubkey,
-                    item.ed_signature,
-                    fee256,
-                    c_offset,
-                    c_len,
-                    contrib_hex) =
-                    tools::split_hex_into<
-                            skip<12 + 20>,
-                            bls_public_key,
-                            crypto::public_key,
-                            crypto::ed25519_signature,
-                            u256,
-                            u256,
-                            u256,
-                            std::string_view>(log.data);
-
-            // NOTE: Decode fee and that it is within acceptable range
-            item.fee = tools::decode_integer_be(fee256);
-            if (item.fee > cryptonote::STAKING_FEE_BASIS)
-                throw oxen::traced<std::invalid_argument>{
-                        "Invalid NewServiceNode data: fee must be in [0, {}]"_format(
-                                cryptonote::STAKING_FEE_BASIS)};
-
-            // NOTE: Verify that the number of contributors in the blob is
-            // within maximum range
-            uint64_t num_contributors = tools::decode_integer_be(c_len);
-            if (num_contributors > oxen::MAX_CONTRIBUTORS_HF19) {
-                throw oxen::traced<std::invalid_argument>(
-                        "Invalid NewServiceNode data: {}\n{}"_format(
-                                log_more_contributors_than_allowed(
-                                        num_contributors,
-                                        oxen::MAX_CONTRIBUTORS_HF19,
-                                        item.bls_pubkey,
-                                        log.blockNumber,
-                                        /*index*/ std::optional<uint64_t>()),
-                                log_new_service_node_tx(item, log.data)));
-            }
-
-            // NOTE: Verify that there's atleast one contributor
-            if (num_contributors <= 0) {
-                throw oxen::traced<std::invalid_argument>(
-                        "Invalid NewServiceNode data: There must be atleast one contributor, "
-                        "received 0\n{}"
-                        ""_format(log_new_service_node_tx(item, log.data)));
-            }
-            item.contributors.reserve(num_contributors);
-
-            // NOTE: Verify that the offset to the dynamic part of the
-            // contributors array is correct.
-            const uint64_t c_offset_value = tools::decode_integer_be(c_offset);
-            const uint64_t expected_c_offset_value = 32 /*ID*/ + 32 /*recipient*/ + 64 /*BLS Key*/ +
-                                                     32 /*SN Key*/ + 64 /*SN Sig*/ + 32 /*Fee*/;
-            if (c_offset_value != expected_c_offset_value) {
-                throw oxen::traced<std::invalid_argument>(
-                        "Invalid NewServiceNode data: The offset to the contributor payload ({} "
-                        "bytes) did not match the offset we derived {}\n{}"
-                        ""_format(
-                                c_offset_value,
-                                expected_c_offset_value,
-                                log_new_service_node_tx(item, log.data)));
-            }
-
-            // NOTE: Verify the length of the contributor blob
-            const size_t expected_contrib_hex_size =
-                    2 /*hex*/ * num_contributors * (/*address*/ 32 + /*amount*/ 32);
-            if (contrib_hex.size() != expected_contrib_hex_size) {
-                throw oxen::traced<std::invalid_argument>{
-                        "Invalid NewServiceNode data: The hex payload length ({}) derived for "
-                        "{} contributors did not match the size we derived of {} hex characters\n"
-                        "{}"_format(
-                                contrib_hex.size(),
-                                num_contributors,
-                                expected_contrib_hex_size,
-                                log_new_service_node_tx(item, log.data))};
-            }
-
-            // TODO: Validate the amount, can't be 0, should be min contribution. Is this done in
-            // the SNL? Maybe.
-            for (size_t index = 0; index < num_contributors; index++) {
-                auto& [addr, amt] = item.contributors.emplace_back();
-                u256 amt256;
-                std::tie(addr, amt256, contrib_hex) =
-                        tools::split_hex_into<skip<12>, eth::address, u256, std::string_view>(
-                                contrib_hex);
-                amt = tools::decode_integer_be(amt256);
-            }
-
-            oxen::log::debug(logcat, "{}", log_new_service_node_tx(item, log.data));
-            break;
-        }
-
         case EventType::NewServiceNodeV2: {
             // event NewServiceNodeV2(
             //      uint64 indexed serviceNodeID,

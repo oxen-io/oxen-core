@@ -42,7 +42,6 @@ class L2Tracker {
     const uint64_t chain_id;
 
     // l2_height => recent events at that height
-    RecentEvents<event::NewServiceNode> recent_regs;
     RecentEvents<event::NewServiceNodeV2> recent_regs_v2;
     RecentEvents<event::ServiceNodeExitRequest> recent_unlocks;
     RecentEvents<event::ServiceNodeExit> recent_exits;
@@ -181,7 +180,6 @@ class L2Tracker {
 
     // Returns true/false for whether we have recently observed the given event from the L2 tracker
     // logs.  This is used for pulse confirmation voting.
-    bool get_vote_for(const event::NewServiceNode& reg) const;
     bool get_vote_for(const event::NewServiceNodeV2& reg) const;
     bool get_vote_for(const event::ServiceNodeExit& exit) const;
     bool get_vote_for(const event::ServiceNodeExitRequest& unlock) const;

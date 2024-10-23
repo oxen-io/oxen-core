@@ -1171,13 +1171,6 @@ class service_node_list {
         // Applies a pulse-quorums-confirmed L2 event to the service node list state.  Returns true
         // if processing the event affects swarms, false if it does not.
         bool process_confirmed_event(
-                const eth::event::NewServiceNode& new_sn,
-                cryptonote::network_type nettype,
-                cryptonote::hf hf_version,
-                uint64_t height,
-                uint32_t index,
-                const service_node_keys* my_keys);
-        bool process_confirmed_event(
                 const eth::event::NewServiceNodeV2& new_sn,
                 cryptonote::network_type nettype,
                 cryptonote::hf hf_version,
@@ -1313,11 +1306,16 @@ class service_node_list {
 
     /**
      * @brief iterates through all pending unconfirmed L2 state changes.  `func` should be a generic
-     * lambda that will be called with const reference to an eth::event::NewServiceNode,
+     * lambda that will be called with const reference to an eth::event::NewServiceNodeV2,
      * eth::event::ServiceNodeExitRequest, or eth::event::ServiceNodeExit.
      */
     template <typename F>
-        requires std::invocable<F, const eth::event::NewServiceNode&, const unconfirmed_l2_tx&> &&
+        requires std::invocable<F, const eth::event::NewServiceNodeV2&, const unconfirmed_l2_tx&> &&
+                 std::invocable<F, const eth::event::ServiceNodePurge&, const unconfirmed_l2_tx&> &&
+                 std::invocable<
+                         F,
+                         const eth::event::StakingRequirementUpdated&,
+                         const unconfirmed_l2_tx&> &&
                  std::invocable<
                          F,
                          const eth::event::ServiceNodeExitRequest&,
