@@ -520,7 +520,7 @@ void L2Tracker::update_logs() {
 }
 
 void L2Tracker::update_purge_list(bool curr_height_fallback) {
-    std::shared_lock lock{mutex};
+    std::unique_lock lock{mutex};
 
     auto purge_height = latest_height;
     if (!curr_height_fallback)
