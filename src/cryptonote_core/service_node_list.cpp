@@ -4613,7 +4613,8 @@ bool service_node_list::handle_uptime_proof(
                     proof->pubkey);
     }
 
-    if (vers.first == feature::ETH_TRANSITION || netconf.NETWORK_TYPE == cryptonote::network_type::LOCALDEV) {
+    if (vers.first == feature::ETH_TRANSITION ||
+        netconf.NETWORK_TYPE == cryptonote::network_type::LOCALDEV) {
         // NOTE: In the transition, we're collecting the BLS pubkeys, we will persist these into the
         // service node info to bootstrap the keys. Post transition, Arbitrum is activated and BLS
         // keys of a node will be available in the registration and updated when a node is

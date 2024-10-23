@@ -3343,8 +3343,7 @@ std::vector<eth::bls_public_key> Blockchain::get_removable_nodes() const {
                 [&bls_pubkeys_in_snl]<typename Event>(
                         const Event& e,
                         const service_nodes::service_node_list::unconfirmed_l2_tx&) {
-                    if constexpr (
-                            std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
+                    if constexpr (std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
                         bls_pubkeys_in_snl.push_back(e.bls_pubkey);
                     } else {
                         static_assert(

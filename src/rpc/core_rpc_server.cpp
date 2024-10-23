@@ -3089,46 +3089,46 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
     sns.response["registrations"] = json::array();
     sns.response["unlocks"] = json::array();
     sns.response["exits"] = json::array();
-    m_core.service_node_list.for_each_pending_l2_state([&sns]<typename Event>(
-                                                               const Event& e, const auto& info) {
-        json entry{
-                {"l2_height", e.l2_height},
-                {"chain_id", e.chain_id},
-                {"height", info.height_added},
-                {"confirmations", info.confirmations / (double)info.FULL_SCORE},
-                {"denials", info.denials / (double)info.FULL_SCORE},
-                {"required",
-                 (std::max(info.denials * 2, info.denials + 5 * info.FULL_SCORE) -
-                  info.confirmations) /
-                         (double)info.FULL_SCORE}};
+    m_core.service_node_list.for_each_pending_l2_state(
+            [&sns]<typename Event>(const Event& e, const auto& info) {
+                json entry{
+                        {"l2_height", e.l2_height},
+                        {"chain_id", e.chain_id},
+                        {"height", info.height_added},
+                        {"confirmations", info.confirmations / (double)info.FULL_SCORE},
+                        {"denials", info.denials / (double)info.FULL_SCORE},
+                        {"required",
+                         (std::max(info.denials * 2, info.denials + 5 * info.FULL_SCORE) -
+                          info.confirmations) /
+                                 (double)info.FULL_SCORE}};
 
-        if constexpr (std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
-            sns.response["registrations"].push_back(std::move(entry));
-            auto& res = sns.response["registrations"].back();
-            auto res_hex = sns.response_hex["registrations"].back();
-            res_hex["sn_pubkey"] = e.sn_pubkey;
-            res_hex["bls_pubkey"] = e.bls_pubkey;
-            res_hex["signature"] = e.ed_signature;
-            res["fee"] = e.fee * 0.01;
-            res["contributors"] = json::array();
-            auto& contr = res["contributors"];
-            for (const auto& it : e.contributors)
-                contr.push_back(json{
-                        {"amount", it.amount},
-                        {"address", "{}"_format(it.address)},
-                        {"beneficiary", "{}"_format(it.beneficiary)},
-                });
-        } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
-            sns.response["unlocks"].push_back(std::move(entry));
-            sns.response_hex["unlocks"].back()["bls_pubkey"] = e.bls_pubkey;
-        } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExit>) {
-            sns.response["exits"].push_back(std::move(entry));
-            sns.response_hex["exits"].back()["bls_pubkey"] = e.bls_pubkey;
-            sns.response["returned_amount"] = e.returned_amount;
-        } else {
-            log::error(logcat, "Got unknown event type in rpc GET_PENDING_EVENTS handler!");
-        }
-    });
+                if constexpr (std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
+                    sns.response["registrations"].push_back(std::move(entry));
+                    auto& res = sns.response["registrations"].back();
+                    auto res_hex = sns.response_hex["registrations"].back();
+                    res_hex["sn_pubkey"] = e.sn_pubkey;
+                    res_hex["bls_pubkey"] = e.bls_pubkey;
+                    res_hex["signature"] = e.ed_signature;
+                    res["fee"] = e.fee * 0.01;
+                    res["contributors"] = json::array();
+                    auto& contr = res["contributors"];
+                    for (const auto& it : e.contributors)
+                        contr.push_back(json{
+                                {"amount", it.amount},
+                                {"address", "{}"_format(it.address)},
+                                {"beneficiary", "{}"_format(it.beneficiary)},
+                        });
+                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
+                    sns.response["unlocks"].push_back(std::move(entry));
+                    sns.response_hex["unlocks"].back()["bls_pubkey"] = e.bls_pubkey;
+                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExit>) {
+                    sns.response["exits"].push_back(std::move(entry));
+                    sns.response_hex["exits"].back()["bls_pubkey"] = e.bls_pubkey;
+                    sns.response["returned_amount"] = e.returned_amount;
+                } else {
+                    log::error(logcat, "Got unknown event type in rpc GET_PENDING_EVENTS handler!");
+                }
+            });
 }
 
 namespace {

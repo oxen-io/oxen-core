@@ -67,8 +67,11 @@ class Proof {
           std::array<uint16_t, 3> lokinet_version,
           const service_nodes::service_node_keys& keys);
 
-    Proof(cryptonote::hf hardfork, cryptonote::network_type nettype, std::string_view serialized_proof);
-    std::string bt_encode_uptime_proof(cryptonote::hf hardfork, cryptonote::network_type nettype) const;
+    Proof(cryptonote::hf hardfork,
+          cryptonote::network_type nettype,
+          std::string_view serialized_proof);
+    std::string bt_encode_uptime_proof(
+            cryptonote::hf hardfork, cryptonote::network_type nettype) const;
 
     cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request generate_request(
             cryptonote::hf hardfork) const;

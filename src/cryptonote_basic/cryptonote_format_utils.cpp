@@ -1729,7 +1729,7 @@ crypto::hash get_tx_tree_hash(const block& b) {
     std::vector<crypto::hash> txs_ids;
     txs_ids.reserve(1 + b.tx_hashes.size());
     if (b.major_version < feature::ETH_BLS) {
-        CHECK_AND_ASSERT_THROW_MES( b.miner_tx, "Failed to calculate miner transaction hash");
+        CHECK_AND_ASSERT_THROW_MES(b.miner_tx, "Failed to calculate miner transaction hash");
         auto& h = txs_ids.emplace_back();
         CHECK_AND_ASSERT_THROW_MES(
                 get_transaction_hash(*b.miner_tx, h, nullptr),

@@ -74,7 +74,10 @@ Proof::Proof(
 }
 
 // Deserialize from a btencoded string into our Proof instance
-Proof::Proof(cryptonote::hf hardfork, cryptonote::network_type nettype, std::string_view serialized_proof) {
+Proof::Proof(
+        cryptonote::hf hardfork,
+        cryptonote::network_type nettype,
+        std::string_view serialized_proof) {
 
     proof_hash = crypto::keccak(serialized_proof);
 
@@ -148,7 +151,8 @@ std::string Proof::bt_encode_uptime_proof(hf hardfork, cryptonote::network_type 
     // NB: must append in ascii order
     oxenc::bt_dict_producer proof;
 
-    if (hardfork == cryptonote::feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV) {
+    if (hardfork == cryptonote::feature::ETH_TRANSITION ||
+        nettype == cryptonote::network_type::LOCALDEV) {
         proof.append("bk", tools::view_guts(pubkey_bls));
         proof.append("bp", tools::view_guts(pop_bls));
     }
