@@ -379,8 +379,8 @@ class SNNetwork:
         self.sn_contract.start()
         prev_contract_sn_count = self.sn_contract.totalNodes()
 
-        # Submit block to enter the BLS hardfork ###################################################
-        self.sync_nodes(self.mine(1), timeout=120) # Height 171
+        # Wait for pulse to make block to enter BLS hardfork (height 171) ##########################
+        self.sync_nodes(171, timeout=120)
 
         # Register a SN via the Ethereum smart contract, half as multi-contrib,
         # half as solo nodes.
@@ -574,26 +574,26 @@ class SNNetwork:
         assert rewards_response.balance == 0, "Staker's rewards amount ({}) should be 0 because funds are being paid out to the beneficiary".format(rewards_response.balance)
 
         # Begin exit tests ######################################################################
-        # Make a list of all the nodes, shuffle them and select 3 to remove (remove w/ wait time,
-        # remove with signature and liquidate).
-        sn_to_remove_indexes = []
+        # Make a list of all the nodes, shuffle them and select 3 to exit (exit w/ wait time,
+        # exit with signature and liquidate).
+        sn_to_exit_indexes = []
         for i in range(len(self.eth_sns)):
-            sn_to_remove_indexes.append(i)
-        random.shuffle(sn_to_remove_indexes)
-        sn_to_remove_indexes = sn_to_remove_indexes[:len(SNExitMode)] # First 3 (1 for each test)
+            sn_to_exit_indexes.append(i)
+        random.shuffle(sn_to_exit_indexes)
+        sn_to_exit_indexes = sn_to_exit_indexes[:len(SNExitMode)] # First 3 (1 for each test)
 
-        # Initiate the remove, this will put the node into a mode where it will eventually enter
+        # Initiate the exit, this will put the node into a mode where it will eventually enter
         # the expired list when the L2 transaction is witnessed. (If we make the node wait long
         # enough it will also enter the liquidatable list!).
         for mode in SNExitMode:
-            sn_to_remove_bls_pubkey  = self.eth_sns[sn_to_remove_indexes[mode.value]].get_service_keys().bls_pubkey
-            sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
+            sn_to_exit_bls_pubkey  = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().bls_pubkey
+            sn_to_exit_contract_id = self.sn_contract.getServiceNodeID(sn_to_exit_bls_pubkey)
 
-            # Initiate the remove, this will put the node into a mode where it will eventually enter
+            # Initiate the exit, this will put the node into a mode where it will eventually enter
             # the expired list when the L2 transaction is witnessed. (If we make the node wait long
             # enough it will also enter the liquidatable list!).
-            vprint("Initiating remove for node w/ BLS key {} (id {})".format(sn_to_remove_bls_pubkey, sn_to_remove_contract_id))
-            self.sn_contract.initiateRemoveBLSPublicKey(sn_to_remove_contract_id)
+            vprint("Initiating exit for node w/ BLS key {} (id {})".format(sn_to_exit_bls_pubkey, sn_to_exit_contract_id))
+            self.sn_contract.initiateExitBLSPublicKey(sn_to_exit_contract_id)
 
             # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags
             # behind the tip for safety! In localdev this is configured to 1 block of lag).
@@ -617,7 +617,7 @@ class SNNetwork:
                 unlocks_confirmed_count = 0
                 for index in SNExitMode:
                     if unlocks_confirmed[index.value] == False:
-                        status_json = self.eth_sns[sn_to_remove_indexes[index.value]].sn_status()
+                        status_json = self.eth_sns[sn_to_exit_indexes[index.value]].sn_status()
                         if status_json['service_node_state']['requested_unlock_height'] != 0:
                             max_requested_unlock_height = max(max_requested_unlock_height, status_json['service_node_state']['requested_unlock_height'])
                             unlocks_confirmed[index.value] = True
@@ -644,12 +644,12 @@ class SNNetwork:
         # Do exit via signature and liquidation, aggregate signature from network and apply it on
         # the smart contract
         for mode in SNExitMode:
-            sn_to_remove_pubkey      = self.eth_sns[sn_to_remove_indexes[mode.value]].get_service_keys().pubkey
-            sn_to_remove_bls_pubkey  = self.eth_sns[sn_to_remove_indexes[mode.value]].get_service_keys().bls_pubkey
-            sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
+            sn_to_exit_pubkey      = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().pubkey
+            sn_to_exit_bls_pubkey  = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().bls_pubkey
+            sn_to_exit_contract_id = self.sn_contract.getServiceNodeID(sn_to_exit_bls_pubkey)
 
             if mode == SNExitMode.WithSignature:
-                exit_request = self.eth_sns[0].get_exit_liquidation_request(sn_to_remove_pubkey, liquidate=False)
+                exit_request = self.eth_sns[0].get_exit_liquidation_request(sn_to_exit_pubkey, liquidate=False)
                 vprint("Exit request aggregated: {}".format(exit_request))
                 vprint("Exit request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
 
@@ -667,9 +667,9 @@ class SNNetwork:
                 )
 
                 # Invoke contract
-                assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == staker_eth_addr
+                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == staker_eth_addr
                 contract_sn_count_before = self.sn_contract.totalNodes()
-                self.sn_contract.removeBLSPublicKeyWithSignature(key=key,
+                self.sn_contract.exitBLSPublicKeyWithSignature(key=key,
                                                                  timestamp=exit_request["result"]["timestamp"],
                                                                  sig=sig,
                                                                  ids=exit_request["result"]["non_signer_indices"])
@@ -678,7 +678,7 @@ class SNNetwork:
                 vprint("Node count in contract after exit with signature, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
 
                 zero_account = "0x0000000000000000000000000000000000000000";
-                assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == zero_account
+                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == zero_account
                 assert contract_sn_count_after  == contract_sn_count_before - 1
 
             elif mode == SNExitMode.Liquidation:
@@ -699,7 +699,7 @@ class SNNetwork:
                 vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}")
 
                 # Now node was supposed to exit but hasn't in a timely fashion, it can be liquidated
-                exit_request = self.eth_sns[0].get_exit_liquidation_request(sn_to_remove_pubkey, liquidate=True)
+                exit_request = self.eth_sns[0].get_exit_liquidation_request(sn_to_exit_pubkey, liquidate=True)
                 vprint("Liquidate request aggregated: {}".format(exit_request))
                 vprint("Liquidate request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
 
@@ -721,7 +721,7 @@ class SNNetwork:
                 ethereum.evm_increaseTime(60 * 60 * 3)
                 ethereum.evm_mine();
 
-                assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == staker_eth_addr
+                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == staker_eth_addr
                 contract_sn_count_before = self.sn_contract.totalNodes()
                 self.sn_contract.liquidateBLSPublicKeyWithSignature(key=key,
                                                                     timestamp=exit_request["result"]["timestamp"],
@@ -731,7 +731,7 @@ class SNNetwork:
                 vprint("Node count in contract after liquidation, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
 
                 zero_account = "0x0000000000000000000000000000000000000000";
-                assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == zero_account
+                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == zero_account
                 assert contract_sn_count_after  == contract_sn_count_before - 1
 
             # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags
@@ -764,7 +764,7 @@ class SNNetwork:
 
         vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}")
 
-        # Do remove 'after wait time' ##############################################################
+        # Do exit 'after wait time' ##############################################################
         # IMPORTANT: This test must be run last because it advances the L2 blockchain by 31 days.
         # This method of exit does _not_ require a signature. The other methods require a
         # timestamp embedded in the signature. We don't have a way to manipulate timestamps on the
@@ -778,21 +778,21 @@ class SNNetwork:
         ethereum.evm_mine()
 
 
-        # Remove the node from the smart contract (after 31 days has elapsed)
+        # Exit the node from the smart contract (after 31 days has elapsed)
         for mode in SNExitMode:
             if mode == SNExitMode.AfterWaitTime:
-                sn_to_remove_pubkey      = self.eth_sns[sn_to_remove_indexes[mode.value]].get_service_keys().pubkey
-                sn_to_remove_bls_pubkey  = self.eth_sns[sn_to_remove_indexes[mode.value]].get_service_keys().bls_pubkey
-                sn_to_remove_contract_id = self.sn_contract.getServiceNodeID(sn_to_remove_bls_pubkey)
+                sn_to_exit_pubkey      = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().pubkey
+                sn_to_exit_bls_pubkey  = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().bls_pubkey
+                sn_to_exit_contract_id = self.sn_contract.getServiceNodeID(sn_to_exit_bls_pubkey)
 
-                assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == staker_eth_addr
+                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == staker_eth_addr
                 contract_sn_count_before = self.sn_contract.totalNodes()
-                self.sn_contract.removeBLSPublicKeyAfterWaitTime(sn_to_remove_contract_id)
+                self.sn_contract.exitBLSPublicKeyAfterWaitTime(sn_to_exit_contract_id)
                 contract_sn_count_after = self.sn_contract.totalNodes()
                 vprint("Node count in contract after wait time exit, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
 
                 zero_account = "0x0000000000000000000000000000000000000000";
-                assert self.sn_contract.serviceNodes(sn_to_remove_contract_id).operator == zero_account
+                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == zero_account
                 assert contract_sn_count_after  == contract_sn_count_before - 1
 
                 # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags

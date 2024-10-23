@@ -8,13 +8,11 @@ namespace event {
             "NewServiceNodeV2(uint64,address,(uint256,uint256),(uint256,uint256,uint256,"
             "uint16),((address,address),uint256)[])"sv);
 
-    // TODO: Rename the contract event from Removal to Exit as this follows the terminology we've
-    // been using to refer to it
     const crypto::hash ServiceNodeExitRequest =
-            crypto::keccak("ServiceNodeRemovalRequest(uint64,address,(uint256,uint256))"sv);
+            crypto::keccak("ServiceNodeExitRequest(uint64,address,(uint256,uint256))"sv);
 
     const crypto::hash ServiceNodeExit =
-            crypto::keccak("ServiceNodeRemoval(uint64,address,uint256,(uint256,uint256))"sv);
+            crypto::keccak("ServiceNodeExit(uint64,address,uint256,(uint256,uint256))"sv);
 
     const crypto::hash StakingRequirementUpdated =
             crypto::keccak("StakingRequirementUpdated(uint256)"sv);

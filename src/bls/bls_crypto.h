@@ -107,7 +107,7 @@ namespace tag {
     /// Pre-defined tags given to `build_tag_hash` for different types of signed values.
     inline constexpr auto PROOF_OF_POSSESSION = "BLS_SIG_TRYANDINCREMENT_POP"sv;
     inline constexpr auto REWARD = "BLS_SIG_TRYANDINCREMENT_REWARD"sv;
-    inline constexpr auto EXIT = "BLS_SIG_TRYANDINCREMENT_REMOVE"sv;
+    inline constexpr auto EXIT = "BLS_SIG_TRYANDINCREMENT_EXIT"sv;
     inline constexpr auto LIQUIDATE = "BLS_SIG_TRYANDINCREMENT_LIQUIDATE"sv;
     inline constexpr auto HASH_TO_G2 = "BLS_SIG_HASH_TO_FIELD_TAG"sv;
 

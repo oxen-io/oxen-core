@@ -345,28 +345,28 @@ class SNRewardsContract:
         tx_hash = submit_unsigned_tx("Add BLS public key", sender, unsent_tx)
         return tx_hash
 
-    def initiateRemoveBLSPublicKey(self, serviceNodeID: int):
-        unsent_tx = self.contract.functions.initiateRemoveBLSPublicKey(serviceNodeID).build_transaction(basic_build_tx_params(self.hardhat_account0))
-        tx_hash   = submit_unsigned_tx("Remove BLS public key", self.hardhat_account0, unsent_tx)
+    def initiateExitBLSPublicKey(self, serviceNodeID: int):
+        unsent_tx = self.contract.functions.initiateExitBLSPublicKey(serviceNodeID).build_transaction(basic_build_tx_params(self.hardhat_account0))
+        tx_hash   = submit_unsigned_tx("Exit BLS public key", self.hardhat_account0, unsent_tx)
         return tx_hash
 
-    def removeBLSPublicKeyWithSignature(self,
-                                        key:       BLSPubkey,
-                                        timestamp: int,
-                                        sig:       BLSSignatureParams,
-                                        ids:       list[int]):
-        unsent_tx = self.contract.functions.removeBLSPublicKeyWithSignature(
+    def exitBLSPublicKeyWithSignature(self,
+                                      key:       BLSPubkey,
+                                      timestamp: int,
+                                      sig:       BLSSignatureParams,
+                                      ids:       list[int]):
+        unsent_tx = self.contract.functions.exitBLSPublicKeyWithSignature(
             (key.X, key.Y),
             timestamp,
             (sig.sigs0, sig.sigs1, sig.sigs2, sig.sigs3),
             ids
         ).build_transaction(basic_build_tx_params(self.hardhat_account0))
-        tx_hash   = submit_unsigned_tx("Remove BLS public key w/ signature", self.hardhat_account0, unsent_tx)
+        tx_hash   = submit_unsigned_tx("Exit BLS public key w/ signature", self.hardhat_account0, unsent_tx)
         return tx_hash
 
-    def removeBLSPublicKeyAfterWaitTime(self, serviceNodeID: int):
-        unsent_tx = self.contract.functions.removeBLSPublicKeyAfterWaitTime(serviceNodeID).build_transaction(basic_build_tx_params(self.hardhat_account0))
-        tx_hash   = submit_unsigned_tx("Remove BLS public key after wait time", self.hardhat_account0, unsent_tx)
+    def exitBLSPublicKeyAfterWaitTime(self, serviceNodeID: int):
+        unsent_tx = self.contract.functions.exitBLSPublicKeyAfterWaitTime(serviceNodeID).build_transaction(basic_build_tx_params(self.hardhat_account0))
+        tx_hash   = submit_unsigned_tx("Exit BLS public key after wait time", self.hardhat_account0, unsent_tx)
         return tx_hash
 
     def liquidateBLSPublicKeyWithSignature(self,
