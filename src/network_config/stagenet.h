@@ -6,7 +6,7 @@
 namespace cryptonote::config::stagenet {
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::STAGENET,
-        .DEFAULT_CONFIG_SUBDIR = "stagenet2"sv,
+        .DEFAULT_CONFIG_SUBDIR = "stagenet3"sv,
         .HEIGHT_ESTIMATE_HEIGHT = 0,
         .HEIGHT_ESTIMATE_TIMESTAMP = 1720140000,
         .PUBLIC_ADDRESS_BASE58_PREFIX = 4888,             // ~ ST2 .. ST4
@@ -16,7 +16,7 @@ inline constexpr network_config config{
         .RPC_DEFAULT_PORT = 11023,
         .QNET_DEFAULT_PORT = 11025,
         .NETWORK_ID =
-                {{0x41,
+                {{0x42,
                   0x6c,
                   0x6c,
                   0x79,

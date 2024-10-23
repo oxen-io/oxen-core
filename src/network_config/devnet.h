@@ -6,7 +6,7 @@
 namespace cryptonote::config::devnet {
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::DEVNET,
-        .DEFAULT_CONFIG_SUBDIR = "devnet2"sv,
+        .DEFAULT_CONFIG_SUBDIR = "devnet3"sv,
         .HEIGHT_ESTIMATE_HEIGHT = 0,
         .HEIGHT_ESTIMATE_TIMESTAMP = 1597170000,
         .PUBLIC_ADDRESS_BASE58_PREFIX = 3930,             // ~ dV1 .. dV3
@@ -16,7 +16,7 @@ inline constexpr network_config config{
         .RPC_DEFAULT_PORT = 38857,
         .QNET_DEFAULT_PORT = 38859,
         .NETWORK_ID =
-                {{0x02,
+                {{0x03,
                   0xf7,
                   0x5c,
                   0x7d,
