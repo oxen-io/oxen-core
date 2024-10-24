@@ -725,6 +725,12 @@ bool core::init(
         }
     }
 
+    // NOTE: Provide a stub L2 tracker for fakechain. This is acceptable because our unit tests
+    // _do not_ enter the ETH/BLS hardfork, so a stub L2 tracker works as we never invoke or rely on
+    // it being configured correctly
+    if (m_nettype == network_type::FAKECHAIN && !m_l2_tracker)
+        m_l2_tracker = std::make_unique<eth::L2Tracker>(*this);
+
     // TODO: remove this after HF21
     m_skip_proof_l2_check = command_line::get_arg(vm, arg_l2_skip_proof_check);
 
