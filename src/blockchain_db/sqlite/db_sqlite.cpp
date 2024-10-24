@@ -832,10 +832,10 @@ bool BlockchainSQLite::return_staked_amount_to_user(
 
         for (auto& payment : payments) {
             auto amt = static_cast<int64_t>(payment.amount.to_db());
-            if (!payment.eth_address)
-            {
+            if (!payment.eth_address) {
                 constexpr auto error =
-                        "Delayed payments table insert failed: payment does not have an etherum address";
+                        "Delayed payments table insert failed: payment does not have an etherum "
+                        "address";
                 log::error(logcat, error);
                 throw oxen::traced<std::runtime_error>{error};
             }
