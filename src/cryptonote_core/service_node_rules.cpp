@@ -85,8 +85,9 @@ static_assert([]<size_t... I>(std::index_sequence<I...>) {
 uint64_t get_default_staking_requirement(cryptonote::network_type nettype, hf hardfork) {
     assert(hardfork >= hf::hf16_pulse);
     if (hardfork >= feature::ETH_BLS)
-        return nettype == network_type::MAINNET ? SENT_STAKING_REQUIREMENT
-                                                : SENT_STAKING_REQUIREMENT_TESTNET;
+        return nettype == network_type::MAINNET  ? SENT_STAKING_REQUIREMENT
+             : nettype == network_type::LOCALDEV ? SENT_STAKING_REQUIREMENT_LOCALDEV
+                                                 : SENT_STAKING_REQUIREMENT_TESTNET;
 
     return nettype == network_type::MAINNET ? OXEN_STAKING_REQUIREMENT
                                             : OXEN_STAKING_REQUIREMENT_TESTNET;
