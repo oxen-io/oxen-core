@@ -130,7 +130,8 @@ bool BlockchainSQLite::table_exists(const std::string& table_name) {
 
 bool BlockchainSQLite::trigger_exists(const std::string& trigger_name) {
     return prepared_get<int>(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?)", trigger_name);
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?)",
+            trigger_name);
 }
 
 void BlockchainSQLite::upgrade_schema() {
