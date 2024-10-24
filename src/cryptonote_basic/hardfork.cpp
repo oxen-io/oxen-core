@@ -142,6 +142,7 @@ static constexpr std::array testnet_hard_forks = {
         hard_fork{hf::hf19_reward_batching, 1, 254, 1653632397},     // 2022-05-27T06:19:57.000Z UTC
         hard_fork{hf::hf19_reward_batching, 2, 62885, 1661205699},   // 2022-08-22T22:01:39.000Z UTC
         hard_fork{hf::hf19_reward_batching, 3, 161000, 1673385120},  // 2023-01-10T21:12:00.000Z UTC
+        hard_fork{hf::hf20_eth_transition, 0, 629500, 1729215000},   // 2024-10-17T01:30:00.000Z UTC
 };
 
 static constexpr std::array devnet_hard_forks = {

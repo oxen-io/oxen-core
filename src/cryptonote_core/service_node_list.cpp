@@ -451,6 +451,9 @@ void validate_registration(
         uint64_t staking_requirement,
         uint64_t block_timestamp,
         const registration_details& reg) {
+    if (hf_version == feature::ETH_TRANSITION)
+        throw invalid_registration{
+                "New registrations are disabled during OXEN->SENT transition period"};
     if (reg.uses_portions) {
         if (hf_version >= hf::hf19_reward_batching)
             throw invalid_registration{"Portion-based registrations are not permitted in HF19+"};
