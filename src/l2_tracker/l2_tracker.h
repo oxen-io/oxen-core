@@ -7,6 +7,7 @@
 #include <ethyl/provider.hpp>
 #include <forward_list>
 #include <iterator>
+#include <ranges>
 #include <shared_mutex>
 #include <unordered_set>
 
@@ -169,24 +170,35 @@ class L2Tracker {
     // Returns the age of the last successful height response we got from an L2 RPC provider.
     std::optional<std::chrono::nanoseconds> latest_height_age() const;
 
-    // Initiates a synchronous request to the current L2 contract to retrieve the current list of
-    // BLS pubkeys, and returns the numeric contract IDs of any contract pubkeys that are not in the
-    // `[begin..end)` input range.
+    // Performs an asynchronous request to the current L2 contract to retrieve the current list of
+    // BLS pubkeys, and returns a NonSigners struct containing the numeric contract
+    // IDs of any contract pubkeys that are not in the `[begin..end)` input range, and any rejected
+    // pubkeys that are not in the contract and should be remove before submission to the contract.
     //
-    // TODO: make asychronous
-    std::vector<uint64_t> get_non_signers(
-            const std::unordered_set<bls_public_key>& bls_public_keys);
-    template <std::input_iterator It, std::sentinel_for<It> End>
-    std::vector<uint64_t> get_non_signers(It begin, End end) {
-        return get_non_signers(std::unordered_set<bls_public_key>{begin, end});
+    // This method returns immediately: when the data is returned from the contract the given
+    // callback is invoked with the result.
+    //
+    // Invokes with nullopt on failure.
+    void get_non_signers(
+            std::unordered_set<bls_public_key> bls_public_keys,
+            std::function<void(std::optional<NonSigners>)> callback);
+
+    // Versions of the above that take a pubkey range and construct the unordered_set on the fly
+    template <std::ranges::input_range R>
+        requires std::same_as<const std::ranges::range_reference_t<R>, const bls_public_key&>
+    void get_non_signers(R&& r, std::function<void(std::optional<NonSigners>)> callback) {
+        return get_non_signers(
+                std::unordered_set<bls_public_key>{r.begin(), r.end()}, std::move(callback));
     }
 
-    // Initiates a synchronous request to the current L2 contract to retrieve the list of contract
-    // numeric IDs and pubkeys of all contract service nodes as of the given height (or as of the
-    // latest height if height is nullopt).
-    //
-    // TODO: make asychronous
-    RewardsContract::ServiceNodeIDs get_all_service_node_ids(std::optional<uint64_t> height);
+    // Initiates an asynchronous request for all current L2 contract numeric IDs and pubkeys of
+    // contract service nodes at the given height (current height if nullopt).  This method returns
+    // immediately, with a followup call passing the result to given lambda (likely from a different
+    // thread) when the request completes, or a call to the lambda with `std::nullopt` if the
+    // request fails or times out.
+    void get_all_service_node_ids(
+            std::optional<uint64_t> height,
+            std::function<void(std::optional<ServiceNodeIDs>)> callback);
 
     // Returns true if the given pubkey is in the L2 contract, as of the last contract list update,
     // false if not in the list.  (This method does not make a new L2 provider request).  Returns

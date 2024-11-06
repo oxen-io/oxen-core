@@ -44,6 +44,8 @@
 #include <variant>
 
 #include "blockchain_db/sqlite/db_sqlite.h"
+#include "bls/bls_aggregator.h"
+#include "bls/bls_crypto.h"
 #include "common/command_line.h"
 #include "common/guts.h"
 #include "common/json_binary_proxy.h"
@@ -119,7 +121,9 @@ namespace {
         // Legacy binary request; these still use epee serialization, and should be considered
         // deprecated (tentatively to be removed in Oxen 11).
         cmd->invoke = [](rpc_request&& request,
-                         core_rpc_server& server) -> rpc_command::result_type {
+                         core_rpc_server& server,
+                         std::function<void(rpc_command::result_type)> respond,
+                         std::function<void(rpc_error)> /*error_resp*/) {
             typename RPC::request req{};
             std::string_view data;
             if (auto body = request.body_view())
@@ -134,7 +138,7 @@ namespace {
 
             std::string response;
             epee::serialization::store_t_to_binary(res, response);
-            return response;
+            respond(std::move(response));
         };
 
         for (const auto& name : RPC::names())
@@ -2563,32 +2567,79 @@ void set_contract_signature(
         nlohmann::json& response,
         tools::json_binary_proxy& response_hex,
         const eth::bls_aggregate_signed& sig,
-        eth::L2Tracker& l2_tracker) {
-    response_hex["msg_to_sign"] = std::string_view(
-            reinterpret_cast<const char*>(sig.msg_to_sign.data()), sig.msg_to_sign.size());
-    response_hex["signature"] = sig.signature;
-    response["non_signer_indices"] = l2_tracker.get_non_signers(
-            sig.signers_bls_pubkeys.begin(), sig.signers_bls_pubkeys.end());
+        eth::L2Tracker& l2_tracker,
+        std::shared_ptr<responder> responder,
+        std::function<void()> success_cb) {
+
+    l2_tracker.get_non_signers(
+            std::ranges::views::keys(sig.signatures),
+            [&response,
+             &response_hex,
+             &sig,
+             responder = std::move(responder),
+             success_cb = std::move(success_cb)](std::optional<eth::NonSigners> non_signers) {
+                if (!non_signers) {
+                    responder->error.emplace(
+                            ERROR_BLS_SIG, "Failed to retrieve contract pubkey list");
+                    return;
+                }
+
+                response["status"] = STATUS_OK;
+                response_hex["msg_to_sign"] = std::string_view(
+                        reinterpret_cast<const char*>(sig.msg_to_sign.data()),
+                        sig.msg_to_sign.size());
+
+                if (const auto& unwanted = non_signers->unwanted; !unwanted.empty()) {
+                    log::debug(
+                            logcat,
+                            "Found {} unwanted BLS signatures from non-contract pubkeys; "
+                            "de-aggregating them",
+                            unwanted.size());
+                    eth::signature_aggregator agg;
+                    agg.add(sig.signature);
+                    for (auto& remove_pk : unwanted)
+                        agg.subtract(sig.signatures.at(remove_pk));
+                    auto final_sig = agg.get();
+                    response_hex["signature"] = final_sig;
+                    log::debug(logcat, "Final BLS signature: {}", final_sig);
+                } else {
+                    response_hex["signature"] = sig.signature;
+                }
+                response["non_signer_indices"] = std::move(non_signers->missing_ids);
+            });
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
-    try {
-        if (!m_core.have_l2_tracker())
-            throw std::invalid_argument{
-                    "Unable to process request: this RPC node is not configured with an ETH L2 "
-                    "provider"};
+void core_rpc_server::invoke(
+        BLS_REWARDS_REQUEST& rpc, rpc_context, std::shared_ptr<responder> keepalive) {
+    if (!m_core.have_l2_tracker())
+        throw rpc_error{
+                ERROR_NO_L2_TRACKER,
+                "Unable to process request: this RPC node is not configured with an ETH L2 "
+                "provider"};
 
+    try {
         if (rpc.request.height <= 0)
             rpc.request.height += m_core.blockchain.get_current_blockchain_height() - 1;
 
-        const auto response = m_core.bls_rewards_request(
-                rpc.request.address, static_cast<uint64_t>(rpc.request.height));
-        set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
-        rpc.response["status"] = STATUS_OK;
-        rpc.response["address"] = "{}"_format(response.addr);
-        rpc.response["amount"] = response.amount;
-        rpc.response["height"] = response.height;
+        m_core.bls_rewards_request(
+                rpc.request.address,
+                static_cast<uint64_t>(rpc.request.height),
+                [&rpc, keepalive = std::move(keepalive), &l2 = m_core.l2_tracker()](
+                        const eth::bls_rewards_response& response) mutable {
+                    set_contract_signature(
+                            rpc.response,
+                            rpc.response_hex,
+                            response,
+                            l2,
+                            std::move(keepalive),
+                            [&rpc, response] {
+                                rpc.response["address"] = "{}"_format(response.addr);
+                                rpc.response["amount"] = response.amount;
+                                rpc.response["height"] = response.height;
+                            });
+                });
+
     } catch (const std::exception& e) {
         throw rpc_error{ERROR_BLS_SIG, e.what()};
     }
@@ -2652,19 +2703,32 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
     rpc.response = std::move(list);
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_REQUEST& rpc, rpc_context) {
-    try {
-        if (!m_core.have_l2_tracker())
-            throw std::invalid_argument{
-                    "Unable to process request: this RPC node is not configured with an ETH L2 "
-                    "provider"};
+void core_rpc_server::invoke(
+        BLS_EXIT_LIQUIDATION_REQUEST& rpc, rpc_context, std::shared_ptr<responder> keepalive) {
 
-        const auto response =
-                m_core.bls_exit_liquidation_request(rpc.request.pubkey, rpc.request.liquidate);
-        set_contract_signature(rpc.response, rpc.response_hex, response, m_core.l2_tracker());
-        rpc.response["status"] = STATUS_OK;
-        rpc.response["timestamp"] = response.timestamp;
-        rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
+    if (!m_core.have_l2_tracker())
+        throw rpc_error{
+                ERROR_NO_L2_TRACKER,
+                "Unable to process request: this RPC node is not configured with an ETH L2 "
+                "provider"};
+
+    try {
+        m_core.bls_exit_liquidation_request(
+                rpc.request.pubkey,
+                rpc.request.liquidate,
+                [&rpc, keepalive = std::move(keepalive), &l2 = m_core.l2_tracker()](
+                        const eth::bls_exit_liquidation_response& response) mutable {
+                    set_contract_signature(
+                            rpc.response,
+                            rpc.response_hex,
+                            response,
+                            l2,
+                            std::move(keepalive),
+                            [&rpc, response] {
+                                rpc.response["timestamp"] = response.timestamp;
+                                rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
+                            });
+                });
     } catch (const std::exception& e) {
         throw rpc_error{ERROR_BLS_SIG, e.what()};
     }

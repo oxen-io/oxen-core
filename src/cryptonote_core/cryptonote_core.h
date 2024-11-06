@@ -31,6 +31,7 @@
 #include "common/command_line.h"
 #include "common/exception.h"
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_basic/hardfork.h"
@@ -594,9 +595,20 @@ class core final {
      */
     bool offline() const { return m_offline; }
 
-    eth::bls_rewards_response bls_rewards_request(const eth::address& address, uint64_t height);
-    eth::bls_exit_liquidation_response bls_exit_liquidation_request(
-            const crypto::public_key& pubkey, bool liquidate);
+    // Initiates an asynchronous rewards signing request to the network's nodes and returns
+    // immediately.  `callback` gets invoked once the requests are finished.
+    void bls_rewards_request(
+            const eth::address& address,
+            uint64_t height,
+            std::function<void(const eth::bls_rewards_response&)> callback);
+
+    // Initiates an asynchronous exit or liquidation signing request to the network's nodes and
+    // returns immediately.  `callback` gets invoked once the requests are finished.
+    void bls_exit_liquidation_request(
+            const std::variant<crypto::public_key, eth::bls_public_key>& pubkey,
+            bool liquidate,
+            std::function<void(const eth::bls_exit_liquidation_response&)> callback);
+
     eth::bls_registration_response bls_registration(const eth::address& ethereum_address) const;
 
     /**

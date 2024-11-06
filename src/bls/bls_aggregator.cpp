@@ -14,8 +14,10 @@
 
 #include <chrono>
 #include <ethyl/utils.hpp>
+#include <memory>
 
 #include "bls_crypto.h"
+#include "crypto/eth.h"
 
 namespace eth {
 
@@ -163,9 +165,14 @@ namespace {
     // as a snapshot of the rewards contract's 'allServiceNodeIDs' issued
     // at the invocation of this call.
     void debug_redo_bls_aggregation_steps_locally(
-            cryptonote::core& core, std::span<const bls_public_key> signature_signers) {
-        const RewardsContract::ServiceNodeIDs contract_ids =
-                core.l2_tracker().get_all_service_node_ids(std::nullopt);
+            cryptonote::core& core,
+            const std::unordered_map<bls_public_key, bls_signature> signatures) {
+        auto maybe_contract_ids = core.l2_tracker().get_all_service_node_ids(std::nullopt);
+        if (!maybe_contract_ids) {
+            log::warning(logcat, "Failed to fetch service node IDs from rewards contract");
+            return;
+        }
+        const auto& contract_ids = *maybe_contract_ids;
 
         // NOTE: Detect if the smart contract state has diverged.
         {
@@ -175,8 +182,7 @@ namespace {
             size_t missing_count = 0;
             for (const auto& sn_info : sn_list_info) {
                 bool found = false;
-                for (size_t index = 0; index < contract_ids.ids.size(); index++) {
-                    const bls_public_key& contract_bls_pkey = contract_ids.bls_pubkeys[index];
+                for (const auto& [id, contract_bls_pkey] : contract_ids) {
                     if (sn_info.info->bls_public_key == contract_bls_pkey) {
                         found = true;
                         break;
@@ -187,15 +193,13 @@ namespace {
                     missing_count++;
                     oxen::log::warning(
                             logcat,
-                            "Session node {} exists in Oxen but not in the contract",
+                            "Service node {} exists in Oxen but not in the contract",
                             sn_info.pubkey);
                 }
             }
 
             // NOTE: Check if key is in smart contract but not in Oxen
-            for (size_t index = 0; index < contract_ids.ids.size(); index++) {
-                uint64_t contract_id = contract_ids.ids[index];
-                const bls_public_key& contract_bls_pkey = contract_ids.bls_pubkeys[index];
+            for (const auto& [contract_id, contract_bls_pkey] : contract_ids) {
                 bool found = false;
                 for (const auto& sn_info : sn_list_info) {
                     if (sn_info.info->bls_public_key == contract_bls_pkey) {
@@ -222,27 +226,18 @@ namespace {
         {
             // NOTE: Aggregate all keys
             eth::pubkey_aggregator cpp_agg_pubkey;
-            for (size_t index = 0; index < contract_ids.ids.size(); index++)
-                cpp_agg_pubkey.add(contract_ids.bls_pubkeys[index]);
+            for (const auto& [id, blspk] : contract_ids)
+                cpp_agg_pubkey.add(blspk);
 
             oxen::log::debug(logcat, "Full BLS aggregate public key {}", cpp_agg_pubkey.get());
 
             // NOTE: Subtract non-signers
-            for (size_t index = 0; index < contract_ids.ids.size(); index++) {
-                bool found = false;
-                const bls_public_key& contract_bls_pkey = contract_ids.bls_pubkeys[index];
-                for (const bls_public_key& pkey : signature_signers) {
-                    if (pkey == contract_bls_pkey) {
-                        found = true;
-                        break;
-                    }
-                }
-
-                if (!found) {
+            for (const auto& [id, contract_bls_pkey] : contract_ids) {
+                if (!signatures.count(contract_bls_pkey)) {
                     oxen::log::debug(
                             logcat,
                             "  Subtracting BLS key from Session Node {} {}",
-                            contract_ids.ids[index],
+                            id,
                             contract_bls_pkey);
                     cpp_agg_pubkey.subtract(contract_bls_pkey);
                 }
@@ -265,36 +260,33 @@ namespace {
     struct agg_log_list {
         std::vector<agg_log> success;
         std::vector<agg_log> error;
+        std::mutex mutex;
     };
 
     void dump_agg_log_list(const agg_log_list& lister) {
         size_t total_aggs = lister.error.size() + lister.success.size();
-        size_t success_pct = lister.success.size() / static_cast<float>(total_aggs) * 100.f;
         fmt::memory_buffer buffer;
         fmt::format_to(
                 std::back_inserter(buffer),
-                "{} results {}/{} sigs ({}% success, {} failures):\n",
+                "{} results {}/{} sigs ({:.1f}% success, {} failures):\n",
                 OMQ_BLS_REWARDS_ENDPOINT,
                 lister.success.size(),
                 total_aggs,
-                success_pct,
+                lister.success.size() * 100.f / total_aggs,
                 lister.error.size());
 
-        struct agg_log_entry {
-            std::span<const agg_log> list;
-            bool success;
-        } array[] = {
+        std::pair<std::span<const agg_log>, bool> array[] = {
                 {lister.success, true},
                 {lister.error, false},
         };
 
-        for (auto it : array) {
-            if (it.list.empty())
+        for (auto [list, success] : array) {
+            if (list.empty())
                 continue;
 
             fmt::format_to(
-                    std::back_inserter(buffer), "{} runs:\n", it.success ? "Successful" : "Failed");
-            for (const auto& item : it.list) {
+                    std::back_inserter(buffer), "{} runs:\n", success ? "Successful" : "Failed");
+            for (const auto& item : list) {
                 fmt::format_to(
                         std::back_inserter(buffer),
                         "  - SN {} BLS {} XKEY {} @ {:<21} => {}\n",
@@ -312,22 +304,22 @@ namespace {
 
     void log_aggregation_result(
             std::string_view agg_type,
-            std::span<const bls_public_key> signers,
+            const std::unordered_map<bls_public_key, bls_signature>& signatures,
             std::chrono::high_resolution_clock::time_point started,
             const bls_signature& sig,
-            const agg_log_list& agg_log_lister,
+            const std::optional<agg_log_list>& agg_log_lister,
             // Used only in a debug build:
             [[maybe_unused]] cryptonote::core& core,
             [[maybe_unused]] std::span<const uint8_t> msg) {
 
-        if (oxen::log::get_level(logcat) <= oxen::log::Level::debug)
-            dump_agg_log_list(agg_log_lister);
+        if (oxen::log::get_level(logcat) <= oxen::log::Level::debug && agg_log_lister)
+            dump_agg_log_list(*agg_log_lister);
 
 #ifndef NDEBUG
         eth::bls_public_key agg_pub;
         {
             eth::pubkey_aggregator aggregator;
-            for (const auto& blspk : signers)
+            for (const auto& [blspk, sig] : signatures)
                 aggregator.add(blspk);
             agg_pub = aggregator.get();
         }
@@ -345,13 +337,13 @@ namespace {
 #else
                 agg_pub,
 #endif
-                signers.size(),
+                signatures.size(),
                 sig,
                 elapsed);
 
 #ifndef NDEBUG
 
-        debug_redo_bls_aggregation_steps_locally(core, signers);
+        debug_redo_bls_aggregation_steps_locally(core, signatures);
 
         if (eth::verify(core.get_nettype(), sig, agg_pub, msg)) {
             oxen::log::debug(logcat, "BLS final aggregate signature verification confirmed");
@@ -467,91 +459,201 @@ bls_registration_response bls_aggregator::registration(
             .ed_signature = crypto::null<crypto::ed25519_signature>};
 }
 
-uint64_t bls_aggregator::nodes_request(
-        std::string_view request_name, std::string_view message, const request_callback& callback) {
-    std::mutex connection_mutex;
-    std::condition_variable cv;
-    size_t active_connections = 0;
-    const size_t MAX_CONNECTIONS = 900;
+namespace {
 
-    // FIXME: make this function async rather than blocking
-    std::vector<service_nodes::service_node_address> snodes;
-    core.service_node_list.copy_reachable_service_node_addresses(
-            std::back_inserter(snodes), core.get_nettype());
+    // Recursive object held in OMQ response lambdas that puts itself into new request lambdas as
+    // long as there are more requests to make.  Once all the requests are finished and the
+    // individual response callbacks fired (whether successful or not), a final_callback gets fired,
+    // after which there will be no remaining outstanding OMQ callbacks sharing the pointer and it
+    // gets destroyed.
+    class nodes_request_data : public std::enable_shared_from_this<nodes_request_data> {
+        // Private constructor: we must always hold this in a shared pointer (for
+        // enable_shared_from_this to work properly), and so you must construct such a shared
+        // pointer by passing constructor arguments through make(...).
+        nodes_request_data(
+                cryptonote::core& core,
+                std::string request_name,
+                std::string message,
+                request_callback callback,
+                std::function<void(int total_requests)> final_callback,
+                std::chrono::milliseconds timeout) :
+                core{core},
+                timeout{timeout},
+                request_name{std::move(request_name)},
+                message{std::move(message)},
+                callback{std::move(callback)},
+                final_callback{std::move(final_callback)} {
 
-    auto& omq = core.omq();
-    size_t result = 0;
-    for (size_t i = 0; i < snodes.size(); i++) {
-        auto& snode = snodes[i];
+            core.service_node_list.copy_reachable_service_node_addresses(
+                    std::back_inserter(snodes), core.get_nettype());
+        }
 
-        // TODO: We should query non-active SNs as well and try and get them to participate in the
-        // aggregation step to reduce the number of non-signers. They might still be contactable.
-        if (core.service_node_list.is_service_node(snode.sn_pubkey, /*require_active*/ true)) {
-            if (1) {
-                std::lock_guard connection_lock(connection_mutex);
+      public:
+        cryptonote::core& core;
+        std::mutex connection_mutex;
+        std::vector<service_nodes::service_node_address> snodes;
+        size_t next_snode = 0;
+        size_t active_connections = 0;
+        size_t failures = 0;
+        oxenmq::send_option::request_timeout timeout;
+        inline constexpr static size_t MAX_CONNECTIONS = 900;
+
+        const std::string request_name;
+        const std::string message;
+
+        const request_callback callback;
+        std::function<void(int)> final_callback;
+
+        template <typename... Args>
+        static std::shared_ptr<nodes_request_data> make(Args&&... args) {
+            return std::shared_ptr<nodes_request_data>{
+                    new nodes_request_data{std::forward<Args>(args)...}};
+        }
+
+        // Kicks off the requests, initiating an initial wave of connections up to the request
+        // limit, and then recursively calling itself (until there are no more requests) as requests
+        // finish.  You must call this for this class to do anything, and may not touch any of the
+        // struct's members after calling it.
+        void establish() {
+            log::debug(
+                    logcat,
+                    "Establishing new connections (currently {} active, {} remaining of {} total)",
+                    active_connections,
+                    snodes.size() - next_snode,
+                    MAX_CONNECTIONS);
+            std::lock_guard lock{connection_mutex};
+
+            while (active_connections < MAX_CONNECTIONS && next_snode < snodes.size()) {
+                auto& snode = snodes[next_snode++];
                 ++active_connections;
-                ++result;
-            } else {
-                // TODO(doyle): Rate limit
-                std::unique_lock connection_lock(connection_mutex);
-                cv.wait(connection_lock,
-                        [&active_connections] { return active_connections < MAX_CONNECTIONS; });
-            }
 
-            omq.request(
-                    tools::view_guts(snode.x_pubkey),
-                    request_name,
-                    [i, &snodes, &connection_mutex, &active_connections, &cv, &callback](
-                            bool success, std::vector<std::string> data) {
-                        callback(bls_response{snodes[i], success}, data);
-                        std::lock_guard connection_lock{connection_mutex};
-                        assert(active_connections);
-                        if (--active_connections == 0)
-                            cv.notify_all();
-                    },
-                    message);
-        } else {
+                oxenmq::ConnectionID connid;
+                bool is_sn_conn = core.service_node_list.is_service_node(
+                        snode.sn_pubkey, /*require_active*/ true);
+                if (is_sn_conn) {
+                    connid = tools::view_guts(snode.x_pubkey);
+                } else {
+
 // TODO: This appears to work now that we currently generate the endpoint to contact the
 // node on (and actually use their xkey for authenticated comms). The localdev script
 // fails though but it progresses further than it did before when this was last enabled.
 #if 0
-            if (1) {
-                std::lock_guard connection_lock(connection_mutex);
-                ++active_connections;
-            } else {
-                // TODO(doyle): Rate limit
-                std::unique_lock connection_lock(connection_mutex);
-                cv.wait(connection_lock,
-                        [&active_connections] { return active_connections < MAX_CONNECTIONS; });
+
+                    auto addr = oxenmq::address{"curve://{}:{}/{:x}"_format(
+                            epee::string_tools::get_ip_string_from_int32(snode.ip), snode.port, snode.x_pubkey)};
+                    connid = core.omq().connect_remote(
+                            addr,
+                            [](oxenmq::ConnectionID) { /* Successfully connected */ },
+                            [](oxenmq::ConnectionID, std::string_view) { /* Failed to connect */ });
+#else
+                    callback(
+                            snode,
+                            /*success=*/false,
+                            {{ "Non-active node connections unimplemented"s }});
+                    --active_connections;
+                    continue;
+#endif
+                }
+
+                log::debug(logcat, "Initiating {} request to {}", request_name, connid.to_string());
+                core.omq().request(
+                        connid,
+                        request_name,
+                        [this,
+                         self = shared_from_this(),
+                         disconnect = !is_sn_conn ? connid : oxenmq::ConnectionID{},
+                         &snode](bool success, std::vector<std::string> data) {
+                            try {
+                                callback(snode, success, std::move(data));
+                            } catch (const std::exception& e) {
+                                log::warning(
+                                        logcat,
+                                        "request callback raised an uncaught exception: {}",
+                                        e.what());
+                            }
+                            {
+                                std::lock_guard lock{connection_mutex};
+                                assert(active_connections);
+                                --active_connections;
+                                if (disconnect)
+                                    core.omq().disconnect(disconnect);
+                            }
+
+                            establish();
+                        },
+                        message,
+                        oxenmq::send_option::request_timeout{timeout});
             }
 
-            auto addr = oxenmq::address{"curve://{}:{}/{:x}"_format(
-                    epee::string_tools::get_ip_string_from_int32(snode.ip), snode.port, snode.x_pubkey)};
-            auto conn = omq.connect_remote(
-                    addr,
-                    [](oxenmq::ConnectionID) { /* Successfully connected */ },
-                    [](oxenmq::ConnectionID, std::string_view) { /* Failed to connect */ });
-
-            omq.request(
-                    conn,
-                    request_name,
-                    [i, &snodes, &connection_mutex, &active_connections, &cv, &callback, conn, &omq](
-                            bool success, std::vector<std::string> data) {
-                        callback(bls_response{snodes[i], success}, data);
-                        std::lock_guard connection_lock{connection_mutex};
-                        assert(active_connections);
-                        if (--active_connections == 0)
-                            cv.notify_all();
-                        omq.disconnect(conn);
-                    },
-                    message);
-#endif
+            if (active_connections == 0) {
+                // If this is true here then it means we were called from the callback of the last
+                // request to come back (or there were no requests at all), so it's time to
+                // finalize.
+                if (final_callback)
+                    final_callback(snodes.size());
+            }
         }
-    }
+    };
 
-    std::unique_lock connection_lock{connection_mutex};
-    cv.wait(connection_lock, [&active_connections] { return active_connections == 0; });
-    return result;
+    template <typename Result>
+    struct aggregate_result {
+        Result result{};
+        std::optional<agg_log_list> agg_log_lister = log::get_level(logcat) <= log::Level::debug
+                                                           ? std::make_optional<agg_log_list>()
+                                                           : std::nullopt;
+        std::mutex sig_mutex;
+        eth::signature_aggregator agg_sig;
+
+        template <typename... T>
+        void success(
+                const service_nodes::service_node_address& addr,
+                fmt::format_string<T...> format,
+                T&&... args) {
+            if (agg_log_lister) {
+                std::lock_guard lock{agg_log_lister->mutex};
+                agg_log_lister->success.emplace_back(
+                        addr, fmt::format(format, std::forward<T>(args)...));
+            }
+        }
+        template <typename... T>
+        void error(
+                const service_nodes::service_node_address& addr,
+                fmt::format_string<T...> format,
+                T&&... args) {
+            if (agg_log_lister) {
+                std::lock_guard lock{agg_log_lister->mutex};
+                agg_log_lister->error.emplace_back(
+                        addr, fmt::format(format, std::forward<T>(args)...));
+            }
+        }
+    };
+}  // namespace
+
+uint64_t bls_aggregator::nodes_request(
+        std::string request_name,
+        std::string message,
+        request_callback callback,
+        std::function<void(int total_requests)> final_callback) {
+
+    log::debug(logcat, "Initiating nodes request for {}", request_name);
+    assert(callback);
+
+    auto reqdata = nodes_request_data::make(
+            core,
+            std::move(request_name),
+            std::move(message),
+            std::move(callback),
+            std::move(final_callback),
+            5s /* per-request timeout */);
+
+    size_t n_snodes = reqdata->snodes.size();
+
+    log::debug(logcat, "Establishing initial connections ({} reachable snodes total)", n_snodes);
+    log::debug(logcat, "use count: {}", reqdata.use_count());
+
+    reqdata->establish();
+
+    return n_snodes;
 }
 
 void bls_aggregator::get_rewards(oxenmq::Message& m) const {
@@ -605,9 +707,11 @@ void bls_aggregator::get_rewards(oxenmq::Message& m) const {
     m.send_reply("200", std::move(d).str());
 }
 
-bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64_t height) {
+void bls_aggregator::rewards_request(
+        const address& addr,
+        uint64_t height,
+        std::function<void(const bls_rewards_response&)> callback) {
 
-    auto begin_ts = std::chrono::high_resolution_clock::now();
     auto maybe_amount = core.blockchain.sqlite_db().get_accrued_rewards(addr, height);
     auto amount = maybe_amount.value_or(0);
 
@@ -654,41 +758,37 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
                         addr,
                         height,
                         amount);
-                return cache_response;
+                callback(cache_response);
+                return;
             }
         }
     }
 
-    bls_rewards_response result{};
-    result.addr = addr;
+    auto result_data = std::make_shared<aggregate_result<bls_rewards_response>>();
+    auto& result = result_data->result;
+    result.addr = std::move(addr);
     result.amount = amount;
     result.height = height;
     result.msg_to_sign = get_reward_balance_msg_to_sign(
             core.get_nettype(), result.addr, tools::encode_integer_be<32>(amount));
 
-    // `nodesRequest` dispatches to a threadpool hence we require synchronisation:
-    std::mutex sig_mutex;
-    eth::signature_aggregator agg_sig;
-
     oxenc::bt_dict_producer d;
-    d.append("address", tools::view_guts(addr));
+    d.append("address", tools::view_guts(result.addr));
     d.append("height", height);
 
-    // NOTE: Send aggregate rewards request to the remainder of the network. This is a blocking
-    // call (FIXME -- it should not be!)
-    agg_log_list agg_log_lister = {};
+    // NOTE: Initiate aggregate rewards request to the remainder of the network.
     uint64_t total_requests = nodes_request(
             OMQ_BLS_REWARDS_ENDPOINT,
             std::move(d).str(),
-            [&agg_log_lister, &agg_sig, &result, &sig_mutex, nettype = core.get_nettype()](
-                    const bls_response& response, const std::vector<std::string>& data) {
+            // Single result handler:
+            [result_data, nettype = core.get_nettype()](
+                    const service_nodes::service_node_address& sn,
+                    bool success,
+                    std::vector<std::string> data) {
                 bls_rewards_response rewards_response = {};
-                if (!response.success || data.size() != 2 || data[0] != "200") {
-                    agg_log_lister.error.emplace_back(
-                            response.sn,
-                            "Data payload was not valid, {}"_format(fmt::join(data, " ")));
-                    return;
-                }
+                if (!success || data.size() != 2 || data[0] != "200")
+                    return result_data->error(
+                            sn, "Request returned an error: {}", fmt::join(data, " "));
 
                 // NOTE: Extract parameters
                 oxenc::bt_dict_consumer d{data[1]};
@@ -696,41 +796,33 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
                     rewards_response.addr =
                             tools::make_from_guts<address>(d.require<std::string_view>("address"));
                 } catch (const std::exception& e) {
-                    agg_log_lister.error.emplace_back(
-                            response.sn,
-                            "Address was not {} bytes, {}"_format(
-                                    sizeof(address), fmt::join(data, " ")));
-                    return;
+                    return result_data->error(
+                            sn,
+                            "Address was not {} bytes, {}",
+                            sizeof(address),
+                            fmt::join(data, " "));
                 }
 
                 try {
                     rewards_response.amount = d.require<uint64_t>("amount");
                 } catch (const std::exception& e) {
-                    agg_log_lister.error.emplace_back(
-                            response.sn,
-                            "Amount was not a valid U64, {}"_format(fmt::join(data, " ")));
-                    return;
+                    return result_data->error(
+                            sn, "Amount was not a valid U64, {}", fmt::join(data, " "));
                 }
 
                 try {
                     rewards_response.height = d.require<uint64_t>("height");
                 } catch (const std::exception& e) {
-                    agg_log_lister.error.emplace_back(
-                            response.sn,
-                            "Height was not a valid U64, {}"_format(fmt::join(data, " ")));
-                    return;
+                    return result_data->error(
+                            sn, "Height was not a valid U64, {}", fmt::join(data, " "));
                 }
 
                 try {
-                    rewards_response.signature =
-                            tools::make_from_guts<bls_signature>(d.require<std::string_view>("signa"
-                                                                                             "tur"
-                                                                                             "e"));
+                    rewards_response.signature = tools::make_from_guts<bls_signature>(
+                            d.require<std::string_view>("signature"sv));
                 } catch (const std::exception& e) {
-                    agg_log_lister.error.emplace_back(
-                            response.sn,
-                            "Signature was not a valid U64, {}"_format(fmt::join(data, " ")));
-                    return;
+                    return result_data->error(
+                            sn, "Signature was not a valid U64, {}", fmt::join(data, " "));
                 }
 
                 rewards_response.msg_to_sign = get_reward_balance_msg_to_sign(
@@ -739,67 +831,76 @@ bls_rewards_response bls_aggregator::rewards_request(const address& addr, uint64
                         tools::encode_integer_be<32>(rewards_response.amount));
 
                 // NOTE: Verify parameters
-                if (rewards_response.addr != result.addr) {
-                    agg_log_lister.error.emplace_back(
-                            response.sn,
-                            "Response ETH address {} does not match the request address {}"_format(
-                                    rewards_response.addr, result.addr));
-                    return;
-                }
+                auto& result = result_data->result;
+                if (rewards_response.addr != result.addr)
+                    return result_data->error(
+                            sn,
+                            "Response ETH address {} does not match the request address {}",
+                            rewards_response.addr,
+                            result.addr);
 
                 if (rewards_response.amount != result.amount ||
-                    rewards_response.height != result.height) {
-                    agg_log_lister.error.emplace_back(
-                            response.sn,
-                            "Balance/height mismatch: expected {:L}/{:L}, got {:L}/{:L}"_format(
-                                    result.amount,
-                                    result.height,
-                                    rewards_response.amount,
-                                    rewards_response.height));
-                    return;
-                }
+                    rewards_response.height != result.height)
+                    return result_data->error(
+                            sn,
+                            "Balance/height mismatch: expected {:L}/{:L}, got {:L}/{:L}",
+                            result.amount,
+                            result.height,
+                            rewards_response.amount,
+                            rewards_response.height);
 
                 if (!eth::verify(
-                            nettype,
-                            rewards_response.signature,
-                            response.sn.bls_pubkey,
-                            result.msg_to_sign)) {
-                    agg_log_lister.error.emplace_back(response.sn, "Invalid BLS signature");
-                    return;
-                }
+                            nettype, rewards_response.signature, sn.bls_pubkey, result.msg_to_sign))
+                    return result_data->error(sn, "Invalid BLS signature");
 
                 // NOTE: Aggregate parameters
                 {
-                    std::lock_guard lock{sig_mutex};
-                    agg_sig.add(rewards_response.signature);
-                    result.signers_bls_pubkeys.push_back(response.sn.bls_pubkey);
+                    std::lock_guard lock{result_data->sig_mutex};
+                    result_data->agg_sig.add(rewards_response.signature);
+                    [[maybe_unused]] auto [it, inserted] =
+                            result.signatures.emplace(sn.bls_pubkey, rewards_response.signature);
+                    assert(inserted ||
+                           !"Duplicate BLS pubkey signature response should not be possible");
                 }
 
-                agg_log_lister.success.emplace_back(
-                        response.sn, "Success, sig: {}"_format(rewards_response.signature));
+                result_data->success(sn, "Success, sig: {}", rewards_response.signature);
+            },
+
+            // Final result handler (after all individual result processed):
+            [this,
+             result_data,
+             callback = std::move(callback),
+             begin_ts = std::chrono::high_resolution_clock::now()](int total_requests) {
+                log::debug(logcat, "FINAL CALLBACK INVOKED");
+                auto& result = result_data->result;
+
+                result.signature = result_data->agg_sig.get();
+
+                // NOTE: Dump the aggregate pubkey and other info that was generated
+                log_aggregation_result(
+                        "rewards",
+                        result.signatures,
+                        begin_ts,
+                        result.signature,
+                        result_data->agg_log_lister,
+                        core,
+                        result.msg_to_sign);
+
+                callback(result);
+
+                // NOTE: Store the response in to the cache if the number of non-signers is small
+                // enough to constitute a valid signature.
+                uint64_t non_signers_count = total_requests - result.signatures.size();
+                if (non_signers_count <=
+                    contract::rewards_bls_non_signer_threshold(total_requests)) {
+                    std::lock_guard lock{rewards_response_cache_mutex};
+                    rewards_response_cache[result.addr] = std::move(result);
+                }
+
+                return result;
             });
 
-    result.signature = agg_sig.get();
-
-    // NOTE: Dump the aggregate pubkey and other info that was generated
-    log_aggregation_result(
-            "rewards",
-            result.signers_bls_pubkeys,
-            begin_ts,
-            result.signature,
-            agg_log_lister,
-            core,
-            result.msg_to_sign);
-
-    // NOTE: Store the response in to the cache if the number of non-signers is small enough to
-    // constitute a valid signature.
-    uint64_t non_signers_count = total_requests - result.signers_bls_pubkeys.size();
-    if (non_signers_count <= contract::rewards_bls_non_signer_threshold(total_requests)) {
-        std::lock_guard lock{rewards_response_cache_mutex};
-        rewards_response_cache[addr] = result;
-    }
-
-    return result;
+    log::debug(logcat, "Initiated {} service node rewards signing requests", total_requests);
 }
 
 void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, bls_exit_type type) const {
@@ -840,43 +941,59 @@ void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, bls_exit_type type
 // - the endpoint they go to;
 // - the tag that gets used in the msg_to_sign hash; and
 // - the key under which the signed pubkey gets confirmed back to us.
-bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
-        const crypto::public_key& pubkey, bls_exit_type type) {
+void bls_aggregator::exit_liquidation_request(
+        const std::variant<crypto::public_key, eth::bls_public_key>& pubkey,
+        bls_exit_type type,
+        std::function<void(const bls_exit_liquidation_response&)> callback) {
+
+    const auto* sn_pubkey = std::get_if<crypto::public_key>(&pubkey);
+    const auto* bls_pubkey = std::get_if<eth::bls_public_key>(&pubkey);
 
     // NOTE: Trace entry into function
-    oxen::log::debug(logcat, "Initiating {} request for SN {}", type, pubkey);
-
-    auto begin_ts = std::chrono::high_resolution_clock::now();
+    if (sn_pubkey)
+        oxen::log::debug(logcat, "Initiating {} request for SN {}", type, *sn_pubkey);
+    else
+        oxen::log::debug(logcat, "Initiating {} request for BLS pubkey {}", type, *bls_pubkey);
 
     // NOTE: Lookup the BLS pubkey associated with the Ed25519 pubkey.
     std::optional<eth::bls_public_key> maybe_bls_pubkey{};
     core.service_node_list.for_each_recently_removed_node([&](const auto& node) {
-        if (node.service_node_pubkey == pubkey) {
+        if (sn_pubkey ? node.service_node_pubkey == *sn_pubkey
+                      : node.info.bls_public_key == *bls_pubkey) {
             maybe_bls_pubkey = node.info.bls_public_key;
             return true;
         }
         return false;
     });
 
-    if (!maybe_bls_pubkey) {
+    auto format_pk = [&] {
+        return sn_pubkey ? bls_pubkey ? "SN {} (BLS {})"_format(*sn_pubkey, *bls_pubkey)
+                                      : "SN {}"_format(*sn_pubkey)
+                         : "SN with BLS pubkey {}"_format(*bls_pubkey);
+    };
+
+    if (maybe_bls_pubkey)
+        bls_pubkey = &*maybe_bls_pubkey;
+    else if (!bls_pubkey || type == bls_exit_type::normal)
+        // Either a normal exit or a liquidate by SN pubkey, and we did not find the requested
+        // pubkey
         throw oxen::traced<std::invalid_argument>(
-                "{} request for SN {} at height {} is invalid, node is not in the list of recently"
+                "{} request for {} at height {} is invalid, node is not in the list of recently"
                 " exited nodes. Request rejected"_format(
-                        type, pubkey, core.blockchain.get_current_blockchain_height()));
-    }
+                        type, format_pk(), core.blockchain.get_current_blockchain_height()));
 
     // NOTE: Validate the arguments
-    const bls_public_key& bls_pubkey = *maybe_bls_pubkey;
-    if (!bls_pubkey) {
+    if (!*bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
                 "{} request for SN {} w/ the zero BLS pkey at height {} is invalid. Request "
-                "rejected"_format(type, pubkey, core.blockchain.get_current_blockchain_height()));
+                "rejected"_format(
+                        type, format_pk(), core.blockchain.get_current_blockchain_height()));
     }
 
     // NOTE: Serve the response from our cache if it's a repeated request
     {
         std::lock_guard lock{exit_liquidation_response_cache_mutex};
-        auto it = exit_liquidation_response_cache.find(bls_pubkey);
+        auto it = exit_liquidation_response_cache.find(*bls_pubkey);
         if (it != exit_liquidation_response_cache.end()) {
             const bls_exit_liquidation_response& response = it->second;
             auto now_unix_ts = std::chrono::duration_cast<std::chrono::seconds>(
@@ -887,12 +1004,13 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
                 if (cache_age <= contract::REWARDS_EXIT_SIGNATURE_EXPIRY) {
                     log::debug(
                             logcat,
-                            "Serving {} response from cache for SN {} (cached {})\n{}",
+                            "Serving {} response from cache for {} (cached {})\n{}",
                             type,
-                            pubkey,
+                            format_pk(),
                             tools::get_human_readable_timespan(cache_age),
                             response);
-                    return response;
+                    callback(response);
+                    return;
                 }
             }
         }
@@ -900,131 +1018,135 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
 
     // NOTE: The OMQ endpoint to hit
     bool removable = false;
-    std::string_view endpoint = "";
+    std::string endpoint;
     switch (type) {
         case bls_exit_type::normal: {
             endpoint = OMQ_BLS_EXIT_ENDPOINT;
-            removable = core.blockchain.is_node_removable(bls_pubkey);
+            removable = core.blockchain.is_node_removable(*bls_pubkey);
         } break;
         case bls_exit_type::liquidate: {
             endpoint = OMQ_BLS_LIQUIDATE_ENDPOINT;
-            removable = core.blockchain.is_node_liquidatable(bls_pubkey);
+            removable = core.blockchain.is_node_liquidatable(*bls_pubkey);
         } break;
     }
 
     if (!removable) {
         throw oxen::traced<std::invalid_argument>(
-                "{} request for SN {} (BLS {}) at height {} is invalid. Node cannot "
-                "be removed yet. Request rejected"_format(
-                        type, pubkey, bls_pubkey, core.blockchain.get_current_blockchain_height()));
+                "{} request for {} at height {} is invalid: node is not currently eligible to be "
+                "removed. Request rejected"_format(
+                        type, format_pk(), core.blockchain.get_current_blockchain_height()));
     }
 
-    bls_exit_liquidation_response result;
-    result.remove_pubkey = bls_pubkey;
+    auto result_data = std::make_shared<aggregate_result<bls_exit_liquidation_response>>();
+    auto& result = result_data->result;
+    result.remove_pubkey = *bls_pubkey;
     result.type = type;
     result.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
                                std::chrono::system_clock::now().time_since_epoch())
                                .count();
     result.msg_to_sign =
-            get_exit_msg_to_sign(core.get_nettype(), type, bls_pubkey, result.timestamp);
-
-    std::mutex signers_mutex;
-    eth::signature_aggregator agg_sig;
+            get_exit_msg_to_sign(core.get_nettype(), type, *bls_pubkey, result.timestamp);
 
     oxenc::bt_dict_producer message_dict;
-    message_dict.append("bls_pubkey", tools::view_guts(bls_pubkey));
+    message_dict.append("bls_pubkey", tools::view_guts(*bls_pubkey));
     message_dict.append("timestamp", result.timestamp);
 
-    // FIXME: make this async
-    agg_log_list agg_log_lister = {};
     uint64_t total_requests = nodes_request(
-            endpoint,
+            std::move(endpoint),
             std::move(message_dict).str(),
-            [&agg_log_lister, &agg_sig, &result, &signers_mutex, nettype = core.get_nettype()](
-                    const bls_response& response, const std::vector<std::string>& data) {
+            // Single result callback:
+            [result_data, nettype = core.get_nettype()](
+                    const service_nodes::service_node_address& sn,
+                    bool success,
+                    std::vector<std::string> data) {
                 bls_exit_liquidation_response exit_response = {};
-                if (!response.success || data.size() != 2 || data[0] != "200")
-                    throw oxen::traced<std::runtime_error>{
-                            "Request returned an error: {}"_format(fmt::join(data, " "))};
+                if (!success || data.size() != 2 || data[0] != "200")
+                    return result_data->error(
+                            sn, "Request returned an error: {}", fmt::join(data, " "));
 
                 oxenc::bt_dict_consumer d{data[1]};
 
                 // NOTE: Extract parameters
                 try {
-                    exit_response.remove_pubkey =
-                            tools::make_from_guts<bls_public_key>(d.require<std::string_view>("remo"
-                                                                                              "v"
-                                                                                              "e"));
+                    exit_response.remove_pubkey = tools::make_from_guts<bls_public_key>(
+                            d.require<std::string_view>("remove"sv));
                 } catch (const std::exception& e) {
-                    agg_log_lister.error.emplace_back(
-                            response.sn,
-                            "Remove (pubkey) was not {} bytes, {}"_format(
-                                    sizeof(bls_public_key), fmt::join(data, " ")));
-                    return;
+                    return result_data->error(
+                            sn,
+                            "Remove (pubkey) was not {} bytes, {}",
+                            sizeof(bls_public_key),
+                            fmt::join(data, " "));
                 }
 
                 try {
-                    exit_response.signature =
-                            tools::make_from_guts<bls_signature>(d.require<std::string_view>("signa"
-                                                                                             "tur"
-                                                                                             "e"));
+                    exit_response.signature = tools::make_from_guts<bls_signature>(
+                            d.require<std::string_view>("signature"sv));
                 } catch (const std::exception& e) {
-                    agg_log_lister.error.emplace_back(
-                            response.sn,
-                            "Signature was not {} bytes, {}"_format(
-                                    sizeof(bls_signature), fmt::join(data, " ")));
-                    return;
+                    return result_data->error(
+                            sn,
+                            "Signature was not {} bytes, {}",
+                            sizeof(bls_signature),
+                            fmt::join(data, " "));
                 }
 
                 // NOTE: Verify parameters
-                if (exit_response.remove_pubkey != result.remove_pubkey) {
-                    agg_log_lister.error.emplace_back(
-                            response.sn,
-                            "BLS response pubkey {} does not match the request pubkey {}"_format(
-                                    exit_response.remove_pubkey, result.remove_pubkey));
-                    return;
-                }
+                auto& result = result_data->result;
+                if (exit_response.remove_pubkey != result.remove_pubkey)
+                    return result_data->error(
+                            sn,
+                            "BLS response pubkey {} does not match the request pubkey {}",
+                            exit_response.remove_pubkey,
+                            result.remove_pubkey);
 
                 if (!eth::verify(
-                            nettype,
-                            exit_response.signature,
-                            response.sn.bls_pubkey,
-                            result.msg_to_sign)) {
-                    agg_log_lister.error.emplace_back(response.sn, "Invalid BLS signature");
-                    return;
-                }
+                            nettype, exit_response.signature, sn.bls_pubkey, result.msg_to_sign))
+                    return result_data->error(sn, "Invalid BLS signature");
 
                 // NOTE: Aggregate parameters
                 {
-                    std::lock_guard<std::mutex> lock(signers_mutex);
-                    agg_sig.add(exit_response.signature);
-                    result.signers_bls_pubkeys.push_back(response.sn.bls_pubkey);
+                    std::lock_guard<std::mutex> lock(result_data->sig_mutex);
+                    result_data->agg_sig.add(exit_response.signature);
+                    [[maybe_unused]] auto [it, inserted] =
+                            result.signatures.emplace(sn.bls_pubkey, exit_response.signature);
+                    assert(inserted ||
+                           !"Duplicate BLS pubkey signature response should not be possible");
                 }
 
-                agg_log_lister.success.emplace_back(
-                        response.sn, "Success, sig: {}"_format(exit_response.signature));
+                result_data->success(sn, "Success, sig: {}", exit_response.signature);
+            },
+
+            // Final handling after all results processed:
+            [this,
+             result_data,
+             type,
+             callback = std::move(callback),
+             begin_ts = std::chrono::high_resolution_clock::now()](int total_requests) {
+                auto& result = result_data->result;
+                result.signature = result_data->agg_sig.get();
+
+                // NOTE: Dump the aggregate pubkey and other info that was generated
+                log_aggregation_result(
+                        type == bls_exit_type::normal ? "exit" : "liquidation",
+                        result.signatures,
+                        begin_ts,
+                        result.signature,
+                        result_data->agg_log_lister,
+                        core,
+                        result.msg_to_sign);
+
+                callback(result);
+
+                // NOTE: Store the response in to the cache if the number of non-signers is small
+                // enough to constitute a valid signature.
+                uint64_t non_signers_count = total_requests - result.signatures.size();
+                if (non_signers_count <=
+                    contract::rewards_bls_non_signer_threshold(total_requests)) {
+                    std::lock_guard lock{exit_liquidation_response_cache_mutex};
+                    exit_liquidation_response_cache[result.remove_pubkey] = std::move(result);
+                }
             });
 
-    result.signature = agg_sig.get();
-
-    // NOTE: Dump the aggregate pubkey and other info that was generated
-    log_aggregation_result(
-            type == bls_exit_type::normal ? "exit" : "liquidation",
-            result.signers_bls_pubkeys,
-            begin_ts,
-            result.signature,
-            agg_log_lister,
-            core,
-            result.msg_to_sign);
-
-    // NOTE: Store the response in to the cache if the number of non-signers is small enough to
-    // constitute a valid signature.
-    uint64_t non_signers_count = total_requests - result.signers_bls_pubkeys.size();
-    if (non_signers_count <= contract::rewards_bls_non_signer_threshold(total_requests)) {
-        std::lock_guard lock{exit_liquidation_response_cache_mutex};
-        exit_liquidation_response_cache[bls_pubkey] = result;
-    }
-
-    return result;
+    log::debug(logcat, "Initiated {} service node rewards signing requests", total_requests);
 }
+
 }  // namespace eth

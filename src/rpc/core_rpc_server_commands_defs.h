@@ -55,6 +55,7 @@
 #include "common/oxen.h"
 #include "common/varint.h"
 #include "crypto/crypto.h"
+#include "crypto/eth.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
@@ -2367,15 +2368,32 @@ struct BLS_REWARDS_REQUEST : PUBLIC {
 ///
 /// Inputs:
 ///
-/// - `pubkey` -- this ed25519 pubkey to request a exit/liquidation on
-/// - `liquidate` -- Sets the request into liqudation mode. If false the request is perceived as a
-///    voluntary leave request rather than a liquidation request which allocates a small portion
-///    of the stake to the liquidator.
+/// - `pubkey` -- the ed25519 pubkey to be exited/liquidated.  Either this or `bls_pubkey` must be
+///   provided.
+/// - `bls_pubkey` -- the BLS pubkey to be exited/liquidated.  Either this or `pubkey` must be
+///   provided.
+/// - `liquidate` -- Required: Sets the request into liquidation mode (true) or exit mode (false).
+///   If false the request is perceived as a voluntary leave request rather than a liquidation
+///   request.  A voluntary leave can be requested at any time, but offers no reward to the caller:
+///   it is generally used by one of a node's contributors to finalize removal of the node.  A
+///   liquidation has more restrictive conditions, but rewards the wallet submitting the liquidation
+///   with a small penalty subtracted from the operator's stake.
+///
+/// Exactly one of `pubkey` and `bls_pubkey` must be specified.  If `pubkey` is given then it is the
+/// service node main public key to look up, and must be a regular node that has left the network
+/// normally.  If `bls_pubkey` is given then:
+/// - if there is an associated main service node pubkey, that is the one to be exited/liquidated
+///   and functions identically to passing that associated pubkey as `pubkey`.
+/// - if there is no associated primary pubkey found, *and* `liquidate` is true, then a BLS
+///   liquidation request will be performed for a oxend-missing BLS pubkey (to allow removing
+///   contract nodes that failed to make it to oxend for some reason).
+/// - otherwise, for exit (non-liquidation) mode, an error occurs: oxend-missing BLS keys can only
+///   be removed through liquidation.
 ///
 /// Outputs:
 ///
 /// - `status` -- generic RPC error code; "OK" means the request was successful.
-/// - `bls_pubkey` -- The bls pubkey of the node requesting to exit
+/// - `bls_pubkey` -- The bls pubkey of the node to exit/liquidate
 /// - `signed_message` -- The message that has been signed by the network
 /// - `signature` -- BLS signature of the message
 /// - `signers_bls_pubkeys` -- array of bls pubkeys of the nodes that signed
@@ -2383,7 +2401,7 @@ struct BLS_EXIT_LIQUIDATION_REQUEST : PUBLIC {
     static constexpr auto names() { return NAMES("bls_exit_liquidation_request"); }
 
     struct request_parameters {
-        crypto::public_key pubkey;
+        std::variant<crypto::public_key, eth::bls_public_key> pubkey;
         bool liquidate;
     } request;
 };
