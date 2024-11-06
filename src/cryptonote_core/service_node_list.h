@@ -1022,13 +1022,14 @@ class service_node_list {
             version_1_create_recently_removed_nodes,
             version_2_regen_recently_removed_nodes_w_sn_info,
             version_3_eth_beneficiary,
+            version_4_ensure_rescan_resets_sql_db,
             count,
         };
         static version_t get_version(cryptonote::hf /*hf_version*/) {
-            return version_t::version_3_eth_beneficiary;
+            return version_t::version_4_ensure_rescan_resets_sql_db;
         }
 
-        version_t version{version_t::version_3_eth_beneficiary};
+        version_t version{version_t::version_4_ensure_rescan_resets_sql_db};
         std::vector<quorum_for_serialization> quorum_states;
         std::vector<state_serialized> states;
         void clear() {

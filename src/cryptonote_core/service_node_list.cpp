@@ -5118,19 +5118,17 @@ bool service_node_list::load(const uint64_t current_height) {
         return false;
     }
 
-    // NOTE: Temporary code for HF21 on Stagenet for when we introduce exits and liquidations. I
-    // introduced a bug where we didn't serialise the `staking_requirement` which meant on a restart
-    // nodes would reject some exit TXs. Simultaneously working on the staking backend and the APIs
-    // I've decided to snap a copy of the SN info on erase. This is _very_ useful for end-user
-    // applications consumption.
+    // NOTE: Temporary code for HF21 on Stagenet.v3, on reset we are not resetting the SQL DB which
+    // means we double count exit payments. This is causing rewards to go out of sync even after
+    // 'resetting' the SNL.
     //
-    // Since this is a breaking change as nodes prior to the upgrade won't have this, we reset the
-    // SNL again and regenerate everything from block 0 to ensure all the `recently_removed_nodes`
-    // are initialised with the new SN info data when nodes transition from the SNL into the
-    // `recently_removed_nodes` buffer.
+    // TODO: This is because rescanning the SNL has side-effects on the SQL DB (e.g.
+    // it can cause new rows to be inserted) which is less than ideal. Originally the SNL was not
+    // meant to modify dependent state outside of the SNL because resetting the SNL != resetting
+    // another subsystem, a 'subsytem' should be able to rederive their state purely by processing
+    // blocks in isolation.
     if (blockchain.nettype() == cryptonote::network_type::STAGENET &&
-        data_in.version < data_for_serialization::version_t::version_3_eth_beneficiary) {
-        blockchain.sqlite_db().reset_database();
+        data_in.version < data_for_serialization::version_t::version_4_ensure_rescan_resets_sql_db) {
         return false;
     }
 
@@ -5217,6 +5215,11 @@ void service_node_list::reset(bool delete_db_entry) {
     }
 
     m_state.height = hard_fork_begins(blockchain.nettype(), hf::hf9_service_nodes).value_or(1) - 1;
+
+    // NOTE: Rescanning the SNL has side-effects on the SQL DB in particular, if we encounter any
+    // ETH exits, a 'delayed_payment' row is added to the DB. If we _don't_ reset the SQL DB then we
+    // double up on exit payments to be handed to them.
+    blockchain.sqlite_db().reset_database();
 }
 
 size_t service_node_info::total_num_locked_contributions() const {
