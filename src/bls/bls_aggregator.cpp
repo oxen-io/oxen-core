@@ -494,7 +494,7 @@ namespace {
                 timeout{timeout},
                 request_name{std::move(request_name)},
                 message{std::move(message)},
-                callback{std::move(callback)},
+                single_callback{std::move(callback)},
                 final_callback{std::move(final_callback)} {
 
             core.service_node_list.copy_reachable_service_node_addresses(
@@ -514,8 +514,19 @@ namespace {
         const std::string request_name;
         const std::string message;
 
-        const request_callback callback;
+        const request_callback single_callback;
         std::function<void(int)> final_callback;
+
+        void callback(
+                const service_nodes::service_node_address& snode,
+                bool success,
+                std::vector<std::string> data) {
+            try {
+                single_callback(snode, success, std::move(data));
+            } catch (const std::exception& e) {
+                log::warning(logcat, "request callback raised an uncaught exception: {}", e.what());
+            }
+        }
 
         template <typename... Args>
         static std::shared_ptr<nodes_request_data> make(Args&&... args) {
@@ -576,14 +587,7 @@ namespace {
                          self = shared_from_this(),
                          disconnect = !is_sn_conn ? connid : oxenmq::ConnectionID{},
                          &snode](bool success, std::vector<std::string> data) {
-                            try {
-                                callback(snode, success, std::move(data));
-                            } catch (const std::exception& e) {
-                                log::warning(
-                                        logcat,
-                                        "request callback raised an uncaught exception: {}",
-                                        e.what());
-                            }
+                            callback(snode, success, std::move(data));
                             {
                                 std::lock_guard lock{connection_mutex};
                                 assert(active_connections);
@@ -598,13 +602,18 @@ namespace {
                         oxenmq::send_option::request_timeout{timeout});
             }
 
-            if (active_connections == 0) {
+            if (active_connections == 0 && final_callback)
                 // If this is true here then it means we were called from the callback of the last
-                // request to come back (or there were no requests at all), so it's time to
-                // finalize.
-                if (final_callback)
+                // request to come back to us (or there simply were no requests at all), so it's
+                // time to call the final callback because we're done.
+                try {
                     final_callback(snodes.size());
-            }
+                } catch (const std::exception& e) {
+                    log::warning(
+                            logcat,
+                            "Final nodes request callback raised an uncaught exception: {}",
+                            e.what());
+                }
         }
     };
 
