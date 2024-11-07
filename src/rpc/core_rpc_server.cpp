@@ -2606,6 +2606,7 @@ void set_contract_signature(
                     response_hex["signature"] = sig.signature;
                 }
                 response["non_signer_indices"] = std::move(non_signers->missing_ids);
+                success_cb();
             });
 }
 
