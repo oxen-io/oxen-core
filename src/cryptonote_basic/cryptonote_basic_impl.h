@@ -74,7 +74,7 @@ struct address_parse_info {
     KV_MAP_SERIALIZABLE
 };
 
-// Strongly-typed money amount used to calculate rewards at a higher precision by a factory of
+// Strongly-typed money amount used to calculate rewards at a higher precision by a factor of
 // `BATCH_REWARD_FACTOR`. Money amounts are stored at the higher precision in the DB.
 struct reward_money {
 

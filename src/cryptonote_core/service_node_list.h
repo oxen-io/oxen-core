@@ -1187,8 +1187,10 @@ class service_node_list {
         struct confirm_metadata {
             cryptonote::network_type nettype;
             cryptonote::hf hf_version;
-            uint64_t height;
+            uint64_t height;            // Height that the event was mined in
+            uint64_t confirmed_height;  // Height that the event was confirmed
             uint32_t vote_index;
+            uint64_t tx_index;  // Index in the block that the event was mined in
             const service_node_keys* my_keys;
         };
 

@@ -143,8 +143,16 @@ class BlockchainSQLite : public db::Database {
             const cryptonote::block& block,
             const service_nodes::service_node_list::state_t& service_nodes_state);
 
+    struct exit_stake {
+        eth::address addr;
+        cryptonote::reward_money amount;
+        uint32_t block_height; // Block that the exit event was mined in
+        uint32_t tx_index; // Index of transaction in the block that the exit event was mined in
+        uint32_t contributor_index; // Index of the contributor in the event the exit stake is for
+    };
+
     bool return_staked_amount_to_user(
-            const std::vector<cryptonote::batch_sn_payment>& payments, uint64_t delay_blocks);
+            std::span<const exit_stake> payments, uint64_t delay_blocks);
 
     // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares
     // the miner_tx_vouts with a list previously extracted payments to make sure that the correct

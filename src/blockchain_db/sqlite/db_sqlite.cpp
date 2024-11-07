@@ -190,19 +190,29 @@ void BlockchainSQLite::upgrade_schema() {
         transaction.commit();
     }
 
+    // NOTE: Stores time-locked payments that will be paid out once
+    // 'payout_height' is met. This is typically then for when SN's exit the
+    // network, their stake is locked for X amount of time before the network
+    // merges these payments into 'batch_payments_accrued`.
+    //
+    // The network will then uniformly agree to sign a signature to permit the
+    // address to withdraw those tokens from the smart contract.
     if (!table_exists("delayed_payments")) {
         log::info(logcat, "Adding delayed payments table to batching db");
         SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
         db.exec(R"(
         CREATE TABLE delayed_payments(
-          eth_address VARCHAR NOT NULL,
-          amount BIGINT NOT NULL,
-          payout_height BIGINT NOT NULL,
-          entry_height BIGINT NOT NULL,
-          PRIMARY KEY (eth_address, payout_height)
+          eth_address       VARCHAR NOT NULL,
+          amount            BIGINT NOT NULL,
+          payout_height     BIGINT NOT NULL,
+          entry_height      INT NOT NULL,    -- Height that the payment was added to the DB
+          block_height      INT NOT NULL,    -- Height that the TX with the SN exit event was mined in
+          block_tx_index    INT NOT NULL,    -- Index of the TX in the block at 'block_height'
+          contributor_index INT NOT NULL,    -- Index of the contributor in a multi-contributor SN's stake
+          UNIQUE            (block_height, block_tx_index, contributor_index)
           CHECK(amount >= 0),
           CHECK(payout_height > 0),
-          CHECK(entry_height >= 0)
+          CHECK(block_height >= 0)
         );
 
         CREATE INDEX delayed_payments_payout_height_idx ON delayed_payments(payout_height);
@@ -221,12 +231,14 @@ void BlockchainSQLite::upgrade_schema() {
         db.exec(R"(
         CREATE TRIGGER delayed_payments_after_blocks_removed AFTER UPDATE ON batch_db_info
         FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
-            DELETE FROM delayed_payments WHERE entry_height >= NEW.height;
+            DELETE FROM delayed_payments WHERE block_height >= NEW.height;
         END;
         )");
         transaction.commit();
     }
 
+    // NOTE: The archive table stores copies of 'batch_payments_accrued' rows at
+    // intervals of STORE_LONG_TERM_STATE_INTERVAL blocks in a rolling window.
     if (!table_exists("batched_payments_accrued_archive")) {
         log::info(logcat, "Adding archiving to batching db");
         auto& netconf = get_config(m_nettype);
@@ -262,6 +274,9 @@ void BlockchainSQLite::upgrade_schema() {
         transaction.commit();
     }
 
+    // NOTE: The recent table stores copies of 'batch_payments_accrued' rows at
+    // each height in a rolling window consisting of the past
+    // 'STORE_RECENT_REWARDS' heights.
     if (!table_exists("batched_payments_accrued_recent")) {
         // This table is effectively identical to the above, but because we insert and delete on it
         // for *every* height, partitioning the recent rows in a separate table makes deletions of
@@ -840,9 +855,8 @@ bool BlockchainSQLite::pop_block(
 }
 
 bool BlockchainSQLite::return_staked_amount_to_user(
-        const std::vector<cryptonote::batch_sn_payment>& payments, uint64_t delay_blocks) {
-    log::trace(logcat, "BlockchainDB_SQLITE::{} called", __func__);
-
+        std::span<const exit_stake> payments, uint64_t delay_blocks) {
+    log::trace(logcat, "BlockchainSQLite::{} called", __func__);
     try {
         SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
 
@@ -854,31 +868,30 @@ bool BlockchainSQLite::return_staked_amount_to_user(
 
         int64_t payout_height = height + (delay_blocks > 0 ? delay_blocks : 1);
         auto insert_payment = prepared_st(
-                "INSERT INTO delayed_payments (eth_address, amount, payout_height, entry_height) "
-                "VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(eth_address, payout_height) "
-                "DO UPDATE SET amount = (amount + excluded.amount);");
+                "INSERT INTO delayed_payments (eth_address, amount, payout_height, entry_height, "
+                "block_height, block_tx_index, contributor_index) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)");
 
         for (auto& payment : payments) {
-            auto amt = static_cast<int64_t>(payment.amount.to_db());
-            if (!payment.eth_address) {
-                constexpr auto error =
-                        "Delayed payments table insert failed: payment does not have an etherum "
-                        "address";
-                log::error(logcat, error);
-                throw oxen::traced<std::runtime_error>{error};
-            }
-            const auto address_str = get_address_str(payment);
+            const auto amount = static_cast<int64_t>(payment.amount.to_db());
+            const auto eth_address = "0x{:x}"_format(payment.addr);
             log::trace(
                     logcat,
                     "Adding delayed payment for SN reward contributor {} to database with amount "
                     "{}; height {}; payout height {}",
-                    address_str,
-                    amt,
+                    eth_address,
+                    amount,
                     height,
                     payout_height);
             db::exec_query(
-                    insert_payment, address_str, amt, payout_height, static_cast<int64_t>(height));
+                    insert_payment,
+                    eth_address,
+                    amount,
+                    payout_height,
+                    static_cast<int64_t>(height),  // entry_height
+                    payment.block_height,
+                    payment.tx_index,
+                    payment.contributor_index);
             insert_payment->reset();
         }
 

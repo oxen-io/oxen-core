@@ -1701,7 +1701,6 @@ void service_node_list::state_t::process_new_ethereum_tx(
 
 bool service_node_list::state_t::process_confirmed_event(
         const eth::event::NewServiceNodeV2& new_sn, const confirm_metadata& confirm) {
-
     if (service_nodes_infos.count(new_sn.sn_pubkey)) {
         log::warning(
                 logcat,
@@ -1728,7 +1727,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 new_sn,
                 confirm.nettype,
                 confirm.hf_version,
-                confirm.height,
+                confirm.confirmed_height,
                 confirm.vote_index,
                 get_staking_requirement(confirm.nettype));
         if (sn_list && !sn_list->m_rescanning) {
@@ -1743,13 +1742,13 @@ bool service_node_list::state_t::process_confirmed_event(
                     "Confirmed service node registration from ethereum: {} (THIS NODE) @ height: "
                     "{}",
                     key,
-                    confirm.height);
+                    confirm.confirmed_height);
         else
             log::info(
                     logcat,
                     "Confirmed service node registration from ethereum: {} on height: {}",
                     key,
-                    confirm.height);
+                    confirm.confirmed_height);
         insert_info(key, std::move(service_node_info));
         return true;
     } catch (const std::exception& e) {
@@ -1767,7 +1766,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 logcat,
                 "Ignoring L2 exit request for unregistered BLS pubkey {} @ {}[{}]",
                 remreq.bls_pubkey,
-                confirm.height,
+                confirm.confirmed_height,
                 confirm.vote_index);
         return false;
     }
@@ -1778,7 +1777,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 logcat,
                 "Ignoring L2 exit request for recently removed BLS pubkey {} @ {}[{}]",
                 remreq.bls_pubkey,
-                confirm.height,
+                confirm.confirmed_height,
                 confirm.vote_index);
         return false;
     }
@@ -1788,7 +1787,7 @@ bool service_node_list::state_t::process_confirmed_event(
         log::info(
                 logcat,
                 "Duplicate unlock L2 event @ {}[{}]: Node {} is already unlocking at height {}",
-                confirm.height,
+                confirm.confirmed_height,
                 confirm.vote_index,
                 snode_pk,
                 node_info.requested_unlock_height);
@@ -1803,7 +1802,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 fg(fmt::terminal_color::yellow),
                 "Service node exit initiated for {} (THIS NODE) @ {}[{}]; exit height: {}",
                 snode_pk,
-                confirm.height,
+                confirm.confirmed_height,
                 confirm.vote_index,
                 unlock_height);
     else
@@ -1811,7 +1810,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 logcat,
                 "Service node exit initiated for {} @ {}[{}]; exit height: {}",
                 snode_pk,
-                confirm.height,
+                confirm.confirmed_height,
                 confirm.vote_index,
                 unlock_height);
 
@@ -1820,8 +1819,7 @@ bool service_node_list::state_t::process_confirmed_event(
 }
 
 bool service_node_list::state_t::process_confirmed_event(
-        const eth::event::ServiceNodeExit& exit,
-        const confirm_metadata& confirm) {
+        const eth::event::ServiceNodeExit& exit, const confirm_metadata& confirm) {
 
     // NOTE: Retrieve node from the staging area
     auto node = std::find_if(
@@ -1890,8 +1888,10 @@ bool service_node_list::state_t::process_confirmed_event(
     }
 
     // NOTE: Enumerate the contributors to refund to
-    std::vector<cryptonote::batch_sn_payment> returned_stakes;
-    for (const auto& contributor : node->info.contributors) {
+    std::vector<cryptonote::BlockchainSQLite::exit_stake> returned_stakes;
+    for (size_t contrib_index = 0; contrib_index < node->info.contributors.size();
+         contrib_index++) {
+        const auto& contributor = node->info.contributors[contrib_index];
         // TODO: Once merge code is in this can be re-evaluated. Right now in the localdev tests
         // we don't have migration code so we're putting in bad data into the DB. The DB checks if
         // the payment has an eth address defined, if it does it stores the delayed payment as an
@@ -1902,7 +1902,10 @@ bool service_node_list::state_t::process_confirmed_event(
         if (contributor.ethereum_address) {
             returned_stakes.emplace_back(
                     contributor.ethereum_address,
-                    cryptonote::reward_money::coin_amount(contributor.amount));
+                    cryptonote::reward_money::coin_amount(contributor.amount),
+                    confirm.height,
+                    confirm.tx_index,
+                    contrib_index);
         }
     }
 
@@ -1917,7 +1920,7 @@ bool service_node_list::state_t::process_confirmed_event(
     }
 
     // NOTE: Apply the slash penalty to the operator
-    if (slash_amount > returned_stakes[0].coin_amount()) {
+    if (slash_amount > returned_stakes[0].amount.to_coin()) {
         log::error(
                 logcat,
                 "ETH exit of BLS pubkey {} rejected: SN {} returned amount {} is less than the "
@@ -1929,7 +1932,7 @@ bool service_node_list::state_t::process_confirmed_event(
         return false;
     }
     returned_stakes[0].amount =
-            cryptonote::reward_money::coin_amount(returned_stakes[0].coin_amount() - slash_amount);
+            cryptonote::reward_money::coin_amount(returned_stakes[0].amount.to_coin() - slash_amount);
 
     if (confirm.my_keys && confirm.my_keys->pub == node->service_node_pubkey)
         log::info(
@@ -2000,7 +2003,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 logcat,
                 "Ignoring L2 SN purge for unregistered BLS pubkey {} @ {}[{}]",
                 purge.bls_pubkey,
-                confirm.height,
+                confirm.confirmed_height,
                 confirm.vote_index);
         return false;
     }
@@ -2011,7 +2014,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 logcat,
                 "Ignoring L2 SN purge for recently removed BLS pubkey {} @ {}[{}]",
                 purge.bls_pubkey,
-                confirm.height,
+                confirm.confirmed_height,
                 confirm.vote_index);
         return false;
     }
@@ -2025,7 +2028,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 "contract @ {}[{}], L2 height {}",
                 pk,
                 purge.bls_pubkey,
-                confirm.height,
+                confirm.confirmed_height,
                 confirm.vote_index,
                 purge.l2_height);
     else
@@ -2035,7 +2038,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 "@ {}[{}], L2 height {}",
                 pk,
                 purge.bls_pubkey,
-                confirm.height,
+                confirm.confirmed_height,
                 confirm.vote_index,
                 purge.l2_height);
 
@@ -3263,13 +3266,36 @@ void service_node_list::state_t::update_from_block(
                         throw oxen::traced<std::runtime_error>{
                                 "Internal error: did not find state change tx data in blockchain database: {}"_format(
                                         fail)};
+
+                    // NOTE: Grab TX index of the L2 transaction it was originally mined in
+                    uint64_t tx_index = 0;
+                    try {
+                        cryptonote::block block = db.get_block_from_height(unconf.height_added, nullptr);
+                        bool found = false;
+                        for (size_t index = 0; index < block.tx_hashes.size(); index++) {
+                            if (block.tx_hashes[index] == txhash) {
+                                tx_index = index;
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found)
+                            throw;
+                    } catch (const std::exception &e) {
+                        "TX {} was confirmed on chain from block {} but the block does exist in "
+                        "the DB, block {} cannot be added due to missing data"_format(
+                                txhash, unconf.height_added, height);
+                    }
+
                     need_swarm_update += std::visit(
                             [&](const auto& e) {
                                 confirm_metadata confirm = {
                                         .nettype = nettype,
                                         .hf_version = hf_version,
-                                        .height = height,
+                                        .height = unconf.height_added,
+                                        .confirmed_height = height,
                                         .vote_index = i,
+                                        .tx_index = tx_index,
                                         .my_keys = my_keys,
                                 };
                                 return process_confirmed_event(e, confirm);
