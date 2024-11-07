@@ -77,8 +77,6 @@ namespace feature = cryptonote::feature;
 namespace service_nodes {
 static auto logcat = log::Cat("service_nodes");
 
-size_t constexpr STORE_LONG_TERM_STATE_INTERVAL = 10000;
-
 constexpr auto X25519_MAP_PRUNING_INTERVAL = 5min;
 constexpr auto X25519_MAP_PRUNING_LAG = 24h;
 static_assert(
@@ -3420,18 +3418,19 @@ void service_node_list::process_block(
     // Cull old history
     uint64_t cull_height = short_term_state_cull_height(hf_version, block_height);
     {
+        const auto& netconf = get_config(blockchain.nettype());
         auto end_it = m_transient.state_history.upper_bound(cull_height);
         for (auto it = m_transient.state_history.begin(); it != end_it; it++) {
             if (m_store_quorum_history)
                 m_transient.old_quorum_states.emplace_back(it->height, it->quorums);
 
-            uint64_t next_long_term_state = ((it->height / STORE_LONG_TERM_STATE_INTERVAL) + 1) *
-                                            STORE_LONG_TERM_STATE_INTERVAL;
+            uint64_t next_long_term_state = ((it->height / netconf.STORE_LONG_TERM_STATE_INTERVAL) + 1) *
+                                            netconf.STORE_LONG_TERM_STATE_INTERVAL;
             uint64_t dist_to_next_long_term_state = next_long_term_state - it->height;
             bool need_quorum_for_future_states =
                     (dist_to_next_long_term_state <=
                      VOTE_LIFETIME + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER);
-            if ((it->height % STORE_LONG_TERM_STATE_INTERVAL) == 0 ||
+            if ((it->height % netconf.STORE_LONG_TERM_STATE_INTERVAL) == 0 ||
                 need_quorum_for_future_states) {
                 m_transient.state_added_to_archive = true;
                 if (need_quorum_for_future_states)  // Preserve just quorum
@@ -3494,8 +3493,9 @@ void service_node_list::blockchain_detached(uint64_t height) {
 
     // Try finding the next closest old state at 10k intervals
     if (reinitialise) {
+        auto& netconf = get_config(blockchain.nettype());
         uint64_t prev_interval =
-                revert_to_height - (revert_to_height % STORE_LONG_TERM_STATE_INTERVAL);
+                revert_to_height - (revert_to_height % netconf.STORE_LONG_TERM_STATE_INTERVAL);
         auto it = m_transient.state_archive.find(prev_interval);
         reinitialise = (it == m_transient.state_archive.end() || it->only_loaded_quorums);
         if (!reinitialise) {
