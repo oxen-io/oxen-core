@@ -58,8 +58,8 @@ inline constexpr network_config config{
         .UNLOCK_DURATION = 0 * TARGET_BLOCK_TIME,
         .HARDFORK_DEREGISTRATION_GRACE_PERIOD =
                 mainnet::config.HARDFORK_DEREGISTRATION_GRACE_PERIOD,
-        .STORE_LONG_TERM_STATE_INTERVAL = mainnet::config.STORE_LONG_TERM_STATE_INTERVAL,
-        .STORE_RECENT_REWARDS = mainnet::config.STORE_RECENT_REWARDS,
+        .HISTORY_ARCHIVE_INTERVAL = mainnet::config.HISTORY_ARCHIVE_INTERVAL,
+        .HISTORY_KEEP_RECENT_WINDOW = mainnet::config.HISTORY_KEEP_RECENT_WINDOW,
         // Only permit 1 block because we're running an integration test
         // locally and pulse quorums take time to create blocks which bloat the
         // test duration.

@@ -423,7 +423,7 @@ bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
                     // NOTE: Handle overflow if STORE_RECENT_REWARDS is large or you're on some
                     // fresh network that has hardly any blocks (e.g. localdev).
                     uint64_t top_height = core.blockchain.get_current_blockchain_height() - 1;
-                    uint64_t cutoff = top_height - core.get_net_config().STORE_RECENT_REWARDS;
+                    uint64_t cutoff = top_height - core.get_net_config().HISTORY_KEEP_RECENT_WINDOW;
                     if (cutoff < top_height) {
                         std::lock_guard lock{rewards_response_cache_mutex};
                         std::erase_if(rewards_response_cache, [&cutoff](const auto& item) {

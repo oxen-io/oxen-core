@@ -3424,14 +3424,13 @@ void service_node_list::process_block(
             if (m_store_quorum_history)
                 m_transient.old_quorum_states.emplace_back(it->height, it->quorums);
 
-            uint64_t next_long_term_state = ((it->height / netconf.STORE_LONG_TERM_STATE_INTERVAL) + 1) *
-                                            netconf.STORE_LONG_TERM_STATE_INTERVAL;
+            uint64_t next_long_term_state =
+                    ((it->height / netconf.HISTORY_ARCHIVE_INTERVAL) + 1) * netconf.HISTORY_ARCHIVE_INTERVAL;
             uint64_t dist_to_next_long_term_state = next_long_term_state - it->height;
             bool need_quorum_for_future_states =
                     (dist_to_next_long_term_state <=
                      VOTE_LIFETIME + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER);
-            if ((it->height % netconf.STORE_LONG_TERM_STATE_INTERVAL) == 0 ||
-                need_quorum_for_future_states) {
+            if ((it->height % netconf.HISTORY_ARCHIVE_INTERVAL) == 0 || need_quorum_for_future_states) {
                 m_transient.state_added_to_archive = true;
                 if (need_quorum_for_future_states)  // Preserve just quorum
                 {
@@ -3494,8 +3493,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
     // Try finding the next closest old state at 10k intervals
     if (reinitialise) {
         auto& netconf = get_config(blockchain.nettype());
-        uint64_t prev_interval =
-                revert_to_height - (revert_to_height % netconf.STORE_LONG_TERM_STATE_INTERVAL);
+        uint64_t prev_interval = revert_to_height - (revert_to_height % netconf.HISTORY_ARCHIVE_INTERVAL);
         auto it = m_transient.state_archive.find(prev_interval);
         reinitialise = (it == m_transient.state_archive.end() || it->only_loaded_quorums);
         if (!reinitialise) {

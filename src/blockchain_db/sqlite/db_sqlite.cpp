@@ -269,7 +269,7 @@ void BlockchainSQLite::upgrade_schema() {
             DELETE FROM batched_payments_accrued_archive WHERE archive_height >= NEW.height;
         END;
         )",
-                netconf.STORE_LONG_TERM_STATE_INTERVAL,
+                netconf.HISTORY_ARCHIVE_INTERVAL,
                 500));
         transaction.commit();
     }
@@ -306,9 +306,9 @@ void BlockchainSQLite::upgrade_schema() {
             DELETE FROM batched_payments_accrued_recent WHERE height < NEW.height - {};
         END;
         )",
-                netconf.STORE_RECENT_REWARDS + 1
+                netconf.HISTORY_KEEP_RECENT_WINDOW + 1
                 // +1 here because the trigger above copies the *current* height after it's updated,
-                // but we want to store current plus STORE_RECENT_REWARDS recent ones.
+                // but we want to store current plus BACKUP_COUNT recent ones.
                 ));
         transaction.commit();
     }

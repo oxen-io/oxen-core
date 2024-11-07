@@ -117,15 +117,17 @@ struct network_config final {
     // After a hardfork we will decommission sns but won't dereg, allowing time to update
     const uint64_t HARDFORK_DEREGISTRATION_GRACE_PERIOD;
 
-    // batching and SNL will save the state every STORE_LONG_TERM_STATE_INTERVAL blocks; this helps
-    // recovering the state faster (without having to go to the very beginning of the chain) in the
-    // event of too many popped or reorged blocks.
-    const uint64_t STORE_LONG_TERM_STATE_INTERVAL;
+    // The SNL and SQL DB will save a backup of their state every N number of blocks specified in
+    // this value. When the blockchain is reorganised these checkpoints can be used to replay the
+    // chain from a recent state to re-derive back to the desired height. These checkpoints are only
+    // used if the height to detach to was not already within the window of `HISTORY_KEEP_WINDOW'
+    // (in which case we have a recent copy of the state and no re-derivation is necessary).
+    const uint64_t HISTORY_ARCHIVE_INTERVAL;
 
-    // batching rewards stores reward balances for this many recent blocks (in addition to the
-    // long-term interval blocks controlled by the above).  This is used to allow lookups of reward
-    // balances at recent heights.
-    const uint64_t STORE_RECENT_REWARDS;
+    // Specifies how many consecutive blocks of state from the SNL, SQL DB and BLS aggregator cache
+    // to store from the head of the chain to support quick reorganisations that are small and near
+    // the tip of the chain.
+    const uint64_t HISTORY_KEEP_RECENT_WINDOW;
 
     /// (HF21+) Number of blocks after a registration expires (i.e. regular requested removals,
     /// *not* deregs) during which the node is protected from liquidation-with-penalty.  Regular

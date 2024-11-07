@@ -65,8 +65,8 @@ inline constexpr network_config config{
         .DEREGISTRATION_LOCK_DURATION = 30 * 24h,
         .UNLOCK_DURATION = 15 * 24h,
         .HARDFORK_DEREGISTRATION_GRACE_PERIOD = 7 * 24h / TARGET_BLOCK_TIME,
-        .STORE_LONG_TERM_STATE_INTERVAL = 10'000,
-        .STORE_RECENT_REWARDS = 5,
+        .HISTORY_ARCHIVE_INTERVAL = 10'000,
+        .HISTORY_KEEP_RECENT_WINDOW = 5,
         .ETH_EXIT_BUFFER = 7 * 24h / TARGET_BLOCK_TIME,
         .ETHEREUM_CHAIN_ID = 42161,  // Arbitrum One
         // TODO: To be set closer to mainnet TGE

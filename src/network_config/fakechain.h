@@ -43,8 +43,8 @@ inline constexpr network_config config{
         .UNLOCK_DURATION = 30min,
         .HARDFORK_DEREGISTRATION_GRACE_PERIOD =
                 mainnet::config.HARDFORK_DEREGISTRATION_GRACE_PERIOD,
-        .STORE_LONG_TERM_STATE_INTERVAL = mainnet::config.STORE_LONG_TERM_STATE_INTERVAL,
-        .STORE_RECENT_REWARDS = mainnet::config.STORE_RECENT_REWARDS,
+        .HISTORY_ARCHIVE_INTERVAL = mainnet::config.HISTORY_ARCHIVE_INTERVAL,
+        .HISTORY_KEEP_RECENT_WINDOW = mainnet::config.HISTORY_KEEP_RECENT_WINDOW,
         .ETH_EXIT_BUFFER = testnet::config.ETH_EXIT_BUFFER,
         .ETHEREUM_CHAIN_ID = mainnet::config.ETHEREUM_CHAIN_ID,
         .ETHEREUM_REWARDS_CONTRACT = mainnet::config.ETHEREUM_REWARDS_CONTRACT,
