@@ -187,8 +187,6 @@ inline constexpr size_t DECOMMISSIONED_REDISTRIBUTION_LOWER_PERCENTILE = 0;
 // The upper swarm percentile that will be randomly selected during stealing
 inline constexpr size_t STEALING_SWARM_UPPER_PERCENTILE = 75;
 
-inline constexpr uint64_t STATE_CHANGE_TX_LIFETIME_IN_BLOCKS = VOTE_LIFETIME;
-
 // If we get an incoming vote of state change tx that is outside the acceptable range by this many
 // blocks then ignore it but don't trigger a connection drop; the sending side could be a couple
 // blocks out of sync and sending something that it thinks is legit.

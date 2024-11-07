@@ -187,20 +187,18 @@ bool verify_tx_state_change(
             return false;
         }
 
-        if (latest_height >=
-            state_change.block_height + service_nodes::STATE_CHANGE_TX_LIFETIME_IN_BLOCKS) {
+        if (latest_height >= state_change.block_height + service_nodes::VOTE_LIFETIME) {
             log::info(
                     logcat,
                     "Received state change tx for height: {} and service node: {}, is older than: "
                     "{} (current height: {}) blocks and has been rejected.",
                     state_change.block_height,
                     state_change.service_node_index,
-                    service_nodes::STATE_CHANGE_TX_LIFETIME_IN_BLOCKS,
+                    service_nodes::VOTE_LIFETIME,
                     latest_height);
             vvc.m_invalid_block_height = true;
-            if (latest_height >=
-                state_change.block_height + (service_nodes::STATE_CHANGE_TX_LIFETIME_IN_BLOCKS +
-                                             VOTE_OR_TX_VERIFY_HEIGHT_BUFFER))
+            if (latest_height >= state_change.block_height + (service_nodes::VOTE_LIFETIME +
+                                                              VOTE_OR_TX_VERIFY_HEIGHT_BUFFER))
                 tvc.m_verifivation_failed = true;
             return false;
         }

@@ -877,7 +877,7 @@ bool oxen_core_test_deregister_too_old::generate(std::vector<test_event_entry>& 
 
   const auto pk       = gen.top_quorum().obligations->workers[0];
   const auto dereg_tx = gen.create_and_add_state_change_tx(service_nodes::new_state::deregister, pk, 0, 0);
-  gen.add_n_blocks(service_nodes::STATE_CHANGE_TX_LIFETIME_IN_BLOCKS); /// create enough blocks to make deregistrations invalid (60 blocks)
+  gen.add_n_blocks(service_nodes::VOTE_LIFETIME); /// create enough blocks to make deregistrations invalid (60 blocks)
 
   /// In the real world, this transaction should not make it into a block, but in this case we do try to add it (as in
   /// tests we must add specify transactions manually), which should exercise the same validation code and reject the

@@ -83,15 +83,15 @@ static_assert(
         X25519_MAP_PRUNING_LAG > cryptonote::config::mainnet::config.UPTIME_PROOF_VALIDITY,
         "x25519 map pruning lag is too short!");
 
-static uint64_t short_term_state_cull_height(hf hf_version, uint64_t block_height) {
-    size_t constexpr DEFAULT_SHORT_TERM_STATE_HISTORY = 6 * STATE_CHANGE_TX_LIFETIME_IN_BLOCKS;
-    static_assert(
-            DEFAULT_SHORT_TERM_STATE_HISTORY >= 360,  // Arbitrary, but raises a compilation
-                                                      // failure if it gets shortened.
-            "not enough short term state storage for blink quorum retrieval!");
-    uint64_t result = (block_height < DEFAULT_SHORT_TERM_STATE_HISTORY)
-                            ? 0
-                            : block_height - DEFAULT_SHORT_TERM_STATE_HISTORY;
+static uint64_t min_backup_height(cryptonote::network_type nettype, uint64_t height) {
+    const uint64_t KEEP_WINDOW = cryptonote::get_config(nettype).HISTORY_KEEP_RECENT_WINDOW;
+
+    // NOTE: Arbitrary, but raises a compilation failure if it gets shortened.
+    // 360 is derived via (6 * VOTE_LIFETIME) where VOTE_LIFETIME is 60 blocks,
+    // e.g. Keep atleast the last 6 blocks worth of votes (which is short for
+    // state change TXs in this codebase)
+    assert(KEEP_WINDOW >= 360 && "Not enough recent backups for blink quorum retrieval!");
+    uint64_t result = (height < KEEP_WINDOW) ? 0 : height - KEEP_WINDOW;
     return result;
 }
 
@@ -3416,7 +3416,7 @@ void service_node_list::process_block(
         return;
 
     // Cull old history
-    uint64_t cull_height = short_term_state_cull_height(hf_version, block_height);
+    uint64_t cull_height = min_backup_height(blockchain.nettype(), block_height);
     {
         const auto& netconf = get_config(blockchain.nettype());
         auto end_it = m_transient.state_history.upper_bound(cull_height);
@@ -4233,7 +4233,7 @@ bool service_node_list::store() {
     // information preceeding it.
 
     uint64_t const max_short_term_height =
-            short_term_state_cull_height(hf_version, (m_state.height - 1)) + VOTE_LIFETIME +
+            min_backup_height(blockchain.nettype(), (m_state.height - 1)) + VOTE_LIFETIME +
             VOTE_OR_TX_VERIFY_HEIGHT_BUFFER;
     for (auto it = m_transient.state_history.begin();
          it != m_transient.state_history.end() && it->height <= max_short_term_height;
