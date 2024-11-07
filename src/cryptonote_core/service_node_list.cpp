@@ -140,9 +140,7 @@ static std::vector<service_nodes::pubkey_and_sninfo> sort_and_filter(
             result.begin(),
             result.end(),
             [](const pubkey_and_sninfo& a, const pubkey_and_sninfo& b) {
-                return memcmp(reinterpret_cast<const void*>(&a),
-                              reinterpret_cast<const void*>(&b),
-                              sizeof(a)) < 0;
+                return a.first < b.first;
             });
     return result;
 }
