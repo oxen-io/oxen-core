@@ -2571,6 +2571,12 @@ void set_contract_signature(
         std::shared_ptr<responder> responder,
         std::function<void()> success_cb) {
 
+    if (!sig.signature) {
+        responder->error.emplace(
+                ERROR_BLS_SIG, "Failed to obtain a BLS signature from the network");
+        return;
+    }
+
     l2_tracker.get_non_signers(
             std::ranges::views::keys(sig.signatures),
             [&response,
@@ -2595,14 +2601,25 @@ void set_contract_signature(
                             "Found {} unwanted BLS signatures from non-contract pubkeys; "
                             "de-aggregating them",
                             unwanted.size());
-                    eth::signature_aggregator agg;
-                    agg.add(sig.signature);
-                    for (auto& remove_pk : unwanted)
-                        agg.subtract(sig.signatures.at(remove_pk));
-                    auto final_sig = agg.get();
+                    eth::pubkey_aggregator pk_agg;
+                    eth::signature_aggregator sig_agg;
+                    pk_agg.add(sig.aggregate_pubkey);
+                    sig_agg.add(sig.signature);
+                    for (auto& remove_pk : unwanted) {
+                        pk_agg.subtract(remove_pk);
+                        sig_agg.subtract(sig.signatures.at(remove_pk));
+                    }
+                    auto final_pk = pk_agg.get();
+                    auto final_sig = sig_agg.get();
+                    response_hex["aggregate_pubkey"] = final_pk;
                     response_hex["signature"] = final_sig;
-                    log::debug(logcat, "Final BLS signature: {}", final_sig);
+                    log::debug(
+                            logcat,
+                            "Final BLS aggregate pubkey: {}, signature: {}",
+                            final_pk,
+                            final_sig);
                 } else {
+                    response_hex["aggregate_pubkey"] = sig.aggregate_pubkey;
                     response_hex["signature"] = sig.signature;
                 }
                 response["non_signer_indices"] = std::move(non_signers->missing_ids);

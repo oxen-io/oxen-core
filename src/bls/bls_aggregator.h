@@ -18,7 +18,8 @@ namespace eth {
 struct bls_aggregate_signed {
     std::vector<uint8_t> msg_to_sign;
     std::unordered_map<bls_public_key, bls_signature> signatures;  // Individual signatures
-    bls_signature signature;  // Aggregate of all the signatures in `signatures`
+    bls_public_key aggregate_pubkey;  // Aggregate pubkey of the pubkeys in `signatures`
+    bls_signature signature;          // Aggregate of all the signatures in `signatures`
 };
 
 enum class bls_exit_type {

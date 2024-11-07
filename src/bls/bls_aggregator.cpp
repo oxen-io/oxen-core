@@ -21,6 +21,18 @@
 
 namespace eth {
 
+// Debugging option: if defined then we deliberately break the aggregate signature of any node with
+// a BLS pubkey with a last byte >= this value.  E.g. 0xf0 breaks about 1/16 of signatures:
+// #define OXEN_DEBUG_BREAK_AGGREGATE_SIGNATURES 0xf0
+#ifdef OXEN_DEBUG_BREAK_AGGREGATE_SIGNATURES
+static const auto DEBUG_BROKEN_SIGNATURE = tools::make_from_hex_guts<bls_signature>(
+        "234bc3b62bd08bc02df4f83ec49a9599f444739e0103cd8a8d3558ea944e44b1"
+        "2a398b8f109c64083ad5771b9735116cd17ac1ed4269495aa59c5329b0cb9a71"
+        "12ddb30255d54d55074bafd503df0fa7f40fa18eb6c5c79d32392c78b2373bc9"
+        "04be74628c96ab584bc2404b1fc2bf339b78f2fdd54bab30d07ae2b300d1f082"sv,
+        false);
+#endif
+
 // When a service node receives a request to sign an exit request for a BLS node, this value
 // determines the age cutoff for what we are willing to sign.
 constexpr auto BLS_EXIT_REQUEST_MAX_AGE = 3min;
@@ -318,57 +330,34 @@ namespace {
             std::string_view agg_type,
             const std::unordered_map<bls_public_key, bls_signature>& signatures,
             std::chrono::high_resolution_clock::time_point started,
+            const bls_public_key& agg_pub,
             const bls_signature& sig,
             const std::optional<agg_log_list>& agg_log_lister,
             // Used only in a debug build:
             [[maybe_unused]] cryptonote::core& core,
-            [[maybe_unused]] std::span<const uint8_t> msg) {
+            std::span<const uint8_t> msg) {
 
         if (oxen::log::get_level(logcat) <= oxen::log::Level::debug && agg_log_lister)
             dump_agg_log_list(*agg_log_lister);
 
-#ifndef NDEBUG
-        eth::bls_public_key agg_pub;
-        {
-            eth::pubkey_aggregator aggregator;
-            for (const auto& [blspk, sig] : signatures)
-                aggregator.add(blspk);
-            agg_pub = aggregator.get();
-        }
-#endif
         auto elapsed = std::chrono::duration_cast<std::chrono::duration<float>>(
                                std::chrono::high_resolution_clock::now() - started)
                                .count();
         oxen::log::debug(
                 logcat,
-                "BLS aggregate pubkey for {} requests: {} ({} aggregations) with signature {} "
-                "in {:.2f}s",
+                "BLS {} aggregation result ({} aggregations) in {:.2f}s:"
+                "\n    ‣ signed msg: {:02x}"
+                "\n    ‣ agg pubkey: {}"
+                "\n    ‣  signature: {}",
                 agg_type,
-#if defined(NDEBUG)
-                "",
-#else
-                agg_pub,
-#endif
                 signatures.size(),
-                sig,
-                elapsed);
+                elapsed,
+                fmt::join(msg, ""),
+                agg_pub,
+                sig);
 
 #ifndef NDEBUG
-
         debug_redo_bls_aggregation_steps_locally(core, signatures);
-
-        if (eth::verify(core.get_nettype(), sig, agg_pub, msg)) {
-            oxen::log::debug(logcat, "BLS final aggregate signature verification confirmed");
-        } else {
-            oxen::log::warning(
-                    logcat,
-                    "{} BLS final aggregate signature verifivation FAILED:"
-                    "\nagg bls pub: {}\nagg bls sig: {}\nmessage:     {}",
-                    agg_type,
-                    agg_pub,
-                    sig,
-                    oxenc::to_hex(msg.begin(), msg.end()));
-        }
 #endif
     }
 }  // namespace
@@ -380,11 +369,13 @@ std::string bls_exit_liquidation_response::to_string() const {
             "  - type:          {}\n"
             "  - remove_pubkey: {}\n"
             "  - timestamp:     {}\n"
+            "  - agg_pubkey:    {}\n"
             "  - signature:     {}\n"
             "  - msg_to_sign:   {}\n"_format(
                     type,
                     remove_pubkey,
                     timestamp,
+                    aggregate_pubkey,
                     signature,
                     oxenc::to_hex(msg_to_sign.begin(), msg_to_sign.end()));
     return result;
@@ -397,11 +388,13 @@ std::string bls_rewards_response::to_string() const {
             "  - address:     {}\n"
             "  - amount:      {}\n"
             "  - height:      {}\n"
+            "  - agg_pubkey:  {}\n"
             "  - signature:   {}\n"
             "  - msg_to_sign: {}\n"_format(
                     addr,
                     amount,
                     height,
+                    aggregate_pubkey,
                     signature,
                     oxenc::to_hex(msg_to_sign.begin(), msg_to_sign.end()));
     return result;
@@ -538,12 +531,6 @@ namespace {
         // finish.  You must call this for this class to do anything, and may not touch any of the
         // struct's members after calling it.
         void establish() {
-            log::debug(
-                    logcat,
-                    "Establishing new connections (currently {} active, {} remaining of {} total)",
-                    active_connections,
-                    snodes.size() - next_snode,
-                    MAX_CONNECTIONS);
             std::lock_guard lock{connection_mutex};
 
             while (active_connections < MAX_CONNECTIONS && next_snode < snodes.size()) {
@@ -572,7 +559,7 @@ namespace {
                     callback(
                             snode,
                             /*success=*/false,
-                            {{ "Non-active node connections unimplemented"s }});
+                            {{"Non-active node connections unimplemented"s}});
                     --active_connections;
                     continue;
 #endif
@@ -586,6 +573,11 @@ namespace {
                          self = shared_from_this(),
                          disconnect = !is_sn_conn ? connid : oxenmq::ConnectionID{},
                          &snode](bool success, std::vector<std::string> data) {
+                            log::debug(
+                                    logcat,
+                                    "{} from {}",
+                                    success ? "Successful response" : "Failure",
+                                    snode.sn_pubkey);
                             callback(snode, success, std::move(data));
                             {
                                 std::lock_guard lock{connection_mutex};
@@ -616,7 +608,72 @@ namespace {
         }
     };
 
-    template <typename Result>
+    // See aggregate_result<R>::finalize_signature() below.
+    void aggregate_signature_finalize(
+            cryptonote::network_type nettype,
+            bls_aggregate_signed& result,
+            eth::signature_aggregator& agg_sig,
+            eth::pubkey_aggregator& agg_pub) {
+        if (result.signatures.empty()) {
+            result.signature = crypto::null<bls_signature>;
+            result.aggregate_pubkey = crypto::null<bls_public_key>;
+            return;
+        }
+
+        result.signature = agg_sig.get();
+        result.aggregate_pubkey = agg_pub.get();
+        if (eth::verify(nettype, result.signature, result.aggregate_pubkey, result.msg_to_sign)) {
+            log::debug(
+                    logcat,
+                    "Aggregate signature {} verified with agg. pubkey {}",
+                    result.signature,
+                    result.aggregate_pubkey);
+            return;
+        }
+
+        log::warning(
+                logcat,
+                "Aggregate signature failed validation; recomputing with full verification");
+
+        int removed = 0;
+        for (auto it = result.signatures.begin(); it != result.signatures.end();) {
+            auto& [blspk, sig] = *it;
+            if (eth::verify(nettype, sig, blspk, result.msg_to_sign))
+                ++it;
+            else {
+                log::warning(
+                        logcat,
+                        "BLS signer {} signature invalid ({}); removing from aggregate",
+                        blspk,
+                        sig);
+                agg_sig.subtract(sig);
+                agg_pub.subtract(blspk);
+
+                result.signature = agg_sig.get();
+                result.aggregate_pubkey = agg_pub.get();
+                removed++;
+                it = result.signatures.erase(it);
+
+                // In a pathologically bad case this means we could do two verifications for every
+                // bad pubkey, but if there's just one bad key this could save a lot.
+                if (eth::verify(
+                            nettype,
+                            result.signature,
+                            result.aggregate_pubkey,
+                            result.msg_to_sign)) {
+                    log::info(
+                            logcat,
+                            "Aggregate signature now verifying with {} removals "
+                            "(now: {} signatures)",
+                            removed,
+                            result.signatures.size());
+                    break;
+                }
+            }
+        }
+    }
+
+    template <std::derived_from<bls_aggregate_signed> Result>
     struct aggregate_result {
         Result result{};
         std::optional<agg_log_list> agg_log_lister = log::get_level(logcat) <= log::Level::debug
@@ -624,6 +681,21 @@ namespace {
                                                            : std::nullopt;
         std::mutex sig_mutex;
         eth::signature_aggregator agg_sig;
+        eth::pubkey_aggregator agg_pub;
+
+        // Sets `result.signature` and `result.aggregate_pubkey` from the agg_sig/agg_pub
+        // aggregates, but first verifies that that pair is a valid pubkey/signature for
+        // `result.msg_to_sign`; if it isn't, then a full verification of all signatures in
+        // `result.signatures` is performed and any failing individual signatures are subtracted
+        // from the final signature and deleted from `signatures`.
+        //
+        // This is an optimization: in the typical case all signatures are correct and this allows
+        // doing just only one (costly) verification of the aggregate signature, but with a more
+        // expensive per-signature verification fallback to recalculate only in the case where that
+        // fails.
+        void finalize_signature(cryptonote::network_type nettype) {
+            aggregate_signature_finalize(nettype, result, agg_sig, agg_pub);
+        }
 
         template <typename... T>
         void success(
@@ -869,21 +941,25 @@ void bls_aggregator::rewards_request(
                             rewards_response.amount,
                             rewards_response.height);
 
-                if (!eth::verify(
-                            nettype, rewards_response.signature, sn.bls_pubkey, result.msg_to_sign))
-                    return result_data->error(sn, "Invalid BLS signature");
-
                 // NOTE: Aggregate parameters
                 {
                     std::lock_guard lock{result_data->sig_mutex};
+#ifdef OXEN_DEBUG_BREAK_AGGREGATE_SIGNATURES
+                    if (sn.bls_pubkey.data_.back() >= OXEN_DEBUG_BREAK_AGGREGATE_SIGNATURES) {
+                        log::error(logcat, "DEBUG: sabotaging signature from {}", sn.bls_pubkey);
+                        rewards_response.signature = DEBUG_BROKEN_SIGNATURE;
+                    }
+#endif
                     result_data->agg_sig.add(rewards_response.signature);
+                    result_data->agg_pub.add(sn.bls_pubkey);
                     [[maybe_unused]] auto [it, inserted] =
                             result.signatures.emplace(sn.bls_pubkey, rewards_response.signature);
                     assert(inserted ||
                            !"Duplicate BLS pubkey signature response should not be possible");
                 }
 
-                result_data->success(sn, "Success, sig: {}", rewards_response.signature);
+                result_data->success(
+                        sn, "Success (unverified), sig: {}", rewards_response.signature);
             },
 
             // Final result handler (after all individual result processed):
@@ -891,15 +967,16 @@ void bls_aggregator::rewards_request(
              result_data,
              callback = std::move(callback),
              begin_ts = std::chrono::high_resolution_clock::now()](int total_requests) {
-                auto& result = result_data->result;
+                result_data->finalize_signature(core.get_nettype());
 
-                result.signature = result_data->agg_sig.get();
+                auto& result = result_data->result;
 
                 // NOTE: Dump the aggregate pubkey and other info that was generated
                 log_aggregation_result(
                         "rewards",
                         result.signatures,
                         begin_ts,
+                        result.aggregate_pubkey,
                         result.signature,
                         result_data->agg_log_lister,
                         core,
@@ -1117,21 +1194,24 @@ void bls_aggregator::exit_liquidation_request(
                             exit_response.remove_pubkey,
                             result.remove_pubkey);
 
-                if (!eth::verify(
-                            nettype, exit_response.signature, sn.bls_pubkey, result.msg_to_sign))
-                    return result_data->error(sn, "Invalid BLS signature");
-
                 // NOTE: Aggregate parameters
                 {
                     std::lock_guard<std::mutex> lock(result_data->sig_mutex);
+#ifdef OXEN_DEBUG_BREAK_AGGREGATE_SIGNATURES
+                    if (sn.bls_pubkey.data_.back() >= OXEN_DEBUG_BREAK_AGGREGATE_SIGNATURES) {
+                        log::error(logcat, "DEBUG: sabotaging signature from {}", sn.bls_pubkey);
+                        exit_response.signature = DEBUG_BROKEN_SIGNATURE;
+                    }
+#endif
                     result_data->agg_sig.add(exit_response.signature);
+                    result_data->agg_pub.add(sn.bls_pubkey);
                     [[maybe_unused]] auto [it, inserted] =
                             result.signatures.emplace(sn.bls_pubkey, exit_response.signature);
                     assert(inserted ||
                            !"Duplicate BLS pubkey signature response should not be possible");
                 }
 
-                result_data->success(sn, "Success, sig: {}", exit_response.signature);
+                result_data->success(sn, "Success (unverified), sig: {}", exit_response.signature);
             },
 
             // Final handling after all results processed:
@@ -1140,14 +1220,16 @@ void bls_aggregator::exit_liquidation_request(
              type,
              callback = std::move(callback),
              begin_ts = std::chrono::high_resolution_clock::now()](int total_requests) {
+                result_data->finalize_signature(core.get_nettype());
+
                 auto& result = result_data->result;
-                result.signature = result_data->agg_sig.get();
 
                 // NOTE: Dump the aggregate pubkey and other info that was generated
                 log_aggregation_result(
                         type == bls_exit_type::normal ? "exit" : "liquidation",
                         result.signatures,
                         begin_ts,
+                        result.aggregate_pubkey,
                         result.signature,
                         result_data->agg_log_lister,
                         core,
