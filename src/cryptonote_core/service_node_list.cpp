@@ -1700,12 +1700,7 @@ void service_node_list::state_t::process_new_ethereum_tx(
 }
 
 bool service_node_list::state_t::process_confirmed_event(
-        const eth::event::NewServiceNodeV2& new_sn,
-        cryptonote::network_type nettype,
-        cryptonote::hf hf_version,
-        uint64_t height,
-        uint32_t index,
-        const service_node_keys* my_keys) {
+        const eth::event::NewServiceNodeV2& new_sn, const confirm_metadata& confirm) {
 
     if (service_nodes_infos.count(new_sn.sn_pubkey)) {
         log::warning(
@@ -1730,26 +1725,31 @@ bool service_node_list::state_t::process_confirmed_event(
 
     try {
         auto [key, service_node_info] = validate_ethereum_registration(
-                new_sn, nettype, hf_version, height, index, get_staking_requirement(nettype));
+                new_sn,
+                confirm.nettype,
+                confirm.hf_version,
+                confirm.height,
+                confirm.vote_index,
+                get_staking_requirement(confirm.nettype));
         if (sn_list && !sn_list->m_rescanning) {
             auto& proof = sn_list->proofs[key];
             proof = {};
             proof.store(key, sn_list->blockchain);
         }
-        if (my_keys && my_keys->pub == key)
+        if (confirm.my_keys && confirm.my_keys->pub == key)
             log::info(
                     globallogcat,
                     fg(fmt::terminal_color::green),
                     "Confirmed service node registration from ethereum: {} (THIS NODE) @ height: "
                     "{}",
                     key,
-                    height);
+                    confirm.height);
         else
             log::info(
                     logcat,
                     "Confirmed service node registration from ethereum: {} on height: {}",
                     key,
-                    height);
+                    confirm.height);
         insert_info(key, std::move(service_node_info));
         return true;
     } catch (const std::exception& e) {
@@ -1759,12 +1759,7 @@ bool service_node_list::state_t::process_confirmed_event(
 }
 
 bool service_node_list::state_t::process_confirmed_event(
-        const eth::event::ServiceNodeExitRequest& remreq,
-        cryptonote::network_type nettype,
-        cryptonote::hf,
-        uint64_t height,
-        uint32_t index,
-        const service_node_keys* my_keys) {
+        const eth::event::ServiceNodeExitRequest& remreq, const confirm_metadata& confirm) {
 
     crypto::public_key snode_pk = find_public_key(remreq.bls_pubkey);
     if (!snode_pk) {
@@ -1772,8 +1767,8 @@ bool service_node_list::state_t::process_confirmed_event(
                 logcat,
                 "Ignoring L2 exit request for unregistered BLS pubkey {} @ {}[{}]",
                 remreq.bls_pubkey,
-                height,
-                index);
+                confirm.height,
+                confirm.vote_index);
         return false;
     }
 
@@ -1783,8 +1778,8 @@ bool service_node_list::state_t::process_confirmed_event(
                 logcat,
                 "Ignoring L2 exit request for recently removed BLS pubkey {} @ {}[{}]",
                 remreq.bls_pubkey,
-                height,
-                index);
+                confirm.height,
+                confirm.vote_index);
         return false;
     }
 
@@ -1793,31 +1788,31 @@ bool service_node_list::state_t::process_confirmed_event(
         log::info(
                 logcat,
                 "Duplicate unlock L2 event @ {}[{}]: Node {} is already unlocking at height {}",
-                height,
-                index,
+                confirm.height,
+                confirm.vote_index,
                 snode_pk,
                 node_info.requested_unlock_height);
         return false;
     }
 
-    auto& netconf = get_config(nettype);
+    auto& netconf = get_config(confirm.nettype);
     const uint64_t unlock_height = height + netconf.BLOCKS_IN(netconf.UNLOCK_DURATION);
-    if (my_keys && my_keys->pub == snode_pk)
+    if (confirm.my_keys && confirm.my_keys->pub == snode_pk)
         log::info(
                 globallogcat,
                 fg(fmt::terminal_color::yellow),
                 "Service node exit initiated for {} (THIS NODE) @ {}[{}]; exit height: {}",
                 snode_pk,
-                height,
-                index,
+                confirm.height,
+                confirm.vote_index,
                 unlock_height);
     else
         log::info(
                 logcat,
                 "Service node exit initiated for {} @ {}[{}]; exit height: {}",
                 snode_pk,
-                height,
-                index,
+                confirm.height,
+                confirm.vote_index,
                 unlock_height);
 
     duplicate_info(it->second).requested_unlock_height = unlock_height;
@@ -1826,11 +1821,7 @@ bool service_node_list::state_t::process_confirmed_event(
 
 bool service_node_list::state_t::process_confirmed_event(
         const eth::event::ServiceNodeExit& exit,
-        cryptonote::network_type nettype,
-        cryptonote::hf,
-        uint64_t,
-        uint32_t,
-        const service_node_keys* my_keys) {
+        const confirm_metadata& confirm) {
 
     // NOTE: Retrieve node from the staging area
     auto node = std::find_if(
@@ -1888,7 +1879,7 @@ bool service_node_list::state_t::process_confirmed_event(
     uint64_t block_delay = 0;
     if (slash_amount > 0) {
         // NOTE: Calculate the height at which funds are unlocked
-        auto& netconf = get_config(nettype);
+        auto& netconf = get_config(confirm.nettype);
         uint64_t dereg_height = node->height;
         uint64_t dereg_penalty = netconf.BLOCKS_IN(netconf.DEREGISTRATION_LOCK_DURATION);
         uint64_t funds_unlocked_at_height = dereg_height + dereg_penalty;
@@ -1940,7 +1931,7 @@ bool service_node_list::state_t::process_confirmed_event(
     returned_stakes[0].amount =
             cryptonote::reward_money::coin_amount(returned_stakes[0].coin_amount() - slash_amount);
 
-    if (my_keys && my_keys->pub == node->service_node_pubkey)
+    if (confirm.my_keys && confirm.my_keys->pub == node->service_node_pubkey)
         log::info(
                 globallogcat,
                 fg(fmt::terminal_color::yellow),
@@ -1975,14 +1966,10 @@ bool service_node_list::state_t::process_confirmed_event(
 
 bool service_node_list::state_t::process_confirmed_event(
         const eth::event::StakingRequirementUpdated& req_change,
-        cryptonote::network_type nettype,
-        cryptonote::hf,
-        uint64_t height,
-        uint32_t,
-        const service_node_keys*) {
-    auto old_staking_requirement = get_staking_requirement(nettype);
+        const confirm_metadata& confirm) {
+    auto old_staking_requirement = get_staking_requirement(confirm.nettype);
     staking_requirement = req_change.staking_requirement;
-    auto new_staking_requirement = get_staking_requirement(nettype);
+    auto new_staking_requirement = get_staking_requirement(confirm.nettype);
 
     if (old_staking_requirement != new_staking_requirement) {
         log::info(
@@ -2005,12 +1992,7 @@ bool service_node_list::state_t::process_confirmed_event(
 }
 
 bool service_node_list::state_t::process_confirmed_event(
-        const eth::event::ServiceNodePurge& purge,
-        cryptonote::network_type,
-        cryptonote::hf,
-        uint64_t height,
-        uint32_t index,
-        const service_node_keys* my_keys) {
+        const eth::event::ServiceNodePurge& purge, const confirm_metadata& confirm) {
 
     auto pk = find_public_key(purge.bls_pubkey);
     if (!pk) {
@@ -2018,8 +2000,8 @@ bool service_node_list::state_t::process_confirmed_event(
                 logcat,
                 "Ignoring L2 SN purge for unregistered BLS pubkey {} @ {}[{}]",
                 purge.bls_pubkey,
-                height,
-                index);
+                confirm.height,
+                confirm.vote_index);
         return false;
     }
 
@@ -2029,12 +2011,12 @@ bool service_node_list::state_t::process_confirmed_event(
                 logcat,
                 "Ignoring L2 SN purge for recently removed BLS pubkey {} @ {}[{}]",
                 purge.bls_pubkey,
-                height,
-                index);
+                confirm.height,
+                confirm.vote_index);
         return false;
     }
 
-    bool is_me = my_keys && my_keys->pub == pk;
+    bool is_me = confirm.my_keys && confirm.my_keys->pub == pk;
     if (is_me)
         log::warning(
                 globallogcat,
@@ -2043,8 +2025,8 @@ bool service_node_list::state_t::process_confirmed_event(
                 "contract @ {}[{}], L2 height {}",
                 pk,
                 purge.bls_pubkey,
-                height,
-                index,
+                confirm.height,
+                confirm.vote_index,
                 purge.l2_height);
     else
         log::info(
@@ -2053,8 +2035,8 @@ bool service_node_list::state_t::process_confirmed_event(
                 "@ {}[{}], L2 height {}",
                 pk,
                 purge.bls_pubkey,
-                height,
-                index,
+                confirm.height,
+                confirm.vote_index,
                 purge.l2_height);
 
     erase_info(it, recently_removed_node::type_t::purged);
@@ -3283,8 +3265,14 @@ void service_node_list::state_t::update_from_block(
                                         fail)};
                     need_swarm_update += std::visit(
                             [&](const auto& e) {
-                                return process_confirmed_event(
-                                        e, nettype, hf_version, height, i, my_keys);
+                                confirm_metadata confirm = {
+                                        .nettype = nettype,
+                                        .hf_version = hf_version,
+                                        .height = height,
+                                        .vote_index = i,
+                                        .my_keys = my_keys,
+                                };
+                                return process_confirmed_event(e, confirm);
                             },
                             event);
 

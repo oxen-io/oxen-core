@@ -1184,50 +1184,30 @@ class service_node_list {
                 const cryptonote::transaction& tx,
                 const service_node_keys* my_keys);
 
+        struct confirm_metadata {
+            cryptonote::network_type nettype;
+            cryptonote::hf hf_version;
+            uint64_t height;
+            uint32_t vote_index;
+            const service_node_keys* my_keys;
+        };
+
         // Applies a pulse-quorums-confirmed L2 event to the service node list state.  Returns true
         // if processing the event affects swarms, false if it does not.
         bool process_confirmed_event(
-                const eth::event::NewServiceNodeV2& new_sn,
-                cryptonote::network_type nettype,
-                cryptonote::hf hf_version,
-                uint64_t height,
-                uint32_t index,
-                const service_node_keys* my_keys);
+                const eth::event::NewServiceNodeV2& new_sn, const confirm_metadata& confirm);
         bool process_confirmed_event(
-                const eth::event::ServiceNodeExitRequest& rem_req,
-                cryptonote::network_type nettype,
-                cryptonote::hf hf_version,
-                uint64_t height,
-                uint32_t index,
-                const service_node_keys* my_keys);
+                const eth::event::ServiceNodeExitRequest& rem_req, const confirm_metadata& confirm);
         bool process_confirmed_event(
-                const eth::event::ServiceNodeExit& exit,
-                cryptonote::network_type nettype,
-                cryptonote::hf hf_version,
-                uint64_t height,
-                uint32_t index,
-                const service_node_keys* my_keys);
+                const eth::event::ServiceNodeExit& exit, const confirm_metadata& confirm);
         bool process_confirmed_event(
                 const eth::event::StakingRequirementUpdated& req_change,
-                cryptonote::network_type nettype,
-                cryptonote::hf hf_version,
-                uint64_t height,
-                uint32_t index,
-                const service_node_keys*);
+                const confirm_metadata& confirm);
         bool process_confirmed_event(
-                const eth::event::ServiceNodePurge& purge,
-                cryptonote::network_type nettype,
-                cryptonote::hf hf_version,
-                uint64_t height,
-                uint32_t index,
-                const service_node_keys*);
+                const eth::event::ServiceNodePurge& purge, const confirm_metadata& confirm);
         bool process_confirmed_event(
                 const std::monostate&,  // do-nothing fallback for "not an event" variant
-                cryptonote::network_type,
-                cryptonote::hf,
-                uint64_t,
-                uint32_t,
-                const service_node_keys*) {
+                const confirm_metadata&) {
             return false;
         }
 
@@ -1235,6 +1215,7 @@ class service_node_list {
         // (before HF19) the service node that earns the service node reward for the next block.
         // Returns a payout with a null key if the next block cannot be a pulse block.
         payout get_next_block_leader() const;
+
         // Returns the pubkey of the block leader of *this* block: that is, the round 0 pulse quorum
         // leader, and (before HF19) the service node that earned the service node reward for this
         // block.  Returns a null public key if this block was not a pulse block.
