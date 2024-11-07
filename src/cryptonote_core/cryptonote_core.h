@@ -600,14 +600,15 @@ class core final {
     void bls_rewards_request(
             const eth::address& address,
             uint64_t height,
-            std::function<void(const eth::bls_rewards_response&)> callback);
+            std::function<void(std::shared_ptr<const eth::bls_rewards_response>)> callback);
 
     // Initiates an asynchronous exit or liquidation signing request to the network's nodes and
     // returns immediately.  `callback` gets invoked once the requests are finished.
     void bls_exit_liquidation_request(
             const std::variant<crypto::public_key, eth::bls_public_key>& pubkey,
             bool liquidate,
-            std::function<void(const eth::bls_exit_liquidation_response&)> callback);
+            std::function<void(std::shared_ptr<const eth::bls_exit_liquidation_response>)>
+                    callback);
 
     eth::bls_registration_response bls_registration(const eth::address& ethereum_address) const;
 

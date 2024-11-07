@@ -73,7 +73,7 @@ class bls_aggregator {
     void rewards_request(
             const address& addr,
             uint64_t height,
-            std::function<void(const bls_rewards_response&)> callback);
+            std::function<void(std::shared_ptr<const bls_rewards_response>)> callback);
 
     // Request the service node network to sign a request to remove the node specified by `pubkey`
     // (either SN pubkey or BLS pubkey) from the network. The nature of this exit is set by `type`.
@@ -90,7 +90,7 @@ class bls_aggregator {
     void exit_liquidation_request(
             const std::variant<crypto::public_key, eth::bls_public_key>& pubkey,
             bls_exit_type type,
-            std::function<void(const bls_exit_liquidation_response&)> callback);
+            std::function<void(std::shared_ptr<const bls_exit_liquidation_response>)> callback);
 
     bls_registration_response registration(
             const address& sender, const crypto::public_key& sn_pubkey) const;
@@ -132,10 +132,10 @@ class bls_aggregator {
     std::mutex exit_liquidation_response_cache_mutex;
 
     // Cache the aggregate signature response for updating rewards to avoid requerying the network
-    std::unordered_map<address, bls_rewards_response> rewards_response_cache;
+    std::unordered_map<address, std::shared_ptr<bls_rewards_response>> rewards_response_cache;
 
     // The cache for exits and liquidation signature aggregations. See `rewards_response_cache`
-    std::unordered_map<bls_public_key, bls_exit_liquidation_response>
+    std::unordered_map<bls_public_key, std::shared_ptr<bls_exit_liquidation_response>>
             exit_liquidation_response_cache;
 };
 }  // namespace eth

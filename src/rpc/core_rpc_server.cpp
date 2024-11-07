@@ -2566,10 +2566,11 @@ void core_rpc_server::invoke(
 void set_contract_signature(
         nlohmann::json& response,
         tools::json_binary_proxy& response_hex,
-        const eth::bls_aggregate_signed& sig,
+        std::shared_ptr<const eth::bls_aggregate_signed> sig_ptr,
         eth::L2Tracker& l2_tracker,
         std::shared_ptr<responder> responder,
         std::function<void()> success_cb) {
+    auto& sig = *sig_ptr;
 
     if (!sig.signature) {
         responder->error.emplace(
@@ -2581,7 +2582,7 @@ void set_contract_signature(
             std::ranges::views::keys(sig.signatures),
             [&response,
              &response_hex,
-             &sig,
+             sig_ptr,
              responder = std::move(responder),
              success_cb = std::move(success_cb)](std::optional<eth::NonSigners> non_signers) {
                 if (!non_signers) {
@@ -2591,6 +2592,7 @@ void set_contract_signature(
                 }
 
                 response["status"] = STATUS_OK;
+                auto& sig = *sig_ptr;
                 response_hex["msg_to_sign"] = std::string_view(
                         reinterpret_cast<const char*>(sig.msg_to_sign.data()),
                         sig.msg_to_sign.size());
@@ -2644,14 +2646,15 @@ void core_rpc_server::invoke(
                 rpc.request.address,
                 static_cast<uint64_t>(rpc.request.height),
                 [&rpc, keepalive = std::move(keepalive), &l2 = m_core.l2_tracker()](
-                        const eth::bls_rewards_response& response) mutable {
+                        std::shared_ptr<const eth::bls_rewards_response> response_ptr) mutable {
+                    auto& response = *response_ptr;
                     set_contract_signature(
                             rpc.response,
                             rpc.response_hex,
-                            response,
+                            std::move(response_ptr),
                             l2,
                             std::move(keepalive),
-                            [&rpc, response] {
+                            [&rpc, &response] {
                                 rpc.response["address"] = "{}"_format(response.addr);
                                 rpc.response["amount"] = response.amount;
                                 rpc.response["height"] = response.height;
@@ -2735,14 +2738,16 @@ void core_rpc_server::invoke(
                 rpc.request.pubkey,
                 rpc.request.liquidate,
                 [&rpc, keepalive = std::move(keepalive), &l2 = m_core.l2_tracker()](
-                        const eth::bls_exit_liquidation_response& response) mutable {
+                        std::shared_ptr<const eth::bls_exit_liquidation_response>
+                                response_ptr) mutable {
+                    auto& response = *response_ptr;
                     set_contract_signature(
                             rpc.response,
                             rpc.response_hex,
-                            response,
+                            std::move(response_ptr),
                             l2,
                             std::move(keepalive),
-                            [&rpc, response] {
+                            [&rpc, &response] {
                                 rpc.response["timestamp"] = response.timestamp;
                                 rpc.response_hex["bls_pubkey"] = response.remove_pubkey;
                             });

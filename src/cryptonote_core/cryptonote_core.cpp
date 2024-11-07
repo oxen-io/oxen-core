@@ -2643,14 +2643,14 @@ uint64_t core::get_free_space() const {
 void core::bls_rewards_request(
         const eth::address& address,
         uint64_t height,
-        std::function<void(const eth::bls_rewards_response&)> callback) {
+        std::function<void(std::shared_ptr<const eth::bls_rewards_response>)> callback) {
     m_bls_aggregator->rewards_request(address, height, std::move(callback));
 }
 //-----------------------------------------------------------------------------------------------
 void core::bls_exit_liquidation_request(
         const std::variant<crypto::public_key, eth::bls_public_key>& pubkey,
         bool liquidate,
-        std::function<void(const eth::bls_exit_liquidation_response&)> callback) {
+        std::function<void(std::shared_ptr<const eth::bls_exit_liquidation_response>)> callback) {
     m_bls_aggregator->exit_liquidation_request(
             pubkey,
             liquidate ? eth::bls_exit_type::liquidate : eth::bls_exit_type::normal,

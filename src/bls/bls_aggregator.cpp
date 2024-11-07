@@ -427,7 +427,7 @@ bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
                     if (cutoff < top_height) {
                         std::lock_guard lock{rewards_response_cache_mutex};
                         std::erase_if(rewards_response_cache, [&cutoff](const auto& item) {
-                            return item.second.height < cutoff;
+                            return item.second->height < cutoff;
                         });
                     }
                 }
@@ -440,7 +440,7 @@ bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
 
                     std::lock_guard lock{exit_liquidation_response_cache_mutex};
                     std::erase_if(exit_liquidation_response_cache, [&cutoff](const auto& item) {
-                        return item.second.timestamp < cutoff;
+                        return item.second->timestamp < cutoff;
                     });
                 }
             },
@@ -675,7 +675,7 @@ namespace {
 
     template <std::derived_from<bls_aggregate_signed> Result>
     struct aggregate_result {
-        Result result{};
+        std::shared_ptr<Result> result = std::make_shared<Result>();
         std::optional<agg_log_list> agg_log_lister = log::get_level(logcat) <= log::Level::debug
                                                            ? std::make_optional<agg_log_list>()
                                                            : std::nullopt;
@@ -694,7 +694,7 @@ namespace {
         // expensive per-signature verification fallback to recalculate only in the case where that
         // fails.
         void finalize_signature(cryptonote::network_type nettype) {
-            aggregate_signature_finalize(nettype, result, agg_sig, agg_pub);
+            aggregate_signature_finalize(nettype, *result, agg_sig, agg_pub);
         }
 
         template <typename... T>
@@ -802,7 +802,7 @@ void bls_aggregator::get_rewards(oxenmq::Message& m) const {
 void bls_aggregator::rewards_request(
         const address& addr,
         uint64_t height,
-        std::function<void(const bls_rewards_response&)> callback) {
+        std::function<void(std::shared_ptr<const bls_rewards_response>)> callback) {
 
     auto maybe_amount = core.blockchain.sqlite_db().get_accrued_rewards(addr, height);
     auto amount = maybe_amount.value_or(0);
@@ -841,8 +841,8 @@ void bls_aggregator::rewards_request(
         std::lock_guard lock{rewards_response_cache_mutex};
         auto cache_it = rewards_response_cache.find(addr);
         if (cache_it != rewards_response_cache.end()) {
-            const bls_rewards_response& cache_response = cache_it->second;
-            if (cache_response.height == height && cache_response.amount == amount) {
+            auto cache_response = cache_it->second;
+            if (cache_response->height == height && cache_response->amount == amount) {
                 log::trace(
                         logcat,
                         "Serving rewards request from cache for address {} at height {} with "
@@ -857,7 +857,7 @@ void bls_aggregator::rewards_request(
     }
 
     auto result_data = std::make_shared<aggregate_result<bls_rewards_response>>();
-    auto& result = result_data->result;
+    auto& result = *result_data->result;
     result.addr = std::move(addr);
     result.amount = amount;
     result.height = height;
@@ -923,7 +923,7 @@ void bls_aggregator::rewards_request(
                         tools::encode_integer_be<32>(rewards_response.amount));
 
                 // NOTE: Verify parameters
-                auto& result = result_data->result;
+                auto& result = *result_data->result;
                 if (rewards_response.addr != result.addr)
                     return result_data->error(
                             sn,
@@ -969,7 +969,7 @@ void bls_aggregator::rewards_request(
              begin_ts = std::chrono::high_resolution_clock::now()](int total_requests) {
                 result_data->finalize_signature(core.get_nettype());
 
-                auto& result = result_data->result;
+                auto& result = *result_data->result;
 
                 // NOTE: Dump the aggregate pubkey and other info that was generated
                 log_aggregation_result(
@@ -982,7 +982,7 @@ void bls_aggregator::rewards_request(
                         core,
                         result.msg_to_sign);
 
-                callback(result);
+                callback(result_data->result);
 
                 // NOTE: Store the response in to the cache if the number of non-signers is small
                 // enough to constitute a valid signature.
@@ -990,10 +990,8 @@ void bls_aggregator::rewards_request(
                 if (non_signers_count <=
                     contract::rewards_bls_non_signer_threshold(total_requests)) {
                     std::lock_guard lock{rewards_response_cache_mutex};
-                    rewards_response_cache[result.addr] = std::move(result);
+                    rewards_response_cache[result.addr] = std::move(result_data->result);
                 }
-
-                return result;
             });
 
     log::debug(logcat, "Initiated {} service node rewards signing requests", total_requests);
@@ -1040,7 +1038,7 @@ void bls_aggregator::get_exit_liquidation(oxenmq::Message& m, bls_exit_type type
 void bls_aggregator::exit_liquidation_request(
         const std::variant<crypto::public_key, eth::bls_public_key>& pubkey,
         bls_exit_type type,
-        std::function<void(const bls_exit_liquidation_response&)> callback) {
+        std::function<void(std::shared_ptr<const bls_exit_liquidation_response>)> callback) {
 
     const auto* sn_pubkey = std::get_if<crypto::public_key>(&pubkey);
     const auto* bls_pubkey = std::get_if<eth::bls_public_key>(&pubkey);
@@ -1091,7 +1089,8 @@ void bls_aggregator::exit_liquidation_request(
         std::lock_guard lock{exit_liquidation_response_cache_mutex};
         auto it = exit_liquidation_response_cache.find(*bls_pubkey);
         if (it != exit_liquidation_response_cache.end()) {
-            const bls_exit_liquidation_response& response = it->second;
+            auto& resp_ptr = it->second;
+            const bls_exit_liquidation_response& response = *resp_ptr;
             auto now_unix_ts = std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::system_clock::now().time_since_epoch());
             auto cache_ts = std::chrono::seconds(response.timestamp);
@@ -1105,7 +1104,7 @@ void bls_aggregator::exit_liquidation_request(
                             format_pk(),
                             tools::get_human_readable_timespan(cache_age),
                             response);
-                    callback(response);
+                    callback(resp_ptr);
                     return;
                 }
             }
@@ -1134,7 +1133,7 @@ void bls_aggregator::exit_liquidation_request(
     }
 
     auto result_data = std::make_shared<aggregate_result<bls_exit_liquidation_response>>();
-    auto& result = result_data->result;
+    auto& result = *result_data->result;
     result.remove_pubkey = *bls_pubkey;
     result.type = type;
     result.timestamp = std::chrono::duration_cast<std::chrono::seconds>(
@@ -1186,7 +1185,7 @@ void bls_aggregator::exit_liquidation_request(
                 }
 
                 // NOTE: Verify parameters
-                auto& result = result_data->result;
+                auto& result = *result_data->result;
                 if (exit_response.remove_pubkey != result.remove_pubkey)
                     return result_data->error(
                             sn,
@@ -1222,7 +1221,7 @@ void bls_aggregator::exit_liquidation_request(
              begin_ts = std::chrono::high_resolution_clock::now()](int total_requests) {
                 result_data->finalize_signature(core.get_nettype());
 
-                auto& result = result_data->result;
+                auto& result = *result_data->result;
 
                 // NOTE: Dump the aggregate pubkey and other info that was generated
                 log_aggregation_result(
@@ -1235,7 +1234,7 @@ void bls_aggregator::exit_liquidation_request(
                         core,
                         result.msg_to_sign);
 
-                callback(result);
+                callback(result_data->result);
 
                 // NOTE: Store the response in to the cache if the number of non-signers is small
                 // enough to constitute a valid signature.
@@ -1243,7 +1242,8 @@ void bls_aggregator::exit_liquidation_request(
                 if (non_signers_count <=
                     contract::rewards_bls_non_signer_threshold(total_requests)) {
                     std::lock_guard lock{exit_liquidation_response_cache_mutex};
-                    exit_liquidation_response_cache[result.remove_pubkey] = std::move(result);
+                    exit_liquidation_response_cache[result.remove_pubkey] =
+                            std::move(result_data->result);
                 }
             });
 
