@@ -5128,7 +5128,8 @@ bool service_node_list::load(const uint64_t current_height) {
     // another subsystem, a 'subsytem' should be able to rederive their state purely by processing
     // blocks in isolation.
     if (blockchain.nettype() == cryptonote::network_type::STAGENET &&
-        data_in.version < data_for_serialization::version_t::version_4_ensure_rescan_resets_sql_db) {
+        data_in.version <
+                data_for_serialization::version_t::version_4_ensure_rescan_resets_sql_db) {
         return false;
     }
 
