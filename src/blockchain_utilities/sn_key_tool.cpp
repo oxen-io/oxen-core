@@ -471,6 +471,8 @@ int restore(key_type type, std::list<std::string_view> args) {
         auto eth_bls_pk = get_pubkey(bls_sec);
         fmt::print("{}", display_bls(eth_bls_pk));
         hex_pk = tools::hex_guts(eth_bls_pk);
+
+        sk_data = "0x{}\n"_format(skey_hex);
     }
 
     std::string cmd_instead, fn;
