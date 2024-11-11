@@ -214,6 +214,7 @@ struct service_node_info  // registration information
         v6_reassign_sort_keys,
         v7_decommission_reason,
         v8_ethereum_address,
+        v9_eth_sn_contract_id,
         _count
     };
 
@@ -312,6 +313,7 @@ struct service_node_info  // registration information
     version_t version = tools::enum_top<version_t>;
     cryptonote::hf registration_hf_version = cryptonote::hf::none;
     pulse_sort_key pulse_sorter;
+    uint64_t contract_id; // Monotonic ID allocated by the smart contract for the node
 
     service_node_info() = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
@@ -383,6 +385,8 @@ struct service_node_info  // registration information
             field(ar, "bls_public_key", bls_public_key);
             field(ar, "operator_ethereum_address", operator_ethereum_address);
         }
+        if (version >= version_t::v9_eth_sn_contract_id)
+            field(ar, "contract_id", contract_id);
     }
 };
 

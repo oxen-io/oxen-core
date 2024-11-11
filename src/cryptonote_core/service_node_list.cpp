@@ -4994,6 +4994,15 @@ service_node_list::state_t::state_t(service_node_list& snl, state_serialized&& s
             // Nothing to do here
             info.version = version_t::v8_ethereum_address;
         }
+        if (info.version < version_t::v9_eth_sn_contract_id) {
+            // NOTE: This is only relevant in stagenet. It's fairly difficult in retrospect to
+            // populate the contract ID. The contract ID is not being used anywhere except in
+            // the sent-staking-backend. For those purposes, we can hardcode a table that patches up
+            // missing contract IDs in the oxen RPC to avoid having to retrospectively fill in the
+            // missing information in their Oxen state.
+            info.contract_id = 0;
+            info.version = version_t::v9_eth_sn_contract_id;
+        }
         // Make sure we handled any future state version upgrades:
         assert(info.version == tools::enum_top<decltype(info.version)>);
         service_nodes_infos.emplace(std::move(pubkey_info.pubkey), std::move(pubkey_info.info));

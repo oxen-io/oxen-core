@@ -2802,6 +2802,8 @@ void core_rpc_server::fill_sn_response_entry(
             microportion(info.portions_for_operator),
             "swarm_id",
             info.swarm_id,
+            "contract_id",
+            info.contract_id,
             "swarm",
             "{:x}"_format(info.swarm_id),
             "registration_hf_version",

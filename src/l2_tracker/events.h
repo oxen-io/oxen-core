@@ -72,8 +72,9 @@ struct ContributorV2 {
 };
 
 struct NewServiceNodeV2 : L2StateChange {
-    enum class Version { invalid = -1, v0, _count };
-    Version version = Version::v0;
+    enum class Version { invalid = -1, v0, v1_contract_id, _count };
+    Version version = Version::v1_contract_id;
+    uint64_t contract_id = 0;
     crypto::public_key sn_pubkey = crypto::null<crypto::public_key>;
     bls_public_key bls_pubkey = crypto::null<bls_public_key>;
     crypto::ed25519_signature ed_signature = crypto::null<crypto::ed25519_signature>;
@@ -97,6 +98,8 @@ struct NewServiceNodeV2 : L2StateChange {
         field(ar, "signature", ed_signature);
         field_varint(ar, "fee", fee);
         field(ar, "contributors", contributors);
+        if (version >= Version::v1_contract_id)
+            field(ar, "contract_id", contract_id);
     }
 
     std::strong_ordering operator<=>(const NewServiceNodeV2& o) const = default;

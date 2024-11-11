@@ -266,6 +266,12 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
 
             auto& item = result.emplace<event::NewServiceNodeV2>(chain_id, l2_height);
 
+            // NOTE: Primitive fields that are indexed are stored in the topics array. Our SN
+            // contract ID is available here.
+            u256 sn_id256;
+            std::tie(sn_id256) = tools::split_hex_into<u256>(log.topics[1]);
+            item.contract_id = tools::decode_integer_be(sn_id256);
+
             u256 fee256, c_offset, c_len;
             std::string_view contrib_hex;
             std::tie(
