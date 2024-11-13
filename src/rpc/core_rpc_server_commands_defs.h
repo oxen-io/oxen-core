@@ -2129,40 +2129,85 @@ struct GET_SERVICE_NODE_STATUS : NO_ARGS {
 /// exits, which require multiple pulse quorum votes/consensus before taking effect on the Oxen
 /// chain.
 ///
-/// Inputs: none.
+/// Inputs:
+/// - include_mempool -- if true, then include events that are in this node's internal event queue,
+///   but not yet mined into a block.  If omitted (or false) then only events mined into at least
+///   one block (but not yet confirmed) are included.  Note that such events are only from the
+///   perspective of this single node, and do not necessarily reflect that an event will be properly
+///   confirmed by the network.
 ///
 /// Outputs:
-/// - `registrations` -- array of mined by not yet confirmed registrations.  Once confirmed, these
+/// - `registrations` -- array of unconfirmed registration events.  Once confirmed, these
 ///   will become new active Oxen service nodes.  Each element is a dict containing fields:
 ///   - `sn_pubkey` -- the service node pubkey of the registration.
 ///   - `bls_pubkey` -- the BLS pubkey of the registration.
-///   - `signature` -- the signature (signed by the sn_pubkey) of the registration.
-///   - `fee` -- the service node fee, as a percentage.
-///   - `contributors` -- array of contributor info; each is a dict containing `address` and
-///     `amount`.  The *first* element of this array is the service node operator.
+///   - `signature` -- the Oxen Ed25519 signature (i.e. signed by the sn_pubkey) of the
+///     registration.  (Note that this is note the same as the BLS signature, which is verified in
+///     the contract and not observed by the Oxen chain).
+///   - `fee` -- the service node fee, as a floating point percentage.  (E.g. 12.34 = 12.34% fee).
+///   - `contributors` -- array of contributor info; each is a dict containing `address`,
+///     `beneficiary` and `amount`.  The *first* element of this array is the service node operator.
+///   - SN info (see below), but note that having SN info is unusual/erroneous as a NewServiceNode
+///     should not normally be submitted while there is still a registered or un-exited SN.
 ///   - common fields (see below)
 ///
 /// - `unlocks` -- array of mined but not yet confirmed exit requests.  Once confirmed, these
 ///   will initiate the unlock timer after which the service node leaves active duty and can be
 ///   redeemed.  Fields:
 ///   - `bls_pubkey` -- BLS pubkey of the node to start unlocking
+///   - SN info (see below)
 ///   - common fields (see below)
 ///
-/// - `exits` -- array of exits arriving from the L2 communicating service nodes that have
-///   been removed from the contract.  Once confirmed, these also remove and unlock contributors'
-///   stakes.  Each element contains fields:
+/// - `exits`, `liquidations` -- array of exits and liquidations, respectively, arriving from the L2
+///   communicating service nodes that have been removed from the contract.  Once confirmed, these
+///   also remove and unlock contributors' stakes.  Each element contains fields:
 ///   - `bls_pubkey` -- BLS pubkey of the node removed from the smart contract
 ///   - `returned_amount` -- amount of SENT that is returned to contributors.  For normal unlocks
 ///     (i.e. nodes that completed an unlock without getting deregistered) this is the full service
 ///     node stake; for deregistrations this will have a small penalty removed (which is incurred by
 ///     the operator in the returned stakes).
+///   - SN info (see below)
 ///   - common fields (see below)
+///
+/// - `purges` -- array of service nodes being purged by oxend.  Oxend service nodes issue purges
+///   when a service node is discovered in oxend that does *not* exist in the contract.  Such cases
+///   are typically only the result of some adverse network event (such as an L2 rollback) and serve
+///   to let oxend sync the network state with what exists in the contract.  Each element contains
+///   fields:
+///   - `bls_pubkey` -- the BLS pubkey that exists in oxend, but not in the contract.
+///   - SN info (see below)
+///   - common fields (see below)
+///
+/// - `staking_requirement_updates` -- array of staking requirement changes; these are emitted in
+///   the rare event that the staking requirement in the contract is changing; it is rare to see
+///   this non-empty at all, and rarer still to see multiple events in it.  Each element contains
+///   fields:
+///   - `new_staking_requirement` -- the new staking requirement, in atomic SENT.
+///   - `current_staking_requirement` -- the current oxen chain staking requirement (at the time of
+///     the rpc call), in atomic SENT.
+///   - common fields (see below)
+///
+/// - SN info fields, included for events including a BLS public key (basically everything except
+///   staking requirement update events), will attempt a lookup of the public key in the registered
+///   and recently removed oxen service node lists.  If a registered node is found then a key
+///   `registered` is included with a value set to the same info as returned by `get_service_nodes`.
+///   If a matching recently removed node is found then `recently_removed` will be set to a dict
+///   containing fields:
+///   - `height` -- the (Oxen) height at which the service node left registered status.
+///   - `liquidation_height` -- the (Oxen) height at which the Oxen network will begin allowing
+///     liquidation signatures (to allow liquidation via the smart contract).
+///   - `type` -- the recently removed type, one of "exit" (i.e. requested and exit and successfully
+///     waited the unlock time), "deregistered" (kicked off the network via quorum testing
+///     deregistration), "purged" (removed because the node's BLS key does not exist in the smart
+///     contract).
+///   - `info` -- service node details, as returned by `get_service_nodes`.
 ///
 /// - Common fields included in all of the above entries:
 ///   - `chain_id` -- the ethereum chain ID of the L2 network from which this pending state chain
 ///     arrived.
 ///   - `l2_height` -- the height on the L2 network which contained this state change.
-///   - `height` -- the Oxen chain height when this transaction was first included.
+///   - `height` -- the Oxen chain height when this transaction was first mined.  Will be 0 if
+///     this event is a mempool event (for `include_mempool` requests).
 ///   - `confirmations` -- the number of confirmation vote points.  The block being included in or
 ///     voted on by a primary pulse quorum = 1.0 votes; the first backup quorum = 0.5 votes, the Nth
 ///     backup quorum = 1.0 / (N+1) votes.
@@ -2180,8 +2225,12 @@ struct GET_SERVICE_NODE_STATUS : NO_ARGS {
 ///     unresolved event with +7.375, -3.5 votes that would require an additional 1.125 confirmation
 ///     votes before reaching the acceptance conditions.
 ///
-struct GET_PENDING_EVENTS : PUBLIC, NO_ARGS {
+struct GET_PENDING_EVENTS : PUBLIC {
     static constexpr auto names() { return NAMES("get_pending_events"); }
+
+    struct request_parameters {
+        bool include_mempool = false;
+    } request;
 };
 
 /// RPC: blockchain/get_accrued_rewards

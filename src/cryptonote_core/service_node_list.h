@@ -662,6 +662,20 @@ class service_node_list {
         }
     }
 
+    /// If the pubkey belongs to a recently removed node then invoke the callback (with the SN list
+    /// lock held) with the `const recently_removed_node&` information.  If not a recently removed
+    /// node then the callback is not invoked.
+    template <std::invocable<const recently_removed_node&> Func>
+    void if_recently_removed_node(const crypto::public_key& pk, Func f) const {
+        std::lock_guard lock{m_sn_mutex};
+        for (const auto& node : m_state.recently_removed_nodes) {
+            if (pk == node.service_node_pubkey) {
+                f(node);
+                break;
+            }
+        }
+    }
+
     /// Copies x25519 pubkeys (as strings) of all currently registered SNs into the given output
     /// iterator.  (Before the feature::SN_PK_IS_ED25519 hardfork this only includes SNs with known
     /// proofs.)

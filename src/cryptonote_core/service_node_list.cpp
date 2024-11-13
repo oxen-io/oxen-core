@@ -1632,12 +1632,9 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
         if (eth::event::ServiceNodeExit exit; cryptonote::get_field_from_tx_extra(tx.extra, exit) &&
                                               (pk = snl.find_public_key(exit.bls_pubkey))) {
             eth::address op = {};
-            snl.for_each_recently_removed_node([&](const auto& node) {
-                if (node.service_node_pubkey == pk && node.info.contributors.size()) {
+            snl.if_recently_removed_node(pk, [&](const auto& node) {
+                if (node.info.contributors.size())
                     op = node.info.contributors.front().ethereum_address;
-                    return true;
-                }
-                return false;
             });
             type += " (op: {}; key: {}; returned: {})"_format(op, pk, exit.returned_amount);
         }

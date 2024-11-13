@@ -232,9 +232,30 @@ class core_rpc_server {
             nlohmann::json& entry,
             bool is_bt,
             const std::unordered_set<std::string>& requested,
-            const service_nodes::service_node_pubkey_info& sn_info,
+            const crypto::public_key& sn_pubkey,
+            const service_nodes::service_node_info& sn_info,
             uint64_t top_height,
             const std::unordered_map<eth::bls_public_key, bool>* removable);
+
+    void add_event_sn_info(
+            json& entry,
+            const eth::bls_public_key& blspk,
+            bool is_bt,
+            std::function<void(const service_nodes::service_node_info&)> extra_call = nullptr);
+    void add_event_details(
+            GET_PENDING_EVENTS& pending, json&& entry, const eth::event::NewServiceNodeV2& newsn);
+    void add_event_details(
+            GET_PENDING_EVENTS& pending,
+            json&& entry,
+            const eth::event::ServiceNodeExitRequest& exit_req);
+    void add_event_details(
+            GET_PENDING_EVENTS& pending, json&& entry, const eth::event::ServiceNodeExit& exit);
+    void add_event_details(
+            GET_PENDING_EVENTS& pending,
+            json&& entry,
+            const eth::event::StakingRequirementUpdated& stake_upd);
+    void add_event_details(
+            GET_PENDING_EVENTS& pending, json&& entry, const eth::event::ServiceNodePurge& purge);
 
     core& m_core;
     nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core>>& m_p2p;

@@ -60,6 +60,11 @@ void parse_request(GET_SERVICE_NODES& sns, rpc_input in) {
             "service_node_pubkeys",
             sns.request.service_node_pubkeys);
 }
+
+void parse_request(GET_PENDING_EVENTS& pe, rpc_input in) {
+    get_values(in, "include_mempool", pe.request.include_mempool);
+}
+
 void parse_request(START_MINING& start_mining, rpc_input in) {
     get_values(
             in,

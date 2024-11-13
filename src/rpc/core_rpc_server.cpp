@@ -1951,7 +1951,8 @@ void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, rpc_context) {
                 sns.response["service_node_state"] = json::object(),
                 sns.is_bt(),
                 {} /*all fields*/,
-                sn_infos.front(),
+                sn_infos.front().pubkey,
+                *sn_infos.front().info,
                 top_height,
                 nullptr);
     else {
@@ -2597,9 +2598,11 @@ void core_rpc_server::invoke(BLS_REWARDS_REQUEST& rpc, rpc_context) {
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
     auto list = nlohmann::json::array();
     using node_t = service_nodes::service_node_list::recently_removed_node;
-    m_core.service_node_list.for_each_recently_removed_node([&list](const node_t& elem) {
+    m_core.service_node_list.for_each_recently_removed_node([&list, is_bt = rpc.is_bt()](
+                                                                    const node_t& elem) {
         // NOTE: Serialise to JSON
-        serialization::json_archiver ar;
+        serialization::json_archiver ar{
+                is_bt ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex};
         serialize(ar, const_cast<node_t&>(elem));
         nlohmann::json serialized = std::move(ar).json();
         nlohmann::json& sn_info = serialized["info"];
@@ -2738,15 +2741,15 @@ void core_rpc_server::fill_sn_response_entry(
         json& entry,
         bool is_bt,
         const std::unordered_set<std::string>& reqed,
-        const service_nodes::service_node_pubkey_info& sn_info,
+        const crypto::public_key& sn_pubkey,
+        const service_nodes::service_node_info& info,
         uint64_t top_height,
         const std::unordered_map<eth::bls_public_key, bool>* removable) {
 
     auto binary_format = is_bt ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex;
     json_binary_proxy binary{entry, binary_format};
 
-    const auto& info = *sn_info.info;
-    set_if_requested(reqed, binary, "service_node_pubkey", sn_info.pubkey);
+    set_if_requested(reqed, binary, "service_node_pubkey", sn_pubkey);
     if (info.bls_public_key) {
         set_if_requested(reqed, binary, "pubkey_bls", info.bls_public_key);
         if (removable) {
@@ -2845,15 +2848,15 @@ void core_rpc_server::fill_sn_response_entry(
     auto [hf, snode_rev] = get_network_version_revision(nettype(), top_height);
 
     if (hf >= feature::SN_PK_IS_ED25519) {
-        set_if_requested(reqed, binary, "pubkey_ed25519", sn_info.pubkey);
+        set_if_requested(reqed, binary, "pubkey_ed25519", sn_pubkey);
 
         if (requested(reqed, "pubkey_x25519"))
-            binary["pubkey_x25519"] = service_nodes::snpk_to_xpk(sn_info.pubkey);
+            binary["pubkey_x25519"] = service_nodes::snpk_to_xpk(sn_pubkey);
     }
 
     // FIXME: accessing proofs one-by-one like this is kind of gross.
-    m_core.service_node_list.access_proof(sn_info.pubkey, [&](const auto& proof) {
-        if (m_core.service_node() && m_core.get_service_keys().pub == sn_info.pubkey) {
+    m_core.service_node_list.access_proof(sn_pubkey, [&](const auto& proof) {
+        if (m_core.service_node() && m_core.get_service_keys().pub == sn_pubkey) {
             // When returning our own info we always want to return the most current data because
             // the data from the SN list could be stale (it only gets updated when we get
             // verification of acceptance of our proof from the network).  The rest of the network
@@ -3087,58 +3090,172 @@ void core_rpc_server::invoke(GET_SERVICE_NODES& sns, rpc_context) {
                 sn_states.emplace_back(json::object()),
                 sns.is_bt(),
                 req.fields,
-                pubkey_info,
+                pubkey_info.pubkey,
+                *pubkey_info.info,
                 top_height,
                 &removable);
 }
 
+// Sets the "registered" or "recently_removed" key to the SN info or recently removed info,
+// respectively, if the BLS pubkey was found.  Note that it is possible (if unusual) for the bls
+// pubkey to be found in both lists, and thus have both fields populated.
+//
+// Also sets the "bls_pubkey" field (whether the above are found or not).
+void core_rpc_server::add_event_sn_info(
+        json& entry,
+        const eth::bls_public_key& blspk,
+        bool is_bt,
+        std::function<void(const service_nodes::service_node_info&)> extra_call) {
+
+    tools::json_binary_proxy entry_hex{entry, tools::json_binary_proxy::fmt::hex};
+    entry_hex["bls_pubkey"] = blspk;
+
+    const auto pubkey = m_core.service_node_list.find_public_key(blspk);
+    if (!pubkey)
+        return;
+
+    auto top_height = m_core.blockchain.get_tail_id().first;
+    auto removable = m_core.blockchain.get_removable_nodes();
+
+    m_core.service_node_list.if_service_node(pubkey, [&](const auto& sni) {
+        if (extra_call)
+            extra_call(sni);
+        fill_sn_response_entry(
+                entry["registered"] = json::object(),
+                is_bt,
+                {},  // Requested: empty == everything
+                pubkey,
+                sni,
+                top_height,
+                &removable);
+    });
+
+    m_core.service_node_list.if_recently_removed_node(pubkey, [&](const auto& rem_info) {
+        auto& rem = entry["recently_removed"];
+        json_binary_proxy rem_hex{
+                rem, is_bt ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex};
+        using rem_type = service_nodes::service_node_list::recently_removed_node::type_t;
+        rem["height"] = rem_info.height;
+        rem["liquidation_height"] = rem_info.liquidation_height;
+        rem["type"] = rem_info.type == rem_type::voluntary_exit ? "exit"
+                    : rem_info.type == rem_type::deregister     ? "deregister"
+                    : rem_info.type == rem_type::purged         ? "purged"
+                                                                : "unknown";
+        fill_sn_response_entry(
+                rem["info"] = json::object(),
+                is_bt,
+                {},  // empty == everything
+                pubkey,
+                rem_info.info,
+                top_height,
+                &removable);
+    });
+}
+
+void core_rpc_server::add_event_details(
+        GET_PENDING_EVENTS& pending, json&& entry, const eth::event::NewServiceNodeV2& newsn) {
+
+    // Try looking up the new SN pubkey; this will normally fail, but it's a rather interesting
+    // result if it doesn't as it means we have some NewSN event conflicting with a registered
+    // or recently removed node!  (It also sets bls_pubkey for us).
+    add_event_sn_info(entry, newsn.bls_pubkey, pending.is_bt());
+
+    pending.response["registrations"].push_back(std::move(entry));
+    auto& res = pending.response["registrations"].back();
+    auto res_hex = pending.response_hex["registrations"].back();
+    res_hex["sn_pubkey"] = newsn.sn_pubkey;
+    res_hex["signature"] = newsn.ed_signature;
+    res["fee"] = newsn.fee * 0.01;
+    res["contributors"] = json::array();
+    auto& contr = res["contributors"];
+    for (const auto& it : newsn.contributors)
+        contr.push_back(json{
+                {"amount", it.amount},
+                {"address", "{}"_format(it.address)},
+                {"beneficiary", "{}"_format(it.beneficiary)},
+        });
+}
+void core_rpc_server::add_event_details(
+        GET_PENDING_EVENTS& pending,
+        json&& entry,
+        const eth::event::ServiceNodeExitRequest& exit_req) {
+
+    add_event_sn_info(entry, exit_req.bls_pubkey, pending.is_bt());
+    pending.response["unlocks"].push_back(std::move(entry));
+}
+void core_rpc_server::add_event_details(
+        GET_PENDING_EVENTS& pending, json&& entry, const eth::event::ServiceNodeExit& exit) {
+
+    bool is_liquidation = false;
+    add_event_sn_info(entry, exit.bls_pubkey, pending.is_bt(), [&](const auto& info) {
+        is_liquidation = info.staking_requirement == exit.returned_amount;
+    });
+
+    entry["returned_amount"] = exit.returned_amount;
+    pending.response[is_liquidation ? "liquidations" : "exits"].push_back(std::move(entry));
+}
+void core_rpc_server::add_event_details(
+        GET_PENDING_EVENTS& pending,
+        json&& entry,
+        const eth::event::StakingRequirementUpdated& stake_upd) {
+    entry["new_staking_requirement"] = stake_upd.staking_requirement;
+    entry["current_staking_requirement"] = m_core.service_node_list.get_staking_requirement();
+    pending.response["staking_requirement_updates"].push_back(std::move(entry));
+}
+void core_rpc_server::add_event_details(
+        GET_PENDING_EVENTS& pending, json&& entry, const eth::event::ServiceNodePurge& purge) {
+    add_event_sn_info(entry, purge.bls_pubkey, pending.is_bt());
+    pending.response["purges"].push_back(std::move(entry));
+}
+
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(GET_PENDING_EVENTS& sns, rpc_context) {
-    sns.response["status"] = STATUS_OK;
+void core_rpc_server::invoke(GET_PENDING_EVENTS& pending, rpc_context) {
+    pending.response["status"] = STATUS_OK;
 
-    sns.response["registrations"] = json::array();
-    sns.response["unlocks"] = json::array();
-    sns.response["exits"] = json::array();
-    m_core.service_node_list.for_each_pending_l2_state(
-            [&sns]<typename Event>(const Event& e, const auto& info) {
-                json entry{
-                        {"l2_height", e.l2_height},
-                        {"chain_id", e.chain_id},
-                        {"height", info.height_added},
-                        {"confirmations", info.confirmations / (double)info.FULL_SCORE},
-                        {"denials", info.denials / (double)info.FULL_SCORE},
-                        {"required",
-                         (std::max(info.denials * 2, info.denials + 5 * info.FULL_SCORE) -
-                          info.confirmations) /
-                                 (double)info.FULL_SCORE}};
+    for (const auto& k :
+         {"registrations"s,
+          "unlocks"s,
+          "exits"s,
+          "liquidations"s,
+          "staking_requirement_updates"s,
+          "purges"s})
+        pending.response[k] = json::array();
 
-                if constexpr (std::is_same_v<Event, eth::event::NewServiceNodeV2>) {
-                    sns.response["registrations"].push_back(std::move(entry));
-                    auto& res = sns.response["registrations"].back();
-                    auto res_hex = sns.response_hex["registrations"].back();
-                    res_hex["sn_pubkey"] = e.sn_pubkey;
-                    res_hex["bls_pubkey"] = e.bls_pubkey;
-                    res_hex["signature"] = e.ed_signature;
-                    res["fee"] = e.fee * 0.01;
-                    res["contributors"] = json::array();
-                    auto& contr = res["contributors"];
-                    for (const auto& it : e.contributors)
-                        contr.push_back(json{
-                                {"amount", it.amount},
-                                {"address", "{}"_format(it.address)},
-                                {"beneficiary", "{}"_format(it.beneficiary)},
-                        });
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExitRequest>) {
-                    sns.response["unlocks"].push_back(std::move(entry));
-                    sns.response_hex["unlocks"].back()["bls_pubkey"] = e.bls_pubkey;
-                } else if constexpr (std::is_same_v<Event, eth::event::ServiceNodeExit>) {
-                    sns.response["exits"].push_back(std::move(entry));
-                    sns.response_hex["exits"].back()["bls_pubkey"] = e.bls_pubkey;
-                    sns.response["returned_amount"] = e.returned_amount;
-                } else {
-                    log::error(logcat, "Got unknown event type in rpc GET_PENDING_EVENTS handler!");
-                }
-            });
+    using conf_info = service_nodes::service_node_list::unconfirmed_l2_tx;
+    auto process_event = [&pending, this]<typename Event>(
+                                 const Event& event, const conf_info& info) {
+        json base_entry{
+                {"l2_height", event.l2_height},
+                {"chain_id", event.chain_id},
+                {"height", info.height_added},
+                {"confirmations", info.confirmations / (double)info.FULL_SCORE},
+                {"denials", info.denials / (double)info.FULL_SCORE},
+                {"required",
+                 (std::max(info.denials * 2, info.denials + 5 * info.FULL_SCORE) -
+                  info.confirmations) /
+                         (double)info.FULL_SCORE}};
+        add_event_details(pending, std::move(base_entry), event);
+    };
+
+    m_core.service_node_list.for_each_pending_l2_state(process_event);
+
+    if (pending.request.include_mempool) {
+        auto mempool_txes = get_pool_txs_impl(m_core);
+        for (const auto& [txhash, info] : mempool_txes) {
+            cryptonote::transaction tx;
+            if (!info.meta.l2_height ||
+                !cryptonote::parse_and_validate_tx_from_blob(info.tx_blob, tx) ||
+                !is_l2_event_tx(tx.type))
+                continue;
+
+            std::visit(
+                    [&]<typename Event>(const Event& event) {
+                        if constexpr (!std::same_as<Event, std::monostate>)
+                            process_event(event, conf_info{});
+                    },
+                    eth::extract_event(tx));
+        }
+    }
 }
 
 namespace {

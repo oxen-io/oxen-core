@@ -850,13 +850,8 @@ bls_exit_liquidation_response bls_aggregator::exit_liquidation_request(
 
     // NOTE: Lookup the BLS pubkey associated with the Ed25519 pubkey.
     std::optional<eth::bls_public_key> maybe_bls_pubkey{};
-    core.service_node_list.for_each_recently_removed_node([&](const auto& node) {
-        if (node.service_node_pubkey == pubkey) {
-            maybe_bls_pubkey = node.info.bls_public_key;
-            return true;
-        }
-        return false;
-    });
+    core.service_node_list.if_recently_removed_node(
+            pubkey, [&](const auto& node) { maybe_bls_pubkey = node.info.bls_public_key; });
 
     if (!maybe_bls_pubkey) {
         throw oxen::traced<std::invalid_argument>(
