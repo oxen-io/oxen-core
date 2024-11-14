@@ -472,7 +472,7 @@ int restore(key_type type, std::list<std::string_view> args) {
         fmt::print("{}", display_bls(eth_bls_pk));
         hex_pk = tools::hex_guts(eth_bls_pk);
 
-        sk_data = "0x{}\n"_format(skey_hex);
+        sk_data = fmt::format("0x{}\n", skey_hex);
     }
 
     std::string cmd_instead, fn;
