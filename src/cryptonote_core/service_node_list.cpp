@@ -88,7 +88,7 @@ static uint64_t min_backup_height(cryptonote::network_type nettype, uint64_t hei
 
     // NOTE: Arbitrary, but raises a compilation failure if it gets shortened.
     // 360 is derived via (6 * VOTE_LIFETIME) where VOTE_LIFETIME is 60 blocks,
-    // e.g. Keep atleast the last 6 blocks worth of votes (which is short for
+    // e.g. Keep atleast the last 360 blocks worth of votes (which is short for
     // state change TXs in this codebase)
     assert(KEEP_WINDOW >= 360 && "Not enough recent backups for blink quorum retrieval!");
     uint64_t result = (height < KEEP_WINDOW) ? 0 : height - KEEP_WINDOW;
@@ -3409,71 +3409,99 @@ void service_node_list::state_t::update_from_block(
 
 void service_node_list::process_block(
         const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
-    uint64_t block_height = block.get_height();
     auto hf_version = block.major_version;
-
     if (hf_version < hf::hf9_service_nodes)
         return;
 
-    // Cull old history
-    uint64_t cull_height = min_backup_height(blockchain.nettype(), block_height);
-    {
-        const auto& netconf = get_config(blockchain.nettype());
-        auto end_it = m_transient.state_history.upper_bound(cull_height);
-        for (auto it = m_transient.state_history.begin(); it != end_it; it++) {
-            if (m_store_quorum_history)
-                m_transient.old_quorum_states.emplace_back(it->height, it->quorums);
-
-            uint64_t next_long_term_state =
-                    ((it->height / netconf.HISTORY_ARCHIVE_INTERVAL) + 1) * netconf.HISTORY_ARCHIVE_INTERVAL;
-            uint64_t dist_to_next_long_term_state = next_long_term_state - it->height;
-            bool need_quorum_for_future_states =
-                    (dist_to_next_long_term_state <=
-                     VOTE_LIFETIME + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER);
-            if ((it->height % netconf.HISTORY_ARCHIVE_INTERVAL) == 0 || need_quorum_for_future_states) {
-                m_transient.state_added_to_archive = true;
-                if (need_quorum_for_future_states)  // Preserve just quorum
-                {
-                    // This const cast is a little ugly, but is safe because we don't touch
-                    // state_t.height (which is all the set order depends on).
-                    state_t& state = const_cast<state_t&>(*it);
-                    state.service_nodes_infos = {};
-                    state.key_image_blacklist = {};
-                    state.only_loaded_quorums = true;
-                }
-                m_transient.state_archive.emplace_hint(
-                        m_transient.state_archive.end(), std::move(*it));
-            }
-        }
-        m_transient.state_history.erase(m_transient.state_history.begin(), end_it);
-
-        if (m_transient.old_quorum_states.size() > m_store_quorum_history)
-            m_transient.old_quorum_states.erase(
-                    m_transient.old_quorum_states.begin(),
-                    m_transient.old_quorum_states.begin() +
-                            (m_transient.old_quorum_states.size() - m_store_quorum_history));
-    }
-
-    // Cull alt state history
-    for (auto it = m_transient.alt_state.begin(); it != m_transient.alt_state.end();) {
-        state_t const& alt_state = it->second;
-        if (alt_state.height < cull_height)
-            it = m_transient.alt_state.erase(it);
-        else
-            it++;
-    }
-
-    cryptonote::network_type nettype = blockchain.nettype();
-    m_transient.state_history.insert(m_transient.state_history.end(), m_state);
     m_state.update_from_block(
             blockchain.db(),
-            nettype,
+            blockchain.nettype(),
             m_transient.state_history,
             m_transient.state_archive,
             {},
             block,
             txs,
             m_service_node_keys);
+
+    // NOTE: Store the state into the recent history
+    m_transient.state_history.insert(m_transient.state_history.end(), m_state);
+
+    // NOTE: Store the state into the archive if necessary
+    {
+        // NOTE: To verify the validity of the SNL at a given height, you need the previous N blocks
+        // worth of quorum data.
+        //
+        // This 'N' is the oldest vote (for a state change TX) permitted at a given height. That is
+        // set to VOTE_LIFETIME which is currently 60 blocks + an additional safety buffer.
+        //
+        //   For example when we store the SNL state at height 10k, then you need the
+        //   <obligations/participation...> quorums from blocks [9940, 10_000] in order to validate
+        //   that the SNL at 10k is correct.
+        //
+        //   If we had a state change TX that was signed by a quorum from block 9940 _and_
+        //   this state change was mined into block 10k, then, in order to validate the block
+        //   we need to have the SN public keys that participated in the quorum at block 9940 to
+        //   validate the state change TX's signature which authorises the action.
+        //
+        //   If we however received a state change TX from a quorum in block 9940, the protocol
+        //   rejects this TX from a block and the mempool because it's older than the permitted
+        //   VOTE_LIFETIME.
+        //
+        // Hence if we store the SNL at a block into the archive we need to also keep all the quorums
+        // preceeding the archive up to atleast the VOTE LIFETIME to be able to validate the SNL.
+
+        // NOTE: Calc the next closest archive height
+        const auto& netconf = get_config(blockchain.nettype());
+        const uint64_t ARCHIVE_INTERVAL = netconf.HISTORY_ARCHIVE_INTERVAL;
+        const uint64_t archive_height = m_state.height + (ARCHIVE_INTERVAL - 1) % ARCHIVE_INTERVAL;
+
+        // NOTE: Calc range of heights to store quorum for
+        const uint64_t keep_quorum_offset = VOTE_LIFETIME + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER;
+        const uint64_t keep_quorum_min = archive_height - keep_quorum_offset;
+        const uint64_t keep_quorum_max = archive_height - 1;
+
+        // NOTE: Store the current SNL state into our archived storage if we are eligible
+        bool quorums_only = m_state.height >= keep_quorum_min && m_state.height <= keep_quorum_max;
+        bool store = m_state.height == archive_height || quorums_only;
+
+        if (store) {
+            m_transient.state_added_to_archive = true;  // Set the dirty flag
+            if (quorums_only) {
+                auto copy = state_t(this);
+                copy.only_loaded_quorums = true;
+                copy.quorums = m_state.quorums;
+                m_transient.state_archive.emplace_hint(m_transient.state_archive.end(), copy);
+            } else {
+                m_transient.state_archive.emplace_hint(m_transient.state_archive.end(), m_state);
+            }
+        }
+    }
+
+    // NOTE: Store quorums form this height if requested (m_store_quorum_history is a CLI flag)
+    if (m_store_quorum_history)
+        m_transient.old_quorum_states.emplace_back(m_state.height, m_state.quorums);
+
+    // NOTE: Cull recent history
+    const uint64_t cull_height = min_backup_height(blockchain.nettype(), m_state.height);
+    {
+        state_set& set = m_transient.state_history;
+        while (set.size() && set.begin()->height <= cull_height)
+            set.erase(set.begin());
+    }
+
+    // NOTE: Cull alt-chain state history
+    {
+        std::unordered_map<crypto::hash, state_t>& map = m_transient.alt_state;
+        while (map.size() && map.begin()->second.height <= cull_height)
+            map.erase(map.begin());
+    }
+
+    // NOTE: Cull old quorums stored
+    {
+        auto& old = m_transient.old_quorum_states;
+        if (old.size() > m_store_quorum_history)
+            old.erase(old.begin(), old.begin() + (old.size() - m_store_quorum_history));
+    }
 }
 
 void service_node_list::blockchain_detached(uint64_t height) {
@@ -4214,36 +4242,25 @@ bool service_node_list::store() {
         serialize_entry->version = serialize_version;
     }
 
+    // NOTE: Serialize quorum data
     m_transient.cache_short_term_data.quorum_states.reserve(m_transient.old_quorum_states.size());
     for (const quorums_by_height& entry : m_transient.old_quorum_states)
         m_transient.cache_short_term_data.quorum_states.push_back(
                 serialize_quorum_state(hf_version, entry.height, entry.quorums));
 
+    // NOTE: Serialize archive SNL state (but only if the dirty flag was set)
     if (m_transient.state_added_to_archive) {
-        for (auto const& it : m_transient.state_archive)
+        for (const auto& it : m_transient.state_archive)
             m_transient.cache_long_term_data.states.push_back(
                     serialize_service_node_state_object(hf_version, it));
     }
 
-    // NOTE: A state_t may reference quorums up to (VOTE_LIFETIME
-    // + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER) blocks back. So in the
-    // (MAX_SHORT_TERM_STATE_HISTORY | 2nd oldest checkpoint) window of states we store, the
-    // first (VOTE_LIFETIME + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER) states we only
-    // store their quorums, such that the following states have quorum
-    // information preceeding it.
+    // NOTE: Serialize recent SNL state(s)
+    for (const auto& it : m_transient.state_history)
+        m_transient.cache_short_term_data.states.push_back(
+                serialize_service_node_state_object(hf_version, it));
 
-    uint64_t const max_short_term_height =
-            min_backup_height(blockchain.nettype(), (m_state.height - 1)) + VOTE_LIFETIME +
-            VOTE_OR_TX_VERIFY_HEIGHT_BUFFER;
-    for (auto it = m_transient.state_history.begin();
-         it != m_transient.state_history.end() && it->height <= max_short_term_height;
-         it++) {
-        // TODO(oxen): There are 2 places where we convert a state_t to be a serialized state_t
-        // without quorums. We should only do this in one location for clarity.
-        m_transient.cache_short_term_data.states.push_back(serialize_service_node_state_object(
-                hf_version, *it, it->height < max_short_term_height /*only_serialize_quorums*/));
-    }
-
+    // NOTE: Write archive SNL state blob(s) to DB
     m_transient.cache_data_blob.clear();
     if (m_transient.state_added_to_archive) {
         serialization::binary_string_archiver ba;
@@ -4263,7 +4280,9 @@ bool service_node_list::store() {
             db.set_service_node_data(m_transient.cache_data_blob, true /*long_term*/);
         }
     }
+    m_transient.state_added_to_archive = false;
 
+    // NOTE: Write recent SNL state blob(s) to DB
     m_transient.cache_data_blob.clear();
     {
         serialization::binary_string_archiver ba;
@@ -4284,7 +4303,6 @@ bool service_node_list::store() {
         }
     }
 
-    m_transient.state_added_to_archive = false;
     return true;
 }
 
@@ -5103,14 +5121,22 @@ bool service_node_list::load(const uint64_t current_height) {
     auto& db = blockchain.db();
     cryptonote::db_rtxn_guard txn_guard{db};
     std::string blob;
+
+    uint64_t archive_min_height = std::numeric_limits<uint64_t>::max();
+    uint64_t archive_max_height = 0;
+    uint64_t archive_with_quorums_only = 0;
     if (db.get_service_node_data(blob, true /*long_term*/)) {
         bytes_loaded += blob.size();
         try {
             data_for_serialization data_in = {};
             serialization::parse_binary(blob, data_in);
-            for (state_serialized& entry : data_in.states)
+            for (state_serialized& entry : data_in.states) {
                 m_transient.state_archive.emplace_hint(
                         m_transient.state_archive.end(), *this, std::move(entry));
+                archive_with_quorums_only += entry.only_stored_quorums;
+                archive_min_height = std::min(archive_min_height, entry.height);
+                archive_max_height = std::max(archive_max_height, entry.height);
+            }
         } catch (...) {
         }
     }
@@ -5168,6 +5194,8 @@ bool service_node_list::load(const uint64_t current_height) {
         }
     }
 
+    uint64_t recent_min_height = std::numeric_limits<uint64_t>::max();
+    uint64_t recent_max_height = 0;
     {
         assert(data_in.states.size() > 0);
         size_t const last_index = data_in.states.size() - 1;
@@ -5182,6 +5210,14 @@ bool service_node_list::load(const uint64_t current_height) {
                 entry.block_hash = blockchain.get_block_id_by_height(entry.height);
             m_transient.state_history.emplace_hint(
                     m_transient.state_history.end(), *this, std::move(entry));
+
+            // NOTE: Our SNL state store from the 'keep recent window' should not have this flag
+            // set which marks that only quorums were serialised instead of the entire state
+            // otherwise we have a serialisation bug.
+            assert(!entry.only_stored_quorums);
+
+            recent_min_height = std::min(recent_min_height, entry.height);
+            recent_max_height = std::max(recent_max_height, entry.height);
         }
 
         m_state = {*this, std::move(data_in.states[last_index])};
@@ -5205,10 +5241,15 @@ bool service_node_list::load(const uint64_t current_height) {
     log::info(globallogcat, "Service node data loaded successfully, height: {}", m_state.height);
     log::info(
             globallogcat,
-            "{} nodes and {} recent states loaded, {} historical states loaded, ({})",
+            "{} nodes and {} [{}-{}] recent states, {} [{}-{} w/ {} quorums] historical states loaded ({})",
             m_state.service_nodes_infos.size(),
             m_transient.state_history.size(),
+            recent_min_height,
+            recent_max_height,
             m_transient.state_archive.size(),
+            archive_min_height,
+            archive_max_height,
+            archive_with_quorums_only,
             tools::get_human_readable_bytes(bytes_loaded));
 
     log::info(logcat, "service_node_list::load() returning success");
