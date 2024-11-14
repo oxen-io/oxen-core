@@ -168,13 +168,12 @@ namespace {
     // This method only does something if debug logging is enabled (and this is a debug build), and
     // runs/logs asynchronously (once the L2 request comes back).
     void debug_redo_bls_aggregation_steps_locally(
-            cryptonote::core& core, std::unordered_map<bls_public_key, bls_signature> signatures) {
+            cryptonote::core& core,
+            const std::unordered_map<bls_public_key, bls_signature>& signatures) {
 
         if (log::get_level(logcat) <= log::Level::debug)
             core.l2_tracker().get_all_service_node_ids(
-                    std::nullopt,
-                    [&core, signatures = std::move(signatures)](
-                            std::optional<ServiceNodeIDs> maybe_snids) {
+                    std::nullopt, [&core, signatures](std::optional<ServiceNodeIDs> maybe_snids) {
                         if (!maybe_snids) {
                             log::warning(
                                     logcat,
