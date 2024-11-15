@@ -269,26 +269,41 @@ bool command_parser_executor::prepare_registration(const std::vector<std::string
 }
 
 bool command_parser_executor::prepare_eth_registration(const std::vector<std::string>& args) {
-    constexpr auto usage = "Eth registration args: <operator address> [\"print\"]"sv;
+    constexpr auto usage = "register <operator address> [https://URL | print]"sv;
 
     auto argc = args.size();
     if (argc < 1) {
-        log::error(logcat, usage);
+        tools::fail_msg_writer("Invalid arguments: no operator address given.  Usage: {}", usage);
         return false;
     }
     if (args[0].size() != 42) {
-        log::error(logcat, usage);
+        tools::fail_msg_writer(
+                "Invalid arguments: {} is not a valid operator address.  Usage: {}",
+                args[0],
+                usage);
         return false;
     }
     const auto operator_address = std::string_view{args[0]};
-    bool print = false;
-    if (argc == 2 && args[1] == "print") {
-        print = true;
+    std::string url = "https://ssb.oxen.observer";  // Empty implies print
+    if (argc == 2) {
+        if (args[1] == "print")
+            url.clear();
+        else if (args[1].starts_with("http://") || args[1].starts_with("https://")) {
+            url = args[1];
+            if (url.ends_with('/'))
+                url.pop_back();
+        } else {
+            tools::fail_msg_writer(
+                    "Invalid arguments: {} is neither a valid URL nor 'print'.  Usage: {}",
+                    args[1],
+                    usage);
+            return false;
+        }
     } else if (argc != 1) {
-        log::error(logcat, usage);
+        tools::fail_msg_writer("Invalid arguments.  Usage: {}", usage);
         return false;
     }
-    return m_executor.prepare_eth_registration(operator_address, print);
+    return m_executor.prepare_eth_registration(operator_address, url);
 }
 
 bool command_parser_executor::print_sn(const std::vector<std::string>& args) {

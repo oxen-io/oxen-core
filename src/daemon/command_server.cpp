@@ -108,13 +108,16 @@ void command_server::init_commands(cryptonote::rpc::core_rpc_server* rpc_server)
             "to the blockchain.");
 
     m_command_lookup.set_handler(
-            "prepare_eth_registration",
+            "register",
             [this](const auto& x) { return m_parser.prepare_eth_registration(x); },
-            "prepare_eth_registration <operator address> [\"print\"]",
-            "Prepare a service node registration for submission to the ethereum contract.  By "
-            "default this information is submitted to https://stake.getsession.org to make it easy "
-            "to submit your registration to the smart contract.  If you would prefer to just print "
-            "the information instead of submitting it, append the word 'print' to the command.");
+            "register <operator address> [https://URL | print]",
+            "Produce the signed service node registration information needed register and stake "
+            "this service node to the smart contract for registration.  By default this "
+            "information is submitted to https://stake.getsession.org to simplify submitting a "
+            "registration to the smart contract, but you can specify an alternative URL (beginning "
+            "with http:// or https://) to submit to a non-default staking URL.  If you specify the "
+            "word 'print' instead of a URL then the information is simply displayed without being "
+            "submitting anywhere.");
 
     m_command_lookup.set_handler(
             "print_sn",

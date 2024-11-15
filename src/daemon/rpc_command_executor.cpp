@@ -33,6 +33,7 @@
 
 #include <cpr/cpr.h>
 #include <fmt/chrono.h>
+#include <fmt/color.h>
 #include <fmt/core.h>
 #include <oxenc/base32z.h>
 #include <oxenc/variant.h>
@@ -2353,7 +2354,7 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
     } else if (hf_version >= cryptonote::feature::ETH_BLS) {
         tools::fail_msg_writer(
                 "Error: New SN registrations must be initiated via the Session token; did you "
-                "meant to use the prepare_eth_registration command instead?");
+                "mean to use the 'register' command instead?");
         return false;
     }
 
@@ -2362,14 +2363,6 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
     if (!maybe_keys)
         return false;
     auto& snode_keys = *maybe_keys;
-
-    if (hf_version >= cryptonote::feature::ETH_BLS) {
-        tools::fail_msg_writer(
-                "prepare_registration is no longer usable as of HF {}; you should use the "
-                "`prepare_eth_registration` command instead",
-                static_cast<int>(cryptonote::feature::ETH_BLS));
-        return false;
-    }
 
     auto nettype = cryptonote::network_type_from_string(info["nettype"].get<std::string_view>());
     auto& netconf = get_config(nettype);
@@ -2740,7 +2733,8 @@ The Service Node will not activate until the entire stake has been contributed.
     return false;
 }
 
-bool rpc_command_executor::prepare_eth_registration(std::string_view operator_address, bool print) {
+bool rpc_command_executor::prepare_eth_registration(
+        std::string_view operator_address, std::string_view url) {
 
     auto maybe_info =
             try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
@@ -2768,42 +2762,58 @@ bool rpc_command_executor::prepare_eth_registration(std::string_view operator_ad
     auto ed_sig = reg_info["service_node_signature"].get<std::string>();
     auto bls_pubkey = reg_info["bls_pubkey"].get<std::string>();
     auto bls_sig = reg_info["proof_of_possession"].get<std::string>();
-    if (print) {
-        tools::msg_writer("Printing info for L2 staking\n");
+    if (url.empty()) {
         tools::msg_writer(
-                "ed25519_pubkey: {}\n"
-                "bls_pubkey: {}\n"
-                "ed25519_signature: {}\n"
-                "bls_signature: {}\n"
-                "operator_address: {}\n",
-                snode_pubkey,
-                bls_pubkey,
-                ed_sig,
-                bls_sig,
-                operator_address);
+                "{}\n",
+                fmt::styled("L2 Contract Registration Information:", fmt::emphasis::underline));
+        tools::msg_writer(
+                "{} {}\n"
+                "{} {}{}\n"
+                "{} {}{}\n"
+                "{} {}{}{}{}\n"
+                "{} {}\n",
+                fmt::styled("   ed25519_pubkey:", fmt::emphasis::bold),
+                fmt::styled(snode_pubkey, fmt::fg(fmt::terminal_color::bright_green)),
+                fmt::styled("       bls_pubkey:", fmt::emphasis::bold),
+                fmt::styled(bls_pubkey.substr(0, 64), fmt::fg(fmt::terminal_color::bright_blue)),
+                fmt::styled(bls_pubkey.substr(64), fmt::fg(fmt::terminal_color::blue)),
+                fmt::styled("ed25519_signature:", fmt::emphasis::bold),
+                fmt::styled(ed_sig.substr(0, 64), fmt::fg(fmt::terminal_color::bright_cyan)),
+                fmt::styled(ed_sig.substr(64), fmt::fg(fmt::terminal_color::cyan)),
+                fmt::styled("    bls_signature:", fmt::emphasis::bold),
+                fmt::styled(bls_sig.substr(0, 64), fmt::fg(fmt::terminal_color::bright_magenta)),
+                fmt::styled(bls_sig.substr(64, 64), fmt::fg(fmt::terminal_color::magenta)),
+                fmt::styled(bls_sig.substr(128, 64), fmt::fg(fmt::terminal_color::bright_magenta)),
+                fmt::styled(bls_sig.substr(192), fmt::fg(fmt::terminal_color::magenta)),
+                fmt::styled(" operator_address:", fmt::emphasis::bold),
+                fmt::styled("0x{}"_format(eth_arg), fmt::fg(fmt::terminal_color::bright_yellow)));
     } else {
-        tools::msg_writer(
-                "Submitting L2 staking information to staking.getsession.org, please wait.");
-        // TODO: make config option
-        auto url = cpr::Url{"https://ssb.oxen.observer/api/store/{}"_format(snode_pubkey)};
+        cpr::Url cprurl;
+        try {
+            cprurl = cpr::Url{"{}/api/store/{}"_format(url, snode_pubkey)};
+        } catch (const std::exception& e) {
+            tools::fail_msg_writer("Invalid URL: '{}': {}", url, e.what());
+            return false;
+        }
+
+        tools::msg_writer("Submitting L2 staking information to {} ...", url);
 
         auto msg = cpr::Multipart{
                 {"sig_ed25519"s, ed_sig},
                 {"pubkey_bls"s, bls_pubkey},
                 {"sig_bls"s, bls_sig},
-                {"operator"s, std::string{operator_address}}};
+                {"operator"s, "0x{}"_format(eth_arg)}};
 
-        auto response = cpr::Post(url, msg);
+        auto response = cpr::Post(cprurl, msg);
 
         if (response.status_code != 200) {
-            tools::fail_msg_writer(
-                    "Something went wrong submitting registration info to the staking website: {}",
-                    response.status_line);
+            tools::fail_msg_writer("Registration info submission failed: {}", response.status_line);
         } else {
             tools::success_msg_writer(
                     "Submitted registration info to the staking website successfully!\n"
-                    "View your registration at: {}",
-                    "https://stake.getsession.org/register/{}"_format(snode_pubkey));
+                    "View your registration at: {}/register/{}",
+                    url,
+                    snode_pubkey);
         }
     }
 
