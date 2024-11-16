@@ -276,18 +276,22 @@ bool command_parser_executor::prepare_eth_registration(const std::vector<std::st
         tools::fail_msg_writer("Invalid arguments: no operator address given.  Usage: {}", usage);
         return false;
     }
-    if (args[0].size() != 42) {
+    eth::address operator_address;
+    if (!tools::try_load_from_hex_guts(args[0], operator_address)) {
         tools::fail_msg_writer(
                 "Invalid arguments: {} is not a valid operator address.  Usage: {}",
                 args[0],
                 usage);
         return false;
     }
-    const auto operator_address = std::string_view{args[0]};
-    std::string url = "https://ssb.oxen.observer";  // Empty implies print
+    std::string url = "";  // Empty string means use network default
     if (argc == 2) {
-        if (args[1] == "print")
-            url.clear();
+        if (args[1] == "print" || args[1] == "plaintext" || args[1] == "contract")
+            // print: normal, human-readable formatted output
+            // We also support a couple "hidden" valuesthat we leave undocumented in the usage info:
+            // plaintext: same as print, but without formatting
+            // contract: print values formatted for raw contract use
+            url = args[1];
         else if (args[1].starts_with("http://") || args[1].starts_with("https://")) {
             url = args[1];
             if (url.ends_with('/'))

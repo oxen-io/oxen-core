@@ -14,8 +14,8 @@ inline void parse_request(NO_ARGS&, rpc_input) {}
 
 void parse_request(BANNED& banned, rpc_input in);
 void parse_request(BLS_EXIT_LIQUIDATION_REQUEST& cmd, rpc_input in);
-void parse_request(BLS_REGISTRATION_REQUEST& cmd, rpc_input in);
 void parse_request(BLS_REWARDS_REQUEST& cmd, rpc_input in);
+void parse_request(CONTRACT_REGISTRATION& reg, rpc_input in);
 void parse_request(FLUSH_CACHE& flush_cache, rpc_input in);
 void parse_request(FLUSH_TRANSACTION_POOL& flush_transaction_pool, rpc_input in);
 void parse_request(GET_ACCRUED_REWARDS& rpc, rpc_input in);

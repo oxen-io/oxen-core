@@ -2455,30 +2455,38 @@ struct BLS_EXIT_LIQUIDATION_REQUEST : PUBLIC {
     } request;
 };
 
-/// RPC: bls registration request
+/// RPC: service_node/contract_registration
 ///
-/// Sends a request out to get parameters necessary to register a service node through the ethereum
-/// smart contract
+/// Obtains contract registration information (pubkeys and signatures) needed to register this
+/// service node with the L2 service node smart contract.  This request only obtains the required
+/// signatures, but does not affect the state of the current oxend, nor does it invalidate any
+/// previously issued registration signatures.
 ///
 /// Inputs:
 ///
-/// - `address` -- this address will be looked up in the batching database at the latest height to
-/// see how much they can withdraw
+/// - `operator_address` -- the operator's ethereum wallet
 ///
 /// Outputs:
 ///
 /// - `status` -- generic RPC error code; "OK" means the request was successful.
-/// - `address` -- The requested address
-/// - `bls_pubkey` -- The nodes BLS public key
-/// - `proof_of_possession` -- A signature over the bls pubkey to prove ownership of the private key
-/// - `service_node_pubkey` -- The oxen nodes service node pubkey
-/// - `service_node_signature` -- A signature over the registration parameters
-///
-struct BLS_REGISTRATION_REQUEST : RPC_COMMAND {
-    static constexpr auto names() { return NAMES("bls_registration_request"); }
+/// - `service_node_pubkey` -- This service node's primary Ed25519 public key, to be sent as the
+///   `serviceNodeParams.serviceNodePubkey` registration contract member.
+/// - `service_node_signature` -- This service node's signature of the primary and BLS public keys.
+///   This is submitted to the contract (split in two) as `serviceNodeParams.serviceNodeSignature1`
+///   and `.serviceNodeSignature2`.
+/// - `bls_pubkey` -- The node's BLS public key, used for contract-validated signatures.  This is
+///   passed to the contract as a pair of integer values in the `blsPubkey` argument.
+/// - `bls_signature` -- A BLS "proof of possession" signature required for adding this SN to the
+///   contract, signing the operator address and the two public keys (BLS and SN).  This is passed
+///   to the contract as 4 integers, in the serviceNodeParams.sigs0 through .sigs3 parameters.
+/// - `operator_address` -- The operator's ethereum wallet address.  The BLS signature returned by
+///   this request will only be usable for a registration that has this address listed as the
+///   operator.
+struct CONTRACT_REGISTRATION : RPC_COMMAND {
+    static constexpr auto names() { return NAMES("contract_registration"); }
 
     struct request_parameters {
-        eth::address address;
+        eth::address operator_address;
     } request;
 };
 
@@ -2878,7 +2886,7 @@ using core_rpc_types = tools::type_list<
         BLS_REWARDS_REQUEST,
         BLS_EXIT_LIQUIDATION_LIST,
         BLS_EXIT_LIQUIDATION_REQUEST,
-        BLS_REGISTRATION_REQUEST,
+        CONTRACT_REGISTRATION,
         GET_SERVICE_NODE_REGISTRATION_CMD,
         GET_SERVICE_NODE_REGISTRATION_CMD_RAW,
         GET_SERVICE_NODE_STATUS,

@@ -51,6 +51,7 @@
 
 #include "checkpoints/checkpoints.h"
 #include "common/exception.h"
+#include "common/guts.h"
 #include "common/median.h"
 #include "common/password.h"
 #include "common/pruning.h"
@@ -2734,7 +2735,7 @@ The Service Node will not activate until the entire stake has been contributed.
 }
 
 bool rpc_command_executor::prepare_eth_registration(
-        std::string_view operator_address, std::string_view url) {
+        const eth::address& op_addr, std::string_view url) {
 
     auto maybe_info =
             try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
@@ -2745,13 +2746,9 @@ bool rpc_command_executor::prepare_eth_registration(
     if (!check_if_node_is_reasonably_synced(this, info))
         return false;
 
-    auto eth_arg = operator_address;
-    if (eth_arg.starts_with("0x"))
-        eth_arg.remove_prefix(2);
-
     auto maybe_reg_info = try_running(
-            [this, &eth_arg]() {
-                return invoke<BLS_REGISTRATION_REQUEST>(json{{"address", eth_arg}});
+            [this, addr = "{}"_format(op_addr)] {
+                return invoke<CONTRACT_REGISTRATION>(json{{"operator_address", addr}});
             },
             "Failed to generate the service node registration info");
     if (!maybe_reg_info)
@@ -2761,8 +2758,9 @@ bool rpc_command_executor::prepare_eth_registration(
     auto snode_pubkey = reg_info["service_node_pubkey"].get<std::string>();
     auto ed_sig = reg_info["service_node_signature"].get<std::string>();
     auto bls_pubkey = reg_info["bls_pubkey"].get<std::string>();
-    auto bls_sig = reg_info["proof_of_possession"].get<std::string>();
-    if (url.empty()) {
+    auto bls_sig = reg_info["bls_signature"].get<std::string>();
+
+    if (url == "print") {
         tools::msg_writer(
                 "{}\n",
                 fmt::styled("L2 Contract Registration Information:", fmt::emphasis::underline));
@@ -2786,8 +2784,54 @@ bool rpc_command_executor::prepare_eth_registration(
                 fmt::styled(bls_sig.substr(128, 64), fmt::fg(fmt::terminal_color::bright_magenta)),
                 fmt::styled(bls_sig.substr(192), fmt::fg(fmt::terminal_color::magenta)),
                 fmt::styled(" operator_address:", fmt::emphasis::bold),
-                fmt::styled("0x{}"_format(eth_arg), fmt::fg(fmt::terminal_color::bright_yellow)));
+                fmt::styled("{}"_format(op_addr), fmt::fg(fmt::terminal_color::bright_yellow)));
+    } else if (url == "plaintext") {
+        tools::msg_writer(
+                "L2 Contract Registration Information:\n"
+                "ed25519_pubkey: {}\n"
+                "bls_pubkey: {}\n"
+                "ed25519_signature: {}\n"
+                "bls_signature: {}\n"
+                "operator_address: {}\n",
+                snode_pubkey,
+                bls_pubkey,
+                ed_sig,
+                bls_sig,
+                op_addr);
+    } else if (url == "contract") {
+        tools::msg_writer(
+                "\nL2 Contract Registration Information for {}:\n"
+                "Operator address: {}\n"
+                "ServiceNodeRewards.addBLSPublicKey()/multi-contract.reset...() parameters:\n"
+                "   blsPubkey/key=(0x{}, 0x{})\n"
+                "   blsSignature/sig=(0x{}, 0x{}, 0x{}, 0x{})\n"
+                "   serviceNodeParams/params=(0x{}, 0x{}, 0x{}, 0)\n"
+                "\n",
+                snode_pubkey,
+                op_addr,
+                bls_pubkey.substr(0, 64),
+                bls_pubkey.substr(64),
+                bls_sig.substr(0, 64),
+                bls_sig.substr(64, 64),
+                bls_sig.substr(128, 64),
+                bls_sig.substr(192, 64),
+                snode_pubkey,
+                ed_sig.substr(0, 64),
+                ed_sig.substr(64));
     } else {
+        if (url.empty())
+            url = get_config(cryptonote::network_type_from_string(
+                                     info["nettype"].get<std::string_view>()))
+                          .DEFAULT_STAKING_URL;
+
+        if (url.empty()) {
+            tools::fail_msg_writer(
+                    "Unable to submit L2 staking information: '{}' network has no default staking "
+                    "URL",
+                    info["nettype"].get<std::string_view>());
+            return false;
+        }
+
         cpr::Url cprurl;
         try {
             cprurl = cpr::Url{"{}/api/store/{}"_format(url, snode_pubkey)};
@@ -2802,12 +2846,13 @@ bool rpc_command_executor::prepare_eth_registration(
                 {"sig_ed25519"s, ed_sig},
                 {"pubkey_bls"s, bls_pubkey},
                 {"sig_bls"s, bls_sig},
-                {"operator"s, "0x{}"_format(eth_arg)}};
+                {"operator"s, "{}"_format(op_addr)}};
 
         auto response = cpr::Post(cprurl, msg);
 
         if (response.status_code != 200) {
             tools::fail_msg_writer("Registration info submission failed: {}", response.status_line);
+            return false;
         } else {
             tools::success_msg_writer(
                     "Submitted registration info to the staking website successfully!\n"

@@ -167,6 +167,11 @@ struct network_config final {
                         : hf::hf10_bulletproofs;
         return GOVERNANCE_WALLET_ADDRESS[hard_fork_version >= wallet_switch ? 1 : 0];
     }
+
+    // The default URL for submission of Service Node L2 contract registration information, used by
+    // the `register 0x....` command.  This address should have the staking backend API available at
+    // DEFAULT_STAKING_URL + "/api/store/PUBKEY" for accepting registrations.
+    const std::string_view DEFAULT_STAKING_URL;
 };
 
 }  // namespace cryptonote

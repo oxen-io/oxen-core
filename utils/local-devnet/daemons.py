@@ -282,7 +282,7 @@ class Daemon(RPCDaemon):
         return result
 
     def get_ethereum_registration_args(self, address):
-        return self.json_rpc("bls_registration_request", {"address": address}).json()["result"]
+        return self.json_rpc("contract_registration", {"operator_address": address}).json()["result"]
 
     def get_bls_rewards(self, address):
         return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()

@@ -395,10 +395,10 @@ class SNNetwork:
             )
 
             sig = BLSSignatureParams(
-                sigs0=int(reg_json["proof_of_possession"][:64], 16),
-                sigs1=int(reg_json["proof_of_possession"][64:128], 16),
-                sigs2=int(reg_json["proof_of_possession"][128:192], 16),
-                sigs3=int(reg_json["proof_of_possession"][192:256], 16),
+                sigs0=int(reg_json["bls_signature"][:64], 16),
+                sigs1=int(reg_json["bls_signature"][64:128], 16),
+                sigs2=int(reg_json["bls_signature"][128:192], 16),
+                sigs3=int(reg_json["bls_signature"][192:256], 16),
             )
 
             params = ServiceNodeParams(

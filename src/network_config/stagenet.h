@@ -75,5 +75,8 @@ inline constexpr network_config config{
         .L2_TRACKER_SAFE_BLOCKS = mainnet::config.L2_TRACKER_SAFE_BLOCKS,
         .L2_NODE_LIST_PURGE_BLOCKS = testnet::config.L2_NODE_LIST_PURGE_BLOCKS,
         .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = testnet::config.L2_NODE_LIST_PURGE_MIN_OXEN_AGE,
+        // FIXME: once mainnet is close to launching this will move to an alternative
+        // stagenet-specific URL and stake.getsession.org will be used for mainnet staking:
+        .DEFAULT_STAKING_URL = "https://stake.getsession.org"sv,
 };
 }  // namespace cryptonote::config::stagenet

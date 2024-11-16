@@ -82,5 +82,6 @@ inline constexpr network_config config{
         // state having nodes that *don't* exist in the contract (or vice versa) for some reason.
         .L2_NODE_LIST_PURGE_BLOCKS = 1h / L2_BLOCK_TIME,
         .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = 24h / TARGET_BLOCK_TIME,
+        .DEFAULT_STAKING_URL = "https://stake.getsession.org"sv,
 };
 }  // namespace cryptonote::config::mainnet

@@ -520,7 +520,7 @@ void parse_request(BLS_EXIT_LIQUIDATION_REQUEST& cmd, rpc_input in) {
         cmd.request.pubkey = sn_pubkey;
 }
 
-void parse_request(BLS_REGISTRATION_REQUEST& cmd, rpc_input in) {
-    get_values(in, "address", required{cmd.request.address});
+void parse_request(CONTRACT_REGISTRATION& cmd, rpc_input in) {
+    get_values(in, "operator_address", required{cmd.request.operator_address});
 }
 }  // namespace cryptonote::rpc

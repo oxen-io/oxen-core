@@ -2760,15 +2760,15 @@ void core_rpc_server::invoke(
     }
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context) {
+void core_rpc_server::invoke(CONTRACT_REGISTRATION& rpc, rpc_context) {
     if (!m_core.service_node())
         throw rpc_error{ERROR_NOT_A_SERVICE_NODE, "This oxend is not running in service node mode"};
 
-    const auto response = m_core.bls_registration(rpc.request.address);
+    const auto response = m_core.bls_registration(rpc.request.operator_address);
     rpc.response["status"] = STATUS_OK;
-    rpc.response["address"] = "{}"_format(response.addr);
+    rpc.response["operator_address"] = "{}"_format(response.addr);
     rpc.response_hex["bls_pubkey"] = response.bls_pubkey;
-    rpc.response_hex["proof_of_possession"] = response.proof_of_possession;
+    rpc.response_hex["bls_signature"] = response.proof_of_possession;
     rpc.response_hex["service_node_pubkey"] = response.sn_pubkey;
     rpc.response_hex["service_node_signature"] = response.ed_signature;
 }

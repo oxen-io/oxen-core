@@ -79,5 +79,6 @@ inline constexpr network_config config{
         // we're probably still somewhere in the 1-2 hour range:
         .L2_NODE_LIST_PURGE_BLOCKS = mainnet::config.L2_NODE_LIST_PURGE_BLOCKS / 2,
         .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = mainnet::config.L2_NODE_LIST_PURGE_MIN_OXEN_AGE,
+        .DEFAULT_STAKING_URL = ""sv,
 };
 }  // namespace cryptonote::config::testnet

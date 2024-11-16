@@ -80,5 +80,6 @@ inline constexpr network_config config{
         .L2_TRACKER_SAFE_BLOCKS = 1,
         .L2_NODE_LIST_PURGE_BLOCKS = 20,
         .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = 19,
+        .DEFAULT_STAKING_URL = ""sv,
 };
 }  // namespace cryptonote::config::localdev

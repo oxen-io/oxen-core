@@ -74,5 +74,6 @@ inline constexpr network_config config{
         .L2_TRACKER_SAFE_BLOCKS = mainnet::config.L2_TRACKER_SAFE_BLOCKS,
         .L2_NODE_LIST_PURGE_BLOCKS = 10min / L2_BLOCK_TIME,
         .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = mainnet::config.L2_NODE_LIST_PURGE_MIN_OXEN_AGE,
+        .DEFAULT_STAKING_URL = ""sv,
 };
 }  // namespace cryptonote::config::devnet
