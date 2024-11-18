@@ -57,6 +57,25 @@ BlockchainSQLite::BlockchainSQLite(
     upgrade_schema();
 
     height = prepared_get<int64_t>("SELECT height FROM batch_db_info");
+
+    uint64_t recent_count = prepared_get<int>("SELECT COUNT(*) FROM batched_payments_accrued_recent");
+    uint64_t recent_min_height = prepared_get<int>("SELECT MIN(height) FROM batched_payments_accrued_recent");
+    uint64_t recent_max_height = prepared_get<int>("SELECT MAX(height) FROM batched_payments_accrued_recent");
+
+    uint64_t archive_count = prepared_get<int>("SELECT COUNT(*) FROM batched_payments_accrued_archive");
+    uint64_t archive_min_height = prepared_get<int>("SELECT MIN(archive_height) FROM batched_payments_accrued_archive");
+    uint64_t archive_max_height = prepared_get<int>("SELECT MAX(archive_height) FROM batched_payments_accrued_archive");
+
+    log::info(
+            globallogcat,
+            "{} recent state rows [blks {}-{}], {} historical state rows [blks {}-{}] loaded @ height: {}",
+            recent_count,
+            recent_min_height,
+            recent_max_height,
+            archive_count,
+            archive_min_height,
+            archive_max_height,
+            height);
 }
 
 void BlockchainSQLite::create_schema() {
@@ -310,10 +329,7 @@ void BlockchainSQLite::upgrade_schema() {
             DELETE FROM batched_payments_accrued_recent WHERE height < NEW.height - {};
         END;
         )",
-                netconf.HISTORY_RECENT_KEEP_WINDOW + 1
-                // +1 here because the trigger above copies the *current* height after it's updated,
-                // but we want to store current plus BACKUP_COUNT recent ones.
-                ));
+                netconf.HISTORY_RECENT_KEEP_WINDOW));
     }
 
     // This can be moved back into the relevant `if` clauses above eventually,

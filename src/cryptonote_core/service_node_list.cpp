@@ -3445,7 +3445,7 @@ void service_node_list::process_block(
         //   we need to have the SN public keys that participated in the quorum at block 9940 to
         //   validate the state change TX's signature which authorises the action.
         //
-        //   If we however received a state change TX from a quorum in block 9940, the protocol
+        //   If we however received a state change TX from a quorum in block 9939, the protocol
         //   rejects this TX from a block and the mempool because it's older than the permitted
         //   VOTE_LIFETIME.
         //
@@ -3488,7 +3488,7 @@ void service_node_list::process_block(
     const uint64_t cull_recent_height = min_recent_height(blockchain.nettype(), m_state.height);
     {
         state_set& set = m_transient.state_history;
-        while (set.size() && set.begin()->height <= cull_recent_height)
+        while (set.size() && set.begin()->height < cull_recent_height)
             set.erase(set.begin());
     }
 
@@ -3509,14 +3509,14 @@ void service_node_list::process_block(
             cull_height -= keep_quorum_offset;
 
         state_set& set = m_transient.state_archive;
-        while (set.size() && set.begin()->height <= cull_height)
+        while (set.size() && set.begin()->height < cull_height)
             set.erase(set.begin());
     }
 
     // NOTE: Cull alt-chain state history
     {
         std::unordered_map<crypto::hash, state_t>& map = m_transient.alt_state;
-        while (map.size() && map.begin()->second.height <= cull_recent_height)
+        while (map.size() && map.begin()->second.height < cull_recent_height)
             map.erase(map.begin());
     }
 
@@ -5267,8 +5267,8 @@ bool service_node_list::load(const uint64_t current_height) {
 
     log::info(
             globallogcat,
-            "{} nodes and {} [{}-{}] recent states, {} [{}-{}] (w/ {} quorums) historical states "
-            "loaded ({}) height: {}",
+            "{} nodes and {} recent states [blks {}-{}], {} historical states [blks {}-{}] (w/ {} "
+            "quorums) loaded ({}) @ height: {}",
             m_state.service_nodes_infos.size(),
             m_transient.state_history.size(),
             recent_min_height,
