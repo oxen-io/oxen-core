@@ -64,7 +64,8 @@ inline constexpr network_config config{
         .HARDFORK_DEREGISTRATION_GRACE_PERIOD =
                 mainnet::config.HARDFORK_DEREGISTRATION_GRACE_PERIOD,
         .HISTORY_ARCHIVE_INTERVAL = mainnet::config.HISTORY_ARCHIVE_INTERVAL,
-        .HISTORY_KEEP_RECENT_WINDOW = mainnet::config.HISTORY_KEEP_RECENT_WINDOW,
+        .HISTORY_ARCHIVE_KEEP_WINDOW = mainnet::config.HISTORY_ARCHIVE_INTERVAL,
+        .HISTORY_RECENT_KEEP_WINDOW = mainnet::config.HISTORY_RECENT_KEEP_WINDOW,
         // Much shorter than mainnet so that you can test this more easily.
         .ETH_EXIT_BUFFER = 1h / mainnet::config.TARGET_BLOCK_TIME,
         // FIXME!

@@ -5,7 +5,10 @@
 
 using namespace std::literals;
 namespace cryptonote::config::mainnet {
+
 inline constexpr auto TARGET_BLOCK_TIME = 2min;
+inline constexpr auto ARCHIVE_INTERVAL = 10'000;
+
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::MAINNET,
         .DEFAULT_CONFIG_SUBDIR = ""sv,
@@ -65,8 +68,10 @@ inline constexpr network_config config{
         .DEREGISTRATION_LOCK_DURATION = 30 * 24h,
         .UNLOCK_DURATION = 15 * 24h,
         .HARDFORK_DEREGISTRATION_GRACE_PERIOD = 7 * 24h / TARGET_BLOCK_TIME,
-        .HISTORY_ARCHIVE_INTERVAL = 10'000,
-        .HISTORY_KEEP_RECENT_WINDOW = 360,
+        .HISTORY_ARCHIVE_INTERVAL = ARCHIVE_INTERVAL,
+        .HISTORY_ARCHIVE_KEEP_WINDOW =
+                2 * 365 * 24h / TARGET_BLOCK_TIME / ARCHIVE_INTERVAL,  // 2yrs worth
+        .HISTORY_RECENT_KEEP_WINDOW = 360,
         .ETH_EXIT_BUFFER = 7 * 24h / TARGET_BLOCK_TIME,
         .ETHEREUM_CHAIN_ID = 42161,  // Arbitrum One
         // TODO: To be set closer to mainnet TGE

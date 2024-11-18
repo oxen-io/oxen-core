@@ -5454,6 +5454,10 @@ bool Blockchain::handle_block_to_main_chain(
             throw oxen::traced<std::logic_error>("Blockchain missing SQLite Database");
     }
 
+    assert(service_node_list.height() == m_ons_db.height());
+    if (m_sqlite_db)
+        assert(service_node_list.height() == m_sqlite_db->height);
+
     block_add_info hook_data{bl, only_txs, checkpoint};
     for (const auto& hook : m_block_add_hooks) {
         try {

@@ -120,14 +120,18 @@ struct network_config final {
     // The SNL and SQL DB will save a backup of their state every N number of blocks specified in
     // this value. When the blockchain is reorganised these checkpoints can be used to replay the
     // chain from a recent state to re-derive back to the desired height. These checkpoints are only
-    // used if the height to detach to was not already within the window of `HISTORY_KEEP_WINDOW'
+    // used if the height to detach to was not within the window of `HISTORY_RECENT_KEEP_WINDOW'
     // (in which case we have a recent copy of the state and no re-derivation is necessary).
     const uint64_t HISTORY_ARCHIVE_INTERVAL;
+
+    // Specifies how many blocks worth of SNL and SQL state that is stored for heights that fall on
+    // a 'HISTORY_ARCHIVE_INTERVAL' interval.
+    const uint64_t HISTORY_ARCHIVE_KEEP_WINDOW;
 
     // Specifies how many consecutive blocks of state from the SNL, SQL DB and BLS aggregator cache
     // to store from the head of the chain to support quick reorganisations that are small and near
     // the tip of the chain.
-    const uint64_t HISTORY_KEEP_RECENT_WINDOW;
+    const uint64_t HISTORY_RECENT_KEEP_WINDOW;
 
     /// (HF21+) Number of blocks after a registration expires (i.e. regular requested removals,
     /// *not* deregs) during which the node is protected from liquidation-with-penalty.  Regular

@@ -236,34 +236,47 @@ void BlockchainSQLite::upgrade_schema() {
     if (!table_exists("batched_payments_accrued_archive")) {
         log::info(logcat, "Adding archiving to batching db");
         auto& netconf = get_config(m_nettype);
-        db.exec(fmt::format(
+        db.exec(
                 R"(
+
+        -- Create archive table that stores the current accrued rows every 'HISTORY_ARCHIVE_INTERVAL'
+        -- blocks
         CREATE TABLE batched_payments_accrued_archive(
           address VARCHAR NOT NULL,
           amount BIGINT NOT NULL,
           payout_offset INTEGER NOT NULL,
-          archive_height BIGINT NOT NULL,
+          archive_height BIGINT NOT NULL, -- Height that the row was generated on
           CHECK(amount >= 0),
           CHECK(archive_height >= 0)
         );
 
         CREATE INDEX batched_payments_accrued_archive_height_idx ON batched_payments_accrued_archive(archive_height);
 
+        -- Keep a copy of all the rows for earnt rewards for this height if it's on an archival
+        -- interval. It allows the DB to gracefully handle block re-orgs without having to
+        -- recalculate from scratch.
+        --
+        -- We archive state at every 'HISTORY_ARCHIVE_INTERVAL' height and we prune the stored
+        -- archive to encompass the past 'HISTORY_ARCHIVE_WINDOW' blocks worth of history.
+        --
+        -- When pruning we floor to the closest interval to make the equivalent pruning math in the
+        -- SNL at 'process_block()' simple which has additional constraints.
         DROP TRIGGER IF EXISTS make_archive;
         CREATE TRIGGER make_archive AFTER UPDATE ON batch_db_info
-        FOR EACH ROW WHEN (NEW.height % 100) = 0 AND NEW.height > OLD.height BEGIN
+        FOR EACH ROW WHEN (NEW.height % {}) = 0 AND NEW.height > OLD.height BEGIN
             INSERT INTO batched_payments_accrued_archive SELECT *, NEW.height FROM batched_payments_accrued;
-            DELETE FROM batched_payments_accrued_archive WHERE archive_height < NEW.height - {1} AND archive_height % {0} != 0;
+            DELETE FROM batched_payments_accrued_archive WHERE archive_height < ((NEW.height - {}) % {});
         END;
 
+        -- On re-org to an older height delete all archive rows that are newer than the DB's height
         DROP TRIGGER IF EXISTS clear_archive;
         CREATE TRIGGER clear_archive AFTER UPDATE ON batch_db_info
         FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
-            DELETE FROM batched_payments_accrued_archive WHERE archive_height >= NEW.height;
+            DELETE FROM batched_payments_accrued_archive WHERE archive_height > NEW.height;
         END;
-        )",
-                netconf.HISTORY_ARCHIVE_INTERVAL,
-                500));
+        )"_format(netconf.HISTORY_ARCHIVE_INTERVAL,
+                  netconf.HISTORY_ARCHIVE_KEEP_WINDOW,
+                  netconf.HISTORY_ARCHIVE_INTERVAL));
     }
 
     // NOTE: The recent table stores copies of 'batch_payments_accrued' rows at
@@ -297,7 +310,7 @@ void BlockchainSQLite::upgrade_schema() {
             DELETE FROM batched_payments_accrued_recent WHERE height < NEW.height - {};
         END;
         )",
-                netconf.HISTORY_KEEP_RECENT_WINDOW + 1
+                netconf.HISTORY_RECENT_KEEP_WINDOW + 1
                 // +1 here because the trigger above copies the *current* height after it's updated,
                 // but we want to store current plus BACKUP_COUNT recent ones.
                 ));
@@ -314,6 +327,7 @@ void BlockchainSQLite::upgrade_schema() {
             DELETE FROM batched_payments_accrued_archive WHERE archive_height > NEW.height;
         END;
 
+        -- On re-org delete all recent rows that are newer than the DB's height
         DROP TRIGGER IF EXISTS clear_recent;
         CREATE TRIGGER clear_recent AFTER UPDATE ON batch_db_info
         FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
@@ -759,7 +773,7 @@ bool BlockchainSQLite::add_block(
                 logcat,
                 "Block height ({}) out of sync with batching database ({})",
                 block_height,
-                height);
+                (height + 1));
         return false;
     }
 

@@ -83,8 +83,8 @@ static_assert(
         X25519_MAP_PRUNING_LAG > cryptonote::config::mainnet::config.UPTIME_PROOF_VALIDITY,
         "x25519 map pruning lag is too short!");
 
-static uint64_t min_backup_height(cryptonote::network_type nettype, uint64_t height) {
-    const uint64_t KEEP_WINDOW = cryptonote::get_config(nettype).HISTORY_KEEP_RECENT_WINDOW;
+static uint64_t min_recent_height(cryptonote::network_type nettype, uint64_t height) {
+    const uint64_t KEEP_WINDOW = cryptonote::get_config(nettype).HISTORY_RECENT_KEEP_WINDOW;
 
     // NOTE: Arbitrary, but raises a compilation failure if it gets shortened.
     // 360 is derived via (6 * VOTE_LIFETIME) where VOTE_LIFETIME is 60 blocks,
@@ -1929,8 +1929,8 @@ bool service_node_list::state_t::process_confirmed_event(
                 returned_stakes[0].amount);
         return false;
     }
-    returned_stakes[0].amount =
-            cryptonote::reward_money::coin_amount(returned_stakes[0].amount.to_coin() - slash_amount);
+    returned_stakes[0].amount = cryptonote::reward_money::coin_amount(
+            returned_stakes[0].amount.to_coin() - slash_amount);
 
     if (confirm.my_keys && confirm.my_keys->pub == node->service_node_pubkey)
         log::info(
@@ -1966,8 +1966,7 @@ bool service_node_list::state_t::process_confirmed_event(
 }
 
 bool service_node_list::state_t::process_confirmed_event(
-        const eth::event::StakingRequirementUpdated& req_change,
-        const confirm_metadata& confirm) {
+        const eth::event::StakingRequirementUpdated& req_change, const confirm_metadata& confirm) {
     auto old_staking_requirement = get_staking_requirement(confirm.nettype);
     staking_requirement = req_change.staking_requirement;
     auto new_staking_requirement = get_staking_requirement(confirm.nettype);
@@ -3268,7 +3267,8 @@ void service_node_list::state_t::update_from_block(
                     // NOTE: Grab TX index of the L2 transaction it was originally mined in
                     uint64_t tx_index = 0;
                     try {
-                        cryptonote::block block = db.get_block_from_height(unconf.height_added, nullptr);
+                        cryptonote::block block =
+                                db.get_block_from_height(unconf.height_added, nullptr);
                         bool found = false;
                         for (size_t index = 0; index < block.tx_hashes.size(); index++) {
                             if (block.tx_hashes[index] == txhash) {
@@ -3279,7 +3279,7 @@ void service_node_list::state_t::update_from_block(
                         }
                         if (!found)
                             throw;
-                    } catch (const std::exception &e) {
+                    } catch (const std::exception& e) {
                         "TX {} was confirmed on chain from block {} but the block does exist in "
                         "the DB, block {} cannot be added due to missing data"_format(
                                 txhash, unconf.height_added, height);
@@ -3427,6 +3427,8 @@ void service_node_list::process_block(
     m_transient.state_history.insert(m_transient.state_history.end(), m_state);
 
     // NOTE: Store the state into the archive if necessary
+    const uint64_t keep_quorum_offset = VOTE_LIFETIME + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER;
+    const auto& netconf = get_config(blockchain.nettype());
     {
         // NOTE: To verify the validity of the SNL at a given height, you need the previous N blocks
         // worth of quorum data.
@@ -3447,16 +3449,16 @@ void service_node_list::process_block(
         //   rejects this TX from a block and the mempool because it's older than the permitted
         //   VOTE_LIFETIME.
         //
-        // Hence if we store the SNL at a block into the archive we need to also keep all the quorums
-        // preceeding the archive up to atleast the VOTE LIFETIME to be able to validate the SNL.
+        // Hence if we store the SNL at a block into the archive we need to also keep all the
+        // quorums preceeding the archive up to atleast the VOTE LIFETIME to be able to validate the
+        // SNL.
 
         // NOTE: Calc the next closest archive height
-        const auto& netconf = get_config(blockchain.nettype());
         const uint64_t ARCHIVE_INTERVAL = netconf.HISTORY_ARCHIVE_INTERVAL;
-        const uint64_t archive_height = m_state.height + (ARCHIVE_INTERVAL - 1) % ARCHIVE_INTERVAL;
+        const uint64_t round_up_height = m_state.height + (ARCHIVE_INTERVAL - 1);
+        const uint64_t archive_height = round_up_height - (round_up_height % ARCHIVE_INTERVAL);
 
         // NOTE: Calc range of heights to store quorum for
-        const uint64_t keep_quorum_offset = VOTE_LIFETIME + VOTE_OR_TX_VERIFY_HEIGHT_BUFFER;
         const uint64_t keep_quorum_min = archive_height - keep_quorum_offset;
         const uint64_t keep_quorum_max = archive_height - 1;
 
@@ -3470,6 +3472,7 @@ void service_node_list::process_block(
                 auto copy = state_t(this);
                 copy.only_loaded_quorums = true;
                 copy.quorums = m_state.quorums;
+                copy.height = m_state.height;
                 m_transient.state_archive.emplace_hint(m_transient.state_archive.end(), copy);
             } else {
                 m_transient.state_archive.emplace_hint(m_transient.state_archive.end(), m_state);
@@ -3482,9 +3485,30 @@ void service_node_list::process_block(
         m_transient.old_quorum_states.emplace_back(m_state.height, m_state.quorums);
 
     // NOTE: Cull recent history
-    const uint64_t cull_height = min_backup_height(blockchain.nettype(), m_state.height);
+    const uint64_t cull_recent_height = min_recent_height(blockchain.nettype(), m_state.height);
     {
         state_set& set = m_transient.state_history;
+        while (set.size() && set.begin()->height <= cull_recent_height)
+            set.erase(set.begin());
+    }
+
+    // NOTE: Cull archive history
+    // NOTE: This logic must be equivalent to the logic in the SQL DB when the archive rows are
+    // pruned. This ensures that when the blockchain detaches, both systems detach to the same
+    // height and resync from the same starting point as they both must update in lockstep.
+    {
+        uint64_t cull_height = m_state.height < netconf.HISTORY_ARCHIVE_KEEP_WINDOW
+                                     ? 0
+                                     : m_state.height - netconf.HISTORY_ARCHIVE_KEEP_WINDOW;
+
+        // NOTE: Floor to closest interval
+        cull_height -= cull_height % netconf.HISTORY_ARCHIVE_INTERVAL;
+
+        // NOTE: Exclude the quorums we need to store to validate the SNL at the archive interval
+        if (cull_height >= keep_quorum_offset)
+            cull_height -= keep_quorum_offset;
+
+        state_set& set = m_transient.state_archive;
         while (set.size() && set.begin()->height <= cull_height)
             set.erase(set.begin());
     }
@@ -3492,7 +3516,7 @@ void service_node_list::process_block(
     // NOTE: Cull alt-chain state history
     {
         std::unordered_map<crypto::hash, state_t>& map = m_transient.alt_state;
-        while (map.size() && map.begin()->second.height <= cull_height)
+        while (map.size() && map.begin()->second.height <= cull_recent_height)
             map.erase(map.begin());
     }
 
@@ -3521,7 +3545,8 @@ void service_node_list::blockchain_detached(uint64_t height) {
     // Try finding the next closest old state at 10k intervals
     if (reinitialise) {
         auto& netconf = get_config(blockchain.nettype());
-        uint64_t prev_interval = revert_to_height - (revert_to_height % netconf.HISTORY_ARCHIVE_INTERVAL);
+        uint64_t prev_interval =
+                revert_to_height - (revert_to_height % netconf.HISTORY_ARCHIVE_INTERVAL);
         auto it = m_transient.state_archive.find(prev_interval);
         reinitialise = (it == m_transient.state_archive.end() || it->only_loaded_quorums);
         if (!reinitialise) {
@@ -5140,6 +5165,7 @@ bool service_node_list::load(const uint64_t current_height) {
         } catch (...) {
         }
     }
+    archive_min_height = std::min(archive_min_height, archive_max_height);  // For 0 loaded states
 
     // NOTE: Deserialize short term state history
     if (!db.get_service_node_data(blob, false))
@@ -5220,6 +5246,7 @@ bool service_node_list::load(const uint64_t current_height) {
             recent_max_height = std::max(recent_max_height, entry.height);
         }
 
+        recent_min_height = std::min(recent_min_height, recent_max_height);  // For 0 loaded states
         m_state = {*this, std::move(data_in.states[last_index])};
     }
 
@@ -5238,10 +5265,10 @@ bool service_node_list::load(const uint64_t current_height) {
         initialize_x25519_map();
     // else the x25519 map is part of state_t
 
-    log::info(globallogcat, "Service node data loaded successfully, height: {}", m_state.height);
     log::info(
             globallogcat,
-            "{} nodes and {} [{}-{}] recent states, {} [{}-{} w/ {} quorums] historical states loaded ({})",
+            "{} nodes and {} [{}-{}] recent states, {} [{}-{}] (w/ {} quorums) historical states "
+            "loaded ({}) height: {}",
             m_state.service_nodes_infos.size(),
             m_transient.state_history.size(),
             recent_min_height,
@@ -5250,9 +5277,8 @@ bool service_node_list::load(const uint64_t current_height) {
             archive_min_height,
             archive_max_height,
             archive_with_quorums_only,
-            tools::get_human_readable_bytes(bytes_loaded));
-
-    log::info(logcat, "service_node_list::load() returning success");
+            tools::get_human_readable_bytes(bytes_loaded),
+            m_state.height);
     return true;
 }
 
