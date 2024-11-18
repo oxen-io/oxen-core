@@ -143,10 +143,10 @@ void BlockchainSQLite::upgrade_schema() {
             have_offset = true;
     }
 
+    SQLite::Transaction transaction{db, SQLite::TransactionBehavior::DEFERRED};
     if (!have_offset) {
         log::info(logcat, "Adding payout_offset to batching db");
         auto& netconf = get_config(m_nettype);
-        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
 
         db.exec(fmt::format(
                 R"(
@@ -186,8 +186,6 @@ void BlockchainSQLite::upgrade_schema() {
             log::error(logcat, error);
             throw oxen::traced<std::runtime_error>{error};
         }
-
-        transaction.commit();
     }
 
     // NOTE: Stores time-locked payments that will be paid out once
@@ -199,7 +197,6 @@ void BlockchainSQLite::upgrade_schema() {
     // address to withdraw those tokens from the smart contract.
     if (!table_exists("delayed_payments")) {
         log::info(logcat, "Adding delayed payments table to batching db");
-        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
         db.exec(R"(
         CREATE TABLE delayed_payments(
           eth_address       VARCHAR NOT NULL,
@@ -223,18 +220,15 @@ void BlockchainSQLite::upgrade_schema() {
         END;
 
         )");
-        transaction.commit();
     }
 
     if (!trigger_exists("delayed_payments_after_blocks_removed")) {
-        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
         db.exec(R"(
         CREATE TRIGGER delayed_payments_after_blocks_removed AFTER UPDATE ON batch_db_info
         FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
             DELETE FROM delayed_payments WHERE block_height >= NEW.height;
         END;
         )");
-        transaction.commit();
     }
 
     // NOTE: The archive table stores copies of 'batch_payments_accrued' rows at
@@ -242,7 +236,6 @@ void BlockchainSQLite::upgrade_schema() {
     if (!table_exists("batched_payments_accrued_archive")) {
         log::info(logcat, "Adding archiving to batching db");
         auto& netconf = get_config(m_nettype);
-        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
         db.exec(fmt::format(
                 R"(
         CREATE TABLE batched_payments_accrued_archive(
@@ -271,7 +264,6 @@ void BlockchainSQLite::upgrade_schema() {
         )",
                 netconf.HISTORY_ARCHIVE_INTERVAL,
                 500));
-        transaction.commit();
     }
 
     // NOTE: The recent table stores copies of 'batch_payments_accrued' rows at
@@ -285,7 +277,6 @@ void BlockchainSQLite::upgrade_schema() {
         // long-term archive rows.
         log::info(logcat, "Adding recent rewards to batching db");
         auto& netconf = get_config(m_nettype);
-        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
         db.exec(fmt::format(
                 R"(
         CREATE TABLE batched_payments_accrued_recent(
@@ -310,14 +301,12 @@ void BlockchainSQLite::upgrade_schema() {
                 // +1 here because the trigger above copies the *current* height after it's updated,
                 // but we want to store current plus BACKUP_COUNT recent ones.
                 ));
-        transaction.commit();
     }
 
     // This can be moved back into the relevant `if` clauses above eventually,
     // but the easiest way to make sure existing databases have the corrected triggers
     // is to just drop and recreate them unconditionally
     {
-        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
         db.exec(R"(
         DROP TRIGGER IF EXISTS clear_archive;
         CREATE TRIGGER clear_archive AFTER UPDATE ON batch_db_info
@@ -331,8 +320,8 @@ void BlockchainSQLite::upgrade_schema() {
             DELETE FROM batched_payments_accrued_recent WHERE height > NEW.height;
         END;
         )");
-        transaction.commit();
     }
+    transaction.commit();
 }
 
 void BlockchainSQLite::reset_database() {
