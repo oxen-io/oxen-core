@@ -413,7 +413,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
             snl_iteration_duration = 0s;
             sql_iteration_duration = 0s;
 
-            if (every_10s) // NOTE: Reset block load counter
+            if (every_10s)  // NOTE: Reset block load counter
                 blocks_per_iteration = 0;
         }
 
@@ -784,6 +784,28 @@ bool Blockchain::deinit() {
     m_db.reset();
     return true;
 }
+
+static void exec_detach_hooks(
+        Blockchain& blockchain,
+        uint64_t detach_height,
+        std::span<BlockchainDetachedHook> hooks,
+        bool by_pop_blocks,
+        bool load_missing_blocks = true) {
+    detached_info hook_data{detach_height, by_pop_blocks};
+    for (const auto& hook : hooks)
+        hook(hook_data);
+
+    // NOTE: These 2 systems *must* detach to the same height as the process of adding a block to
+    // the SNL can submit data to the SQL DB and so they rely on each other to derive the correct
+    // state.
+    if (blockchain.service_node_list.height() != blockchain.sqlite_db().height) {
+        assert(blockchain.service_node_list.height() != blockchain.sqlite_db().height);
+        // TODO: Do something
+    }
+
+    blockchain.load_missing_blocks_into_oxen_subsystems();
+}
+
 //------------------------------------------------------------------
 // This function removes blocks from the top of blockchain.
 // It starts a batch and calls private method pop_block_from_blockchain().
@@ -825,11 +847,7 @@ void Blockchain::pop_blocks(uint64_t nblocks) {
         return;
     }
 
-    detached_info hook_data{m_db->height(), /*by_pop_blocks=*/true};
-    for (const auto& hook : m_blockchain_detached_hooks)
-        hook(hook_data);
-    load_missing_blocks_into_oxen_subsystems();
-
+    exec_detach_hooks(*this, m_db->height(), m_blockchain_detached_hooks, /*by_pop_blocks=*/true);
     if (stop_batch)
         m_db->batch_stop();
 }
@@ -1114,11 +1132,7 @@ bool Blockchain::rollback_blockchain_switching(
         pop_block_from_blockchain();
     }
 
-    // Revert all changes from switching to the alt chain before adding the original chain back in
-    detached_info rollback_hook_data{rollback_height, /*by_pop_blocks=*/false};
-    for (const auto& hook : m_blockchain_detached_hooks)
-        hook(rollback_hook_data);
-    load_missing_blocks_into_oxen_subsystems();
+    exec_detach_hooks(*this, rollback_height, m_blockchain_detached_hooks, /*by_pop_blocks=*/false);
 
     // return back original chain
     for (auto& entry : original_chain) {
@@ -1186,10 +1200,7 @@ bool Blockchain::switch_to_alternative_blockchain(
     }
 
     auto split_height = m_db->height();
-    detached_info split_hook_data{split_height, /*by_pop_blocks=*/false};
-    for (const auto& hook : m_blockchain_detached_hooks)
-        hook(split_hook_data);
-    load_missing_blocks_into_oxen_subsystems();
+    exec_detach_hooks(*this, split_height, m_blockchain_detached_hooks, /*by_pop_blocks=*/false);
 
     // connecting new alternative chain
     for (auto alt_ch_iter = alt_chain.begin(); alt_ch_iter != alt_chain.end(); alt_ch_iter++) {
@@ -5408,8 +5419,12 @@ bool Blockchain::handle_block_to_main_chain(
     auto abort_block = oxen::defer([this]() {
         pop_block_from_blockchain();
         detached_info hook_data{m_db->height(), false /*by_pop_blocks*/};
-        for (const auto& hook : m_blockchain_detached_hooks)
-            hook(hook_data);
+        exec_detach_hooks(
+                *this,
+                m_db->height(),
+                m_blockchain_detached_hooks,
+                /*by_pop_blocks=*/false,
+                /*load_missing_blocks=*/false);
     });
 
     // TODO(oxen): Not nice, making the hook take in a vector of pair<transaction,

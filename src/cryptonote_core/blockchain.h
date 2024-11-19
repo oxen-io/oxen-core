@@ -1233,6 +1233,8 @@ class Blockchain {
 
     tx_memory_pool& tx_pool;
 
+    bool load_missing_blocks_into_oxen_subsystems(const std::atomic<bool>* abort = nullptr);
+
 #ifndef IN_UNIT_TESTS
   private:
 #endif
@@ -1267,8 +1269,6 @@ class Blockchain {
             uint64_t& height,
             uint64_t& expected_reward,
             const std::string& ex_nonce);
-
-    bool load_missing_blocks_into_oxen_subsystems(const std::atomic<bool>* abort = nullptr);
 
     // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
     typedef std::unordered_set<crypto::key_image> key_images_container;

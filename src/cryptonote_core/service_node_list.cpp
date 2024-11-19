@@ -3531,42 +3531,59 @@ void service_node_list::process_block(
 void service_node_list::blockchain_detached(uint64_t height) {
     std::lock_guard lock(m_sn_mutex);
 
-    uint64_t revert_to_height = height - 1;
-    bool reinitialise = false;
-    bool using_archive = false;
-    {
-        auto it = m_transient.state_history.find(
-                revert_to_height);  // Try finding detached height directly
-        reinitialise = (it == m_transient.state_history.end() || it->only_loaded_quorums);
-        if (!reinitialise)
-            m_transient.state_history.erase(std::next(it), m_transient.state_history.end());
-    }
+    const auto& netconf = get_config(blockchain.nettype());
+    uint64_t target_height = height - 1;
+    uint64_t archive_height = target_height - (target_height % netconf.HISTORY_ARCHIVE_INTERVAL);
 
-    // Try finding the next closest old state at 10k intervals
-    if (reinitialise) {
-        auto& netconf = get_config(blockchain.nettype());
-        uint64_t prev_interval =
-                revert_to_height - (revert_to_height % netconf.HISTORY_ARCHIVE_INTERVAL);
-        auto it = m_transient.state_archive.find(prev_interval);
-        reinitialise = (it == m_transient.state_archive.end() || it->only_loaded_quorums);
-        if (!reinitialise) {
-            m_transient.state_history.clear();
-            m_transient.state_archive.erase(std::next(it), m_transient.state_archive.end());
-            using_archive = true;
+    enum class History {
+        Nil,
+        Archive,
+        Recent,
+    } history = {};
+
+    // NOTE: Lookup desired SNL state from recent backups
+    state_set::iterator find_it = {};
+    if (history == History::Nil) {
+        state_set& set = m_transient.state_history;
+        auto it = set.find(target_height);
+        if (it != set.end() && !it->only_loaded_quorums) {
+            history = History::Recent;
+            find_it = it;
         }
     }
 
-    if (reinitialise) {
-        m_transient.state_history.clear();
-        m_transient.state_archive.clear();
-        init();
-        return;
+    // NOTE: Lookup desired SNL state from archive backups
+    if (history == History::Nil) {
+        state_set& set = m_transient.state_archive;
+        auto it = set.find(target_height);
+        if (it != set.end() && !it->only_loaded_quorums) {
+            history = History::Archive;
+            find_it = it;
+        }
     }
 
-    auto& history = (using_archive) ? m_transient.state_archive : m_transient.state_history;
-    auto it = std::prev(history.end());
-    m_state = std::move(*it);
-    history.erase(it);
+    switch (history) {
+        case History::Nil: { // NOTE: Not found
+            m_transient.state_history.clear();
+            m_transient.state_archive.clear();
+            init();
+        } break;
+
+        case History::Archive: {
+            // NOTE: Found in archive history. Wasn't in recent history hence none of the data in
+            // there is relevant so we can clear it out.
+            m_transient.state_history.clear();
+            m_transient.state_archive.erase(std::next(find_it), m_transient.state_archive.end());
+            m_state = std::move(*find_it);
+            m_transient.state_archive.erase(find_it);
+        } break;
+
+        case History::Recent: { // NOTE: Found in recent history
+            m_transient.state_history.erase(std::next(find_it), m_transient.state_history.end());
+            m_state = std::move(*find_it);
+            m_transient.state_history.erase(find_it);
+        } break;
+    }
 }
 
 std::vector<crypto::public_key> service_node_list::state_t::get_expired_nodes(
