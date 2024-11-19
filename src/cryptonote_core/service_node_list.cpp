@@ -4285,6 +4285,10 @@ bool service_node_list::store() {
         m_transient.cache_short_term_data.states.push_back(
                 serialize_service_node_state_object(hf_version, it));
 
+    // NOTE: Serialize current state into the recent store
+    m_transient.cache_short_term_data.states.push_back(
+            serialize_service_node_state_object(hf_version, m_state));
+
     // NOTE: Write archive SNL state blob(s) to DB
     m_transient.cache_data_blob.clear();
     if (m_transient.state_added_to_archive) {
@@ -5147,7 +5151,7 @@ bool service_node_list::load(const uint64_t current_height) {
     cryptonote::db_rtxn_guard txn_guard{db};
     std::string blob;
 
-    uint64_t archive_min_height = std::numeric_limits<uint64_t>::max();
+    uint64_t archive_min_height = 0;
     uint64_t archive_max_height = 0;
     uint64_t archive_with_quorums_only = 0;
     if (db.get_service_node_data(blob, true /*long_term*/)) {
@@ -5155,17 +5159,19 @@ bool service_node_list::load(const uint64_t current_height) {
         try {
             data_for_serialization data_in = {};
             serialization::parse_binary(blob, data_in);
-            for (state_serialized& entry : data_in.states) {
-                m_transient.state_archive.emplace_hint(
-                        m_transient.state_archive.end(), *this, std::move(entry));
-                archive_with_quorums_only += entry.only_stored_quorums;
-                archive_min_height = std::min(archive_min_height, entry.height);
-                archive_max_height = std::max(archive_max_height, entry.height);
+            if (data_in.states.size()) {
+                archive_min_height = std::numeric_limits<uint64_t>::max();
+                for (state_serialized& entry : data_in.states) {
+                    m_transient.state_archive.emplace_hint(
+                            m_transient.state_archive.end(), *this, std::move(entry));
+                    archive_with_quorums_only += entry.only_stored_quorums;
+                    archive_min_height = std::min(archive_min_height, entry.height);
+                    archive_max_height = std::max(archive_max_height, entry.height);
+                }
             }
         } catch (...) {
         }
     }
-    archive_min_height = std::min(archive_min_height, archive_max_height);  // For 0 loaded states
 
     // NOTE: Deserialize short term state history
     if (!db.get_service_node_data(blob, false))
@@ -5220,34 +5226,37 @@ bool service_node_list::load(const uint64_t current_height) {
         }
     }
 
-    uint64_t recent_min_height = std::numeric_limits<uint64_t>::max();
     uint64_t recent_max_height = 0;
-    {
-        assert(data_in.states.size() > 0);
-        size_t const last_index = data_in.states.size() - 1;
-        if (data_in.states[last_index].only_stored_quorums) {
+    uint64_t recent_min_height = 0;
+    assert(data_in.states.size());
+    if (data_in.states.size()) {
+        recent_min_height = std::numeric_limits<uint64_t>::max();
+        if (data_in.states.back().only_stored_quorums) {
             log::warning(logcat, "Unexpected last serialized state only has quorums loaded");
             return false;
         }
 
-        for (size_t i = 0; i < last_index; i++) {
+        const size_t last_index = data_in.states.size() - 1;
+        for (size_t i = 0; i < data_in.states.size(); i++) {
             state_serialized& entry = data_in.states[i];
-            if (!entry.block_hash)
-                entry.block_hash = blockchain.get_block_id_by_height(entry.height);
-            m_transient.state_history.emplace_hint(
-                    m_transient.state_history.end(), *this, std::move(entry));
 
             // NOTE: Our SNL state store from the 'keep recent window' should not have this flag
             // set which marks that only quorums were serialised instead of the entire state
             // otherwise we have a serialisation bug.
             assert(!entry.only_stored_quorums);
+            if (!entry.block_hash)
+                entry.block_hash = blockchain.get_block_id_by_height(entry.height);
 
             recent_min_height = std::min(recent_min_height, entry.height);
             recent_max_height = std::max(recent_max_height, entry.height);
-        }
 
-        recent_min_height = std::min(recent_min_height, recent_max_height);  // For 0 loaded states
-        m_state = {*this, std::move(data_in.states[last_index])};
+            if (i == last_index) {
+                m_state = {*this, std::move(entry)};
+            } else {
+                m_transient.state_history.emplace_hint(
+                        m_transient.state_history.end(), *this, std::move(entry));
+            }
+        }
     }
 
     // NOTE: Load uptime proof data
