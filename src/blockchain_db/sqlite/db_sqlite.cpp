@@ -63,8 +63,8 @@ BlockchainSQLite::BlockchainSQLite(
     uint64_t recent_max_height = prepared_get<int>("SELECT MAX(height) FROM batched_payments_accrued_recent");
 
     uint64_t archive_count = prepared_get<int>("SELECT COUNT(*) FROM batched_payments_accrued_archive");
-    uint64_t archive_min_height = prepared_get<int>("SELECT MIN(archive_height) FROM batched_payments_accrued_archive");
-    uint64_t archive_max_height = prepared_get<int>("SELECT MAX(archive_height) FROM batched_payments_accrued_archive");
+    uint64_t archive_min_height = prepared_get<int>("SELECT MIN(height) FROM batched_payments_accrued_archive");
+    uint64_t archive_max_height = prepared_get<int>("SELECT MAX(height) FROM batched_payments_accrued_archive");
 
     log::info(
             globallogcat,
@@ -163,8 +163,27 @@ void BlockchainSQLite::upgrade_schema() {
     }
 
     SQLite::Transaction transaction{db, SQLite::TransactionBehavior::DEFERRED};
+    // NOTE: Rename 'batched_payments_accrued_archive' 'archive_height' column to 'height'. This
+    // unifies the height label across the batch payment, recent and archive table making querying
+    // from them require less code.
+    // TODO: After HF20 we can remove this code as everyone will have upgraded their schema.
+    {
+        bool has_deprecated_archive_height_column = false;
+        SQLite::Statement msg_cols{db, "PRAGMA main.table_info(batched_payments_accrued_archive)"};
+        while (msg_cols.executeStep()) {
+            auto [cid, name] = db::get<int64_t, std::string>(msg_cols);
+            if (name == "archive_height") {
+                has_deprecated_archive_height_column = true;
+                break;
+            }
+        }
+
+        if (has_deprecated_archive_height_column)
+            db.exec("ALTER TABLE batched_payments_accrued_archive RENAME COLUMN archive_height to height;\n");
+    }
+
     if (!have_offset) {
-        log::info(logcat, "Adding payout_offset to batching db");
+        log::debug(logcat, "Adding payout_offset to batching db");
         auto& netconf = get_config(m_nettype);
 
         db.exec(fmt::format(
@@ -215,7 +234,7 @@ void BlockchainSQLite::upgrade_schema() {
     // The network will then uniformly agree to sign a signature to permit the
     // address to withdraw those tokens from the smart contract.
     if (!table_exists("delayed_payments")) {
-        log::info(logcat, "Adding delayed payments table to batching db");
+        log::debug(logcat, "Adding delayed payments table to batching db");
         db.exec(R"(
         CREATE TABLE delayed_payments(
           eth_address       VARCHAR NOT NULL,
@@ -232,12 +251,6 @@ void BlockchainSQLite::upgrade_schema() {
         );
 
         CREATE INDEX delayed_payments_payout_height_idx ON delayed_payments(payout_height);
-
-        CREATE TRIGGER delayed_payments_prune AFTER UPDATE ON batch_db_info
-        FOR EACH ROW BEGIN
-            DELETE FROM delayed_payments WHERE payout_height < (NEW.height - 10000);
-        END;
-
         )");
     }
 
@@ -253,49 +266,22 @@ void BlockchainSQLite::upgrade_schema() {
     // NOTE: The archive table stores copies of 'batch_payments_accrued' rows at
     // intervals of STORE_LONG_TERM_STATE_INTERVAL blocks in a rolling window.
     if (!table_exists("batched_payments_accrued_archive")) {
-        log::info(logcat, "Adding archiving to batching db");
+        log::debug(logcat, "Adding archiving to batching db");
         auto& netconf = get_config(m_nettype);
-        db.exec(
-                R"(
-
+        db.exec(R"(
         -- Create archive table that stores the current accrued rows every 'HISTORY_ARCHIVE_INTERVAL'
         -- blocks
         CREATE TABLE batched_payments_accrued_archive(
           address VARCHAR NOT NULL,
           amount BIGINT NOT NULL,
           payout_offset INTEGER NOT NULL,
-          archive_height BIGINT NOT NULL, -- Height that the row was generated on
+          height BIGINT NOT NULL, -- Height that the row was generated on
           CHECK(amount >= 0),
-          CHECK(archive_height >= 0)
+          CHECK(height >= 0)
         );
 
-        CREATE INDEX batched_payments_accrued_archive_height_idx ON batched_payments_accrued_archive(archive_height);
-
-        -- Keep a copy of all the rows for earnt rewards for this height if it's on an archival
-        -- interval. It allows the DB to gracefully handle block re-orgs without having to
-        -- recalculate from scratch.
-        --
-        -- We archive state at every 'HISTORY_ARCHIVE_INTERVAL' height and we prune the stored
-        -- archive to encompass the past 'HISTORY_ARCHIVE_WINDOW' blocks worth of history.
-        --
-        -- When pruning we floor to the closest interval to make the equivalent pruning math in the
-        -- SNL at 'process_block()' simple which has additional constraints.
-        DROP TRIGGER IF EXISTS make_archive;
-        CREATE TRIGGER make_archive AFTER UPDATE ON batch_db_info
-        FOR EACH ROW WHEN (NEW.height % {}) = 0 AND NEW.height > OLD.height BEGIN
-            INSERT INTO batched_payments_accrued_archive SELECT *, NEW.height FROM batched_payments_accrued;
-            DELETE FROM batched_payments_accrued_archive WHERE archive_height < ((NEW.height - {}) % {});
-        END;
-
-        -- On re-org to an older height delete all archive rows that are newer than the DB's height
-        DROP TRIGGER IF EXISTS clear_archive;
-        CREATE TRIGGER clear_archive AFTER UPDATE ON batch_db_info
-        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
-            DELETE FROM batched_payments_accrued_archive WHERE archive_height > NEW.height;
-        END;
-        )"_format(netconf.HISTORY_ARCHIVE_INTERVAL,
-                  netconf.HISTORY_ARCHIVE_KEEP_WINDOW,
-                  netconf.HISTORY_ARCHIVE_INTERVAL));
+        CREATE INDEX batched_payments_accrued_archive_height_idx ON batched_payments_accrued_archive(height);
+        )");
     }
 
     // NOTE: The recent table stores copies of 'batch_payments_accrued' rows at
@@ -307,7 +293,7 @@ void BlockchainSQLite::upgrade_schema() {
         // stale rows a bit faster because we can use a simple `height < x` query rather than a much
         // more complicated (and much less indexable) condition that also worries about not deleting
         // long-term archive rows.
-        log::info(logcat, "Adding recent rewards to batching db");
+        log::debug(logcat, "Adding recent rewards to batching db");
         auto& netconf = get_config(m_nettype);
         db.exec(fmt::format(
                 R"(
@@ -321,26 +307,43 @@ void BlockchainSQLite::upgrade_schema() {
         );
 
         CREATE INDEX batched_payments_accrued_recent_height_idx ON batched_payments_accrued_recent(height);
-
-        DROP TRIGGER IF EXISTS make_recent;
-        CREATE TRIGGER make_recent AFTER UPDATE ON batch_db_info
-        FOR EACH ROW WHEN NEW.height > OLD.height BEGIN
-            INSERT INTO batched_payments_accrued_recent SELECT *, NEW.height FROM batched_payments_accrued;
-            DELETE FROM batched_payments_accrued_recent WHERE height < NEW.height - {};
-        END;
         )",
                 netconf.HISTORY_RECENT_KEEP_WINDOW));
     }
 
-    // This can be moved back into the relevant `if` clauses above eventually,
-    // but the easiest way to make sure existing databases have the corrected triggers
-    // is to just drop and recreate them unconditionally
+    // TODO: Code block can be removed after HF20 on mainnet as everyone's
+    // schema's will have been upgraded. Cut and paste into the SQL schema
+    // creation code
+    //
+    // - make_archive into `batch_payments_accrued_archive`
+    // - clear_archive into `batch_payments_accrued_archive`
+    // - clear_recent into `batch_payments_accrued_recent`
+    // - make_recent into `batch_payments_accrued_recent`
+    // - delayed_payments_prune into `delayed_payments`
     {
+        auto& netconf = get_config(m_nettype);
         db.exec(R"(
+        -- Keep a copy of all the rows for earnt rewards for this height if it's on an archival
+        -- interval. It allows the DB to gracefully handle block re-orgs without having to
+        -- recalculate from scratch.
+        --
+        -- We archive state at every 'HISTORY_ARCHIVE_INTERVAL' height and we prune the stored
+        -- archive to encompass the past 'HISTORY_ARCHIVE_WINDOW' blocks worth of history.
+        --
+        -- When pruning we floor to the closest interval to make the equivalent pruning math in the
+        -- SNL at 'process_block()' simple which has additional constraints.
+        DROP TRIGGER IF EXISTS make_archive;
+        CREATE TRIGGER make_archive AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN (NEW.height % {}) = 0 AND NEW.height > OLD.height BEGIN
+            INSERT INTO batched_payments_accrued_archive SELECT *, NEW.height FROM batched_payments_accrued;
+            DELETE FROM batched_payments_accrued_archive WHERE height < ((NEW.height - {}) % {});
+        END;
+
+        -- On re-org to an older height delete all archive rows that are newer than the DB's height
         DROP TRIGGER IF EXISTS clear_archive;
         CREATE TRIGGER clear_archive AFTER UPDATE ON batch_db_info
         FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
-            DELETE FROM batched_payments_accrued_archive WHERE archive_height > NEW.height;
+            DELETE FROM batched_payments_accrued_archive WHERE height > NEW.height;
         END;
 
         -- On re-org delete all recent rows that are newer than the DB's height
@@ -349,8 +352,27 @@ void BlockchainSQLite::upgrade_schema() {
         FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
             DELETE FROM batched_payments_accrued_recent WHERE height > NEW.height;
         END;
-        )");
+
+        -- Saves the current accrued rewards table into the recent table for the current height
+        DROP TRIGGER IF EXISTS make_recent;
+        CREATE TRIGGER make_recent AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN NEW.height > OLD.height BEGIN
+            INSERT INTO batched_payments_accrued_recent SELECT *, NEW.height FROM batched_payments_accrued;
+            DELETE FROM batched_payments_accrued_recent WHERE height < NEW.height - {};
+        END;
+
+        -- Delete old delayed payments from the DB when they are processed
+        DROP TRIGGER IF EXISTS delayed_payments_prune;
+        CREATE TRIGGER delayed_payments_prune AFTER UPDATE ON batch_db_info
+        FOR EACH ROW BEGIN
+            DELETE FROM delayed_payments WHERE payout_height < NEW.height;
+        END;
+        )"_format(netconf.HISTORY_ARCHIVE_INTERVAL,
+                  netconf.HISTORY_ARCHIVE_KEEP_WINDOW,
+                  netconf.HISTORY_ARCHIVE_INTERVAL,
+                  netconf.HISTORY_RECENT_KEEP_WINDOW));
     }
+
     transaction.commit();
 }
 
@@ -391,36 +413,73 @@ void BlockchainSQLite::update_height(uint64_t new_height) {
 }
 
 void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
-    if (height < new_height)
-        return;
-    int64_t revert_to_height = new_height - 1;
-    auto maybe_prev_interval = prepared_maybe_get<int64_t>(
-            "SELECT MAX(archive_height) FROM batched_payments_accrued_archive "
-            "WHERE archive_height <= ?",
-            revert_to_height);
+    const auto& netconf = get_config(m_nettype);
+    int64_t target_height = new_height - 1;
+    int64_t archive_height = target_height - (target_height % netconf.HISTORY_ARCHIVE_INTERVAL);
 
-    if (!maybe_prev_interval) {
-        auto fork_height =
-                cryptonote::hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(0);
-        reset_database();
-        update_height(fork_height);
-        return;
+    enum class History {
+        Nil,
+        Archive,
+        Recent,
+    } history = {};
+
+    // NOTE: Lookup desired state from recent backups
+    int64_t detach_height =
+            cryptonote::hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(0);
+    if (history == History::Nil) {
+        auto lookup = prepared_maybe_get<int64_t>(
+                "SELECT 1 FROM batched_payments_accrued_recent WHERE height = ? LIMIT 1",
+                target_height);
+        if (lookup) {
+            detach_height = target_height;
+            history = History::Recent;
+        }
     }
-    const auto prev_interval = *maybe_prev_interval;
 
-    db.exec(fmt::format(
-            R"(
-      DELETE FROM batched_payments_raw WHERE height_paid > {0};
+    // NOTE: Lookup desired state from archive backups
+    if (history == History::Nil) {
+        auto lookup = prepared_maybe_get<int64_t>(
+                "SELECT MAX(height) FROM batched_payments_accrued_archive WHERE height <= ? AND (height % {} = 0)"_format(
+                        netconf.HISTORY_ARCHIVE_INTERVAL),
+                archive_height);
+        if (lookup && *lookup != 0) {
+            detach_height = *lookup;
+            history = History::Archive;
+        }
+    }
 
-      DELETE FROM batched_payments_accrued;
+    // NOTE: Execute detach
+    std::string detach_label = "";
+    switch (history) {
+        case History::Nil: {
+            reset_database();
+            detach_label = " (via reset)";
+        } break;
 
-      INSERT INTO batched_payments_accrued
-        SELECT address, amount, payout_offset
-        FROM batched_payments_accrued_archive WHERE archive_height = {0};
-      )",
-            prev_interval));
-    update_height(prev_interval);
-    return;
+        default: {
+            db.exec(R"(DELETE FROM batched_payments_raw WHERE height_paid > {0};
+                       DELETE FROM batched_payments_accrued;
+                       DELETE FROM batched_payments_accrued_recent WHERE height > {0};
+                       DELETE FROM batched_payments_accrued_archive WHERE height > {0};
+
+                       INSERT INTO batched_payments_accrued
+                       SELECT address, amount, payout_offset
+                       FROM batched_payments_accrued_{1} WHERE height = {0};
+              )"_format(detach_height, (history == History::Archive ? "archive" : "recent")));
+            detach_label = history == History::Archive ? " (from archive history)" : " (from recent history)";
+        } break;
+    }
+
+    update_height(detach_height);
+    log::debug(
+            logcat,
+            "Detach request for SQL @ {}, looking for SQL state @ {} or archive @ {}. SQL detached "
+            "to {}{}",
+            new_height,
+            target_height,
+            archive_height,
+            height,
+            detach_label);
 }
 
 // Must be called with the address_str_cache_mutex held!
@@ -828,46 +887,6 @@ bool BlockchainSQLite::add_block(
         transaction.commit();
     } catch (std::exception& e) {
         log::error(logcat, "Error adding reward payments: {}", e.what());
-        return false;
-    }
-    return true;
-}
-
-bool BlockchainSQLite::pop_block(
-        const cryptonote::block& block,
-        const service_nodes::service_node_list::state_t& service_nodes_state) {
-    auto block_height = block.get_height();
-
-    log::trace(logcat, "BlockchainDB_SQLITE::{} called on height: {}", __func__, block_height);
-    if (height < block_height) {
-        log::debug(logcat, "Block above batching DB height skipping pop");
-        return true;
-    }
-    if (block_height != height) {
-        log::error(logcat, "Block height out of sync with batching database");
-        return false;
-    }
-
-    auto hf_version = block.major_version;
-    if (hf_version < hf::hf19_reward_batching) {
-        update_height(height - 1);
-        return true;
-    }
-
-    try {
-        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
-
-        if (!reward_handler(
-                    block, service_nodes_state, /*add=*/false, get_delayed_payments(block_height)))
-            return false;
-
-        // Add back to the database payments that had been made in this block
-        delete_block_payments(block_height);
-
-        update_height(height - 1);
-        transaction.commit();
-    } catch (std::exception& e) {
-        log::error(logcat, "Error subtracting reward payments: {}", e.what());
         return false;
     }
     return true;

@@ -139,9 +139,6 @@ class BlockchainSQLite : public db::Database {
     bool add_block(
             const cryptonote::block& block,
             const service_nodes::service_node_list::state_t& service_nodes_state);
-    bool pop_block(
-            const cryptonote::block& block,
-            const service_nodes::service_node_list::state_t& service_nodes_state);
 
     struct exit_stake {
         eth::address addr;

@@ -1477,11 +1477,19 @@ class Blockchain {
             const std::list<block_extended_info>& alt_chain, bool keep_disconnected_chain);
 
     /**
-     * @brief removes the most recent block from the blockchain
+     * @brief Removes the most recent block from the blockchain DB (LMDB).
+     *
+     * This function does not remove blocks from other subsytems (SNL, SQL and
+     * ONS) that rely on the blockchain state. It does not pop blocks from those
+     * systems because the usage pattern is to call this function for N blocks.
+     *
+     * After the desired N blocks have been popped you then call the blockchain
+     * detached hooks. This allows the batch of N blocks to be processed by the
+     * SNL, SQL and ONS DB only after all desired blocks have been popped.
      *
      * @return the block removed
      */
-    block pop_block_from_blockchain(bool pop_batching_rewards);
+    block pop_block_from_db();
 
     /**
      * @brief validate and add a new block to the end of the blockchain

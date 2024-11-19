@@ -523,6 +523,28 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
 
     return true;
 }
+
+static void exec_detach_hooks(
+        Blockchain& blockchain,
+        uint64_t detach_height,
+        std::span<BlockchainDetachedHook> hooks,
+        bool by_pop_blocks,
+        bool load_missing_blocks = true) {
+    detached_info hook_data{detach_height, by_pop_blocks};
+    for (const auto& hook : hooks)
+        hook(hook_data);
+
+    // NOTE: These 2 systems *must* detach to the same height as the process of adding a block to
+    // the SNL can submit data to the SQL DB and so they rely on each other to derive the correct
+    // state.
+    if (blockchain.service_node_list.height() != blockchain.sqlite_db().height) {
+        assert(blockchain.service_node_list.height() != blockchain.sqlite_db().height);
+        // TODO: Do something
+    }
+
+    blockchain.load_missing_blocks_into_oxen_subsystems();
+}
+
 //------------------------------------------------------------------
 // FIXME: possibly move this into the constructor, to avoid accidentally
 //       dereferencing a null BlockchainDB pointer
@@ -671,10 +693,6 @@ bool Blockchain::init(
             std::vector<transaction> popped_txs;
             try {
                 m_db->pop_block(popped_block, popped_txs);
-                if (!service_node_list.pop_batching_rewards_block(popped_block)) {
-                    log::error(logcat, "Failed to pop to batch rewards DB. throwing");
-                    throw oxen::traced<std::runtime_error>("Failed to pop to batch reward DB.");
-                }
             }
             // anything that could cause this to throw is likely catastrophic,
             // so we re-throw
@@ -715,9 +733,19 @@ bool Blockchain::init(
     for (const auto& hook : m_init_hooks)
         hook();
 
-    if (!m_db->is_read_only() && !load_missing_blocks_into_oxen_subsystems(abort)) {
-        log::error(logcat, "Failed to load blocks into oxen subsystems");
-        return false;
+    if (!m_db->is_read_only()) {
+        if (num_popped_blocks)
+            exec_detach_hooks(
+                    *this,
+                    m_db->height(),
+                    m_blockchain_detached_hooks,
+                    /*by_pop_blocks*/ false,
+                    /*load_missing_blocks_into_oxen_subsystems*/ false);
+
+        if (!load_missing_blocks_into_oxen_subsystems(abort)) {
+            log::error(logcat, "Failed to load blocks into oxen subsystems");
+            return false;
+        }
     }
 
     return true;
@@ -785,36 +813,14 @@ bool Blockchain::deinit() {
     return true;
 }
 
-static void exec_detach_hooks(
-        Blockchain& blockchain,
-        uint64_t detach_height,
-        std::span<BlockchainDetachedHook> hooks,
-        bool by_pop_blocks,
-        bool load_missing_blocks = true) {
-    detached_info hook_data{detach_height, by_pop_blocks};
-    for (const auto& hook : hooks)
-        hook(hook_data);
-
-    // NOTE: These 2 systems *must* detach to the same height as the process of adding a block to
-    // the SNL can submit data to the SQL DB and so they rely on each other to derive the correct
-    // state.
-    if (blockchain.service_node_list.height() != blockchain.sqlite_db().height) {
-        assert(blockchain.service_node_list.height() != blockchain.sqlite_db().height);
-        // TODO: Do something
-    }
-
-    blockchain.load_missing_blocks_into_oxen_subsystems();
-}
-
 //------------------------------------------------------------------
 // This function removes blocks from the top of blockchain.
-// It starts a batch and calls private method pop_block_from_blockchain().
+// It starts a batch and calls private method pop_block_from_db().
 void Blockchain::pop_blocks(uint64_t nblocks) {
     uint64_t i = 0;
     auto lock = tools::unique_locks(tx_pool, *this);
     bool stop_batch = m_db->batch_start();
 
-    bool pop_batching_rewards;
     try {
         const uint64_t blockchain_height = m_db->height();
         if (blockchain_height > 0)
@@ -823,7 +829,6 @@ void Blockchain::pop_blocks(uint64_t nblocks) {
         uint64_t constexpr PERCENT_PER_PROGRESS_UPDATE = 10;
         uint64_t const blocks_per_update = (nblocks / PERCENT_PER_PROGRESS_UPDATE);
 
-        pop_batching_rewards = service_node_list.state_history_exists(blockchain_height - nblocks);
         std::chrono::steady_clock::time_point pop_blocks_started = std::chrono::steady_clock::now();
         uint64_t bpd = get_config(m_nettype).BLOCKS_PER_DAY();
         for (int progress = 0; i < nblocks; ++i) {
@@ -838,7 +843,7 @@ void Blockchain::pop_blocks(uint64_t nblocks) {
                                 .count());
                 pop_blocks_started = std::chrono::steady_clock::now();
             }
-            pop_block_from_blockchain(pop_batching_rewards);
+            pop_block_from_db();
         }
     } catch (const std::exception& e) {
         log::error(logcat, "Error when popping blocks after processing {} blocks: {}", i, e.what());
@@ -855,7 +860,7 @@ void Blockchain::pop_blocks(uint64_t nblocks) {
 // This function tells BlockchainDB to remove the top block from the
 // blockchain and then returns all transactions (except the miner tx, of course)
 // from it to the tx_pool
-block Blockchain::pop_block_from_blockchain(bool pop_batching_rewards = true) {
+block Blockchain::pop_block_from_db() {
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};
 
@@ -877,11 +882,6 @@ block Blockchain::pop_block_from_blockchain(bool pop_batching_rewards = true) {
     } catch (...) {
         log::error(logcat, "Error popping block from blockchain, throwing!");
         throw;
-    }
-
-    if (pop_batching_rewards && !service_node_list.pop_batching_rewards_block(popped_block)) {
-        log::error(logcat, "Failed to pop to batch rewards DB");
-        throw oxen::traced<std::runtime_error>("Failed to pop batch rewards DB");
     }
 
     m_ons_db.block_detach(*this, m_db->height());
@@ -1129,7 +1129,7 @@ bool Blockchain::rollback_blockchain_switching(
 
     // remove blocks from blockchain until we get back to where we should be.
     while (m_db->height() != rollback_height) {
-        pop_block_from_blockchain();
+        pop_block_from_db();
     }
 
     exec_detach_hooks(*this, rollback_height, m_blockchain_detached_hooks, /*by_pop_blocks=*/false);
@@ -1194,7 +1194,7 @@ bool Blockchain::switch_to_alternative_blockchain(
                                                          // rend() because we don't have push_front
     while (m_db->top_block_hash() != alt_chain.front().bl.prev_id) {
         block_and_checkpoint entry = {};
-        entry.block = pop_block_from_blockchain();
+        entry.block = pop_block_from_db();
         entry.checkpointed = m_db->get_block_checkpoint(entry.block.get_height(), entry.checkpoint);
         disconnected_chain.push_front(entry);
     }
@@ -5417,7 +5417,7 @@ bool Blockchain::handle_block_to_main_chain(
     fail_handler.cancel();  // We've added the block now, so need a new failure handler that
                             // properly removes it if it fail beyond here:
     auto abort_block = oxen::defer([this]() {
-        pop_block_from_blockchain();
+        pop_block_from_db();
         detached_info hook_data{m_db->height(), false /*by_pop_blocks*/};
         exec_detach_hooks(
                 *this,

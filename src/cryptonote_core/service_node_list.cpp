@@ -2713,10 +2713,6 @@ void service_node_list::block_add(
     }
 }
 
-bool service_node_list::state_history_exists(uint64_t height) {
-    return m_transient.state_history.count(height);
-}
-
 bool service_node_list::process_batching_rewards(const cryptonote::block& block) {
     uint64_t block_height = block.get_height();
     if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
@@ -2731,18 +2727,6 @@ bool service_node_list::process_batching_rewards(const cryptonote::block& block)
         return false;
     }
     return blockchain.sqlite_db().add_block(block, m_state);
-}
-bool service_node_list::pop_batching_rewards_block(const cryptonote::block& block) {
-    uint64_t block_height = block.get_height();
-    if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
-        block.major_version >= hf::hf19_reward_batching && height() != block_height) {
-        if (auto it = m_transient.state_history.find(block_height);
-            it != m_transient.state_history.end())
-            return blockchain.sqlite_db().pop_block(block, *it);
-        blockchain.sqlite_db().reset_database();
-        return false;
-    }
-    return blockchain.sqlite_db().pop_block(block, m_state);
 }
 
 static std::mt19937_64 quorum_rng(hf hf_version, crypto::hash const& hash, quorum_type type) {
@@ -3542,48 +3526,70 @@ void service_node_list::blockchain_detached(uint64_t height) {
     } history = {};
 
     // NOTE: Lookup desired SNL state from recent backups
-    state_set::iterator find_it = {};
+    state_set::iterator recent_it = {};
     if (history == History::Nil) {
         state_set& set = m_transient.state_history;
         auto it = set.find(target_height);
         if (it != set.end() && !it->only_loaded_quorums) {
             history = History::Recent;
-            find_it = it;
+            recent_it = it;
         }
     }
 
     // NOTE: Lookup desired SNL state from archive backups
     if (history == History::Nil) {
         state_set& set = m_transient.state_archive;
-        auto it = set.find(target_height);
-        if (it != set.end() && !it->only_loaded_quorums) {
-            history = History::Archive;
-            find_it = it;
+        for (auto it : set)
+            log::info(globallogcat, "ARCHIVE {}{}", it.height, it.only_loaded_quorums ? "(only quorums)" : "");
+        for (auto it = set.rbegin(); it != set.rend(); it++) {
+            if (it->only_loaded_quorums)
+                continue;
+            if (it->height <= archive_height &&
+                (it->height % netconf.HISTORY_ARCHIVE_INTERVAL) == 0) {
+                history = History::Archive;
+                archive_height = it->height;
+                break;
+            }
         }
     }
 
+    // NOTE: Execute detach
+    std::string_view detach_label = {};
     switch (history) {
         case History::Nil: { // NOTE: Not found
             m_transient.state_history.clear();
             m_transient.state_archive.clear();
             init();
+            detach_label = " (via reset)";
         } break;
 
         case History::Archive: {
             // NOTE: Found in archive history. Wasn't in recent history hence none of the data in
             // there is relevant so we can clear it out.
             m_transient.state_history.clear();
-            m_transient.state_archive.erase(std::next(find_it), m_transient.state_archive.end());
-            m_state = std::move(*find_it);
-            m_transient.state_archive.erase(find_it);
+
+            auto archive_it = m_transient.state_archive.find(archive_height);
+            m_state = std::move(*archive_it);
+            m_transient.state_archive.erase(std::next(archive_it), m_transient.state_archive.end());
+            detach_label = " (from archive history)";
         } break;
 
         case History::Recent: { // NOTE: Found in recent history
-            m_transient.state_history.erase(std::next(find_it), m_transient.state_history.end());
-            m_state = std::move(*find_it);
-            m_transient.state_history.erase(find_it);
+            m_state = std::move(*recent_it);
+            m_transient.state_history.erase(std::next(recent_it), m_transient.state_history.end());
+            detach_label = " (from recent history)";
         } break;
     }
+
+    log::debug(
+            logcat,
+            "Detach request for SNL @ {}, looking for SNL state @ {} or archive @ {}. SNL detached "
+            "to {}{}",
+            height,
+            target_height,
+            archive_height,
+            m_state.height,
+            detach_label);
 }
 
 std::vector<crypto::public_key> service_node_list::state_t::get_expired_nodes(
