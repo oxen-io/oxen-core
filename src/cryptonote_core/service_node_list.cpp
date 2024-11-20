@@ -2672,8 +2672,11 @@ void service_node_list::block_add(
         const std::vector<cryptonote::transaction>& txs,
         cryptonote::checkpoint_t const* checkpoint,
         bool skip_verify) {
-    if (block.major_version < hf::hf9_service_nodes)
+
+    if (block.major_version < hf::hf9_service_nodes) {
+        m_state.height = block.get_height();
         return;
+    }
 
     // NOTE: SQL DB is not present in unit tests (FAKECHAIN).
     // NOTE: Verify that the heights are currently consistent between the SNL and SQL DB
@@ -3514,31 +3517,90 @@ void service_node_list::process_block(
 void service_node_list::blockchain_detached(uint64_t height) {
     std::lock_guard lock(m_sn_mutex);
 
+    // NOTE: A SNL detach aims to detach to the requested 'height'. For
+    // blockchain validity we currently must lock-step the adding of blocks on
+    // the SNL and SQL because the state of these systems at 'height' is
+    // dependent on the state of both systems at 'height-1', for example:
+    //
+    //  A SNL may insert a 'delayed payment' into the SQL DB when it processes
+    //  a SN exit. If the SQL was not rewound to undo the row, the
+    //  'delayed payment' is duplicated in the table.
+    //
+    // Thus the SNL must detach to exactly the same height as the SQL DB. To do
+    // this we must query the greatest-common backup height shared by both
+    // systems and agree to detach to that height.
+    //
+    // The outcome of this detach will be the greatest-common height between the
+    // 2 which might differ from 'height', but, it will always be equal to or
+    // less than 'height'. If there's no common height to detach to, the system
+    // detaches to height '1' on both systems which invokes a full rescan of the
+    // blockchain.
+    //
+    // These 2 systems can go out of sync, though generally only in exceptional
+    // cases, for example:
+    //
+    //  If a block was successfully added to the SNL but an exception was
+    //  thrown when trying to add to the SQL DB (maybe a logic bug, DB is
+    //  corrupted or DB is not in a writable state).
+    //
+    //  The daemon is terminated in the middle of updating the SNL or SQL DB.
+    //
+    //  The SQL DB was deleted or SNL was reset.
+    //
+    // On startup and on blockchain reorg the SNL and SQL are checked to be in
+    // sync by calling the detach hooks to the latest height known by LMDB.
+    // If a system goes out of sync during the runtime of the daemon, a restart
+    // _should_ rejig the system back into sync.
+
     const auto& netconf = get_config(blockchain.nettype());
     uint64_t target_height = height - 1;
     uint64_t archive_height = target_height - (target_height % netconf.HISTORY_ARCHIVE_INTERVAL);
+    auto history = cryptonote::BlockchainSQLite::AccruedTableType::Nil;
+
+    // NOTE: Early exit if we are already detached to the desired height
+    if (m_state.height == target_height) {
+        if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
+            blockchain.sqlite_db().height == target_height) {
+            return;
+        }
+    }
 
     // NOTE: Lookup desired SNL state from recent backups
-    auto history = cryptonote::BlockchainSQLite::DetachHistoryType::Nil;
-    state_set::iterator recent_it = {};
-    if (history == cryptonote::BlockchainSQLite::DetachHistoryType::Nil) {
+    if (history == cryptonote::BlockchainSQLite::AccruedTableType::Nil) {
         state_set& set = m_transient.state_history;
-        auto it = set.find(target_height);
-        if (it != set.end() && !it->only_loaded_quorums) {
-            history = cryptonote::BlockchainSQLite::DetachHistoryType::Recent;
-            recent_it = it;
+        for (auto it = set.rbegin(); it != set.rend(); it++) {
+            // NOTE: Find the closest starting point
+            if (it->only_loaded_quorums || it->height > target_height)
+                continue;
+
+            // NOTE: Check if the SQL DB has a backup for the requested height
+            size_t row_count = blockchain.sqlite_db().batch_payments_accrued_row_count(
+                    cryptonote::BlockchainSQLite::AccruedTableType::Recent, &it->height);
+            if (row_count) { // NOTE: Accept if SQL has
+                history = cryptonote::BlockchainSQLite::AccruedTableType::Recent;
+                target_height = it->height;
+                break;
+            }
         }
     }
 
     // NOTE: Lookup desired SNL state from archive backups
-    if (history == cryptonote::BlockchainSQLite::DetachHistoryType::Nil) {
+    if (history == cryptonote::BlockchainSQLite::AccruedTableType::Nil) {
         state_set& set = m_transient.state_archive;
         for (auto it = set.rbegin(); it != set.rend(); it++) {
             if (it->only_loaded_quorums)
                 continue;
-            if (it->height <= archive_height &&
-                (it->height % netconf.HISTORY_ARCHIVE_INTERVAL) == 0) {
-                history = cryptonote::BlockchainSQLite::DetachHistoryType::Archive;
+
+            // NOTE: Find the closest starting point
+            if (it->height > archive_height || ((it->height % netconf.HISTORY_ARCHIVE_INTERVAL) != 0))
+                continue;
+
+            // NOTE: Check if the SQL DB has a backup for the requested height
+            size_t row_count = blockchain.sqlite_db().batch_payments_accrued_row_count(
+                    cryptonote::BlockchainSQLite::AccruedTableType::Archive, &it->height);
+
+            if (row_count) { // NOTE: Accept if SQL has
+                history = cryptonote::BlockchainSQLite::AccruedTableType::Archive;
                 archive_height = it->height;
                 break;
             }
@@ -3548,27 +3610,28 @@ void service_node_list::blockchain_detached(uint64_t height) {
     // NOTE: Execute detach
     std::string_view detach_label = {};
     switch (history) {
-        case cryptonote::BlockchainSQLite::DetachHistoryType::Nil: { // NOTE: Not found
+        case cryptonote::BlockchainSQLite::AccruedTableType::Nil: { // NOTE: Not found
             m_transient.state_history.clear();
             m_transient.state_archive.clear();
             init();
             detach_label = " (via reset)";
         } break;
 
-        case cryptonote::BlockchainSQLite::DetachHistoryType::Archive: {
+        case cryptonote::BlockchainSQLite::AccruedTableType::Archive: {
             // NOTE: Found in archive history. Wasn't in recent history hence none of the data in
             // there is relevant so we can clear it out.
             m_transient.state_history.clear();
 
-            auto archive_it = m_transient.state_archive.find(archive_height);
-            m_state = std::move(*archive_it);
-            m_transient.state_archive.erase(std::next(archive_it), m_transient.state_archive.end());
+            auto it = m_transient.state_archive.find(archive_height);
+            m_state = std::move(*it);
+            m_transient.state_archive.erase(std::next(it), m_transient.state_archive.end());
             detach_label = " (from archive history)";
         } break;
 
-        case cryptonote::BlockchainSQLite::DetachHistoryType::Recent: { // NOTE: Found in recent history
-            m_state = std::move(*recent_it);
-            m_transient.state_history.erase(std::next(recent_it), m_transient.state_history.end());
+        case cryptonote::BlockchainSQLite::AccruedTableType::Recent: { // NOTE: Found in recent history
+            auto it = m_transient.state_history.find(target_height);
+            m_state = std::move(*it);
+            m_transient.state_history.erase(std::next(it), m_transient.state_history.end());
             detach_label = " (from recent history)";
         } break;
     }

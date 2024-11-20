@@ -316,9 +316,6 @@ uint64_t Blockchain::get_current_blockchain_height() const {
 //------------------------------------------------------------------
 bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool>* abort) {
     constexpr auto no_hf_height = std::numeric_limits<uint64_t>::max();
-            hard_fork_begins(m_nettype, hf::hf9_service_nodes).value_or(no_hf_height);
-    const uint64_t hf19_height =
-            hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(no_hf_height);
     const uint64_t hf15_height = hard_fork_begins(m_nettype, hf::hf15_ons).value_or(no_hf_height);
 
     // NOTE: Enumerate height of each subsystem
@@ -500,21 +497,15 @@ static void exec_detach_hooks(
         uint64_t detach_height,
         std::span<BlockchainDetachedHook> hooks,
         bool by_pop_blocks,
-        bool load_missing_blocks = true) {
+        bool load_missing_blocks = true,
+        const std::atomic<bool> *abort = nullptr) {
 
     detached_info hook_data{detach_height, by_pop_blocks};
     for (const auto& hook : hooks)
         hook(hook_data);
 
-    // NOTE: These 2 systems *must* detach to the same height as the process of adding a block to
-    // the SNL can submit data to the SQL DB and so they rely on each other to derive the correct
-    // state.
-    if (blockchain.service_node_list.height() != blockchain.sqlite_db().height) {
-        assert(blockchain.service_node_list.height() != blockchain.sqlite_db().height);
-        // TODO: Do something
-    }
-
-    blockchain.load_missing_blocks_into_oxen_subsystems();
+    if (load_missing_blocks)
+        blockchain.load_missing_blocks_into_oxen_subsystems(abort);
 }
 
 //------------------------------------------------------------------
@@ -706,18 +697,13 @@ bool Blockchain::init(
         hook();
 
     if (!m_db->is_read_only()) {
-        if (num_popped_blocks)
-            exec_detach_hooks(
-                    *this,
-                    m_db->height(),
-                    m_blockchain_detached_hooks,
-                    /*by_pop_blocks*/ false,
-                    /*load_missing_blocks_into_oxen_subsystems*/ false);
-
-        if (!load_missing_blocks_into_oxen_subsystems(abort)) {
-            log::error(logcat, "Failed to load blocks into oxen subsystems");
-            return false;
-        }
+        exec_detach_hooks(
+                *this,
+                m_db->height(),
+                m_blockchain_detached_hooks,
+                /*by_pop_blocks*/ false,
+                /*load_missing_blocks_into_oxen_subsystems*/ true,
+                abort);
     }
 
     return true;
