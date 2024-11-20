@@ -2675,6 +2675,17 @@ void service_node_list::block_add(
     if (block.major_version < hf::hf9_service_nodes)
         return;
 
+    // NOTE: SQL DB is not present in unit tests (FAKECHAIN).
+    // NOTE: Verify that the heights are currently consistent between the SNL and SQL DB
+    if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN) {
+        if (m_state.height != blockchain.sqlite_db().height) {
+            throw oxen::traced<std::runtime_error>(
+                    "SNL out of sync with SQL DB, block cannot be added to SQL (SNL height @ {}; "
+                    "SQL @ "
+                    "{})"_format(m_state.height, blockchain.sqlite_db().height));
+        }
+    }
+
     std::lock_guard lock(m_sn_mutex);
     process_block(block, txs);
     if (!skip_verify)
@@ -2711,22 +2722,10 @@ void service_node_list::block_add(
             }
         }
     }
-}
 
-bool service_node_list::process_batching_rewards(const cryptonote::block& block) {
-    uint64_t block_height = block.get_height();
-    if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
-        block.major_version >= hf::hf19_reward_batching && height() != block_height) {
-        log::error(
-                logcat,
-                "Service node list out of sync with the batching database, adding block will fail "
-                "because the service node list is at height: {} and the batching database is at "
-                "height: {}",
-                height(),
-                blockchain.sqlite_db().height + 1);
-        return false;
-    }
-    return blockchain.sqlite_db().add_block(block, m_state);
+    // NOTE: Add block to SQL in lock-step with SNL
+    if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN)
+        blockchain.sqlite_db().add_block(block, m_state);
 }
 
 static std::mt19937_64 quorum_rng(hf hf_version, crypto::hash const& hash, quorum_type type) {
@@ -3108,7 +3107,7 @@ void service_node_list::state_t::update_from_block(
         const cryptonote::block& block,
         const std::vector<cryptonote::transaction>& txs,
         const service_node_keys* my_keys) {
-    log::debug(
+    log::trace(
             logcat,
             "Updating state_t{} from block for height {}",
             sn_list ? "" : " (without sn_list yet)",
@@ -3519,34 +3518,27 @@ void service_node_list::blockchain_detached(uint64_t height) {
     uint64_t target_height = height - 1;
     uint64_t archive_height = target_height - (target_height % netconf.HISTORY_ARCHIVE_INTERVAL);
 
-    enum class History {
-        Nil,
-        Archive,
-        Recent,
-    } history = {};
-
     // NOTE: Lookup desired SNL state from recent backups
+    auto history = cryptonote::BlockchainSQLite::DetachHistoryType::Nil;
     state_set::iterator recent_it = {};
-    if (history == History::Nil) {
+    if (history == cryptonote::BlockchainSQLite::DetachHistoryType::Nil) {
         state_set& set = m_transient.state_history;
         auto it = set.find(target_height);
         if (it != set.end() && !it->only_loaded_quorums) {
-            history = History::Recent;
+            history = cryptonote::BlockchainSQLite::DetachHistoryType::Recent;
             recent_it = it;
         }
     }
 
     // NOTE: Lookup desired SNL state from archive backups
-    if (history == History::Nil) {
+    if (history == cryptonote::BlockchainSQLite::DetachHistoryType::Nil) {
         state_set& set = m_transient.state_archive;
-        for (auto it : set)
-            log::info(globallogcat, "ARCHIVE {}{}", it.height, it.only_loaded_quorums ? "(only quorums)" : "");
         for (auto it = set.rbegin(); it != set.rend(); it++) {
             if (it->only_loaded_quorums)
                 continue;
             if (it->height <= archive_height &&
                 (it->height % netconf.HISTORY_ARCHIVE_INTERVAL) == 0) {
-                history = History::Archive;
+                history = cryptonote::BlockchainSQLite::DetachHistoryType::Archive;
                 archive_height = it->height;
                 break;
             }
@@ -3556,14 +3548,14 @@ void service_node_list::blockchain_detached(uint64_t height) {
     // NOTE: Execute detach
     std::string_view detach_label = {};
     switch (history) {
-        case History::Nil: { // NOTE: Not found
+        case cryptonote::BlockchainSQLite::DetachHistoryType::Nil: { // NOTE: Not found
             m_transient.state_history.clear();
             m_transient.state_archive.clear();
             init();
             detach_label = " (via reset)";
         } break;
 
-        case History::Archive: {
+        case cryptonote::BlockchainSQLite::DetachHistoryType::Archive: {
             // NOTE: Found in archive history. Wasn't in recent history hence none of the data in
             // there is relevant so we can clear it out.
             m_transient.state_history.clear();
@@ -3574,7 +3566,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
             detach_label = " (from archive history)";
         } break;
 
-        case History::Recent: { // NOTE: Found in recent history
+        case cryptonote::BlockchainSQLite::DetachHistoryType::Recent: { // NOTE: Found in recent history
             m_state = std::move(*recent_it);
             m_transient.state_history.erase(std::next(recent_it), m_transient.state_history.end());
             detach_label = " (from recent history)";
@@ -3590,6 +3582,8 @@ void service_node_list::blockchain_detached(uint64_t height) {
             archive_height,
             m_state.height,
             detach_label);
+
+    blockchain.sqlite_db().blockchain_detached(history, m_state.height);
 }
 
 std::vector<crypto::public_key> service_node_list::state_t::get_expired_nodes(
@@ -5299,7 +5293,7 @@ bool service_node_list::load(const uint64_t current_height) {
 
     log::info(
             globallogcat,
-            "{} nodes and {} recent states [blks {}-{}], {} historical states [blks {}-{}] (w/ {} "
+            "{} nodes, {} recent states [blks {}-{}], {} historical [blks {}-{}] (w/ {} "
             "quorums) loaded ({}) @ height: {}",
             m_state.service_nodes_infos.size(),
             m_transient.state_history.size(),

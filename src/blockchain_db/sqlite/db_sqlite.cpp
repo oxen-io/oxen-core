@@ -68,7 +68,7 @@ BlockchainSQLite::BlockchainSQLite(
 
     log::info(
             globallogcat,
-            "{} recent state rows [blks {}-{}], {} historical state rows [blks {}-{}] loaded @ height: {}",
+            "{} recent state rows [blks {}-{}], {} historical [blks {}-{}] loaded @ height: {}",
             recent_count,
             recent_min_height,
             recent_max_height,
@@ -412,51 +412,25 @@ void BlockchainSQLite::update_height(uint64_t new_height) {
     prepared_exec("UPDATE batch_db_info SET height = ?", static_cast<int64_t>(height));
 }
 
-void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
+void BlockchainSQLite::blockchain_detached(DetachHistoryType history, uint64_t new_height) {
     const auto& netconf = get_config(m_nettype);
-    int64_t target_height = new_height - 1;
-    int64_t archive_height = target_height - (target_height % netconf.HISTORY_ARCHIVE_INTERVAL);
-
-    enum class History {
-        Nil,
-        Archive,
-        Recent,
-    } history = {};
-
-    // NOTE: Lookup desired state from recent backups
-    int64_t detach_height =
-            cryptonote::hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(0);
-    if (history == History::Nil) {
-        auto lookup = prepared_maybe_get<int64_t>(
-                "SELECT 1 FROM batched_payments_accrued_recent WHERE height = ? LIMIT 1",
-                target_height);
-        if (lookup) {
-            detach_height = target_height;
-            history = History::Recent;
-        }
-    }
-
-    // NOTE: Lookup desired state from archive backups
-    if (history == History::Nil) {
-        auto lookup = prepared_maybe_get<int64_t>(
-                "SELECT MAX(height) FROM batched_payments_accrued_archive WHERE height <= ? AND (height % {} = 0)"_format(
-                        netconf.HISTORY_ARCHIVE_INTERVAL),
-                archive_height);
-        if (lookup && *lookup != 0) {
-            detach_height = *lookup;
-            history = History::Archive;
-        }
-    }
 
     // NOTE: Execute detach
     std::string detach_label = "";
+    int rows_restored = 0;
+    int rows_removed = prepared_get<int>("SELECT COUNT(*) FROM batched_payments_accrued");
     switch (history) {
-        case History::Nil: {
+        case DetachHistoryType::Nil: {
             reset_database();
             detach_label = " (via reset)";
         } break;
 
         default: {
+            std::string history_table = "batched_payments_accrued_{}"_format(
+                    history == DetachHistoryType::Archive ? "archive" : "recent");
+            rows_restored = prepared_get<int>(
+                    "SELECT COUNT(*) FROM {} WHERE height = ?"_format(history_table),
+                    static_cast<int64_t>(height));
             db.exec(R"(DELETE FROM batched_payments_raw WHERE height_paid > {0};
                        DELETE FROM batched_payments_accrued;
                        DELETE FROM batched_payments_accrued_recent WHERE height > {0};
@@ -464,22 +438,22 @@ void BlockchainSQLite::blockchain_detached(uint64_t new_height) {
 
                        INSERT INTO batched_payments_accrued
                        SELECT address, amount, payout_offset
-                       FROM batched_payments_accrued_{1} WHERE height = {0};
-              )"_format(detach_height, (history == History::Archive ? "archive" : "recent")));
-            detach_label = history == History::Archive ? " (from archive history)" : " (from recent history)";
+                       FROM {1} WHERE height = {0};
+              )"_format(new_height, history_table));
+
+            detach_label = history == DetachHistoryType::Archive ? " (from archive history)" : " (from recent history)";
         } break;
     }
 
-    update_height(detach_height);
+    update_height(new_height);
     log::debug(
             logcat,
-            "Detach request for SQL @ {}, looking for SQL state @ {} or archive @ {}. SQL detached "
-            "to {}{}",
+            "Detach request for SQL @ {} executed to {}{} (-{} rows deleted, +{} restored)",
             new_height,
-            target_height,
-            archive_height,
             height,
-            detach_label);
+            detach_label,
+            rows_removed,
+            rows_restored);
 }
 
 // Must be called with the address_str_cache_mutex held!

@@ -504,7 +504,6 @@ class service_node_list {
             const std::vector<cryptonote::transaction>& txs,
             const cryptonote::checkpoint_t* checkpoint,
             bool skip_verify = false);
-    bool process_batching_rewards(const cryptonote::block& block);
     void blockchain_detached(uint64_t height);
     void init();
     void validate_miner_tx(const cryptonote::miner_tx_info& info) const;

@@ -55,7 +55,17 @@ class BlockchainSQLite : public db::Database {
     // synchronised to in.
     void update_height(uint64_t new_height);
 
-    void blockchain_detached(uint64_t new_height);
+    // Indicates which historical data is being used to handle a detach to rewind the state of the
+    // SQL or SNL DB.
+    enum class DetachHistoryType {
+        Nil,
+        Archive,  // Use SQL/SNL state stored periodically at HISTORY_ARCHIVE_INTERVAL intervals
+        Recent,   // Use SQL/SNL state stored from within the last HISTORY_RECENT_KEEP_WINDOW
+    };
+
+    // Rewinds the SQL DB to the specified height. This function is called internally by the SNL on
+    // detach.
+    void blockchain_detached(DetachHistoryType type, uint64_t height);
 
     // add_sn_rewards/subtract_sn_rewards -> passing a map of addresses and amounts. These will be
     // added or subtracted to the database for each address specified. If the address does not exist

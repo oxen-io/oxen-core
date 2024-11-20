@@ -649,9 +649,6 @@ bool core::init(
     blockchain.hook_alt_block_add(
             [this](const auto& info) { service_node_list.alt_block_add(info); });
 
-    blockchain.hook_blockchain_detached(
-            [this](const auto& info) { blockchain.sqlite_db().blockchain_detached(info.height); });
-
     // NOTE: There is an implicit dependency on service node lists being hooked first!
     blockchain.hook_block_add(
             [this](const auto& info) { m_quorum_cop.block_add(info.block, info.txs); });

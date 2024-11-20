@@ -316,44 +316,32 @@ uint64_t Blockchain::get_current_blockchain_height() const {
 //------------------------------------------------------------------
 bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool>* abort) {
     constexpr auto no_hf_height = std::numeric_limits<uint64_t>::max();
-    const uint64_t hf9_height =
             hard_fork_begins(m_nettype, hf::hf9_service_nodes).value_or(no_hf_height);
     const uint64_t hf19_height =
             hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(no_hf_height);
     const uint64_t hf15_height = hard_fork_begins(m_nettype, hf::hf15_ons).value_or(no_hf_height);
-    if (!m_sqlite_db && m_nettype != network_type::FAKECHAIN)
-        throw oxen::traced<std::logic_error>("Blockchain missing SQLite Database");
 
     // NOTE: Enumerate height of each subsystem
     const uint64_t ons_height = std::max(hf15_height, m_ons_db.height() + 1);
-    const uint64_t sqlite_height =
-            m_sqlite_db ? std::max(hf19_height - 1, m_sqlite_db->height + 1) : no_hf_height;
-    uint64_t snl_height = std::max(hf9_height, service_node_list.height() + 1);
-
-    // If the batching database falls behind it NEEDS the service node list information at that
-    // point in time
-    if (sqlite_height < snl_height) {
-        log::debug(globallogcat, "SQL height {} is behind SNL {}", sqlite_height, snl_height);
-        service_node_list.blockchain_detached(sqlite_height);
-        snl_height = std::min(sqlite_height, service_node_list.height()) + 1;
-    }
+    uint64_t snl_height = service_node_list.height() + 1;
 
     // NOTE: Calculate height to start loading blocks from
     const uint64_t end_height = m_db->height();
-    const uint64_t start_height =
-            std::min(std::min(std::min(ons_height, sqlite_height), snl_height), end_height);
+    const uint64_t start_height = std::min(std::min(ons_height, snl_height), end_height);
     const uint64_t total_blocks = end_height - start_height;
 
-    if (total_blocks > 1)
+    if (total_blocks > 0) {
+        std::string sql_height = "{}"_format(m_sqlite_db ? std::to_string(m_sqlite_db->height + 1) : "N/A");
         log::info(
                 globallogcat,
                 "Loading blocks into oxen subsystems, scanning blockchain from height: {} to: {} "
-                "(snl: {}, ons: {}, sql: {})",
+                "(snl: {}, sql: {}, ons: {})",
                 start_height,
                 end_height,
                 snl_height,
-                ons_height,
-                sqlite_height);
+                sql_height,
+                ons_height);
+    }
 
     uint64_t constexpr CHUNK_SIZE = 100;
 
@@ -362,8 +350,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
     using dseconds = std::chrono::duration<double>;
     auto work_start = clock::now();
     auto scan_start = work_start;
-    dseconds ons_duration{}, snl_duration{}, sql_duration{}, ons_iteration_duration{},
-            snl_iteration_duration{}, sql_iteration_duration{};
+    dseconds ons_duration{}, snl_duration{}, ons_iteration_duration{}, snl_iteration_duration{};
 
     // NOTE: Stats
     uint64_t blocks_per_iteration = 0;
@@ -387,13 +374,12 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
 
             log::info(
                     globallogcat,
-                    "... scanning height {} ({:.3f}s) (snl: {:.3f}s; ons: {:.3f}s; sql: {:.3f}s; "
-                    "{:.1f} blks/s; {} MiB/s)",
+                    "... scanning height {} ({:.3f}s) (snl: {:.3f}s; ons: {:.3f}s; {:.1f} blks/s; "
+                    "{} MiB/s)",
                     height,
                     duration.count(),
                     snl_iteration_duration.count(),
                     ons_iteration_duration.count(),
-                    sql_iteration_duration.count(),
                     blocks_per_s,
                     gb_per_s);
 #ifdef ENABLE_SYSTEMD
@@ -408,10 +394,8 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
             work_start = now;
             ons_duration += ons_iteration_duration;
             snl_duration += snl_iteration_duration;
-            sql_duration += sql_iteration_duration;
             ons_iteration_duration = 0s;
             snl_iteration_duration = 0s;
-            sql_iteration_duration = 0s;
 
             if (every_10s)  // NOTE: Reset block load counter
                 blocks_per_iteration = 0;
@@ -478,18 +462,6 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
                 }
                 ons_iteration_duration += clock::now() - ons_start;
             }
-
-            if (m_sqlite_db && (block_height >= sqlite_height)) {
-                auto sqlite_start = clock::now();
-                if (!service_node_list.process_batching_rewards(blk)) {
-                    log::error(
-                            logcat,
-                            "Unable to process block for updating SQL DB: {}",
-                            cryptonote::get_block_hash(blk));
-                    return false;
-                }
-                sql_iteration_duration += clock::now() - sqlite_start;
-            }
         }
     }
     auto end = clock::now();
@@ -510,12 +482,11 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
 
         log::info(
                 globallogcat,
-                "Loading subsystems done in {:.2f}s ({:.2f}s snl; {:.2f}s ons; {:.2f}s sql; {:.1f} "
+                "Loading subsystems done in {:.2f}s ({:.2f}s snl; {:.2f}s ons; {:.1f} "
                 "blks/s; {} MiB/s)",
                 dseconds{duration}.count(),
                 snl_duration.count(),
                 ons_duration.count(),
-                sql_duration.count(),
                 blocks_per_s,
                 gb_per_s);
         service_node_list.store();
@@ -530,6 +501,7 @@ static void exec_detach_hooks(
         std::span<BlockchainDetachedHook> hooks,
         bool by_pop_blocks,
         bool load_missing_blocks = true) {
+
     detached_info hook_data{detach_height, by_pop_blocks};
     for (const auto& hook : hooks)
         hook(hook_data);
@@ -5445,7 +5417,7 @@ bool Blockchain::handle_block_to_main_chain(
         log::info(
                 logcat,
                 fg(fmt::terminal_color::red),
-                "Failed to add block to Service Node List: {}",
+                "Failed to add block to SNL: {}",
                 e.what());
         bvc.m_verifivation_failed = true;
         return false;
@@ -5455,18 +5427,6 @@ bool Blockchain::handle_block_to_main_chain(
         log::info(logcat, fg(fmt::terminal_color::red), "Failed to add block to ONS DB.");
         bvc.m_verifivation_failed = true;
         return false;
-    }
-    if (m_sqlite_db) {
-        // This takes the block that is already validated and records the rewards that should be
-        // paid to the service nodes into the batching database
-        if (!service_node_list.process_batching_rewards(bl)) {
-            log::error(logcat, "Failed to add block to batch rewards DB.");
-            bvc.m_verifivation_failed = true;
-            return false;
-        }
-    } else {
-        if (m_nettype != network_type::FAKECHAIN)
-            throw oxen::traced<std::logic_error>("Blockchain missing SQLite Database");
     }
 
     assert(service_node_list.height() == m_ons_db.height());

@@ -59,7 +59,7 @@ size_t calc_excess(const swarm_snode_map_t& swarm_to_snodes) {
                 const ssize_t margin = pair.second.size() - EXCESS_BASE;
                 return result + std::max(margin, ssize_t(0));
             });
-    log::debug(logcat, "Calculated excess: {}", excess);
+    log::trace(logcat, "Calculated excess: {}", excess);
     return excess;
 };
 
@@ -69,7 +69,7 @@ size_t calc_excess(const swarm_snode_map_t& swarm_to_snodes) {
 /// 2. there is enough excess to leave IDEAL_SWARM_MARGIN excess in the existing swarms
 size_t calc_threshold(const swarm_snode_map_t& swarm_to_snodes) {
     const size_t threshold = NEW_SWARM_SIZE + (swarm_to_snodes.size() * IDEAL_SWARM_MARGIN);
-    log::debug(logcat, "Calculated threshold: {}", threshold);
+    log::trace(logcat, "Calculated threshold: {}", threshold);
     return threshold;
 };
 
@@ -126,7 +126,6 @@ void create_new_swarm_from_excess(swarm_snode_map_t& swarm_to_snodes, std::mt199
     std::vector<excess_pool_snode> pool_snodes;
 
     while (calc_excess(swarm_to_snodes) >= calc_threshold(swarm_to_snodes)) {
-        log::debug(logcat, "New swarm creation");
         std::vector<crypto::public_key> new_swarm_snodes;
         new_swarm_snodes.reserve(NEW_SWARM_SIZE);
         while (new_swarm_snodes.size() < NEW_SWARM_SIZE) {
@@ -150,6 +149,7 @@ void create_new_swarm_from_excess(swarm_snode_map_t& swarm_to_snodes, std::mt199
             // If we actually abort() here then hitting this would potentially kill the whole
             // network if we hit this bug, so just warn very loudly and move on; if it happens we'll
             // have to track down the bug and fix it separately.
+            log::debug(logcat, "Create new swarm: {}", new_swarm_id);
         } else {
             log::debug(logcat, "Created new swarm from excess: {}", new_swarm_id);
         }
@@ -231,9 +231,9 @@ void calc_swarm_changes(swarm_snode_map_t& swarm_to_snodes, uint64_t seed) {
     /// 1. Assign new registered snodes
     assign_snodes(
             unassigned_snodes, swarm_to_snodes, mersenne_twister, FILL_SWARM_LOWER_PERCENTILE);
-    log::debug(logcat, "After assignment:");
+    log::trace(logcat, "After assignment:");
     for (const auto& entry : swarm_to_snodes) {
-        log::debug(logcat, "{}: {}", entry.first, entry.second.size());
+        log::trace(logcat, "{}: {}", entry.first, entry.second.size());
     }
 
     /// 2. *Robin Hood Round* steal snodes from wealthy swarms and give them to the poor
@@ -265,7 +265,7 @@ void calc_swarm_changes(swarm_snode_map_t& swarm_to_snodes, uint64_t seed) {
                 remove_excess_snode_from_swarm(excess_snode, swarm_to_snodes);
                 /// Add public key to poor swarm
                 poor_swarm_snodes.push_back(excess_snode.public_key);
-                log::debug(
+                log::trace(
                         logcat,
                         "Stolen 1 snode from {} and donated to {}",
                         excess_snode.public_key,
@@ -310,9 +310,9 @@ void calc_swarm_changes(swarm_snode_map_t& swarm_to_snodes, uint64_t seed) {
     }
 
     /// print
-    log::debug(logcat, "Swarm outputs:");
+    log::trace(logcat, "Swarm outputs:");
     for (const auto& entry : swarm_to_snodes) {
-        log::debug(logcat, "{}: {}", entry.first, entry.second.size());
+        log::trace(logcat, "{}: {}", entry.first, entry.second.size());
     }
 }
 }  // namespace service_nodes
