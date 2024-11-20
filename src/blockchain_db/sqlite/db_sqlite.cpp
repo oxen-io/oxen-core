@@ -58,14 +58,21 @@ BlockchainSQLite::BlockchainSQLite(
 
     height = prepared_get<int64_t>("SELECT height FROM batch_db_info");
 
-    uint64_t row_count = batch_payments_accrued_row_count(AccruedTableType::Nil, /*height*/ nullptr);
-    uint64_t recent_count = batch_payments_accrued_row_count(AccruedTableType::Recent, /*height*/ nullptr);
-    uint64_t recent_min_height = prepared_get<int>("SELECT MIN(height) FROM batched_payments_accrued_recent");
-    uint64_t recent_max_height = prepared_get<int>("SELECT MAX(height) FROM batched_payments_accrued_recent");
+    uint64_t row_count =
+            batch_payments_accrued_row_count(AccruedTableType::Nil, /*height*/ nullptr);
+    uint64_t recent_count =
+            batch_payments_accrued_row_count(AccruedTableType::Recent, /*height*/ nullptr);
+    uint64_t recent_min_height =
+            prepared_get<int>("SELECT MIN(height) FROM batched_payments_accrued_recent");
+    uint64_t recent_max_height =
+            prepared_get<int>("SELECT MAX(height) FROM batched_payments_accrued_recent");
 
-    uint64_t archive_count = batch_payments_accrued_row_count(AccruedTableType::Archive, /*height*/ nullptr);
-    uint64_t archive_min_height = prepared_get<int>("SELECT MIN(height) FROM batched_payments_accrued_archive");
-    uint64_t archive_max_height = prepared_get<int>("SELECT MAX(height) FROM batched_payments_accrued_archive");
+    uint64_t archive_count =
+            batch_payments_accrued_row_count(AccruedTableType::Archive, /*height*/ nullptr);
+    uint64_t archive_min_height =
+            prepared_get<int>("SELECT MIN(height) FROM batched_payments_accrued_archive");
+    uint64_t archive_max_height =
+            prepared_get<int>("SELECT MAX(height) FROM batched_payments_accrued_archive");
 
     log::info(
             globallogcat,
@@ -181,7 +188,8 @@ void BlockchainSQLite::upgrade_schema() {
         }
 
         if (has_deprecated_archive_height_column)
-            db.exec("ALTER TABLE batched_payments_accrued_archive RENAME COLUMN archive_height to height;\n");
+            db.exec("ALTER TABLE batched_payments_accrued_archive RENAME COLUMN archive_height to "
+                    "height;\n");
     }
 
     if (!have_offset) {
@@ -324,7 +332,8 @@ void BlockchainSQLite::upgrade_schema() {
     // - delayed_payments_prune into `delayed_payments`
     {
         auto& netconf = get_config(m_nettype);
-        db.exec(R"(
+        db.exec(
+                R"(
         -- Keep a copy of all the rows for earnt rewards for this height if it's on an archival
         -- interval. It allows the DB to gracefully handle block re-orgs without having to
         -- recalculate from scratch.
@@ -442,13 +451,14 @@ void BlockchainSQLite::blockchain_detached(AccruedTableType history, uint64_t ne
                        FROM {1} WHERE height = {0};
               )"_format(new_height, history_table));
 
-            detach_label = history == AccruedTableType::Archive ? " (from archive history)" : " (from recent history)";
+            detach_label = history == AccruedTableType::Archive ? " (from archive history)"
+                                                                : " (from recent history)";
         } break;
     }
 
     // NOTE: When we detach we are rewinding to an old state. The accrued table
     // is strictly-accumulative as it tracks the lifetime rewards of _every_
-    // user that 
+    // user that
     assert(rows_restored <= rows_removed);
 
     update_height(new_height);
@@ -538,7 +548,8 @@ bool BlockchainSQLite::subtract_sn_rewards(const block_payments& payments) {
     return true;
 }
 
-size_t BlockchainSQLite::batch_payments_accrued_row_count(AccruedTableType type, const uint64_t *height) {
+size_t BlockchainSQLite::batch_payments_accrued_row_count(
+        AccruedTableType type, const uint64_t* height) {
     size_t result = 0;
     switch (type) {
         case AccruedTableType::Nil:

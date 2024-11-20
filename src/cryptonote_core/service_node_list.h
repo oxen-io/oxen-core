@@ -1382,8 +1382,8 @@ class service_node_list {
     struct {
         std::deque<quorums_by_height> old_quorum_states;  // Store all old quorum history only if
                                                           // run with --store-full-quorum-history
-        state_set state_history; // Stores SNL state from the latest HISTORY_RECENT_KEEP_WINDOW
-        state_set state_archive; // Stores SNL state at every HISTORY_ARCHIVE_INTERVAL
+        state_set state_history;  // Stores SNL state from the latest HISTORY_RECENT_KEEP_WINDOW
+        state_set state_archive;  // Stores SNL state at every HISTORY_ARCHIVE_INTERVAL
         std::unordered_map<crypto::hash, state_t> alt_state;
         bool state_added_to_archive;
         data_for_serialization cache_long_term_data;

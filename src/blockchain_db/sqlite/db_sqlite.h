@@ -57,7 +57,8 @@ class BlockchainSQLite : public db::Database {
 
     enum class AccruedTableType {
         Nil,      // Table containing currnet state storexsd
-        Archive,  // Table containing state stored periodically at HISTORY_ARCHIVE_INTERVAL intervals
+        Archive,  // Table containing state stored periodically at HISTORY_ARCHIVE_INTERVAL
+                  // intervals
         Recent,   // Table containing state stored from within the last HISTORY_RECENT_KEEP_WINDOW
     };
 
@@ -74,7 +75,7 @@ class BlockchainSQLite : public db::Database {
     // Return the number of rows for the desired batched payments accrued table. The row count will
     // be for the 'height' specified. 'Height' is ignored if type is nil as the default accrued
     // table only stores state for the current DB's height already.
-    size_t batch_payments_accrued_row_count(AccruedTableType type, const uint64_t *height);
+    size_t batch_payments_accrued_row_count(AccruedTableType type, const uint64_t* height);
 
   private:
     bool reward_handler(
@@ -156,13 +157,12 @@ class BlockchainSQLite : public db::Database {
     struct exit_stake {
         eth::address addr;
         cryptonote::reward_money amount;
-        uint32_t block_height; // Block that the exit event was mined in
-        uint32_t tx_index; // Index of transaction in the block that the exit event was mined in
-        uint32_t contributor_index; // Index of the contributor in the event the exit stake is for
+        uint32_t block_height;  // Block that the exit event was mined in
+        uint32_t tx_index;  // Index of transaction in the block that the exit event was mined in
+        uint32_t contributor_index;  // Index of the contributor in the event the exit stake is for
     };
 
-    bool return_staked_amount_to_user(
-            std::span<const exit_stake> payments, uint64_t delay_blocks);
+    bool return_staked_amount_to_user(std::span<const exit_stake> payments, uint64_t delay_blocks);
 
     // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares
     // the miner_tx_vouts with a list previously extracted payments to make sure that the correct

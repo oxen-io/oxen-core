@@ -3576,7 +3576,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
             // NOTE: Check if the SQL DB has a backup for the requested height
             size_t row_count = blockchain.sqlite_db().batch_payments_accrued_row_count(
                     cryptonote::BlockchainSQLite::AccruedTableType::Recent, &it->height);
-            if (row_count) { // NOTE: Accept if SQL has
+            if (row_count) {  // NOTE: Accept if SQL has
                 history = cryptonote::BlockchainSQLite::AccruedTableType::Recent;
                 target_height = it->height;
                 break;
@@ -3592,14 +3592,15 @@ void service_node_list::blockchain_detached(uint64_t height) {
                 continue;
 
             // NOTE: Find the closest starting point
-            if (it->height > archive_height || ((it->height % netconf.HISTORY_ARCHIVE_INTERVAL) != 0))
+            if (it->height > archive_height ||
+                ((it->height % netconf.HISTORY_ARCHIVE_INTERVAL) != 0))
                 continue;
 
             // NOTE: Check if the SQL DB has a backup for the requested height
             size_t row_count = blockchain.sqlite_db().batch_payments_accrued_row_count(
                     cryptonote::BlockchainSQLite::AccruedTableType::Archive, &it->height);
 
-            if (row_count) { // NOTE: Accept if SQL has
+            if (row_count) {  // NOTE: Accept if SQL has
                 history = cryptonote::BlockchainSQLite::AccruedTableType::Archive;
                 archive_height = it->height;
                 break;
@@ -3610,7 +3611,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
     // NOTE: Execute detach
     std::string_view detach_label = {};
     switch (history) {
-        case cryptonote::BlockchainSQLite::AccruedTableType::Nil: { // NOTE: Not found
+        case cryptonote::BlockchainSQLite::AccruedTableType::Nil: {  // NOTE: Not found
             m_transient.state_history.clear();
             m_transient.state_archive.clear();
             init();
@@ -3628,7 +3629,8 @@ void service_node_list::blockchain_detached(uint64_t height) {
             detach_label = " (from archive history)";
         } break;
 
-        case cryptonote::BlockchainSQLite::AccruedTableType::Recent: { // NOTE: Found in recent history
+        case cryptonote::BlockchainSQLite::AccruedTableType::Recent: {  // NOTE: Found in recent
+                                                                        // history
             auto it = m_transient.state_history.find(target_height);
             m_state = std::move(*it);
             m_transient.state_history.erase(std::next(it), m_transient.state_history.end());

@@ -328,7 +328,8 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
     const uint64_t total_blocks = end_height - start_height;
 
     if (total_blocks > 0) {
-        std::string sql_height = "{}"_format(m_sqlite_db ? std::to_string(m_sqlite_db->height + 1) : "N/A");
+        std::string sql_height =
+                "{}"_format(m_sqlite_db ? std::to_string(m_sqlite_db->height + 1) : "N/A");
         log::info(
                 globallogcat,
                 "Loading blocks into oxen subsystems, scanning blockchain from height: {} to: {} "
@@ -498,7 +499,7 @@ static void exec_detach_hooks(
         std::span<BlockchainDetachedHook> hooks,
         bool by_pop_blocks,
         bool load_missing_blocks = true,
-        const std::atomic<bool> *abort = nullptr) {
+        const std::atomic<bool>* abort = nullptr) {
 
     detached_info hook_data{detach_height, by_pop_blocks};
     for (const auto& hook : hooks)
@@ -5400,11 +5401,7 @@ bool Blockchain::handle_block_to_main_chain(
     try {
         service_node_list.block_add(bl, only_txs, checkpoint);
     } catch (const std::exception& e) {
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::red),
-                "Failed to add block to SNL: {}",
-                e.what());
+        log::info(logcat, fg(fmt::terminal_color::red), "Failed to add block to SNL: {}", e.what());
         bvc.m_verifivation_failed = true;
         return false;
     }
