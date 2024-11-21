@@ -257,7 +257,10 @@ void BlockchainSQLite::upgrade_schema() {
           UNIQUE            (block_height, block_tx_index, contributor_index)
           CHECK(amount >= 0),
           CHECK(payout_height > 0),
+          CHECK(entry_height >= 0)
           CHECK(block_height >= 0)
+          CHECK(block_tx_index >= 0)
+          CHECK(contributor_index >= 0)
         );
 
         CREATE INDEX delayed_payments_payout_height_idx ON delayed_payments(payout_height);
@@ -268,13 +271,14 @@ void BlockchainSQLite::upgrade_schema() {
         db.exec(R"(
         CREATE TRIGGER delayed_payments_after_blocks_removed AFTER UPDATE ON batch_db_info
         FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
-            DELETE FROM delayed_payments WHERE block_height >= NEW.height;
+            DELETE FROM delayed_payments WHERE entry_height >= NEW.height;
         END;
         )");
     }
 
     // NOTE: The archive table stores copies of 'batch_payments_accrued' rows at
-    // intervals of STORE_LONG_TERM_STATE_INTERVAL blocks in a rolling window.
+    // intervals of 'HISTORY_ARCHIVE_INTERVAL' blocks in a rolling window of
+    // 'HISTORY_ARCHIVE_KEEP_WINDOW'
     if (!table_exists("batched_payments_accrued_archive")) {
         log::debug(logcat, "Adding archiving to batching db");
         auto& netconf = get_config(m_nettype);
@@ -295,8 +299,7 @@ void BlockchainSQLite::upgrade_schema() {
     }
 
     // NOTE: The recent table stores copies of 'batch_payments_accrued' rows at
-    // each height in a rolling window consisting of the past
-    // 'STORE_RECENT_REWARDS' heights.
+    // each height in a rolling window consisting of the past 'HISTORY_RECENT_KEEP_WINDOW' heights.
     if (!table_exists("batched_payments_accrued_recent")) {
         // This table is effectively identical to the above, but because we insert and delete on it
         // for *every* height, partitioning the recent rows in a separate table makes deletions of
@@ -439,7 +442,7 @@ void BlockchainSQLite::blockchain_detached(AccruedTableType history, uint64_t ne
         default: {
             std::string history_table = "batched_payments_accrued_{}"_format(
                     history == AccruedTableType::Archive ? "archive" : "recent");
-            rows_restored = batch_payments_accrued_row_count(history, &height);
+            rows_restored = batch_payments_accrued_row_count(history, &new_height);
 
             db.exec(R"(DELETE FROM batched_payments_raw WHERE height_paid > {0};
                        DELETE FROM batched_payments_accrued;
@@ -457,8 +460,10 @@ void BlockchainSQLite::blockchain_detached(AccruedTableType history, uint64_t ne
     }
 
     // NOTE: When we detach we are rewinding to an old state. The accrued table
-    // is strictly-accumulative as it tracks the lifetime rewards of _every_
-    // user that
+    // is additive and tracks the lifetime rewards of _every_ user that has
+    // staked into a node and their rewards earnt. The number of rows is
+    // always strictly increasing, hence going back in time we must always be
+    // restoring lesser or equal amount of rows.
     assert(rows_restored <= rows_removed);
 
     update_height(new_height);

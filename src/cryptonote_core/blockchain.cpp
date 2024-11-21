@@ -320,7 +320,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
 
     // NOTE: Enumerate height of each subsystem
     const uint64_t ons_height = std::max(hf15_height, m_ons_db.height() + 1);
-    uint64_t snl_height = service_node_list.height() + 1;
+    const uint64_t snl_height = service_node_list.height() + 1;
 
     // NOTE: Calculate height to start loading blocks from
     const uint64_t end_height = m_db->height();
@@ -364,10 +364,9 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
         if ((height + CHUNK_SIZE) >= end_height || every_10s) {
             service_node_list.store();
 
-            float blocks_per_s =
-                    blocks_per_iteration /
-                    static_cast<float>(
-                            std::chrono::duration_cast<std::chrono::seconds>(duration).count());
+            auto duration_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+            float blocks_per_s = blocks_per_iteration / static_cast<float>(duration_ms) / 1000.f;
             float gb_per_s = sizeof(cryptonote::block) * blocks_per_s / 1024.f / 1024.f;
 
             log::info(
@@ -464,18 +463,16 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
     }
     auto end = clock::now();
 
-    // NOTE: Check that all subsystems ended up synchronised to the same height
-    assert(service_node_list.height() == m_ons_db.height());
-    if (m_sqlite_db)
-        assert(m_ons_db.height() == m_sqlite_db->height);
-    assert(service_node_list.height() == end_height - 1);
-
     if (total_blocks > 0) {
+        // NOTE: Check that all subsystems ended up synchronised to the same height
+        assert(service_node_list.height() == m_ons_db.height());
+        if (m_sqlite_db)
+            assert(m_ons_db.height() == m_sqlite_db->height);
+        assert(service_node_list.height() == end_height - 1);
+
         auto duration = end - scan_start;
-        float blocks_per_s =
-                (end_height - start_height) /
-                static_cast<float>(
-                        std::chrono::duration_cast<std::chrono::seconds>(duration).count());
+        auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+        float blocks_per_s = blocks_per_iteration / static_cast<float>(duration_ms) / 1000.f;
         float gb_per_s = sizeof(cryptonote::block) * blocks_per_s / 1024.f / 1024.f;
 
         log::info(
@@ -493,7 +490,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
     return true;
 }
 
-static void exec_detach_hooks(
+static bool exec_detach_hooks(
         Blockchain& blockchain,
         uint64_t detach_height,
         std::span<BlockchainDetachedHook> hooks,
@@ -505,8 +502,10 @@ static void exec_detach_hooks(
     for (const auto& hook : hooks)
         hook(hook_data);
 
+    bool result = true;
     if (load_missing_blocks)
-        blockchain.load_missing_blocks_into_oxen_subsystems(abort);
+        result = blockchain.load_missing_blocks_into_oxen_subsystems(abort);
+    return result;
 }
 
 //------------------------------------------------------------------
@@ -697,14 +696,14 @@ bool Blockchain::init(
     for (const auto& hook : m_init_hooks)
         hook();
 
-    if (!m_db->is_read_only()) {
-        exec_detach_hooks(
-                *this,
-                m_db->height(),
-                m_blockchain_detached_hooks,
-                /*by_pop_blocks*/ false,
-                /*load_missing_blocks_into_oxen_subsystems*/ true,
-                abort);
+    if (!m_db->is_read_only() && !exec_detach_hooks(
+                                         *this,
+                                         m_db->height(),
+                                         m_blockchain_detached_hooks,
+                                         /*by_pop_blocks*/ false,
+                                         /*load_missing_blocks_into_oxen_subsystems*/ true,
+                                         abort)) {
+        return false;
     }
 
     return true;

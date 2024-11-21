@@ -2680,13 +2680,11 @@ void service_node_list::block_add(
 
     // NOTE: SQL DB is not present in unit tests (FAKECHAIN).
     // NOTE: Verify that the heights are currently consistent between the SNL and SQL DB
-    if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN) {
-        if (m_state.height != blockchain.sqlite_db().height) {
-            throw oxen::traced<std::runtime_error>(
-                    "SNL out of sync with SQL DB, block cannot be added to SQL (SNL height @ {}; "
-                    "SQL @ "
-                    "{})"_format(m_state.height, blockchain.sqlite_db().height));
-        }
+    if (m_state.height != blockchain.sqlite_db().height) {
+        throw oxen::traced<std::runtime_error>(
+                "SNL out of sync with SQL DB, block cannot be added to SQL (SNL height @ {}; "
+                "SQL @ "
+                "{})"_format(m_state.height, blockchain.sqlite_db().height));
     }
 
     std::lock_guard lock(m_sn_mutex);
@@ -2727,8 +2725,7 @@ void service_node_list::block_add(
     }
 
     // NOTE: Add block to SQL in lock-step with SNL
-    if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN)
-        blockchain.sqlite_db().add_block(block, m_state);
+    blockchain.sqlite_db().add_block(block, m_state);
 }
 
 static std::mt19937_64 quorum_rng(hf hf_version, crypto::hash const& hash, quorum_type type) {
@@ -3266,9 +3263,10 @@ void service_node_list::state_t::update_from_block(
                         if (!found)
                             throw;
                     } catch (const std::exception& e) {
-                        "TX {} was confirmed on chain from block {} but the block does exist in "
-                        "the DB, block {} cannot be added due to missing data"_format(
-                                txhash, unconf.height_added, height);
+                        throw oxen::traced<std::runtime_error>(
+                                "TX {} was confirmed on chain from block {} but the block TX does "
+                                "not exist in the DB, block {} cannot be added due to missing data"_format(
+                                        txhash, unconf.height_added, height));
                     }
 
                     need_swarm_update += std::visit(
@@ -3559,10 +3557,8 @@ void service_node_list::blockchain_detached(uint64_t height) {
 
     // NOTE: Early exit if we are already detached to the desired height
     if (m_state.height == target_height) {
-        if (blockchain.nettype() != cryptonote::network_type::FAKECHAIN &&
-            blockchain.sqlite_db().height == target_height) {
+        if (blockchain.sqlite_db().height == target_height)
             return;
-        }
     }
 
     // NOTE: Lookup desired SNL state from recent backups

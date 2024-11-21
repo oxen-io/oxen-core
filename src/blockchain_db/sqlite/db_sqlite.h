@@ -56,7 +56,7 @@ class BlockchainSQLite : public db::Database {
     void update_height(uint64_t new_height);
 
     enum class AccruedTableType {
-        Nil,      // Table containing currnet state storexsd
+        Nil,      // Table containing current state
         Archive,  // Table containing state stored periodically at HISTORY_ARCHIVE_INTERVAL
                   // intervals
         Recent,   // Table containing state stored from within the last HISTORY_RECENT_KEEP_WINDOW
@@ -73,8 +73,9 @@ class BlockchainSQLite : public db::Database {
     bool subtract_sn_rewards(const block_payments& payments);
 
     // Return the number of rows for the desired batched payments accrued table. The row count will
-    // be for the 'height' specified. 'Height' is ignored if type is nil as the default accrued
-    // table only stores state for the current DB's height already.
+    // be for the 'height' specified. 'height' is ignored if type is nil as the default accrued
+    // table only stores state for the current DB's height already. If 'height' is null then the row
+    // count of the entire table will be returned.
     size_t batch_payments_accrued_row_count(AccruedTableType type, const uint64_t* height);
 
   private:
