@@ -346,8 +346,6 @@ struct name_system_db {
     cryptonote::network_type network_type() const { return nettype; }
     uint64_t height() const { return last_processed_height; }
 
-    // Signifies the blockchain has reorganized commences the rollback and pruning procedures.
-    void block_detach(cryptonote::Blockchain const& blockchain, uint64_t new_blockchain_height);
     bool save_owner(generic_owner const& owner, int64_t* row_id);
     bool save_mapping(
             crypto::hash const& tx_hash,

@@ -689,6 +689,7 @@ bool Blockchain::init(
         log::error(logcat, "ONS failed to initialise");
         return false;
     }
+    hook_blockchain_detached([this](const auto& info) { m_ons_db.prune_db(info.height); });
 
     hook_block_add([this](const auto& info) { m_checkpoints.block_add(info); });
     hook_blockchain_detached(
@@ -841,8 +842,6 @@ block Blockchain::pop_block_from_db() {
         log::error(logcat, "Error popping block from blockchain, throwing!");
         throw;
     }
-
-    m_ons_db.block_detach(*this, m_db->height());
 
     // return transactions from popped block to the tx_pool
     size_t pruned = 0;

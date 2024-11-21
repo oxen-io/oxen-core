@@ -2592,10 +2592,6 @@ struct replay_ons_tx {
     cryptonote::tx_extra_oxen_name_system entry;
 };
 
-void name_system_db::block_detach(cryptonote::Blockchain const&, uint64_t new_blockchain_height) {
-    prune_db(new_blockchain_height);
-}
-
 bool name_system_db::save_owner(ons::generic_owner const& owner, int64_t* row_id) {
     bool result = bind_and_run(
             ons_sql_type::save_owner,
@@ -2644,13 +2640,22 @@ bool name_system_db::save_settings(uint64_t top_height, crypto::hash const& top_
 }
 
 bool name_system_db::prune_db(uint64_t height) {
-    if (!bind_and_run(ons_sql_type::pruning, prune_mappings_sql, nullptr, height))
-        return false;
-    if (!sql_run_statement(ons_sql_type::pruning, prune_owners_sql, nullptr))
-        return false;
+    bool result = false;
+    if (bind_and_run(ons_sql_type::pruning, prune_mappings_sql, nullptr, height))
+        if (sql_run_statement(ons_sql_type::pruning, prune_owners_sql, nullptr))
+            result = true;
 
-    this->last_processed_height = (height - 1);
-    return true;
+    log::debug(
+            logcat,
+            "Detach request for ONS @ {} (is {}), {} to {}",
+            height,
+            this->last_processed_height,
+            result ? "detached to" : "failed to detach",
+            height - 1);
+
+    if (result)
+        this->last_processed_height = (height - 1);
+    return result;
 }
 
 owner_record name_system_db::get_owner_by_key(ons::generic_owner const& owner) {
