@@ -3397,16 +3397,6 @@ void service_node_list::process_block(
     if (hf_version < hf::hf9_service_nodes)
         return;
 
-    m_state.update_from_block(
-            blockchain.db(),
-            blockchain.nettype(),
-            m_transient.state_history,
-            m_transient.state_archive,
-            {},
-            block,
-            txs,
-            m_service_node_keys);
-
     // NOTE: Store the state into the recent history
     m_transient.state_history.insert(m_transient.state_history.end(), m_state);
 
@@ -3510,6 +3500,16 @@ void service_node_list::process_block(
         if (old.size() > m_store_quorum_history)
             old.erase(old.begin(), old.begin() + (old.size() - m_store_quorum_history));
     }
+
+    m_state.update_from_block(
+            blockchain.db(),
+            blockchain.nettype(),
+            m_transient.state_history,
+            m_transient.state_archive,
+            {},
+            block,
+            txs,
+            m_service_node_keys);
 }
 
 void service_node_list::blockchain_detached(uint64_t height) {
