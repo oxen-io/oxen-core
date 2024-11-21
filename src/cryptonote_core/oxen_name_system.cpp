@@ -2641,20 +2641,22 @@ bool name_system_db::save_settings(uint64_t top_height, crypto::hash const& top_
 
 bool name_system_db::prune_db(uint64_t height) {
     bool result = false;
-    if (bind_and_run(ons_sql_type::pruning, prune_mappings_sql, nullptr, height))
-        if (sql_run_statement(ons_sql_type::pruning, prune_owners_sql, nullptr))
-            result = true;
+    if (db) {
+        if (bind_and_run(ons_sql_type::pruning, prune_mappings_sql, nullptr, height))
+            if (sql_run_statement(ons_sql_type::pruning, prune_owners_sql, nullptr))
+                result = true;
 
-    log::debug(
-            logcat,
-            "Detach request for ONS @ {} (is {}), {} to {}",
-            height,
-            this->last_processed_height,
-            result ? "detached to" : "failed to detach",
-            height - 1);
+        log::debug(
+                logcat,
+                "Detach request for ONS @ {} (is {}), {} to {}",
+                height,
+                this->last_processed_height,
+                result ? "detached to" : "failed to detach",
+                height - 1);
 
-    if (result)
-        this->last_processed_height = (height - 1);
+        if (result)
+            this->last_processed_height = (height - 1);
+    }
     return result;
 }
 
