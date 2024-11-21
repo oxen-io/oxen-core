@@ -697,14 +697,19 @@ bool Blockchain::init(
     for (const auto& hook : m_init_hooks)
         hook();
 
-    if (!m_db->is_read_only() && !exec_detach_hooks(
-                                         *this,
-                                         m_db->height(),
-                                         m_blockchain_detached_hooks,
-                                         /*by_pop_blocks*/ false,
-                                         /*load_missing_blocks_into_oxen_subsystems*/ true,
-                                         abort)) {
-        return false;
+    // NOTE: FAKECHAIN won't ever pop blocks on init such that it needs to exec detach hooks.
+    // This avoids additional problems in unit tests where BlockchainDB is mocked and querying the
+    // mocked-block's height fails due to a missing txin_gen.
+    if (!m_db->is_read_only() && m_nettype != network_type::FAKECHAIN) {
+        if (!exec_detach_hooks(
+                    *this,
+                    m_db->height(),
+                    m_blockchain_detached_hooks,
+                    /*by_pop_blocks*/ false,
+                    /*load_missing_blocks_into_oxen_subsystems*/ true,
+                    abort)) {
+            return false;
+        }
     }
 
     return true;
