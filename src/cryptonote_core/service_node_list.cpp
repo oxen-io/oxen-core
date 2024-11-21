@@ -2675,51 +2675,51 @@ void service_node_list::block_add(
 
     if (block.major_version < hf::hf9_service_nodes) {
         m_state.height = block.get_height();
-        return;
-    }
+    } else {
+        // NOTE: SQL DB is not present in unit tests (FAKECHAIN).
+        // NOTE: Verify that the heights are currently consistent between the SNL and SQL DB
+        if (m_state.height != blockchain.sqlite_db().height) {
+            throw oxen::traced<std::runtime_error>(
+                    "SNL out of sync with SQL DB, block cannot be added to SQL (SNL height @ {}; "
+                    "SQL @ "
+                    "{})"_format(m_state.height, blockchain.sqlite_db().height));
+        }
 
-    // NOTE: SQL DB is not present in unit tests (FAKECHAIN).
-    // NOTE: Verify that the heights are currently consistent between the SNL and SQL DB
-    if (m_state.height != blockchain.sqlite_db().height) {
-        throw oxen::traced<std::runtime_error>(
-                "SNL out of sync with SQL DB, block cannot be added to SQL (SNL height @ {}; "
-                "SQL @ "
-                "{})"_format(m_state.height, blockchain.sqlite_db().height));
-    }
+        std::lock_guard lock(m_sn_mutex);
+        process_block(block, txs);
+        if (!skip_verify)
+            verify_block(block, false /*alt_block*/, checkpoint);
+        if (block.has_pulse()) {
+            // NOTE: Only record participation if its a block we recently received.
+            // Otherwise processing blocks in retrospect/re-loading on restart seeds
+            // in old-data.
+            uint64_t const block_height = block.get_height();
+            bool newest_block = blockchain.get_current_blockchain_height() == (block_height + 1);
+            auto now = pulse::clock::now().time_since_epoch();
+            const auto target_block_time = get_config(blockchain.nettype()).TARGET_BLOCK_TIME;
+            auto earliest_time = std::chrono::seconds(block.timestamp) - target_block_time;
+            auto latest_time = std::chrono::seconds(block.timestamp) + target_block_time;
 
-    std::lock_guard lock(m_sn_mutex);
-    process_block(block, txs);
-    if (!skip_verify)
-        verify_block(block, false /*alt_block*/, checkpoint);
-    if (block.has_pulse()) {
-        // NOTE: Only record participation if its a block we recently received.
-        // Otherwise processing blocks in retrospect/re-loading on restart seeds
-        // in old-data.
-        uint64_t const block_height = block.get_height();
-        bool newest_block = blockchain.get_current_blockchain_height() == (block_height + 1);
-        auto now = pulse::clock::now().time_since_epoch();
-        const auto target_block_time = get_config(blockchain.nettype()).TARGET_BLOCK_TIME;
-        auto earliest_time = std::chrono::seconds(block.timestamp) - target_block_time;
-        auto latest_time = std::chrono::seconds(block.timestamp) + target_block_time;
-
-        if (newest_block && (now >= earliest_time && now <= latest_time)) {
-            std::shared_ptr<const quorum> quorum =
-                    get_quorum(quorum_type::pulse, block_height, false, nullptr);
-            if (!quorum)
-                throw oxen::traced<std::runtime_error>{
-                        "Unexpected Pulse error: quorum was not generated"};
-            if (quorum->validators.empty())
-                throw oxen::traced<std::runtime_error>{"Unexpected Pulse error: quorum was empty"};
-            for (size_t validator_index = 0;
-                 validator_index < service_nodes::PULSE_QUORUM_NUM_VALIDATORS;
-                 validator_index++) {
-                uint16_t bit = 1 << validator_index;
-                bool participated = block.pulse.validator_bitset & bit;
-                record_pulse_participation(
-                        quorum->validators[validator_index],
-                        block_height,
-                        block.pulse.round,
-                        participated);
+            if (newest_block && (now >= earliest_time && now <= latest_time)) {
+                std::shared_ptr<const quorum> quorum =
+                        get_quorum(quorum_type::pulse, block_height, false, nullptr);
+                if (!quorum)
+                    throw oxen::traced<std::runtime_error>{
+                            "Unexpected Pulse error: quorum was not generated"};
+                if (quorum->validators.empty())
+                    throw oxen::traced<std::runtime_error>{
+                            "Unexpected Pulse error: quorum was empty"};
+                for (size_t validator_index = 0;
+                     validator_index < service_nodes::PULSE_QUORUM_NUM_VALIDATORS;
+                     validator_index++) {
+                    uint16_t bit = 1 << validator_index;
+                    bool participated = block.pulse.validator_bitset & bit;
+                    record_pulse_participation(
+                            quorum->validators[validator_index],
+                            block_height,
+                            block.pulse.round,
+                            participated);
+                }
             }
         }
     }
