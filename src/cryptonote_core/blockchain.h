@@ -1146,7 +1146,10 @@ class Blockchain {
 
     const ons::name_system_db& name_system_db() const { return m_ons_db; }
 
-    cryptonote::BlockchainSQLite& sqlite_db();
+    cryptonote::BlockchainSQLite& sqlite_db() { return *m_sqlite_db; }
+
+    /// SQLite DB can be nullptr in some unit tests
+    cryptonote::BlockchainSQLite* maybe_sqlite_db() { return m_sqlite_db.get(); }
 
     /// NOTE: unchecked access; should only be called in service node more where this is guaranteed
     /// to be set.

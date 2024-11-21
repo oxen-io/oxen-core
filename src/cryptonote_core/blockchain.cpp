@@ -3308,10 +3308,6 @@ hf Blockchain::get_network_version(std::optional<uint64_t> height) const {
     return cryptonote::get_network_version(m_nettype, *height);
 }
 
-cryptonote::BlockchainSQLite& Blockchain::sqlite_db() {
-    return *m_sqlite_db;
-}
-
 //------------------------------------------------------------------
 void Blockchain::flush_invalid_blocks() {
     log::trace(logcat, "Blockchain::{}", __func__);
