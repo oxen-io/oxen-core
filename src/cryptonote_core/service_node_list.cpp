@@ -2676,7 +2676,6 @@ void service_node_list::block_add(
     if (block.major_version < hf::hf9_service_nodes) {
         m_state.height = block.get_height();
     } else {
-        // NOTE: SQL DB is not present in unit tests (FAKECHAIN).
         // NOTE: Verify that the heights are currently consistent between the SNL and SQL DB
         if (m_state.height != blockchain.sqlite_db().height) {
             throw oxen::traced<std::runtime_error>(
