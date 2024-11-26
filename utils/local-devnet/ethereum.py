@@ -50,6 +50,7 @@ class ContractServiceNode:
     pubkey_y = None
     addedTimestamp: int
     leaveRequestTimestamp = None
+    latestLeaveRequestTimestamp = None
     deposit: int
     contributors: list[ContractServiceNodeContributor] = []
     ed25519Pubkey: int
@@ -478,37 +479,40 @@ class SNRewardsContract:
         return non_signers
 
     def serviceNodes(self, u64_id: int):
-        call_result                  = self.contract.functions.serviceNodes(u64_id).call()
-        result                       = ContractServiceNode()
-        index                        = 0;
+        call_result                         = self.contract.functions.serviceNodes(u64_id).call()
+        result                              = ContractServiceNode()
+        index                               = 0;
 
-        result.next                  = call_result[index]
-        index += 1;
+        result.next                         = call_result[index]
+        index                              += 1;
 
-        result.prev                  = call_result[index]
-        index += 1;
+        result.prev                         = call_result[index]
+        index                              += 1;
 
-        result.operator              = call_result[index]
-        index += 1;
+        result.operator                     = call_result[index]
+        index                              += 1;
 
-        result.pubkey_x              = call_result[index][0]
-        result.pubkey_y              = call_result[index][1]
-        index += 1;
+        result.pubkey_x                     = call_result[index][0]
+        result.pubkey_y                     = call_result[index][1]
+        index                              += 1;
 
-        result.addedTimestamp        = call_result[index]
-        index += 1;
+        result.addedTimestamp               = call_result[index]
+        index                              += 1;
 
-        result.leaveRequestTimestamp = call_result[index]
-        index += 1;
+        result.leaveRequestTimestamp        = call_result[index]
+        index                              += 1;
 
-        result.deposit               = call_result[index]
-        index += 1;
+        result.latestLeaveRequestTimestamp  = call_result[index]
+        index                              += 1;
 
-        result.contributors          = call_result[index]
-        index += 1;
+        result.deposit                      = call_result[index]
+        index                              += 1;
 
-        result.ed25519Pubkey         = call_result[index]
-        index += 1;
+        result.contributors                 = call_result[index]
+        index                              += 1;
+
+        result.ed25519Pubkey                = call_result[index]
+        index                              += 1;
 
         return result
 

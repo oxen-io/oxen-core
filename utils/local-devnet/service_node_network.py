@@ -18,6 +18,7 @@ from ethereum import (
 
 import enum
 import json
+import sqlite3
 
 import pathlib
 import argparse
@@ -446,12 +447,14 @@ class SNNetwork:
 
         print("HH Account 0 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account0.address)))
         print("HH Account 1 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account1.address)))
+
         self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
                                    spender=self.sn_contract.hardhat_account0.address,
                                    value=hh1_required_sent)
         self.sent_contract.transferFrom(sender=self.sn_contract.hardhat_account0,
                                         to=self.sn_contract.hardhat_account1.address,
                                         value=hh1_required_sent)
+
         print("HH Account 0 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account0.address)))
         print("HH Account 1 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account1.address)))
 
@@ -633,6 +636,7 @@ class SNNetwork:
 
         vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}, the latest requested unlock height is {max_requested_unlock_height}")
 
+        # Sleep until we reach the desired unlock height ###########################################
         vprint(f"Sleeping again until height {max_requested_unlock_height + 1} where all nodes are unlocked")
         total_sleep_time = 0
         while current_height <= max_requested_unlock_height + 1:
@@ -643,11 +647,11 @@ class SNNetwork:
 
         # Do exit via signature and liquidation, aggregate signature from network and apply it on
         # the smart contract
+        num_delayed_payments_expected = 0
         for mode in SNExitMode:
             sn_to_exit_pubkey      = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().pubkey
             sn_to_exit_bls_pubkey  = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().bls_pubkey
             sn_to_exit_contract_id = self.sn_contract.getServiceNodeID(sn_to_exit_bls_pubkey)
-
             if mode == SNExitMode.WithSignature:
                 exit_request = self.eth_sns[0].get_exit_liquidation_request(sn_to_exit_pubkey, liquidate=False)
                 vprint("Exit request aggregated: {}".format(exit_request))
@@ -738,7 +742,41 @@ class SNNetwork:
             # behind the tip for safety! In localdev this is configured to 1 block of lag).
             ethereum.evm_mine();
 
-        # Verify that deregistration stake is unlocked and claimable
+        #  Open SQL DB to monitor delayed payments table ###########################################
+        sql_path   = self.sns[0].datadir + '/sqlite.db'
+        vprint("Reading SQL DB at {}".format(os.path.abspath(sql_path)))
+        sql        = sqlite3.connect(sql_path)
+        sql_cursor = sql.cursor();
+
+        vprint(f"Sleeping until dereg stake is confirmed into SQL DB")
+        total_sleep_time = 0
+        height_delayed_payments_row_was_added = 0
+        while True:
+            total_sleep_time += sleep_time
+            time.sleep(sleep_time)
+
+            row_result = sql_cursor.execute("SELECT COUNT(*) FROM delayed_payments").fetchone()
+            row_count  = row_result[0] if row_result else 0
+            if row_count > 0:
+                delayed_payment_row                   = sql_cursor.execute("SELECT entry_height FROM delayed_payments").fetchone()
+                height_delayed_payments_row_was_added = delayed_payment_row[0]
+                vprint("Found {} delayed payments @ height {} in SQL DB".format(row_count, height_delayed_payments_row_was_added));
+                for row in sql_cursor.execute("SELECT * FROM delayed_payments").fetchall():
+                    vprint("  {}".format(row))
+                break
+
+        # Pop blocks and undo the exits #############################################################
+        sns0_height       = self.sns[0].height()
+        num_blocks_to_pop = (sns0_height - height_delayed_payments_row_was_added) + 50 # for good measure
+        self.sns[0].json_rpc(method="pop_blocks", params={'nblocks': num_blocks_to_pop})
+        vprint("Popping {} blocks from SNS[0], height was {}, is {}".format(num_blocks_to_pop, sns0_height, self.sns[0].height()))
+
+        # Verify that the delayed payment was removed ##############################################
+        row_result = sql_cursor.execute("SELECT COUNT(*) FROM delayed_payments").fetchone()
+        row_count  = row_result[0] if row_result else 0
+        assert row_count == 0, "Expected the delayed payments row to be undone on pop_blocks @ height {}, found {}".format(self.sns[0].height(), row_count)
+
+        # Verify that deregistration stake is claimable ############################################
         vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {self.sns[0].height()}")
         total_sleep_time = 0
         balance_before = self.sns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0].balance
@@ -764,7 +802,7 @@ class SNNetwork:
 
         vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}")
 
-        # Do exit 'after wait time' ##############################################################
+        # Do exit 'after wait time' ################################################################
         # IMPORTANT: This test must be run last because it advances the L2 blockchain by 31 days.
         # This method of exit does _not_ require a signature. The other methods require a
         # timestamp embedded in the signature. We don't have a way to manipulate timestamps on the

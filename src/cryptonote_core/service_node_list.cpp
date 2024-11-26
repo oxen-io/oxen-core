@@ -1932,6 +1932,12 @@ bool service_node_list::state_t::process_confirmed_event(
     returned_stakes[0].amount = cryptonote::reward_money::coin_amount(
             returned_stakes[0].amount.to_coin() - slash_amount);
 
+    std::string exit_label = "";
+    if (slash_amount)
+        exit_label = "liquidation ({})"_format(cryptonote::format_money(slash_amount, false));
+    else
+        exit_label = "exit";
+
     if (confirm.my_keys && confirm.my_keys->pub == node->service_node_pubkey)
         log::info(
                 globallogcat,
@@ -1939,14 +1945,14 @@ bool service_node_list::state_t::process_confirmed_event(
                 "Service node exit confirmed for {} (THIS NODE) @ height {}; type: {}",
                 node->service_node_pubkey,
                 height,
-                slash_amount ? "liquidation" : "exit");
+                exit_label);
     else
         log::debug(
                 logcat,
                 "Service node exit confirmed for {} @ height {}; type: {}",
                 node->service_node_pubkey,
                 height,
-                slash_amount ? "liquidation" : "exit");
+                exit_label);
 
     // NOTE: Add the funds to the unlock queue in the DB, can be retrieved by BLS aggregation when
     // fully unlocked..

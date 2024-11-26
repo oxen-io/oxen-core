@@ -168,11 +168,11 @@ class Daemon(RPCDaemon):
         self.ss_port   = ss_port or next_port()
         self.peers     = []
         self.keys      = None
+        self.datadir   = '{}/oxen-{}'.format(datadir or '.', self.rpc_port)
 
         self.args = [oxend] + list(self.__class__.base_args)
         self.args += (
-                # '--data-dir={}/oxen-{}-{}'.format(datadir or '.', self.listen_ip, self.rpc_port),
-                '--data-dir={}/oxen-{}'.format(datadir or '.', self.rpc_port),
+                '--data-dir={}'.format(self.datadir),
                 '--log-level={}'.format(log_level),
                 '--log-file=oxen.log'.format(self.listen_ip, self.p2p_port),
                 '--p2p-bind-ip={}'.format(self.listen_ip),
