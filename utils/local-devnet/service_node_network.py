@@ -776,6 +776,11 @@ class SNNetwork:
         row_count  = row_result[0] if row_result else 0
         assert row_count == 0, "Expected the delayed payments row to be undone on pop_blocks @ height {}, found {}".format(self.sns[0].height(), row_count)
 
+        # Verify batch_db_info height rewinded #####################################################
+        row_result                   = sql_cursor.execute("SELECT height FROM batch_db_info").fetchone()
+        batch_db_info_height         = row_result[0] if row_result else 0
+        assert batch_db_info_height == self.sns[0].height() - 1, "Expected batch_db_info table 'height' ({}) to be undone as well. Oxen block index is {}".format(batch_db_info_height, self.sns[0].height() - 1)
+
         # Verify that deregistration stake is claimable ############################################
         vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {self.sns[0].height()}")
         total_sleep_time = 0
