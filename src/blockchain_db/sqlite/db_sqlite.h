@@ -66,23 +66,19 @@ class BlockchainSQLite : public db::Database {
     // detach.
     void blockchain_detached(AccruedTableType type, uint64_t height);
 
-    // add_sn_rewards/subtract_sn_rewards -> passing a map of addresses and amounts. These will be
-    // added or subtracted to the database for each address specified. If the address does not exist
-    // it will be created.
-    bool add_sn_rewards(const block_payments& payments);
-    bool subtract_sn_rewards(const block_payments& payments);
-
     // Return the number of rows for the desired batched payments accrued table. The row count will
     // be for the 'height' specified. 'height' is ignored if type is nil as the default accrued
     // table only stores state for the current DB's height already. If 'height' is null then the row
     // count of the entire table will be returned.
     size_t batch_payments_accrued_row_count(AccruedTableType type, const uint64_t* height);
 
+    // Add payments to the specified addresses to the SQL rewards table
+    bool add_sn_rewards(const block_payments& payments);
+
   private:
     bool reward_handler(
             const cryptonote::block& block,
             const service_nodes::service_node_list::state_t& service_nodes_state,
-            bool add,
             block_payments payments = {});
 
     block_payments get_delayed_payments(uint64_t height);

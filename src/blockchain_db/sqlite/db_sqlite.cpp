@@ -531,28 +531,6 @@ bool BlockchainSQLite::add_sn_rewards(const block_payments& payments) {
     return true;
 }
 
-bool BlockchainSQLite::subtract_sn_rewards(const block_payments& payments) {
-    log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
-    auto update_payment = prepared_st(
-            "UPDATE batched_payments_accrued SET amount = (amount - ?) WHERE address = ?");
-
-    for (auto& [addr, amt] : payments) {
-        auto [offset, address_str] = get_address_str(addr, 0);
-        auto result = db::exec_query(update_payment, static_cast<int64_t>(amt), address_str);
-        if (!result) {
-            log::error(
-                    logcat,
-                    "tried to subtract payment from an address that doesn't exist or has "
-                    "insufficient balance: {}",
-                    address_str);
-            return false;
-        }
-        update_payment->reset();
-    }
-
-    return true;
-}
-
 size_t BlockchainSQLite::batch_payments_accrued_row_count(
         AccruedTableType type, const uint64_t* height) {
     size_t result = 0;
@@ -762,18 +740,10 @@ void BlockchainSQLite::add_rewards(
     }
 }
 
-// Calculates block rewards, then invokes either `add_sn_rewards` (if `add`) or
-// `subtract_sn_rewards` (if `!add`) to process them.
 bool BlockchainSQLite::reward_handler(
         const cryptonote::block& block,
         const service_nodes::service_node_list::state_t& service_nodes_state,
-        bool add,
         block_payments payments) {
-    // The method we call do actually handle the change: either `add_sn_payments` if add is true,
-    // `subtract_sn_payments` otherwise:
-    auto add_or_subtract =
-            add ? &BlockchainSQLite::add_sn_rewards : &BlockchainSQLite::subtract_sn_rewards;
-
     assert(block.major_version >= hf::hf19_reward_batching);
 
     // From here on we calculate everything in milli-atomic OXEN/SENT (i.e. thousanths of an atomic
@@ -835,7 +805,7 @@ bool BlockchainSQLite::reward_handler(
         payments[parsed_governance_addr.second.address] += foundation_reward;
     }
 
-    if (!(this->*add_or_subtract)(payments))
+    if (!add_sn_rewards(payments))
         return false;
 
     return true;
@@ -905,8 +875,7 @@ bool BlockchainSQLite::add_block(
             return false;
         }
 
-        if (!reward_handler(
-                    block, service_nodes_state, /*add=*/true, get_delayed_payments(block_height)))
+        if (!reward_handler(block, service_nodes_state, get_delayed_payments(block_height)))
             return false;
 
         update_height(height + 1);
