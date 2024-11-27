@@ -115,7 +115,7 @@ class SNNetwork:
         if eth_sn_contracts_dir is not None:
             eth_sn_contracts_makefile_path = eth_sn_contracts_dir / 'Makefile'
             if os.path.exists(eth_sn_contracts_makefile_path):
-                subprocess.run(['make', 'deploy-local'],
+                subprocess.run(['make', 'deploy-local-devnet'],
                                cwd=eth_sn_contracts_dir,
                                check=True)
             else:
@@ -647,7 +647,6 @@ class SNNetwork:
 
         # Do exit via signature and liquidation, aggregate signature from network and apply it on
         # the smart contract
-        num_delayed_payments_expected = 0
         for mode in SNExitMode:
             sn_to_exit_pubkey      = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().pubkey
             sn_to_exit_bls_pubkey  = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().bls_pubkey
@@ -819,7 +818,6 @@ class SNNetwork:
         days_30_in_seconds = (60 * 60 * 24 * 31)
         ethereum.evm_increaseTime(days_30_in_seconds)
         ethereum.evm_mine()
-
 
         # Exit the node from the smart contract (after 31 days has elapsed)
         for mode in SNExitMode:
