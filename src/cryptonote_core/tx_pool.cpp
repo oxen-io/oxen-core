@@ -46,6 +46,8 @@
 #include "common/util.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_boost_serialization.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
+#include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/ethereum_transactions.h"
 #include "cryptonote_core/service_node_list.h"
@@ -1904,6 +1906,11 @@ bool tx_memory_pool::fill_block_template(
 
     std::unordered_set<crypto::key_image> k_images;
 
+    // Track ONS buys because we can't put more than one for the same ONS name into the same block
+    // (otherwise the *block* will fail but validation won't, because validation here won't see the
+    // earlier tx has having taken effect, but the block addition will).
+    std::unordered_set<crypto::hash> ons_buys;
+
     log::debug(
             logcat,
             "Filling block template, median weight {}, {} txes in the pool",
@@ -2005,6 +2012,24 @@ bool tx_memory_pool::fill_block_template(
         if (have_key_images(k_images, tx)) {
             log::debug(logcat, "  key images already seen");
             continue;
+        }
+        if (tx.type == txtype::oxen_name_system) {
+            // TX validation above has checked that this isn't an ONS buy for a name that is already
+            // registered, but it can't check that we don't create such a conflict from trying to
+            // put two conflicting registrations in the same block: when actually processing such a
+            // block the second one *would* be invalid because processing the first one created it.
+            //
+            // We only filter buys based on name_hash here which means technically we might
+            // over-filter (e.g. if there is both a session + wallet ONS) but that's not a big deal
+            // (one of the two will just get delayed for a block), and perfectly figuring out
+            // whether two might conflict is complicated enough that it's not worth doing here.
+            cryptonote::tx_extra_oxen_name_system ons;
+            if (cryptonote::get_field_from_tx_extra(tx.extra, ons) && ons.is_buying() &&
+                !ons_buys.emplace(ons.name_hash).second) {
+
+                log::debug(logcat, "  conflicting ONS buy in mempool");
+                continue;
+            }
         }
 
         bl.tx_hashes.push_back(txid);
