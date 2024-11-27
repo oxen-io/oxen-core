@@ -508,7 +508,7 @@ std::pair<int, std::string> BlockchainSQLite::get_address_str(
     return result;
 }
 
-bool BlockchainSQLite::add_sn_rewards(const block_payments& payments) {
+void BlockchainSQLite::add_sn_rewards(const block_payments& payments) {
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
     auto insert_payment = prepared_st(
             "INSERT INTO batched_payments_accrued (address, payout_offset, amount) VALUES (?, ?, ?)"
@@ -527,8 +527,6 @@ bool BlockchainSQLite::add_sn_rewards(const block_payments& payments) {
         db::exec_query(insert_payment, address_str, offset, amount);
         insert_payment->reset();
     }
-
-    return true;
 }
 
 size_t BlockchainSQLite::batch_payments_accrued_row_count(
@@ -740,7 +738,7 @@ void BlockchainSQLite::add_rewards(
     }
 }
 
-bool BlockchainSQLite::reward_handler(
+void BlockchainSQLite::reward_handler(
         const cryptonote::block& block,
         const service_nodes::service_node_list::state_t& service_nodes_state,
         block_payments payments) {
@@ -804,11 +802,7 @@ bool BlockchainSQLite::reward_handler(
                 cryptonote::governance_reward_formula(block.major_version) * BATCH_REWARD_FACTOR;
         payments[parsed_governance_addr.second.address] += foundation_reward;
     }
-
-    if (!add_sn_rewards(payments))
-        return false;
-
-    return true;
+    add_sn_rewards(payments);
 }
 
 block_payments BlockchainSQLite::get_delayed_payments(uint64_t height) {
@@ -868,18 +862,12 @@ bool BlockchainSQLite::add_block(
 
     try {
         SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
-
         // Goes through the miner transactions vouts checks they are right and marks them as paid in
         // the database
-        if (!validate_batch_payment(miner_tx_vouts, calculated_rewards, block_height)) {
+        if (!validate_batch_payment(miner_tx_vouts, calculated_rewards, block_height))
             return false;
-        }
-
-        if (!reward_handler(block, service_nodes_state, get_delayed_payments(block_height)))
-            return false;
-
+        reward_handler(block, service_nodes_state, get_delayed_payments(block_height));
         update_height(height + 1);
-
         transaction.commit();
     } catch (std::exception& e) {
         log::error(logcat, "Error adding reward payments: {}", e.what());

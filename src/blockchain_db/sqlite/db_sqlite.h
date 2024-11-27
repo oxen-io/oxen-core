@@ -72,11 +72,14 @@ class BlockchainSQLite : public db::Database {
     // count of the entire table will be returned.
     size_t batch_payments_accrued_row_count(AccruedTableType type, const uint64_t* height);
 
-    // Add payments to the specified addresses to the SQL rewards table
-    bool add_sn_rewards(const block_payments& payments);
+    // Add payments to the specified addresses to the SQL rewards table. The function throws if
+    // insertion into the DB fails.
+    void add_sn_rewards(const block_payments& payments);
 
   private:
-    bool reward_handler(
+    // This function throws if adding the rewards to the SQL tables for 'block'
+    // fails.
+    void reward_handler(
             const cryptonote::block& block,
             const service_nodes::service_node_list::state_t& service_nodes_state,
             block_payments payments = {});

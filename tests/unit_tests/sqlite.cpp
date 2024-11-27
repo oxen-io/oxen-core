@@ -58,10 +58,7 @@ TEST(SQLITE, AddSNRewards)
 
   t1[wallet_address.address] = 16500000001'789/2;
 
-  bool success = false;
-  success = sqliteDB.add_sn_rewards(t1);
-  EXPECT_TRUE(success);
-
+  EXPECT_NO_THROW(sqliteDB.add_sn_rewards(t1));
   EXPECT_EQ(sqliteDB.batching_count(), 1);
 
   std::vector<cryptonote::batch_sn_payment> p1;
@@ -84,8 +81,7 @@ TEST(SQLITE, AddSNRewards)
   // Pay the amount back out and expect the database to be empty
   std::vector<cryptonote::batch_sn_payment> t3;
   t3.emplace_back(wallet_address.address, expected_amount);
-  success = sqliteDB.save_payments(expected_payout, t3);
-  EXPECT_TRUE(success);
+  EXPECT_NO_THROW(sqliteDB.save_payments(expected_payout, t3));
   EXPECT_EQ(sqliteDB.batching_count(), 0);
 }
 
