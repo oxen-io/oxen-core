@@ -5310,35 +5310,50 @@ bool service_node_list::load(const uint64_t current_height) {
         }
     }
 
+
     uint64_t recent_max_height = 0;
     uint64_t recent_min_height = 0;
     assert(data_in.states.size());
     if (data_in.states.size()) {
-        recent_min_height = std::numeric_limits<uint64_t>::max();
         if (data_in.states.back().only_stored_quorums) {
             log::warning(logcat, "Unexpected last serialized state only has quorums loaded");
             return false;
         }
 
-        const size_t last_index = data_in.states.size() - 1;
-        for (size_t i = 0; i < data_in.states.size(); i++) {
-            state_serialized& entry = data_in.states[i];
+        // NOTE: Prior to SNL v4 on all networks, we had a bug in the recent serialisation code
+        // that only serialised recent SNL states with their quorums. In this case, the data is
+        // bunk and we need to rescan the data from the last archive.
+        if (data_in.version < data_for_serialization::version_t::version_4_ensure_rescan_resets_sql_db) {
+            // NOTE: Construct key to retrieve the last SNL state in the archive
+            auto last_state_key = state_t(this);
+            last_state_key.height = archive_max_height;
 
-            // NOTE: Our SNL state store from the 'keep recent window' should not have this flag
-            // set which marks that only quorums were serialised instead of the entire state
-            // otherwise we have a serialisation bug.
-            assert(!entry.only_stored_quorums);
-            if (!entry.block_hash)
-                entry.block_hash = blockchain.get_block_id_by_height(entry.height);
+            // NOTE: Assign last archive to state
+            m_state = *m_transient.state_archive.find(last_state_key);
+            recent_min_height = m_state.height;
+            recent_max_height = m_state.height;
+        } else {
+            recent_min_height = std::numeric_limits<uint64_t>::max();
+            const size_t last_index = data_in.states.size() - 1;
+            for (size_t i = 0; i < data_in.states.size(); i++) {
+                state_serialized& entry = data_in.states[i];
 
-            recent_min_height = std::min(recent_min_height, entry.height);
-            recent_max_height = std::max(recent_max_height, entry.height);
+                // NOTE: Our SNL state store from the 'keep recent window' should not have this flag
+                // set which marks that only quorums were serialised instead of the entire state
+                // otherwise we have a serialisation bug.
+                assert(!entry.only_stored_quorums);
+                if (!entry.block_hash)
+                    entry.block_hash = blockchain.get_block_id_by_height(entry.height);
 
-            if (i == last_index) {
-                m_state = {*this, std::move(entry)};
-            } else {
-                m_transient.state_history.emplace_hint(
-                        m_transient.state_history.end(), *this, std::move(entry));
+                recent_min_height = std::min(recent_min_height, entry.height);
+                recent_max_height = std::max(recent_max_height, entry.height);
+
+                if (i == last_index) {
+                    m_state = {*this, std::move(entry)};
+                } else {
+                    m_transient.state_history.emplace_hint(
+                            m_transient.state_history.end(), *this, std::move(entry));
+                }
             }
         }
     }
