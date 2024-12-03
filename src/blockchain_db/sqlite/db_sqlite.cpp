@@ -350,7 +350,7 @@ void BlockchainSQLite::upgrade_schema() {
         CREATE TRIGGER make_archive AFTER UPDATE ON batch_db_info
         FOR EACH ROW WHEN (NEW.height % {}) = 0 AND NEW.height > OLD.height BEGIN
             INSERT INTO batched_payments_accrued_archive SELECT *, NEW.height FROM batched_payments_accrued;
-            DELETE FROM batched_payments_accrued_archive WHERE height < ((NEW.height - {}) % {});
+            DELETE FROM batched_payments_accrued_archive WHERE height < (NEW.height - {});
         END;
 
         -- On re-org to an older height delete all archive rows that are newer than the DB's height
@@ -383,7 +383,6 @@ void BlockchainSQLite::upgrade_schema() {
         END;
         )"_format(netconf.HISTORY_ARCHIVE_INTERVAL,
                   netconf.HISTORY_ARCHIVE_KEEP_WINDOW,
-                  netconf.HISTORY_ARCHIVE_INTERVAL,
                   netconf.HISTORY_RECENT_KEEP_WINDOW));
     }
 
