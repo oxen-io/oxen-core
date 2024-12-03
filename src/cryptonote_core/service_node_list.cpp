@@ -5310,7 +5310,6 @@ bool service_node_list::load(const uint64_t current_height) {
         }
     }
 
-
     uint64_t recent_max_height = 0;
     uint64_t recent_min_height = 0;
     assert(data_in.states.size());
@@ -5323,7 +5322,8 @@ bool service_node_list::load(const uint64_t current_height) {
         // NOTE: Prior to SNL v4 on all networks, we had a bug in the recent serialisation code
         // that only serialised recent SNL states with their quorums. In this case, the data is
         // bunk and we need to rescan the data from the last archive.
-        if (data_in.version < data_for_serialization::version_t::version_4_ensure_rescan_resets_sql_db) {
+        if (data_in.version <
+            data_for_serialization::version_t::version_4_ensure_rescan_resets_sql_db) {
             // NOTE: Construct key to retrieve the last SNL state in the archive
             auto last_state_key = state_t(this);
             last_state_key.height = archive_max_height;
