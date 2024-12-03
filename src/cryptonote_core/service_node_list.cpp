@@ -86,7 +86,7 @@ static_assert(
 static uint64_t min_recent_height(cryptonote::network_type nettype, uint64_t height) {
     const uint64_t KEEP_WINDOW = cryptonote::get_config(nettype).HISTORY_RECENT_KEEP_WINDOW;
 
-    // NOTE: Arbitrary, but raises a compilation failure if it gets shortened.
+    // NOTE: Arbitrary limit, to notify developer if the global limit changes.
     // 360 is derived via (6 * VOTE_LIFETIME) where VOTE_LIFETIME is 60 blocks,
     // e.g. Keep atleast the last 360 blocks worth of votes (which is short for
     // state change TXs in this codebase)
@@ -3460,7 +3460,7 @@ void service_node_list::process_block(
         }
     }
 
-    // NOTE: Store quorums form this height if requested (m_store_quorum_history is a CLI flag)
+    // NOTE: Store quorums from this height if requested (m_store_quorum_history is a CLI flag)
     if (m_store_quorum_history)
         m_transient.old_quorum_states.emplace_back(m_state.height, m_state.quorums);
 
