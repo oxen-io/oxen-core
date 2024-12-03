@@ -267,15 +267,6 @@ void BlockchainSQLite::upgrade_schema() {
         )");
     }
 
-    if (!trigger_exists("delayed_payments_after_blocks_removed")) {
-        db.exec(R"(
-        CREATE TRIGGER delayed_payments_after_blocks_removed AFTER UPDATE ON batch_db_info
-        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
-            DELETE FROM delayed_payments WHERE entry_height >= NEW.height;
-        END;
-        )");
-    }
-
     // NOTE: The archive table stores copies of 'batch_payments_accrued' rows at
     // intervals of 'HISTORY_ARCHIVE_INTERVAL' blocks in a rolling window of
     // 'HISTORY_ARCHIVE_KEEP_WINDOW'
@@ -332,7 +323,8 @@ void BlockchainSQLite::upgrade_schema() {
     // - clear_archive into `batch_payments_accrued_archive`
     // - clear_recent into `batch_payments_accrued_recent`
     // - make_recent into `batch_payments_accrued_recent`
-    // - delayed_payments_prune into `delayed_payments`
+    // - delayed_payments_on_block_add into `delayed_payments`
+    // - delayed_payments_on_blockchain_detach into `delayed_payments`
     {
         auto& netconf = get_config(m_nettype);
         db.exec(
@@ -375,11 +367,25 @@ void BlockchainSQLite::upgrade_schema() {
             DELETE FROM batched_payments_accrued_recent WHERE height < NEW.height - {};
         END;
 
-        -- Delete old delayed payments from the DB when they are processed
+        -- Delete processed delayed payments from the DB when a block is appended to the blockchain
+        -- We delete the old trigger and use a new, more apt name for the trigger
         DROP TRIGGER IF EXISTS delayed_payments_prune;
-        CREATE TRIGGER delayed_payments_prune AFTER UPDATE ON batch_db_info
-        FOR EACH ROW BEGIN
-            DELETE FROM delayed_payments WHERE payout_height < NEW.height;
+        CREATE TRIGGER delayed_payments_on_block_add AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN NEW.height > OLD.height BEGIN
+            DELETE FROM delayed_payments WHERE payout_height <= NEW.height;
+        END;
+
+        -- Undo delayed payments from the DB when the blockchain detaches to a lower height
+        -- On detach, we delete all the delayed payments that had executed. Note, we do _not_ need
+        -- to restore a checkpoint of the delayed payments because the SNL will detach to the same
+        -- height. When the SNL replays the chain, it will recreate the delayed payments and insert
+        -- them back into the SQL DB.
+        --
+        -- We delete the old trigger and use a new, more apt name for the trigger
+        DROP TRIGGER IF EXISTS delayed_payments_after_blocks_removed;
+        CREATE TRIGGER delayed_payments_on_blockchain_detach AFTER UPDATE ON batch_db_info
+        FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
+            DELETE FROM delayed_payments WHERE entry_height > NEW.height;
         END;
         )"_format(netconf.HISTORY_ARCHIVE_INTERVAL,
                   netconf.HISTORY_ARCHIVE_KEEP_WINDOW,
