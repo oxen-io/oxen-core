@@ -2766,9 +2766,9 @@ bool rpc_command_executor::prepare_eth_registration(
                 fmt::styled("L2 Contract Registration Information:", fmt::emphasis::underline));
         tools::msg_writer(
                 "{} {}\n"
-                "{} {}{}\n"
-                "{} {}{}\n"
-                "{} {}{}{}{}\n"
+                "{} {} {}\n"
+                "{} {} {}\n"
+                "{} {} {} {} {}\n"
                 "{} {}\n",
                 fmt::styled("   ed25519_pubkey:", fmt::emphasis::bold),
                 fmt::styled(snode_pubkey, fmt::fg(fmt::terminal_color::bright_green)),
