@@ -3169,7 +3169,7 @@ void service_node_list::state_t::update_from_block(
                  quorum_index++) {
                 crypto::public_key const& key = quorum->validators[quorum_index];
                 service_node_info& new_info = duplicate_info(service_nodes_infos[key]);
-                new_info.pulse_sorter.last_height_validating_in_quorum = height;
+                new_info.pulse_sorter.last_height_validating_in_quorum = height + 1;
                 new_info.pulse_sorter.quorum_index = quorum_index;
             }
 
