@@ -3012,6 +3012,12 @@ void core_rpc_server::fill_sn_response_entry(
             }
         }
     }
+
+    if (requested(reqed, "pulse_sorter")) {
+        entry["pulse_sorter"]["last_height_validating_in_quorum"] =
+                info.pulse_sorter.last_height_validating_in_quorum;
+        entry["pulse_sorter"]["quorum_index"] = info.pulse_sorter.quorum_index;
+    }
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
