@@ -5220,10 +5220,12 @@ void service_node_list::reset(bool delete_db_entry) {
 
     m_state.height = hard_fork_begins(blockchain.nettype(), hf::hf9_service_nodes).value_or(1) - 1;
 
-    // NOTE: Rescanning the SNL has side-effects on the SQL DB in particular, if we encounter any
-    // ETH exits, a 'delayed_payment' row is added to the DB. If we _don't_ reset the SQL DB then we
-    // double up on exit payments to be handed to them.
-    blockchain.sqlite_db().reset_database();
+    if (delete_db_entry) {
+        // NOTE: Rescanning the SNL has side-effects on the SQL DB in particular, if we encounter
+        // any ETH exits, a 'delayed_payment' row is added to the DB. If we _don't_ reset the SQL DB
+        // then we double up on exit payments to be handed to them.
+        blockchain.sqlite_db().reset_database();
+    }
 }
 
 size_t service_node_info::total_num_locked_contributions() const {
