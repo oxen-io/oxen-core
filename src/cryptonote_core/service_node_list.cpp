@@ -5121,18 +5121,17 @@ bool service_node_list::load(const uint64_t current_height) {
         return false;
     }
 
-    // NOTE: Temporary code for HF21 on Stagenet.v3, on reset we are not resetting the SQL DB which
-    // means we double count exit payments. This is causing rewards to go out of sync even after
-    // 'resetting' the SNL.
+    // NOTE: Temporary code for HF21 on Stagenet.v3. The pulse sort key of nodes
+    // we incorrectly assigning the wrong height (we neeeded 'height + 1' not
+    // 'height') which means eventually the pulse sort keys go out of sync.
     //
-    // TODO: This is because rescanning the SNL has side-effects on the SQL DB (e.g.
-    // it can cause new rows to be inserted) which is less than ideal. Originally the SNL was not
-    // meant to modify dependent state outside of the SNL because resetting the SNL != resetting
-    // another subsystem, a 'subsytem' should be able to rederive their state purely by processing
-    // blocks in isolation.
-    if (blockchain.nettype() == cryptonote::network_type::STAGENET &&
+    // By returning false here the DB will fail to load, the SQL DB will be
+    // reset as well and the sort keys will be recalculated to their correct
+    // value.
+    if ((blockchain.nettype() == cryptonote::network_type::STAGENET ||
+         blockchain.nettype() == cryptonote::network_type::DEVNET) &&
         data_in.version <
-                data_for_serialization::version_t::version_4_ensure_rescan_resets_sql_db) {
+                data_for_serialization::version_t::version_5_stagenet_devnet_regen_pulse_sorter) {
         return false;
     }
 

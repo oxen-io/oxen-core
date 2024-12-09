@@ -1023,13 +1023,14 @@ class service_node_list {
             version_2_regen_recently_removed_nodes_w_sn_info,
             version_3_eth_beneficiary,
             version_4_ensure_rescan_resets_sql_db,
+            version_5_stagenet_devnet_regen_pulse_sorter,
             count,
         };
         static version_t get_version(cryptonote::hf /*hf_version*/) {
-            return version_t::version_4_ensure_rescan_resets_sql_db;
+            return version_t::version_5_stagenet_devnet_regen_pulse_sorter;
         }
 
-        version_t version{version_t::version_4_ensure_rescan_resets_sql_db};
+        version_t version{version_t::version_5_stagenet_devnet_regen_pulse_sorter};
         std::vector<quorum_for_serialization> quorum_states;
         std::vector<state_serialized> states;
         void clear() {
