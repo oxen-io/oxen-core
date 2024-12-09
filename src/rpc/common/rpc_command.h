@@ -2,8 +2,10 @@
 
 #include <oxenc/bt_serialize.h>
 
+#include <concepts>
 #include <nlohmann/json.hpp>
 
+#include "command_decorators.h"
 #include "json_bt.h"
 
 namespace cryptonote::rpc {
@@ -95,12 +97,62 @@ struct rpc_request {
     rpc_context context;
 };
 
+// RAII class that keeps the RPC object alive and holds a response callback.  When the responder
+// object gets destroyed the rpc.response field gets sent as reply.  Normally this happens
+// immediately after `invoke()` is called, but if there is a three-argument `invoke` that takes a
+// shared_ptr<responder> then we pass this shared_ptr to it to allow the user to decide when to
+// destroy it (and thus send the response).
+struct responder {
+    virtual ~responder() = default;
+    std::optional<rpc_error> error;
+};
+
+template <std::derived_from<RPC_COMMAND> RPC, typename Result>
+struct rpc_responder : responder {
+    RPC rpc{};
+    std::function<void(Result)> respond;
+    std::function<void(rpc_error error)> error_resp;
+
+    rpc_responder(
+            std::function<void(Result result)> respond,
+            std::function<void(rpc_error error)> error) :
+            respond{std::move(respond)}, error_resp{std::move(error)} {}
+
+    rpc_responder(const rpc_responder&) = delete;
+    rpc_responder(rpc_responder&&) = delete;
+    rpc_responder& operator=(const rpc_responder&) = delete;
+    rpc_responder& operator=(rpc_responder&&) = delete;
+
+    void cancel() { respond = nullptr; }
+
+    ~rpc_responder() {
+        if (!respond)
+            return;
+        if (error) {
+            error_resp(std::move(*error));
+            return;
+        }
+        if (rpc.response.is_null())
+            rpc.response = json::object();
+
+        if (rpc.is_bt())
+            respond(json_to_bt(std::move(rpc.response)));
+        else
+            respond(std::move(rpc.response));
+    }
+};
+
 // Note: to use, parse_request(RPC, rpc_input) must be defined for each typename RPC
 // this is used on.
-template <typename RPC, typename RPCServer, typename RPCCallback>
+template <std::derived_from<RPC_COMMAND> RPC, typename RPCServer, typename RPCCallback>
 auto make_invoke() {
-    return [](rpc_request&& request, RPCServer& server) -> typename RPCCallback::result_type {
-        RPC rpc{};
+    return [](rpc_request&& request,
+              RPCServer& server,
+              std::function<void(typename RPCCallback::result_type)> respond,
+              std::function<void(rpc_error error)> error_resp) {
+        auto rrpc = std::make_shared<rpc_responder<RPC, typename RPCCallback::result_type>>(
+                std::move(respond), std::move(error_resp));
+        auto& rpc = rrpc->rpc;
 
         try {
             if (auto body = request.body_view()) {
@@ -116,18 +168,25 @@ auto make_invoke() {
                 parse_request(rpc, std::monostate{});
             }
         } catch (const std::exception& e) {
+            rrpc->cancel();
             throw parse_error{"Failed to parse request parameters: "s + e.what()};
         }
 
-        server.invoke(rpc, std::move(request.context));
+        try {
+            if constexpr (requires { server.invoke(rpc, std::move(request.context), rrpc); }) {
+                server.invoke(rpc, std::move(request.context), rrpc);
+            } else {
+                server.invoke(rpc, std::move(request.context));
+            }
+        } catch (...) {
+            // On exception the caller deals with translating the exception to an error response
+            rrpc->cancel();
+            throw;
+        }
 
-        if (rpc.response.is_null())
-            rpc.response = json::object();
-
-        if (rpc.is_bt())
-            return json_to_bt(std::move(rpc.response));
-        else
-            return std::move(rpc.response);
+        // Our rrpc gets released when we go out of scope here.  If we used the two-arg invoke, or
+        // the caller didn't hold the keepalive in the three-arg invoke, then this destruction will
+        // trigger the reply.
     };
 }
 

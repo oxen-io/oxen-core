@@ -8,6 +8,8 @@
 #include <oxenmq/fmt.h>
 #include <oxenmq/oxenmq.h>
 
+#include <variant>
+
 #include "common/string_util.h"
 #include "cryptonote_config.h"
 #include "rpc/common/param_parser.hpp"
@@ -243,23 +245,36 @@ omq_rpc::omq_rpc(
                         request.body = m.data[0];
 
                     try {
-                        auto result = var::visit(
-                                [](auto&& v) -> std::string {
-                                    using T = decltype(v);
-                                    if constexpr (std::is_same_v<oxenc::bt_value&&, T>)
-                                        return bt_serialize(std::move(v));
-                                    else if constexpr (std::is_same_v<nlohmann::json&&, T>)
-                                        return v.dump();
-                                    else {
-                                        static_assert(std::is_same_v<std::string&&, T>);
-                                        return std::move(v);
-                                    }
+                        m.send_later();
+                        call.invoke(
+                                std::move(request),
+                                rpc_,
+                                [reply = m.send_later()](
+                                        rpc_command::result_type response) mutable {
+                                    std::string result;
+                                    if (auto* bt = std::get_if<oxenc::bt_value>(&response))
+                                        result = bt_serialize(std::move(*bt));
+                                    else if (auto* js = std::get_if<nlohmann::json>(&response))
+                                        result = js->dump();
+                                    else if (auto* s = std::get_if<std::string>(&response))
+                                        result = std::move(*s);
+                                    else
+                                        log::error(logcat, "Unexpected/unhandled RPC result type!");
+                                    reply(OMQ_OK, std::move(result));
                                 },
-                                call.invoke(std::move(request), rpc_));
-                        m.send_reply(OMQ_OK, std::move(result));
+                                [reply = m.send_later(), is_public = call.is_public, name](
+                                        rpc_error err) mutable {
+                                    log::warning(
+                                            logcat,
+                                            "OMQ RPC request '{}{}' failed with: {}",
+                                            is_public ? "rpc." : "admin.",
+                                            name,
+                                            err.what());
+                                    reply(OMQ_ERROR, err.what());
+                                });
                         return;
                     } catch (const parse_error& e) {
-                        // This isn't really WARNable as it's the client fault; log at info
+                        // This isn't really warnable as it's the client at fault; log at info
                         // level instead.
                         //
                         // TODO: for various parsing errors there are still some stupid forced

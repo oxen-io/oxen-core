@@ -220,6 +220,7 @@ namespace {
         bool jsonrpc{false};
         nlohmann::json jsonrpc_id{nullptr};
         std::vector<std::pair<std::string, std::string>> extra_headers;  // Extra headers to send
+        std::optional<std::chrono::steady_clock::time_point> response_started;
 
         call_data(
                 http_server& http,
@@ -299,6 +300,37 @@ namespace {
 
     void invoke_txpool_hashes_bin(std::shared_ptr<call_data> data);
 
+    void respond(rpc_command::result_type r, std::shared_ptr<call_data> dataptr) {
+        auto& data = *dataptr;
+        std::string result;
+        if (data.jsonrpc)
+            result =
+                    nlohmann::json{
+                            {"jsonrpc", "2.0"},
+                            {"id", data.jsonrpc_id},
+                            {"result", var::get<nlohmann::json>(std::move(r))}}
+                            .dump();
+        else if (auto* json = std::get_if<nlohmann::json>(&r))
+            result = json->dump();
+        else
+            result = var::get<std::string>(std::move(r));
+
+        std::string call_duration;
+        if (data.response_started)
+            call_duration = " in {}"_format(tools::friendly_duration(
+                    std::chrono::steady_clock::now() - *data.response_started));
+        if (logcat->should_log(log::Level::debug))
+            log::debug(
+                    logcat,
+                    "HTTP RPC {} [{}] OK ({} bytes){}",
+                    data.uri,
+                    data.request.context.remote,
+                    result.size(),
+                    call_duration);
+
+        queue_response(std::move(dataptr), std::move(result));
+    }
+
     // Invokes the actual RPC request; this is called (via oxenmq) from some random OMQ worker
     // thread, which means we can't just write our reply; instead we have to post it to the uWS
     // loop.
@@ -313,9 +345,8 @@ namespace {
             return invoke_txpool_hashes_bin(std::move(dataptr));
 
         const bool time_logging = logcat->should_log(log::Level::debug);
-        std::chrono::steady_clock::time_point start;
         if (time_logging)
-            start = std::chrono::steady_clock::now();
+            data.response_started = std::chrono::steady_clock::now();
 
         int json_error = -32603;
         std::string json_message = "Internal error";
@@ -324,22 +355,36 @@ namespace {
 
         std::string result;
         try {
-            auto r = data.call->invoke(std::move(data.request), data.core_rpc);
-            if (data.jsonrpc)
-                result =
-                        nlohmann::json{
-                                {"jsonrpc", "2.0"},
-                                {"id", data.jsonrpc_id},
-                                {"result", var::get<nlohmann::json>(std::move(r))}}
-                                .dump();
-            else if (auto* json = std::get_if<nlohmann::json>(&r))
-                result = json->dump();
-            else
-                result = var::get<std::string>(std::move(r));
-            // And throw if we get back a bt_value because we don't accept that at all
-            json_error = 0;
+
+            data.call->invoke(
+                    std::move(data.request),
+                    data.core_rpc,
+                    [dataptr](rpc_command::result_type response) mutable {
+                        respond(std::move(response), std::move(dataptr));
+                    },
+                    [dataptr](rpc_error e) mutable {
+                        dataptr->http.loop_defer([dataptr = std::move(dataptr),
+                                                  e = std::move(e)]() mutable {
+                            if (dataptr->jsonrpc)
+                                dataptr->jsonrpc_error_response(
+                                        dataptr->res,
+                                        e.code,
+                                        e.message,
+                                        dataptr->jsonrpc_id,
+                                        nullptr);
+                            else
+                                dataptr->error_response(
+                                        dataptr->res,
+                                        http_server::HTTP_ERROR,
+                                        e.message.empty()
+                                                ? std::nullopt
+                                                : std::make_optional<std::string_view>(e.message));
+                        });
+                    });
+            return;  // The callback above queues the response
+
         } catch (const parse_error& e) {
-            // This isn't really WARNable as it's the client fault; log at info level instead.
+            // This isn't really warnable as it's the client fault; log at info level instead.
             log::info(
                     logcat,
                     "HTTP RPC request '{}' called with invalid/unparseable data: {}",
@@ -361,41 +406,23 @@ namespace {
             log::warning(logcat, "HTTP RPC request '{}' raised an unknown exception", data.uri);
         }
 
-        if (json_error != 0) {
-            data.http.loop_defer([data = std::move(dataptr),
-                                  json_error,
-                                  msg = std::move(data.jsonrpc ? json_message : http_message),
-                                  json_err_data = std::move(json_error_data)]() mutable {
-                if (data->jsonrpc)
-                    data->jsonrpc_error_response(
-                            data->res,
-                            json_error,
-                            std::move(msg),
-                            data->jsonrpc_id,
-                            json_err_data.is_null() ? nullptr : &json_err_data);
-                else
-                    data->error_response(
-                            data->res,
-                            http_server::HTTP_ERROR,
-                            msg.empty() ? std::nullopt : std::make_optional<std::string_view>(msg));
-            });
-            return;
-        }
-
-        std::string call_duration;
-        if (time_logging)
-            call_duration =
-                    " in " + tools::friendly_duration(std::chrono::steady_clock::now() - start);
-        if (logcat->should_log(log::Level::debug))
-            log::debug(
-                    logcat,
-                    "HTTP RPC {} [{}] OK ({} bytes){}",
-                    data.uri,
-                    data.request.context.remote,
-                    result.size(),
-                    call_duration);
-
-        queue_response(std::move(dataptr), std::move(result));
+        data.http.loop_defer([data = std::move(dataptr),
+                              json_error,
+                              msg = std::move(data.jsonrpc ? json_message : http_message),
+                              json_err_data = std::move(json_error_data)]() mutable {
+            if (data->jsonrpc)
+                data->jsonrpc_error_response(
+                        data->res,
+                        json_error,
+                        std::move(msg),
+                        data->jsonrpc_id,
+                        json_err_data.is_null() ? nullptr : &json_err_data);
+            else
+                data->error_response(
+                        data->res,
+                        http_server::HTTP_ERROR,
+                        msg.empty() ? std::nullopt : std::make_optional<std::string_view>(msg));
+        });
     }
 
     std::string pool_hashes_response(std::vector<crypto::hash>&& pool_hashes) {

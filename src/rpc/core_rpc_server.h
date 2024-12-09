@@ -68,9 +68,13 @@ class core_rpc_server;
 /// Stores an RPC command callback.  These are set up in core_rpc_server.cpp.
 struct rpc_command {
     using result_type = std::variant<oxenc::bt_value, nlohmann::json, std::string>;
-    // Called with the incoming command data; returns the response body if all goes well,
-    // otherwise throws an exception.
-    result_type (*invoke)(rpc_request&&, core_rpc_server&);
+    // Called with the incoming command data; invokes the callback with the response body if all
+    // goes well, otherwise throws an exception.
+    void (*invoke)(
+            rpc_request&&,
+            core_rpc_server&,
+            std::function<void(rpc_command::result_type)>,
+            std::function<void(rpc_error)>);
     bool is_public;  // callable via restricted RPC
     bool is_binary;  // only callable at /name (for HTTP RPC), and binary data, not JSON.
     bool is_legacy;  // callable at /name (for HTTP RPC), even though it is JSON (for backwards
@@ -112,6 +116,11 @@ namespace detail {
  * rpc_context, and returns a NEWTYPE::response.
  * - add the invoke() definition in core_rpc_server.cpp, and add NEWTYPE to the list of command
  *   types near the top of core_rpc_server.cpp.
+ *
+ * If the response might not be immediately available, the `invoke` can take a
+ * std::shared_ptr<responder> keepalive as third argument: the pointer keeps alive the `rpc`
+ * reference, and defers sending a reply; a caller can thus stash the shared_ptr until a reply is
+ * ready at a later point, without blocking the RPC server.
  */
 class core_rpc_server {
   public:
@@ -185,9 +194,13 @@ class core_rpc_server {
     void invoke(
             GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES& get_service_node_blacklisted_key_images,
             rpc_context context);
-    void invoke(BLS_REWARDS_REQUEST& rpc, rpc_context context);
+    void invoke(
+            BLS_REWARDS_REQUEST& rpc, rpc_context context, std::shared_ptr<responder> keepalive);
     void invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context context);
-    void invoke(BLS_EXIT_LIQUIDATION_REQUEST& rpc, rpc_context context);
+    void invoke(
+            BLS_EXIT_LIQUIDATION_REQUEST& rpc,
+            rpc_context context,
+            std::shared_ptr<responder> keepalive);
     void invoke(BLS_REGISTRATION_REQUEST& rpc, rpc_context context);
     void invoke(RELAY_TX& relay_tx, rpc_context context);
     void invoke(GET_BLOCK_HEADERS_RANGE& get_block_headers_range, rpc_context context);

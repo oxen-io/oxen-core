@@ -2640,15 +2640,21 @@ uint64_t core::get_free_space() const {
     return fs::space(m_config_folder).available;
 }
 //-----------------------------------------------------------------------------------------------
-eth::bls_rewards_response core::bls_rewards_request(const eth::address& address, uint64_t height) {
-    return m_bls_aggregator->rewards_request(address, height);
+void core::bls_rewards_request(
+        const eth::address& address,
+        uint64_t height,
+        std::function<void(const eth::bls_rewards_response&)> callback) {
+    m_bls_aggregator->rewards_request(address, height, std::move(callback));
 }
 //-----------------------------------------------------------------------------------------------
-eth::bls_exit_liquidation_response core::bls_exit_liquidation_request(
-        const crypto::public_key& pubkey, bool liquidate) {
-    eth::bls_exit_type type =
-            liquidate ? eth::bls_exit_type::liquidate : eth::bls_exit_type::normal;
-    return m_bls_aggregator->exit_liquidation_request(pubkey, type);
+void core::bls_exit_liquidation_request(
+        const std::variant<crypto::public_key, eth::bls_public_key>& pubkey,
+        bool liquidate,
+        std::function<void(const eth::bls_exit_liquidation_response&)> callback) {
+    m_bls_aggregator->exit_liquidation_request(
+            pubkey,
+            liquidate ? eth::bls_exit_type::liquidate : eth::bls_exit_type::normal,
+            std::move(callback));
 }
 //-----------------------------------------------------------------------------------------------
 eth::bls_registration_response core::bls_registration(const eth::address& address) const {

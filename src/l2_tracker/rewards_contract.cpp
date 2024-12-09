@@ -191,43 +191,6 @@ static std::string log_new_service_node_exit_tx(
     return result;
 }
 
-static std::string log_service_node_blob(const ContractServiceNode& blob, std::string_view hex) {
-    fmt::memory_buffer buffer{};
-    fmt::format_to(
-            std::back_inserter(buffer),
-            "Service node blob components were:\n"
-            "\n"
-            "  - next:                   {}\n"
-            "  - prev:                   {}\n"
-            "  - operator:               {}\n"
-            "  - pubkey:                 {}\n"
-            "  - leaveRequestTimestamp:  {}\n"
-            "  - deposit:                {}\n"
-            "  - num contributors:       {}\n"
-            "\n"
-            "The raw blob was (32 byte chunks/line):\n\n",
-            blob.next,
-            blob.prev,
-            blob.operatorAddr,
-            blob.pubkey,
-            blob.leaveRequestTimestamp,
-            blob.deposit,
-            blob.contributorsSize);
-
-    std::string_view it = hex;
-    if (it.starts_with("0x") || it.starts_with("0X"))
-        it.remove_prefix(2);
-
-    while (it.size()) {
-        std::string_view chunk = tools::string_safe_substr(it, 0, 64);  // Grab 32 byte chunk
-        fmt::format_to(std::back_inserter(buffer), "  {}\n", chunk);    // Output the chunk
-        it = tools::string_safe_substr(it, 64, it.size());              // Advance the it
-    }
-
-    std::string result = fmt::to_string(buffer);
-    return result;
-}
-
 event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::LogEntry& log) {
     event::StateChangeVariant result;
     const uint64_t l2_height = log.blockNumber.value_or(0);
@@ -415,54 +378,36 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
 RewardsContract::RewardsContract(cryptonote::network_type nettype, ethyl::Provider& provider) :
         contract_address{get_config(nettype).ETHEREUM_REWARDS_CONTRACT}, provider{provider} {}
 
-std::vector<bls_public_key> RewardsContract::get_all_bls_pubkeys(uint64_t block_number) {
-    // Get the sentinel node to start the iteration
-    const uint64_t service_node_sentinel_id = 0;
-    ContractServiceNode sentinel_node = service_nodes(service_node_sentinel_id, block_number);
-    uint64_t currentNodeId = sentinel_node.next;
-
-    std::vector<bls_public_key> result;
-
-    // Iterate over the linked list of service nodes
-    while (currentNodeId != service_node_sentinel_id) {
-        ContractServiceNode service_node = service_nodes(currentNodeId, block_number);
-        if (!service_node.good)
-            break;
-        result.push_back(service_node.pubkey);
-        currentNodeId = service_node.next;
-    }
-
-    return result;
-}
-
-RewardsContract::ServiceNodeIDs RewardsContract::all_service_node_ids(
-        std::optional<uint64_t> height) {
+void RewardsContract::all_service_node_ids(
+        std::optional<uint64_t> height,
+        std::function<void(std::optional<ServiceNodeIDs>)> callback) {
     std::string call_data = "0x{:x}"_format(contract::call::ServiceNodeRewards_allServiceNodeIDs);
     std::string block_num_arg = height ? "0x{:x}"_format(*height) : "latest";
 
-    ServiceNodeIDs result;
-    result.success = false;
-    try {
-        auto call_result =
-                provider.callReadFunctionJSON(contract_address, call_data, block_num_arg);
-        result.success = true;
-        for (const auto& [id, key] :
-             parse_all_service_node_ids(call_result.get<std::string_view>())) {
-            result.ids.push_back(id);
-            result.bls_pubkeys.push_back(key);
-        }
-    } catch (const std::exception& e) {
-        oxen::log::warning(
-                logcat,
-                "Failed to parse contract service node list at block '{}': {}",
-                block_num_arg,
-                e.what());
-    }
-    return result;
+    provider.callReadFunctionJSONAsync(
+            contract_address,
+            call_data,
+            [callback = std::move(callback)](std::optional<nlohmann::json> response) {
+                if (!response)
+                    return callback(std::nullopt);
+                if (!response->is_string()) {
+                    log::warning(
+                            logcat, "Invalid allServiceNodeIDs response: value is not a string");
+                    return callback(std::nullopt);
+                }
+
+                try {
+                    callback(parse_all_service_node_ids(response->get<std::string_view>()));
+                } catch (const std::exception& e) {
+                    log::warning(
+                            logcat, "Failed to parse allServiceNodeIDs response: {}", e.what());
+                    callback(std::nullopt);
+                }
+            },
+            block_num_arg);
 }
 
-std::vector<std::pair<uint64_t, bls_public_key>> RewardsContract::parse_all_service_node_ids(
-        std::string_view call_result_hex) {
+ServiceNodeIDs RewardsContract::parse_all_service_node_ids(std::string_view call_result_hex) {
 
     if (call_result_hex.starts_with("0x") || call_result_hex.starts_with("0X"))
         call_result_hex.remove_prefix(2);
@@ -530,143 +475,37 @@ std::vector<std::pair<uint64_t, bls_public_key>> RewardsContract::parse_all_serv
     return result;
 }
 
-ContractServiceNode RewardsContract::service_nodes(
-        uint64_t index, std::optional<uint64_t> blockNumber) {
-    auto call_data = "0x{:x}{:064x}"_format(contract::call::ServiceNodeRewards_serviceNodes, index);
+void RewardsContract::get_non_signers(
+        std::unordered_set<bls_public_key> bls_public_keys,
+        std::function<void(std::optional<NonSigners>)> callback) {
 
-    // FIXME(OXEN11): we *cannot* make a blocking request here like this because we are blocking
-    // some other thread from doing work; we either need to get this from a local cache of the info,
-    // or make it asynchronous (i.e. with a completion/timeout callback), or both (i.e. try cache,
-    // make request asynchronously if not found).
-    //
-    // FIXME(OXEN11): nor can we make recursive linked lists requests like this!
-    std::string block_num_arg = blockNumber ? "0x{:x}"_format(*blockNumber) : "latest";
-    nlohmann::json callResult =
-            provider.callReadFunctionJSON(contract_address, call_data, block_num_arg);
-    auto call_result_hex = callResult.get<std::string_view>();
-    if (call_result_hex.starts_with("0x") || call_result_hex.starts_with("0X"))
-        call_result_hex.remove_prefix(2);
+    all_service_node_ids(
+            std::nullopt,
+            [callback = std::move(callback),
+             bls_pks = std::move(bls_public_keys)](std::optional<ServiceNodeIDs> snids) mutable {
+                if (!snids) {
+                    log::warning(logcat, "fetching all SN ids failed!");
+                    callback(std::nullopt);
+                    return;
+                }
+                auto ns = std::make_optional<NonSigners>();
+                for (const auto& [id, pk] : *snids) {
+                    if (!bls_pks.erase(pk))
+                        ns->missing_ids.push_back(id);
+                }
+                ns->unwanted = std::move(bls_pks);
 
-    ContractServiceNode result{};
-    result.good = false;  // until proven otherwise
-    if (call_result_hex.empty()) {
-        oxen::log::warning(
-                logcat,
-                "Provider returned an empty string when querying contract service node {} at block "
-                "'{}'",
-                index,
-                block_num_arg);
-        return result;
-    }
+                log::debug(
+                        logcat,
+                        "Found {} missing signers ({}), {} extra signers",
+                        ns->missing_ids.size(),
+                        fmt::join(ns->missing_ids, ","),
+                        ns->unwanted.size());
+                if (!ns->unwanted.empty())
+                    log::trace(logcat, "Extra signers:\n- {}", fmt::join(ns->unwanted, "\n- "));
 
-    // NOTE: The ServiceNode struct is a dynamic type (because its child `Contributor` field is
-    // dynamic) hence the offset to the struct is encoded in the first 32 byte element.
-    std::string_view sn_data_offset_hex =
-            tools::string_safe_substr(call_result_hex, /*pos*/ 0, /*size*/ 64);
-    auto sn_data_offset_bytes = tools::make_from_hex_guts<u256>(sn_data_offset_hex);
-    auto sn_data = call_result_hex.substr(tools::decode_integer_be(sn_data_offset_bytes) * 2);
-    auto [next,
-          prev,
-          op_addr,
-          pubkey,
-          added_timestamp,
-          leave_request_timestamp,
-          deposit,
-          contr_offset,
-          remainder] =
-            tools::split_hex_into<
-                    u256,
-                    u256,
-                    skip<12>,
-                    eth::address,
-                    eth::bls_public_key,
-                    u256,
-                    u256,
-                    u256,
-                    u256,
-                    std::string_view>(sn_data);
-
-    result.next = tools::decode_integer_be(next);
-    result.prev = tools::decode_integer_be(prev);
-    result.operatorAddr = op_addr;
-    result.pubkey = pubkey;
-    result.addedTimestamp = tools::decode_integer_be(added_timestamp);
-    result.leaveRequestTimestamp = tools::decode_integer_be(leave_request_timestamp);
-    result.deposit = tools::decode_integer_be(deposit);
-
-    auto contrib_data = sn_data.substr(tools::decode_integer_be(contr_offset) * 2);
-    auto [contrib_len, remainder2] = tools::split_hex_into<u256, std::string_view>(contrib_data);
-
-    // NOTE: Set the contrib_data to point to directly after the 32 byte
-    // contrib_len field (e.g. the payload of the contrib_data).
-    contrib_data = remainder2;
-
-    // NOTE: Start parsing the contributors blobs
-    if (auto contributorSize = tools::decode_integer_be(contrib_len);
-        contributorSize <= result.contributors.max_size())
-        result.contributorsSize = contributorSize;
-    else {
-        oxen::log::error(
-                logcat,
-                "{}",
-                log_more_contributors_than_allowed(
-                        contributorSize,
-                        result.contributors.max_size(),
-                        result.pubkey,
-                        blockNumber,
-                        index));
-        oxen::log::debug(logcat, "{}", log_service_node_blob(result, call_result_hex));
-        return result;
-    }
-
-    for (size_t i = 0; i < result.contributorsSize; i++) {
-        try {
-            auto& [addr, beneficiary, amount] = result.contributors[i];
-            u256 amt;
-            std::tie(addr, beneficiary, amt, contrib_data) = tools::
-                    split_hex_into<skip<12>, eth::address, eth::address, u256, std::string_view>(
-                            contrib_data);
-            amount = tools::decode_integer_be(amt);
-        } catch (const std::exception& e) {
-            oxen::log::error(
-                    logcat,
-                    "Failed to parse contributor/contribution [{}] for service node {} with BLS "
-                    "pubkey {} at height {}: {}",
-                    i,
-                    index,
-                    result.pubkey,
-                    blockNumber ? "{}"_format(*blockNumber) : "(latest)",
-                    e.what());
-            oxen::log::debug(logcat, "{}", log_service_node_blob(result, call_result_hex));
-            return result;
-        }
-    }
-
-#ifndef NDEBUG
-    oxen::log::trace(
-            logcat,
-            "Successfully parsed new SN. {}",
-            log_service_node_blob(result, call_result_hex));
-#endif
-
-    result.good = true;
-    return result;
+                callback(std::move(ns));
+            });
 }
 
-std::vector<uint64_t> RewardsContract::get_non_signers(
-        const std::unordered_set<bls_public_key>& bls_public_keys) {
-
-    std::vector<uint64_t> result;
-    ServiceNodeIDs contract_ids = all_service_node_ids();
-    assert(contract_ids.ids.size() == contract_ids.bls_pubkeys.size());
-    for (size_t index = 0; index < contract_ids.ids.size(); index++) {
-        const bls_public_key& key = contract_ids.bls_pubkeys[index];
-        if (!bls_public_keys.count(key)) {
-            uint64_t id = contract_ids.ids[index];
-            result.push_back(id);
-        }
-    }
-
-    return result;
-}
 }  // namespace eth

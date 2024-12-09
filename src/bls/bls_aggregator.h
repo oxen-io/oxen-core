@@ -7,6 +7,9 @@
 #include <string>
 #include <vector>
 
+#include "bls/bls_crypto.h"
+#include "crypto/eth.h"
+
 namespace oxenmq {
 class OxenMq;
 }
@@ -14,8 +17,8 @@ class OxenMq;
 namespace eth {
 struct bls_aggregate_signed {
     std::vector<uint8_t> msg_to_sign;
-    std::vector<bls_public_key> signers_bls_pubkeys;
-    bls_signature signature;
+    std::unordered_map<bls_public_key, bls_signature> signatures;  // Individual signatures
+    bls_signature signature;  // Aggregate of all the signatures in `signatures`
 };
 
 enum class bls_exit_type {
@@ -47,32 +50,46 @@ struct bls_registration_response {
     crypto::ed25519_signature ed_signature;
 };
 
-struct bls_response {
-    service_nodes::service_node_address sn;
-    bool success;
-};
+using request_callback = std::function<void(
+        const service_nodes::service_node_address& sn,
+        bool success,
+        std::vector<std::string> data)>;
 
 class bls_aggregator {
   public:
-    using request_callback =
-            std::function<void(const bls_response& response, const std::vector<std::string>& data)>;
-
     explicit bls_aggregator(cryptonote::core& core);
 
-    // Request the service node network to sign the requested amount of
-    // `rewards` for the given Ethereum `address` if by consensus they agree
-    // that the amount is valid. This node (the aggregator) will aggregate the
-    // signatures into the response.
+    // Request the service node network to sign the requested amount of `rewards` for the given
+    // Ethereum `address` if by consensus they agree that the amount is valid. Once all requests
+    // finish, this node (the aggregator) will aggregate the signatures into the response and pass
+    // it to `callback`.
+    //
+    // This function is asychronous: it returns immediately, calling `callback` once the final
+    // aggregate response is available.
     //
     // This function throws an `invalid_argument` exception if `address` is zero or, the `rewards`
     // amount is `0` or height is greater than the current blockchain height.
-    bls_rewards_response rewards_request(const address& addr, uint64_t height);
+    void rewards_request(
+            const address& addr,
+            uint64_t height,
+            std::function<void(const bls_rewards_response&)> callback);
 
-    // Request the service node network to sign a request to remove the node specified by
-    // `pubkey` from the network. The nature of this exit is set by `type`. This node (the
-    // aggregator) will aggregate the signatures into the response.
-    bls_exit_liquidation_response exit_liquidation_request(
-            const crypto::public_key& pubkey, bls_exit_type type);
+    // Request the service node network to sign a request to remove the node specified by `pubkey`
+    // (either SN pubkey or BLS pubkey) from the network. The nature of this exit is set by `type`.
+    // This node (the aggregator) will aggregate the signatures into the response, and call
+    // `callback` with it once available.
+    //
+    // For normal (non-liqudiation) exits, the pubkey must exist in the recently removed nodes list.
+    // For liquidations via bls pubkey, this is not required (that is: liquidations can be issued
+    // for BLS pubkeys that oxend does not know about, to be able to remove bad registrations that
+    // oxend doesn't accept for whatever reason from the contract side).
+    //
+    // This function is asychronous: it returns immediately, later calling `callback` once the
+    // final aggregate response is available.
+    void exit_liquidation_request(
+            const std::variant<crypto::public_key, eth::bls_public_key>& pubkey,
+            bls_exit_type type,
+            std::function<void(const bls_exit_liquidation_response&)> callback);
 
     bls_registration_response registration(
             const address& sender, const crypto::public_key& sn_pubkey) const;
@@ -82,13 +99,27 @@ class bls_aggregator {
 
     void get_exit_liquidation(oxenmq::Message& m, bls_exit_type type) const;
 
-    // Goes out to the nodes on the network and makes oxenmq requests to all of them, when getting
-    // the reply `callback` will be called to process their reply
-    // Returns the number of nodes that we dispatched a request to
+    template <typename Result>
+    struct node_req_data {
+        Result result;
+        size_t remaining;
+        std::mutex signers_mutex;
+        eth::signature_aggregator agg_sig;
+    };
+
+    // Initiates asynchronous requests to service nodes on the network, making oxenmq requests to
+    // each of them; as each reply is returned the the reply `callback` will be called to process
+    // the reply.  Once the callback has been invoked for all requests (successful or failed) the
+    // `final_callback` is invoked (if non-null).
+    //
+    // Returns the total number of nodes to which requests will be sent.
+    //
+    // Note that this function is asychronous: it returns immediately without waiting for replies.
     uint64_t nodes_request(
-            std::string_view request_name,
-            std::string_view message,
-            const request_callback& callback);
+            std::string request_name,
+            std::string message,
+            request_callback callback,
+            std::function<void(int total_requests)> final_callback);
 
     cryptonote::core& core;
 

@@ -809,14 +809,16 @@ uint64_t L2Tracker::get_safe_height() const {
                  : latest_height - config.L2_TRACKER_SAFE_BLOCKS;
 }
 
-std::vector<uint64_t> L2Tracker::get_non_signers(
-        const std::unordered_set<bls_public_key>& bls_public_keys) {
-    return rewards_contract.get_non_signers(bls_public_keys);
+void L2Tracker::get_non_signers(
+        std::unordered_set<bls_public_key> bls_public_keys,
+        std::function<void(std::optional<NonSigners>)> callback) {
+    rewards_contract.get_non_signers(std::move(bls_public_keys), std::move(callback));
 }
 
-RewardsContract::ServiceNodeIDs L2Tracker::get_all_service_node_ids(
-        std::optional<uint64_t> height) {
-    return rewards_contract.all_service_node_ids(height);
+void L2Tracker::get_all_service_node_ids(
+        std::optional<uint64_t> height,
+        std::function<void(std::optional<ServiceNodeIDs>)> callback) {
+    rewards_contract.all_service_node_ids(height, std::move(callback));
 }
 
 std::optional<bool> L2Tracker::is_in_contract(const eth::bls_public_key& pubkey) const {
