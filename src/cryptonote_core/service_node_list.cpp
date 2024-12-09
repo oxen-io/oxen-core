@@ -3255,23 +3255,22 @@ void service_node_list::state_t::update_from_block(
 
                     // NOTE: Grab TX index of the L2 transaction it was originally mined in
                     uint64_t tx_index = 0;
-                    try {
-                        cryptonote::block block =
-                                db.get_block_from_height(unconf.height_added, nullptr);
-                        bool found = false;
-                        for (size_t index = 0; index < block.tx_hashes.size(); index++) {
-                            if (block.tx_hashes[index] == txhash) {
-                                tx_index = index;
-                                found = true;
-                                break;
-                            }
+                    cryptonote::block block =
+                            db.get_block_from_height(unconf.height_added, nullptr);
+                    bool found = false;
+                    for (size_t index = 0; index < block.tx_hashes.size(); index++) {
+                        if (block.tx_hashes[index] == txhash) {
+                            tx_index = index;
+                            found = true;
+                            break;
                         }
-                        if (!found)
-                            throw;
-                    } catch (const std::exception& e) {
+                    }
+
+
+                    if (!found) {
                         throw oxen::traced<std::runtime_error>(
-                                "TX {} was confirmed on chain from block {} but the block TX does "
-                                "not exist in the DB, block {} cannot be added due to missing data"_format(
+                                "TX {} was confirmed from block {} but the TX hash does not exist "
+                                "in the DB, block {} cannot be added due to missing data"_format(
                                         txhash, unconf.height_added, height));
                     }
 
