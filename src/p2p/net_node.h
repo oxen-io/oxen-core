@@ -108,6 +108,8 @@ struct p2p_connection_context_t : base_type  // t_payload_net_handler::connectio
     peerid_type peer_id;
     bool m_in_timedsync;
     std::set<epee::net_utils::network_address> sent_addresses;
+    size_t m_bytes_sent = 0;
+    size_t m_bytes_received = 0;
 };
 
 enum class PeerType { anchor = 0, white, gray };
@@ -117,6 +119,17 @@ inline constexpr std::string_view to_string(PeerType pt) {
          : pt == PeerType::gray   ? "gray"
                                   : "unknown";
 }
+
+struct peer_stats {
+  size_t successful_connections = 0;
+  size_t failed_connections = 0;
+  size_t bytes_sent = 0;
+  size_t bytes_received = 0;
+  uint64_t last_connected_timestamp = 0;
+  uint64_t total_connection_time = 0;
+};
+
+
 
 template <class t_payload_net_handler>
 class node_server
@@ -195,6 +208,7 @@ class node_server
         std::atomic<unsigned int> m_current_number_of_in_peers;
         bool m_can_pingback;
 
+
       private:
         void set_config_defaults() noexcept {
             // at this moment we have a hardcoded config
@@ -235,10 +249,12 @@ class node_server
 
     // debug functions
     bool log_peerlist();
+    void log_detailed_peer_stats();
     bool log_connections();
 
     // These functions only return information for the "public" zone
     virtual uint64_t get_public_connections_count();
+    virtual void update_peer_stats(const peerid_type peer_id, bool success, size_t bytes_sent = 0, size_t bytes_received = 0, uint64_t connection_time = 0);
     size_t get_public_outgoing_connections_count();
     size_t get_public_white_peers_count();
     size_t get_public_gray_peers_count();
@@ -477,6 +493,8 @@ class node_server
     bool m_require_ipv4;
     std::atomic<bool> is_closing;
     std::optional<std::thread> mPeersLoggerThread;
+    std::unordered_map<peerid_type, peer_stats> peer_stats_map;
+    std::mutex peer_stats_map_mutex;
 
     t_payload_net_handler& m_payload_handler;
     peerlist_storage m_peerlist_storage;
