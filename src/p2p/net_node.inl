@@ -1525,33 +1525,32 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
 
         if (use_white_list) {
             // if using the white list, we bias towards peers we've been using recently
-            random_index = get_random_exp_index(filtered.size());
-            std::lock_guard lock{m_used_stripe_peers_mutex};
-            if (next_needed_pruning_stripe > 0 &&
-                next_needed_pruning_stripe <= (1ul << cryptonote::PRUNING_LOG_STRIPES) &&
-                !m_used_stripe_peers[next_needed_pruning_stripe - 1].empty()) {
-                const auto na = m_used_stripe_peers[next_needed_pruning_stripe - 1].front();
-                m_used_stripe_peers[next_needed_pruning_stripe - 1].pop_front();
-                for (size_t i = 0; i < filtered.size(); ++i) {
-                    peerlist_entry pe;
-                    if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i].first) &&
-                        pe.adr == na) {
-                        log::debug(
-                                logcat,
-                                "Reusing stripe {} peer {}",
-                                next_needed_pruning_stripe,
-                                pe.adr.str());
-                        random_index = i;
-                        break;
-                    }
+            std::vector<peerid_type> candidate_peers;
+            candidate_peers.reserve(filtered.size());
+            for (size_t i = 0; i < filtered.size(); ++i) {
+                peerlist_entry pe;
+                if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i].first))
+                    candidate_peers.push_back(pe.id);
+            }
+            auto best_peer = select_best_peer(candidate_peers);
+            if (!best_peer)
+                return false;
+            bool found = false;
+            for (size_t i = 0; i < filtered.size(); ++i) {
+                peerlist_entry pe;
+                if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i].first) && pe.id == *best_peer) {
+                    random_index = filtered[i].first;
+                    found = true;
+                    break;
                 }
             }
-        } else
+            if (!found)
+                return false;
+        } else {
             random_index = crypto::rand_idx(filtered.size());
+            random_index = filtered[random_index].first;
+        }
 
-        CHECK_AND_ASSERT_MES(
-                random_index < filtered.size(), false, "random_index < filtered.size() failed!!");
-        random_index = filtered[random_index].first;
         CHECK_AND_ASSERT_MES(
                 random_index < (use_white_list ? zone.m_peerlist.get_white_peers_count()
                                                : zone.m_peerlist.get_gray_peers_count()),
