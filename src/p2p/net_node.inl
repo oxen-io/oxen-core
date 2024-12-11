@@ -821,6 +821,100 @@ void node_server<t_payload_net_handler>::update_peer_stats(const peerid_type pee
     stats.last_connected_timestamp = time(nullptr);
 }
 //-----------------------------------------------------------------------------------
+template<class t_payload_net_handler>
+double node_server<t_payload_net_handler>::calculate_peer_score(const peerid_type peer_id) {
+    std::unique_lock lock{peer_stats_map_mutex};
+    constexpr double NEUTRAL_SCORE = 100.0;
+    constexpr double MAX_CONNECTION_DURATION_FACTOR = 500.0;
+    constexpr time_t RECENT_DISCONNECT_PENALTY_TIMEFRAME = 60 * 5; // 5 mins
+    constexpr double RECENT_DISCONNECT_PENALTY = 500.0;
+    constexpr double MIN_EXPECTED_UPTIME = 60; // 1 min
+    constexpr double LOW_UPTIME_PENALTY = 100.0;
+    constexpr double RECENT_ACTIVITY_CAP = 100.0;
+
+    auto it = peer_stats_map.find(peer_id);
+    if (it == peer_stats_map.end()) {
+        return NEUTRAL_SCORE;
+    }
+
+    const peer_stats& stats = it->second;
+
+    // Connection Duration Factor will return a score that is from [0, 500] depending on how many
+    // minutes the node has been online 
+    double connection_duration_factor = stats.total_connection_time / 60.0;
+    connection_duration_factor = std::min(connection_duration_factor, MAX_CONNECTION_DURATION_FACTOR);
+
+    // Success Rate will return a [0,1] percentage of how frequently the connection has succeeded vs total connections
+    double success_rate = (stats.successful_connections + stats.failed_connections > 0)
+                              ? static_cast<double>(stats.successful_connections) /
+                                (stats.successful_connections + stats.failed_connections)
+                              : 0.0;
+
+    // Recent Activity factor will return a linearly growing score up until a cap based on how long since we last connected. 
+    // This will be subtracted from the score to penalise people we havent seen in a long time
+    double recent_activity_factor = static_cast<double>(time(nullptr) - stats.last_connected_timestamp) / 3600.0;
+    recent_activity_factor = std::min(recent_activity_factor, RECENT_ACTIVITY_CAP);
+
+    // Penalize peers who were recently disconnected, this will be subtracted if we connected to them 
+    // in the last 5 mins. The list should only show people we are currently not connected to so we assume 
+    // they had to have disconnected.
+    double recent_disconnect_penalty = 0.0;
+    if (stats.last_connected_timestamp > 0 &&
+        (time(nullptr) - stats.last_connected_timestamp) <= RECENT_DISCONNECT_PENALTY_TIMEFRAME) {
+        recent_disconnect_penalty = RECENT_DISCONNECT_PENALTY;
+    }
+
+    // We expect the node to have a minumum expected uptime, so we look at their average connection time
+    // and if this is less than 20 mins per connection then we give them a penalty
+    double average_uptime = (stats.successful_connections > 0)
+                                ? stats.total_connection_time / static_cast<double>(stats.successful_connections)
+                                : 0.0;
+
+    double low_uptime_penalty = 0.0;
+    if (average_uptime < MIN_EXPECTED_UPTIME) {
+        low_uptime_penalty = LOW_UPTIME_PENALTY;
+    }
+
+    double score = connection_duration_factor * success_rate
+                      - recent_activity_factor
+                      - recent_disconnect_penalty
+                      - low_uptime_penalty;
+
+    return score;
+}
+//-----------------------------------------------------------------------------------
+template<class t_payload_net_handler>
+std::optional<peerid_type> node_server<t_payload_net_handler>::select_best_peer(const std::vector<peerid_type>& candidate_peers) {
+    // Create a local copy of the candidate peers to shuffle
+    std::vector<peerid_type> shuffled_peers = candidate_peers;
+
+    // Shuffle the peers
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::shuffle(shuffled_peers.begin(), shuffled_peers.end(), gen);
+
+    double highest_score = 0;
+    std::optional<peerid_type> best_peer;
+
+    for (const auto& peer_id : shuffled_peers) {
+        double score = calculate_peer_score(peer_id);
+        log::debug(logcat, "Peer {} has score {}", peer_id, score);
+
+        if (score > highest_score) {
+            highest_score = score;
+            best_peer = peer_id;
+        }
+    }
+
+    if (best_peer) {
+        log::info(logcat, "Selected best peer: {} with score {}", *best_peer, highest_score);
+    } else {
+        log::warning(logcat, "No valid peers found during selection");
+    }
+
+    return best_peer;
+}
+//-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 uint64_t node_server<t_payload_net_handler>::get_public_connections_count() {
     auto public_zone = m_network_zones.find(epee::net_utils::zone::public_);
@@ -1165,10 +1259,12 @@ bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_p
     if (zone.m_current_number_of_out_peers ==
         zone.m_config.m_net_config.max_out_connection_count)  // out peers limit
     {
+        log::debug(logcat, "hit the out connections peer limit");
         return false;
     } else if (
             zone.m_current_number_of_out_peers >
             zone.m_config.m_net_config.max_out_connection_count) {
+        log::debug(logcat, "above the out connections peer limit, deleting a connection");
         zone.m_net_server.get_config_object().del_out_connections(1);
         --(zone.m_current_number_of_out_peers);  // atomic variable, update time = 1s
         return false;
@@ -1624,6 +1720,7 @@ bool node_server<t_payload_net_handler>::connections_maker() {
                     m_payload_handler.get_next_needed_pruning_stripe().second
                             ? zone.second.m_config.m_net_config.max_out_connection_count
                             : base_expected_white_connections;
+            log::debug(logcat, "Expected white connections {}, connection count {}", expected_white_connections, conn_count);
             if (conn_count < expected_white_connections) {
                 // start from anchor list
                 while (get_outgoing_connections_count(zone.second) <
@@ -1668,6 +1765,7 @@ bool node_server<t_payload_net_handler>::connections_maker() {
                 return false;
             size_t new_conn_count = get_outgoing_connections_count(zone.second);
             if (new_conn_count <= conn_count) {
+                log::debug(logcat, "We did not make any connections, sleeping for 1s");
                 // we did not make any connection, sleep a bit to avoid a busy loop in case we don't
                 // have any peers to try, then break so we will try seeds to get more peers
                 std::this_thread::sleep_for(1s);
