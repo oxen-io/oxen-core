@@ -1956,7 +1956,7 @@ bool service_node_list::state_t::process_confirmed_event(
 
     // NOTE: Add the funds to the unlock queue in the DB, can be retrieved by BLS aggregation when
     // fully unlocked..
-    sn_list->blockchain.sqlite_db().return_staked_amount_to_user(returned_stakes, block_delay);
+    sn_list->blockchain.sqlite_db().add_delayed_payments(returned_stakes, height, block_delay);
 
     // NOTE: Remove the x25519/bls lookup entries:
     x25519_map.erase(snpk_to_xpk(node->service_node_pubkey));
@@ -3558,7 +3558,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
     const auto& netconf = get_config(blockchain.nettype());
     uint64_t target_height = height - 1;
     uint64_t archive_height = target_height - (target_height % netconf.HISTORY_ARCHIVE_INTERVAL);
-    auto history = cryptonote::BlockchainSQLite::AccruedTableType::Nil;
+    auto history = cryptonote::BlockchainSQLite::PaymentTableType::Nil;
 
     // NOTE: Early exit if we are already detached to the desired height
     if (m_state.height == target_height) {
@@ -3567,7 +3567,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
     }
 
     // NOTE: Lookup desired SNL state from recent backups
-    if (history == cryptonote::BlockchainSQLite::AccruedTableType::Nil) {
+    if (history == cryptonote::BlockchainSQLite::PaymentTableType::Nil) {
         state_set& set = m_transient.state_history;
         for (auto it = set.rbegin(); it != set.rend(); it++) {
             // NOTE: Find the closest starting point
@@ -3576,9 +3576,9 @@ void service_node_list::blockchain_detached(uint64_t height) {
 
             // NOTE: Check if the SQL DB has a backup for the requested height
             size_t row_count = blockchain.sqlite_db().batch_payments_accrued_row_count(
-                    cryptonote::BlockchainSQLite::AccruedTableType::Recent, &it->height);
+                    cryptonote::BlockchainSQLite::PaymentTableType::Recent, &it->height);
             if (row_count) {  // NOTE: Accept if SQL has
-                history = cryptonote::BlockchainSQLite::AccruedTableType::Recent;
+                history = cryptonote::BlockchainSQLite::PaymentTableType::Recent;
                 target_height = it->height;
                 break;
             }
@@ -3586,7 +3586,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
     }
 
     // NOTE: Lookup desired SNL state from archive backups
-    if (history == cryptonote::BlockchainSQLite::AccruedTableType::Nil) {
+    if (history == cryptonote::BlockchainSQLite::PaymentTableType::Nil) {
         state_set& set = m_transient.state_archive;
         for (auto it = set.rbegin(); it != set.rend(); it++) {
             if (it->only_loaded_quorums)
@@ -3599,10 +3599,10 @@ void service_node_list::blockchain_detached(uint64_t height) {
 
             // NOTE: Check if the SQL DB has a backup for the requested height
             size_t row_count = blockchain.sqlite_db().batch_payments_accrued_row_count(
-                    cryptonote::BlockchainSQLite::AccruedTableType::Archive, &it->height);
+                    cryptonote::BlockchainSQLite::PaymentTableType::Archive, &it->height);
 
             if (row_count) {  // NOTE: Accept if SQL has
-                history = cryptonote::BlockchainSQLite::AccruedTableType::Archive;
+                history = cryptonote::BlockchainSQLite::PaymentTableType::Archive;
                 archive_height = it->height;
                 break;
             }
@@ -3612,14 +3612,14 @@ void service_node_list::blockchain_detached(uint64_t height) {
     // NOTE: Execute detach
     std::string_view detach_label = {};
     switch (history) {
-        case cryptonote::BlockchainSQLite::AccruedTableType::Nil: {  // NOTE: Not found
+        case cryptonote::BlockchainSQLite::PaymentTableType::Nil: {  // NOTE: Not found
             m_transient.state_history.clear();
             m_transient.state_archive.clear();
             init();
             detach_label = " (via reset)";
         } break;
 
-        case cryptonote::BlockchainSQLite::AccruedTableType::Archive: {
+        case cryptonote::BlockchainSQLite::PaymentTableType::Archive: {
             // NOTE: Found in archive history. Wasn't in recent history hence none of the data in
             // there is relevant so we can clear it out.
             m_transient.state_history.clear();
@@ -3630,7 +3630,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
             detach_label = " (from archive history)";
         } break;
 
-        case cryptonote::BlockchainSQLite::AccruedTableType::Recent: {  // NOTE: Found in recent
+        case cryptonote::BlockchainSQLite::PaymentTableType::Recent: {  // NOTE: Found in recent
                                                                         // history
             auto it = m_transient.state_history.find(target_height);
             m_state = std::move(*it);

@@ -55,7 +55,7 @@ class BlockchainSQLite : public db::Database {
     // synchronised to in.
     void update_height(uint64_t new_height);
 
-    enum class AccruedTableType {
+    enum class PaymentTableType {
         Nil,      // Table containing current state
         Archive,  // Table containing state stored periodically at HISTORY_ARCHIVE_INTERVAL
                   // intervals
@@ -64,13 +64,13 @@ class BlockchainSQLite : public db::Database {
 
     // Rewinds the SQL DB to the specified height. This function is called internally by the SNL on
     // detach.
-    void blockchain_detached(AccruedTableType type, uint64_t height);
+    void blockchain_detached(PaymentTableType type, uint64_t height);
 
     // Return the number of rows for the desired batched payments accrued table. The row count will
     // be for the 'height' specified. 'height' is ignored if type is nil as the default accrued
     // table only stores state for the current DB's height already. If 'height' is null then the row
     // count of the entire table will be returned.
-    size_t batch_payments_accrued_row_count(AccruedTableType type, const uint64_t* height);
+    size_t batch_payments_accrued_row_count(PaymentTableType type, const uint64_t* height);
 
     // Add payments to the specified addresses to the SQL rewards table. The function throws if
     // insertion into the DB fails.
@@ -162,7 +162,11 @@ class BlockchainSQLite : public db::Database {
         uint32_t contributor_index;  // Index of the contributor in the event the exit stake is for
     };
 
-    bool return_staked_amount_to_user(std::span<const exit_stake> payments, uint64_t delay_blocks);
+    // Add a payment to the delayed_payments table. 'at_height' should be greater than or equal to
+    // the height of the table or otherwise the payments may be deleted without taking effect. This
+    // function asserts if 'at_height' does not meet this criteria.
+    bool add_delayed_payments(
+            std::span<const exit_stake> payments, uint64_t at_height, uint64_t delay_blocks);
 
     // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares
     // the miner_tx_vouts with a list previously extracted payments to make sure that the correct
