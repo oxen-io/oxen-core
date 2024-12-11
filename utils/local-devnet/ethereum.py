@@ -443,9 +443,9 @@ class SNRewardsContract:
         return tx_hash
 
 
-    def claimRewards(self):
-        unsent_tx = self.contract.functions.claimRewards().build_transaction(basic_build_tx_params(account=self.hardhat_account0, gas=2000000))
-        tx_hash   = submit_unsigned_tx("Claim rewards", self.hardhat_account0, unsent_tx)
+    def claimRewards(self, account: EthLocalAccount):
+        unsent_tx = self.contract.functions.claimRewards().build_transaction(basic_build_tx_params(account=account, gas=2000000))
+        tx_hash   = submit_unsigned_tx("Claim rewards", account, unsent_tx)
         return tx_hash
 
     def setSignatureExpiry(self, duration_s: int):

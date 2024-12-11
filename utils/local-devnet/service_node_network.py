@@ -346,8 +346,9 @@ class SNNetwork:
         staker_eth_addr_no_0x = self.sn_contract.hardhat_account0.address[2:42]
         assert len(staker_eth_addr) == 42, "Expected Eth address w/ 0x prefix + 40 hex characters. Account was {} ({} chars)".format(staker_eth_addr, len(staker_eth_addr))
 
-        beneficiary_eth_addr       = self.sn_contract.hardhat_account1.address
-        beneficiary_eth_addr_no_0x = self.sn_contract.hardhat_account1.address[2:42]
+        beneficiary_account        = self.sn_contract.hardhat_account1
+        beneficiary_eth_addr       = beneficiary_account.address
+        beneficiary_eth_addr_no_0x = beneficiary_account.address[2:42]
         assert len(beneficiary_eth_addr) == 42, "Expected Eth address w/ 0x prefix + 40 hex characters. Account was {} ({} chars)".format(beneficiary_eth_addr, len(beneficiary_eth_addr))
 
         # Construct the seed list for initiating the smart contract.
@@ -507,7 +508,7 @@ class SNNetwork:
 
         # Wait until the node is able to receive rewards
         total_sleep_time = 0
-        sleep_time       = 8
+        sleep_time       = 4
         while self.eth_sns[0].sn_is_payable() == False:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
@@ -560,15 +561,20 @@ class SNNetwork:
                " for ",
                beneficiary_eth_addr_no_0x)
 
-        vprint("Balance for '{}' before claim {}".format(beneficiary_eth_addr, self.sent_contract.balanceOf(beneficiary_eth_addr)))
+        beneficiary_balance_before_claim = self.sent_contract.balanceOf(beneficiary_eth_addr)
+        vprint("Balance for '{}' before claim {}".format(beneficiary_eth_addr, beneficiary_balance_before_claim))
 
         # NOTE: Now claim the rewards
-        self.sn_contract.claimRewards()
+        self.sn_contract.claimRewards(account=beneficiary_account)
         vprint("Beneficiary rewards after claim is now ['available', 'claimed'] respectively: ",
                self.sn_contract.recipients(beneficiary_eth_addr),
                " for ",
                beneficiary_eth_addr)
-        vprint("Balance for '{}' after claim {}".format(beneficiary_eth_addr, self.sent_contract.balanceOf(beneficiary_eth_addr)))
+
+        beneficiary_balance_after_claim = self.sent_contract.balanceOf(beneficiary_eth_addr)
+        vprint("Balance for '{}' after claim {}".format(beneficiary_eth_addr, beneficiary_balance_after_claim))
+
+        assert beneficiary_balance_before_claim < beneficiary_balance_after_claim, "Beneficiary's balance did not increase after claim, claim failed (balance was {}, after {})".format(beneficiary_balance_before_claim, beneficiary_balance_after_claim)
 
         # NOTE: BLS rewards claim ##################################################################
         # Claim rewards for staker
@@ -750,14 +756,20 @@ class SNNetwork:
         vprint(f"Sleeping until dereg stake is confirmed into SQL DB")
         total_sleep_time = 0
         height_delayed_payments_row_was_added = 0
+        sql_db_height = 0
         while True:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
 
+            sql_db_height_row = sql_cursor.execute("SELECT height FROM batch_db_info").fetchone()
+            if sql_db_height_row[0] != sql_db_height:
+                vprint("... SQL DB height changed from {}->{}".format(sql_db_height, sql_db_height_row[0]))
+                sql_db_height = sql_db_height_row[0]
+
             row_result = sql_cursor.execute("SELECT COUNT(*) FROM delayed_payments").fetchone()
             row_count  = row_result[0] if row_result else 0
             if row_count > 0:
-                delayed_payment_row                   = sql_cursor.execute("SELECT entry_height FROM delayed_payments").fetchone()
+                delayed_payment_row                   = sql_cursor.execute("SELECT height FROM delayed_payments").fetchone()
                 height_delayed_payments_row_was_added = delayed_payment_row[0]
                 vprint("Found {} delayed payments @ height {} in SQL DB".format(row_count, height_delayed_payments_row_was_added));
                 for row in sql_cursor.execute("SELECT * FROM delayed_payments").fetchall():
@@ -776,17 +788,24 @@ class SNNetwork:
         assert row_count == 0, "Expected the delayed payments row to be undone on pop_blocks @ height {}, found {}".format(self.sns[0].height(), row_count)
 
         # Verify batch_db_info height rewinded #####################################################
-        row_result                   = sql_cursor.execute("SELECT height FROM batch_db_info").fetchone()
-        batch_db_info_height         = row_result[0] if row_result else 0
-        assert batch_db_info_height == self.sns[0].height() - 1, "Expected batch_db_info table 'height' ({}) to be undone as well. Oxen block index is {}".format(batch_db_info_height, self.sns[0].height() - 1)
+        row_result           = sql_cursor.execute("SELECT height FROM batch_db_info").fetchone()
+        sql_db_height        = row_result[0] if row_result else 0
+        assert sql_db_height == self.sns[0].height() - 1, "Expected batch_db_info table 'height' ({}) to be undone as well. Oxen block index is {}".format(sql_db_height, self.sns[0].height() - 1)
 
         # Verify that deregistration stake is claimable ############################################
-        vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {self.sns[0].height()}")
+        vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {self.sns[0].height()} (after popping, we will resync the chain)")
         total_sleep_time = 0
         balance_before = self.sns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0].balance
+        chain_height = 0
         while True:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
+
+            next_chain_height = self.sns[0].height()
+            if chain_height != next_chain_height:
+                if chain_height != 0:
+                    vprint("... Daemon height changed from {}->{}".format(chain_height, next_chain_height))
+                chain_height = next_chain_height
 
             # TODO: Crappy heuristic to detect the stake unlock. A node
             # registered prior to the HF staked 100 $OXEN. A node after stakes
