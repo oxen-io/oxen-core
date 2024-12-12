@@ -835,8 +835,8 @@ class SNNetwork:
         #
         # NOTE: At this point we only exit 2 nodes (exit after 30 days is done after this step).
         staker_upperbound_returned_stake = 0
-        staker_upperbound_returned_stake += contract_staking_requirement if node_index_is_solo_node(SNExitMode.WithSignature.value, len(self.eth_sns)) else contract_staking_requirement / 2
-        staker_upperbound_returned_stake += contract_staking_requirement if node_index_is_solo_node(SNExitMode.Liquidation.value,   len(self.eth_sns)) else contract_staking_requirement / 2
+        staker_upperbound_returned_stake += contract_staking_requirement if node_index_is_solo_node(sn_to_exit_indexes[SNExitMode.WithSignature.value], len(self.eth_sns)) else contract_staking_requirement / 2
+        staker_upperbound_returned_stake += contract_staking_requirement if node_index_is_solo_node(sn_to_exit_indexes[SNExitMode.Liquidation.value],   len(self.eth_sns)) else contract_staking_requirement / 2
         staker_lowerbound_returned_stake = staker_upperbound_returned_stake - coins(10)
 
         vprint("Expecting between {} and {} $SENT to be returned to {}".format(staker_lowerbound_returned_stake, staker_upperbound_returned_stake, staker_eth_addr))
@@ -863,7 +863,7 @@ class SNNetwork:
                 vprint("Staking address {} before {}, after {} (change {}, height {})".format(staker_eth_addr, stakers_reward_balance_before, balance_after, change_in_balance, curr_height))
                 sns0_height = curr_height
 
-            if change_in_balance >= staker_lowerbound_returned_stake and change_in_balance < staker_upperbound_returned_stake:
+            if change_in_balance >= staker_lowerbound_returned_stake and change_in_balance <= staker_upperbound_returned_stake:
                 vprint("Staking address had a stake-like in balance")
                 break
 
