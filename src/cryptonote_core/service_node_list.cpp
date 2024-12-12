@@ -3266,7 +3266,6 @@ void service_node_list::state_t::update_from_block(
                         }
                     }
 
-
                     if (!found) {
                         throw oxen::traced<std::runtime_error>(
                                 "TX {} was confirmed from block {} but the TX hash does not exist "
