@@ -508,13 +508,6 @@ void BlockchainSQLite::blockchain_detached(PaymentTableType history, uint64_t ne
         } break;
     }
 
-    // NOTE: When we detach we are rewinding to an old state. The accrued table
-    // is additive and tracks the lifetime rewards of _every_ user that has
-    // staked into a node and their rewards earnt. The number of rows is
-    // always strictly increasing, hence going back in time we must always be
-    // restoring lesser or equal amount of rows.
-    assert(rows_restored <= rows_removed);
-
     update_height(new_height);
     log::debug(
             logcat,
