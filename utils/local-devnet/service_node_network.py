@@ -74,6 +74,10 @@ def all_service_nodes_proofed(sn):
             result = False
     return result
 
+def node_index_is_solo_node(index: int, num_nodes: int):
+    result: bool = index > (num_nodes / 2)
+    return result
+
 class SNExitMode(enum.Enum):
     AfterWaitTime = 0
     WithSignature = 1
@@ -154,8 +158,6 @@ class SNNetwork:
         self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
                                    spender=self.sn_contract.contract.address,
                                    value=int(999_999 * 1e9))
-
-        hh1_required_sent: int = int((contract_staking_requirement / 2) * 5)
 
         # Multi-contrib Factory
         self.sn_contrib_factory = SNContribFactoryContract(contract_json=sn_contrib_factory_json);
@@ -410,12 +412,9 @@ class SNNetwork:
                 fee=int(0),
             )
 
-            print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
-            print(vars(key))
-            print(vars(sig))
-            print(vars(params))
-
-            if index > (len(self.eth_sns) / 2):
+            # First half of the nodes will be solo-nodes
+            if node_index_is_solo_node(index, len(self.eth_sns)):
+                # Staker provides collateral, all rewards go to the beneficiary
                 contributors: list[ContractServiceNodeContributor] = [
                     ContractServiceNodeContributor(
                         ContractServiceNodeStaker(addr=staker_eth_addr, beneficiary=beneficiary_eth_addr),
@@ -430,9 +429,10 @@ class SNNetwork:
                                                  params=params,
                                                  contributors=contributors)
             else:
+                # Second half is multi-contrib nodes
                 reserved: list[ReservedContributor] = [
-                    ReservedContributor(addr=self.sn_contract.hardhat_account0.address, amount=int(contract_staking_requirement / 2)),
-                    ReservedContributor(addr=self.sn_contract.hardhat_account1.address, amount=int(contract_staking_requirement / 2)),
+                    ReservedContributor(addr=staker_eth_addr, amount=int(contract_staking_requirement / 2)),
+                    ReservedContributor(addr=beneficiary_eth_addr, amount=int(contract_staking_requirement / 2)),
                 ]
 
                 self.sn_contrib_factory.deploy(account=self.sn_contract.hardhat_account0,
@@ -444,17 +444,17 @@ class SNNetwork:
 
         # NOTE: Fund hardhat account 1 w/ enough $SENT to fund their 50% of the
         # multi-contrib contracts
-        hh1_required_sent: int = int((contract_staking_requirement / 2) * len(self.sn_contrib_factory.deployedContracts))
+        beneficiary_required_sent: int = int((contract_staking_requirement / 2) * len(self.sn_contrib_factory.deployedContracts))
 
         print("HH Account 0 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account0.address)))
         print("HH Account 1 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account1.address)))
 
         self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
                                    spender=self.sn_contract.hardhat_account0.address,
-                                   value=hh1_required_sent)
+                                   value=beneficiary_required_sent)
         self.sent_contract.transferFrom(sender=self.sn_contract.hardhat_account0,
                                         to=self.sn_contract.hardhat_account1.address,
-                                        value=hh1_required_sent)
+                                        value=beneficiary_required_sent)
 
         print("HH Account 0 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account0.address)))
         print("HH Account 1 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account1.address)))
@@ -754,9 +754,16 @@ class SNNetwork:
         sql_cursor = sql.cursor();
 
         vprint(f"Sleeping until dereg stake is confirmed into SQL DB")
+
         total_sleep_time = 0
         height_delayed_payments_row_was_added = 0
         sql_db_height = 0
+
+        delayed_payment_last_payout_height     = 0 # The latest payout  height in the DB detected
+        delayed_payment_last_height            = 0 # The latest [entry] height in the DB detected
+        delayed_payment_last_block_height      = 0
+        delayed_payment_last_block_tx_index    = 0
+        delayed_payment_last_contributor_index = 0
         while True:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
@@ -766,21 +773,45 @@ class SNNetwork:
                 vprint("... SQL DB height changed from {}->{}".format(sql_db_height, sql_db_height_row[0]))
                 sql_db_height = sql_db_height_row[0]
 
-            row_result = sql_cursor.execute("SELECT COUNT(*) FROM delayed_payments").fetchone()
-            row_count  = row_result[0] if row_result else 0
+            row_result        = sql_cursor.execute("SELECT COUNT(*) FROM delayed_payments").fetchone()
+            row_count         = row_result[0] if row_result else 0
             if row_count > 0:
                 delayed_payment_row                   = sql_cursor.execute("SELECT height FROM delayed_payments").fetchone()
                 height_delayed_payments_row_was_added = delayed_payment_row[0]
                 vprint("Found {} delayed payments @ height {} in SQL DB".format(row_count, height_delayed_payments_row_was_added));
                 for row in sql_cursor.execute("SELECT * FROM delayed_payments").fetchall():
                     vprint("  {}".format(row))
+
+                # The highest payout height should be a delayed payment for a deregistration to
+                # which a penalty has been applied.
+                last_delayed_payment_row               = sql_cursor.execute("SELECT height, payout_height, block_height, block_tx_index, contributor_index FROM delayed_payments ORDER BY payout_height DESC LIMIT 1").fetchone()
+                delayed_payment_last_height            = last_delayed_payment_row[0]
+                delayed_payment_last_payout_height     = last_delayed_payment_row[1]
+                delayed_payment_last_block_height      = last_delayed_payment_row[2]
+                delayed_payment_last_block_tx_index    = last_delayed_payment_row[3]
+                delayed_payment_last_contributor_index = last_delayed_payment_row[4]
+
+                # Verify that the delay is more than 1 block. It should be more
+                # than one due to it being a deregistration. The actual amount
+                # depends on what is configured for devnet which will be shorter
+                # than mainnet.
+                delayed_payment_block_delay = delayed_payment_last_payout_height - delayed_payment_last_height
+                assert delayed_payment_block_delay > 0, "Delayed payment for deregistration must be greater than 0 blocks, payout height: {}, height: {}".format(delayed_payment_last_payout_height, delayed_payment_last_height)
                 break
 
-        # Pop blocks and undo the exits #############################################################
-        sns0_height       = self.sns[0].height()
-        num_blocks_to_pop = (sns0_height - height_delayed_payments_row_was_added) + 50 # for good measure
+        # Pop blocks to a height such that (delayed_payments_last_height <= x <= delayed_payment_last_payout_height)
+        assert (delayed_payment_last_payout_height - delayed_payment_last_height) > 0; # Must be more than 0 block apart, is deregister
+        sns0_height_before_pop_blocks = self.sns[0].height()
+        target_pop_height             = int((delayed_payment_last_payout_height + delayed_payment_last_height) / 2); # Middle of the range
+
+        num_blocks_to_pop = (sns0_height_before_pop_blocks - target_pop_height)
         self.sns[0].json_rpc(method="pop_blocks", params={'nblocks': num_blocks_to_pop})
-        vprint("Popping {} blocks from SNS[0], height was {}, is {}".format(num_blocks_to_pop, sns0_height, self.sns[0].height()))
+
+        # General purpose, "large" pop blocks to undo the exits ###################################/
+        sns0_height_before_pop_blocks = self.sns[0].height()
+        num_blocks_to_pop             = (sns0_height_before_pop_blocks - height_delayed_payments_row_was_added) + 50 # for good measure
+        self.sns[0].json_rpc(method="pop_blocks", params={'nblocks': num_blocks_to_pop})
+        vprint("Large pop blocks ({}) from SNS[0], height was {}, is {}".format(num_blocks_to_pop, sns0_height_before_pop_blocks, self.sns[0].height()))
 
         # Verify that the delayed payment was removed ##############################################
         row_result = sql_cursor.execute("SELECT COUNT(*) FROM delayed_payments").fetchone()
@@ -795,33 +826,46 @@ class SNNetwork:
         # Verify that deregistration stake is claimable ############################################
         vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {self.sns[0].height()} (after popping, we will resync the chain)")
         total_sleep_time = 0
-        balance_before = self.sns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0].balance
-        chain_height = 0
+        stakers_reward_balance_before = self.sns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0].balance
+
+        # Calculate the upper bound on how much stake should be expected to be
+        # returned to the staker. It's an upper bound because a liquidated
+        # node has a penalty applied to it that we don't care to _exactly_
+        # calculate precisely.
+        #
+        # NOTE: At this point we only exit 2 nodes (exit after 30 days is done after this step).
+        staker_upperbound_returned_stake = 0
+        staker_upperbound_returned_stake += contract_staking_requirement if node_index_is_solo_node(SNExitMode.WithSignature.value, len(self.eth_sns)) else contract_staking_requirement / 2
+        staker_upperbound_returned_stake += contract_staking_requirement if node_index_is_solo_node(SNExitMode.Liquidation.value,   len(self.eth_sns)) else contract_staking_requirement / 2
+        staker_lowerbound_returned_stake = staker_upperbound_returned_stake - coins(10)
+
+        vprint("Expecting between {} and {} $SENT to be returned to {}".format(staker_lowerbound_returned_stake, staker_upperbound_returned_stake, staker_eth_addr))
+        sns0_height = 0
         while True:
             total_sleep_time += sleep_time
             time.sleep(sleep_time)
 
-            next_chain_height = self.sns[0].height()
-            if chain_height != next_chain_height:
-                if chain_height != 0:
-                    vprint("... Daemon height changed from {}->{}".format(chain_height, next_chain_height))
-                chain_height = next_chain_height
-
-            # TODO: Crappy heuristic to detect the stake unlock. A node
-            # registered prior to the HF staked 100 $OXEN. A node after stakes
-            # 120 $SENT. A deregistration (liquidation) does a tiny slash on the
-            # funds so we don't exactly get the same stake back. 
+            # In this test we exit 3 nodes,
             #
-            # For now we just try and detect a good chunk of the funds being
-            # credited by sleeping and check each height.
+            # - by signature
+            # - by 30 day timeout
+            # - by liquidation
+            #
+            # At this point we will have exited by signature and liquidation,
+            # (30 day timeout happens after this block of code). The 3 nodes we exit are randomly
+            # selected, so, we may exit a multi-contrib or solo node.
+
             balance_after     = self.sns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0].balance
-            change_in_balance = balance_after - balance_before
-            if change_in_balance > 95:
-                vprint("Stake-like change in balance {}, after {} (change {})".format(balance_before, balance_after, change_in_balance))
+            change_in_balance = balance_after - stakers_reward_balance_before
+
+            curr_height = self.sns[0].height()
+            if sns0_height != self.sns[0].height():
+                vprint("Staking address {} before {}, after {} (change {}, height {})".format(staker_eth_addr, stakers_reward_balance_before, balance_after, change_in_balance, curr_height))
+                sns0_height = curr_height
+
+            if change_in_balance >= staker_lowerbound_returned_stake and change_in_balance < staker_upperbound_returned_stake:
+                vprint("Staking address had a stake-like in balance")
                 break
-            else:
-                vprint("Balance before {}, after {} (change {})".format(balance_before, balance_after, change_in_balance))
-            balance_before = balance_after
 
         vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}")
 
