@@ -493,9 +493,6 @@ void BlockchainSQLite::blockchain_detached(PaymentTableType history, uint64_t ne
 
             db.exec(R"(DELETE FROM batched_payments_raw WHERE height_paid > {0};
                        DELETE FROM batched_payments_accrued;
-                       DELETE FROM batched_payments_accrued_recent WHERE height > {0};
-                       DELETE FROM batched_payments_accrued_archive WHERE height > {0};
-
                        INSERT INTO batched_payments_accrued
                        SELECT address, amount, payout_offset
                        FROM {1} WHERE height = {0};
@@ -504,9 +501,6 @@ void BlockchainSQLite::blockchain_detached(PaymentTableType history, uint64_t ne
             std::string delayed_payments_history_table = "delayed_payments_{}"_format(
                     history == PaymentTableType::Archive ? "archive" : "recent");
             db.exec(R"(DELETE FROM delayed_payments;
-                       DELETE FROM delayed_payments_recent  WHERE height > {0};
-                       DELETE FROM delayed_payments_archive WHERE height > {0};
-
                        INSERT INTO delayed_payments
                        SELECT *
                        FROM {1} WHERE {0} >= height AND {0} <= payout_height;
