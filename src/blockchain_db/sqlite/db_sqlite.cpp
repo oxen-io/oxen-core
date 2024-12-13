@@ -375,7 +375,7 @@ void BlockchainSQLite::upgrade_schema() {
             DELETE FROM batched_payments_accrued_recent                      WHERE height < NEW.height - {0};
 
             -- Delayed payments
-            INSERT INTO delayed_payments_recent SELECT *                     FROM  delayed_payments;
+            INSERT INTO delayed_payments_recent SELECT *                     FROM  delayed_payments WHERE height == NEW.height;
             DELETE FROM delayed_payments_recent                              WHERE height < NEW.height - {0};
 
         END;
