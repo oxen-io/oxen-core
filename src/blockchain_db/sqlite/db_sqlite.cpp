@@ -431,7 +431,6 @@ void BlockchainSQLite::upgrade_schema() {
         )"_format(netconf.HISTORY_RECENT_KEEP_WINDOW,
                   netconf.HISTORY_ARCHIVE_INTERVAL,
                   netconf.HISTORY_ARCHIVE_KEEP_WINDOW));
-
     }
 
     transaction.commit();
