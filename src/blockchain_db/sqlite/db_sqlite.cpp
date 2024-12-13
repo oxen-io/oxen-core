@@ -409,6 +409,7 @@ void BlockchainSQLite::upgrade_schema() {
         -- We rename the trigger to be more apt for its new role of handling
         -- both archive and recent tables.
         DROP   TRIGGER IF EXISTS clear_recent;
+        DROP   TRIGGER IF EXISTS clear_recent_and_archive;
         CREATE TRIGGER           clear_recent_and_archive AFTER UPDATE ON batch_db_info
         FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
 
