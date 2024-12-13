@@ -145,7 +145,7 @@ local mac_builder(name,
         'cd build',
         'cmake .. -G Ninja -DCMAKE_CXX_FLAGS=-fcolor-diagnostics -DCMAKE_BUILD_TYPE=' + build_type + ' ' +
         '-DLOCAL_MIRROR=https://builds.lokinet.dev/deps -DUSE_LTO=' + (if lto then 'ON ' else 'OFF ') +
-        (if werror then '-DWARNINGS_AS_ERRORS=ON ' else '') +
+        '-DWARNINGS_AS_ERRORS=' + (if werror then 'ON ' else 'OFF ') +
         (if build_tests || run_tests then '-DBUILD_TESTS=ON ' else '') +
         cmake_extra,
         'ninja -j' + jobs + ' -v',
@@ -240,8 +240,8 @@ local gui_wallet_step_darwin = {
   debian_pipeline('Debian sid (w/ tests) (amd64)', docker_base + 'debian-sid', lto=true, run_tests=true),
   debian_pipeline('Debian sid Debug (amd64)', docker_base + 'debian-sid', build_type='Debug', cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
   clang(16),
-  debian_pipeline('Debian stable (i386)', docker_base + 'debian-stable/i386', cmake_extra='-DDOWNLOAD_SODIUM=ON -DARCH_ID=i386 -DARCH=i686'),
-  debian_pipeline('Debian buster (amd64)', docker_base + 'debian-buster', cmake_extra='-DDOWNLOAD_SODIUM=ON'),
+  debian_pipeline('Debian stable (i386)', docker_base + 'debian-stable/i386', cmake_extra='-DARCH_ID=i386 -DARCH=i686'),
+  debian_pipeline('Debian bullseye (amd64)', docker_base + 'debian-bullseye'),
   debian_pipeline('Ubuntu LTS (amd64)', docker_base + 'ubuntu-lts'),
   debian_pipeline('Ubuntu latest (amd64)', docker_base + 'ubuntu-rolling'),
 
@@ -253,16 +253,15 @@ local gui_wallet_step_darwin = {
                   build_tests=false,
                   cmake_extra='-DARCH_ID=armhf'),
 
-  // Static build (on bionic) which gets uploaded to builds.lokinet.dev:
+  // Static build (on focal) which gets uploaded to builds.lokinet.dev:
   debian_pipeline(
-    'Static (bionic amd64)',
-    docker_base + 'ubuntu-bionic',
-    deps=['g++-8'] + static_build_deps,
-    cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_C_COMPILER=gcc-8 -DCMAKE_CXX_COMPILER=g++-8 -DARCH=x86-64',
+    'Static (focal amd64)',
+    docker_base + 'ubuntu-focal',
+    deps=['g++-10'] + static_build_deps,
+    cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10 -DARCH=x86-64',
     build_tests=false,
     lto=true,
     extra_cmds=static_check_and_upload,
-    kitware_cmake_distro='bionic',
     /*extra_steps=[gui_wallet_step('ubuntu:bionic')]*/
   ),
 
