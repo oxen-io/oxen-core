@@ -92,7 +92,7 @@ bool PendingTransactionImpl::commit(std::string_view filename_, bool overwrite, 
       // Save tx to file
       if (!filename.empty()) {
         if (std::error_code ec_ignore; fs::exists(filename, ec_ignore) && !overwrite){
-          m_status = {Status_Error, tr("Attempting to save transaction to file, but specified file(s) exist. Exiting to not risk overwriting. File:") + filename.u8string()};
+          m_status = {Status_Error, tr("Attempting to save transaction to file, but specified file(s) exist. Exiting to not risk overwriting. File:") + tools::convert_str<char>(filename.u8string())};
           LOG_ERROR(m_status.second);
           return false;
         }

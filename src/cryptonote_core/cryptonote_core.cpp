@@ -118,13 +118,13 @@ namespace cryptonote
   const command_line::arg_descriptor<std::string, false, true, 2> arg_data_dir = {
     "data-dir"
   , "Specify data directory"
-  , tools::get_default_data_dir().u8string()
+  , tools::convert_str<char>(tools::get_default_data_dir().u8string())
   , {{ &arg_testnet_on, &arg_devnet_on }}
   , [](std::array<bool, 2> testnet_devnet, bool defaulted, std::string val)->std::string {
       if (testnet_devnet[0])
-        return (fs::u8path(val) / "testnet").u8string();
+        return tools::convert_str<char>((fs::u8path(val) / "testnet").u8string());
       else if (testnet_devnet[1])
-        return (fs::u8path(val) / "devnet").u8string();
+        return tools::convert_str<char>((fs::u8path(val) / "devnet").u8string());
       return val;
     }
   };
@@ -582,7 +582,7 @@ namespace cryptonote
     // make sure the data directory exists, and try to lock it
     if (std::error_code ec; !fs::is_directory(folder, ec) && !fs::create_directories(folder, ec) && ec)
     {
-      MERROR("Failed to create directory " + folder.u8string() + (ec ? ": " + ec.message() : ""s));
+      MERROR("Failed to create directory " + tools::convert_str<char>(folder.u8string()) + (ec ? ": " + ec.message() : ""s));
       return false;
     }
 
@@ -843,9 +843,9 @@ namespace cryptonote
       bool r = tools::slurp_file(keypath, keystr);
       memcpy(&unwrap(unwrap(privkey)), keystr.data(), sizeof(privkey));
       memwipe(&keystr[0], keystr.size());
-      CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from " + keypath.u8string());
+      CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from " + tools::convert_str<char>(keypath.u8string()));
       CHECK_AND_ASSERT_MES(keystr.size() == sizeof(privkey), false,
-          "service node key file " + keypath.u8string() + " has an invalid size");
+          "service node key file " + tools::convert_str<char>(keypath.u8string()) + " has an invalid size");
 
       r = get_pubkey(privkey, pubkey);
       CHECK_AND_ASSERT_MES(r, false, "failed to generate pubkey from secret key");
@@ -860,7 +860,7 @@ namespace cryptonote
       }
 
       bool r = tools::dump_file(keypath, tools::view_guts(privkey));
-      CHECK_AND_ASSERT_MES(r, false, "failed to save service node key to " + keypath.u8string());
+      CHECK_AND_ASSERT_MES(r, false, "failed to save service node key to " + tools::convert_str<char>(keypath.u8string()));
 
       fs::permissions(keypath, fs::perms::owner_read, ec);
     }

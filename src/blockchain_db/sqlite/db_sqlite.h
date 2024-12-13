@@ -123,7 +123,6 @@ public:
 protected:
 
   cryptonote::network_type m_nettype;
-  std::string filename;
 
 };
 
