@@ -1,0 +1,20 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Mon, 16 Dec 2024 12:26:14 -0400
+Subject: Update fmt lib install path
+
+---
+ CMakeLists.txt | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5f46847..2b1ec75 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -889,6 +889,7 @@ set(oxenlibs epee blockchain_db checkpoints common cncrypto cryptonote_basic
+         cryptonote_core cryptonote_protocol device lmdb_lib mnemonics
+         multisig net p2p ringct_basic ringct sqlitedb
+         rpc_server_base rpc rpc_http_client rpc_commands daemon_rpc_server
++        fmt
+         wallet easylogging lmdb randomx blocks version)
+ install(TARGETS ${oxenlibs}
+     ARCHIVE DESTINATION lib${OXEN_INSTALL_LIBDIR_SUFFIX}
