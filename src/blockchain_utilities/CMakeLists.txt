@@ -32,7 +32,6 @@ target_link_libraries(blockchain_tools_common_libs INTERFACE
     cryptonote_core
     blockchain_db
     version
-    filesystem
     Boost::program_options
     SQLiteCpp
     extra)
@@ -58,16 +57,6 @@ oxen_add_executable(blockchain_export "oxen-blockchain-export"
   blocksdat_file.cpp
   )
 target_link_libraries(blockchain_export PRIVATE blockchain_tools_common_libs)
-
-
-oxen_add_executable(blockchain_blackball "oxen-blockchain-mark-spent-outputs"
-  blockchain_blackball.cpp
-  )
-
-target_link_libraries(blockchain_blackball
-  PRIVATE
-    blockchain_tools_common_libs
-    wallet)
 
 
 oxen_add_executable(blockchain_usage "oxen-blockchain-usage"
@@ -111,7 +100,7 @@ target_link_libraries(blockchain_stats PRIVATE blockchain_tools_common_libs)
 
 if (TARGET sodium_vendor OR NOT SODIUM_VERSION VERSION_LESS 1.0.17)
     oxen_add_executable(sn_key_tool "oxen-sn-keys" sn_key_tool.cpp)
-    target_link_libraries(sn_key_tool PRIVATE sodium oxenmq filesystem)
+    target_link_libraries(sn_key_tool PRIVATE sodium oxenc common)
 else()
     message(STATUS "Not building oxen-sn-keys tool (requires libsodium >= 1.0.17)")
 endif()
