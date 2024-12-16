@@ -72,6 +72,22 @@ extern "C" {
 
 using cryptonote::hf;
 
+
+// TODO: Temporary formatting support shim for Oxen 10.6.1; this is designed to fail to compile when
+// merged with Oxen 11 code: the solution is to simply delete this as Oxen 11 has a more robust
+// formatting solution for this.
+template <typename T, typename Char>
+requires std::same_as<T, crypto::hash> || std::same_as<T, crypto::public_key>
+struct fmt::formatter<T, Char> : fmt::formatter<std::string_view> {
+    auto format(const T& val, fmt::format_context& ctx) const {
+        auto out = ctx.out();
+        *out++ = '<';
+        out = oxenc::to_hex(std::begin(val.data), std::end(val.data), out);
+        *out++ = '>';
+        return out;
+    }
+};
+
 namespace service_nodes
 {
   size_t constexpr STORE_LONG_TERM_STATE_INTERVAL = 10000;
@@ -3960,7 +3976,7 @@ namespace service_nodes
       epee::misc_utils::get_gmt_time(reg.hf, tm);
 
       cmd += "\n\n";
-      cmd += fmt::format(tr("This registration expires at {:%Y-%m-%d %I:%M:%S %p} UTC.\n"), tm);
+      cmd += fmt::format(fmt::runtime(tr("This registration expires at {:%Y-%m-%d %I:%M:%S %p} UTC.\n")), tm);
       cmd += tr("This should be about 2 weeks from now; if it isn't, check this computer's clock.\n");
       cmd += tr("Please submit your registration into the blockchain before this time or it will be invalid.");
     }

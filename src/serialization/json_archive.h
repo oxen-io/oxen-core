@@ -78,6 +78,8 @@ struct json_archiver : public serializer
 
   struct nested_object {
     json_archiver& ar;
+    explicit nested_object(json_archiver& ar) : ar{ar} {};
+
     ~nested_object() {
       --ar.depth_;
       ar.make_indent();
@@ -132,6 +134,7 @@ struct json_archiver : public serializer
 
   struct nested_array {
     json_archiver& ar;
+    explicit nested_array(json_archiver& ar) : ar{ar} {}
     int exc_count = std::uncaught_exceptions();
     bool first = true;
 
@@ -173,7 +176,7 @@ struct json_archiver : public serializer
     inner_array_contents_ = s > 0;
     ++depth_;
     stream_ << '[';
-    return {*this};
+    return nested_array{*this};
   }
 
   void delimit_array() { stream_ << (indent_ ? ", "sv : ","sv); }

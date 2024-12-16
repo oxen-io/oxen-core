@@ -144,9 +144,9 @@ std::string elapsed_str(std::chrono::duration<double> seconds)
   else if (seconds >= 1ms)
     val = {seconds.count()*1e3, "ms"};
   else if (seconds >= 1us)
-    val = {seconds.count()*1e6, u8"µs"};
+    val = {seconds.count()*1e6, "µs"};
   else
-    val = {seconds.count()*1e9, u8"ns"};
+    val = {seconds.count()*1e9, "ns"};
   std::ostringstream s;
   s << std::fixed << std::setprecision(3) << val.first << val.second;
   return s.str();
