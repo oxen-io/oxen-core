@@ -3,18 +3,22 @@ Date: Mon, 16 Dec 2024 12:26:14 -0400
 Subject: Update fmt lib install path
 
 ---
- CMakeLists.txt | 1 +
- 1 file changed, 1 insertion(+)
+ external/CMakeLists.txt | 5 +++++
+ 1 file changed, 5 insertions(+)
 
-diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 5f46847..2b1ec75 100644
---- a/CMakeLists.txt
-+++ b/CMakeLists.txt
-@@ -889,6 +889,7 @@ set(oxenlibs epee blockchain_db checkpoints common cncrypto cryptonote_basic
-         cryptonote_core cryptonote_protocol device lmdb_lib mnemonics
-         multisig net p2p ringct_basic ringct sqlitedb
-         rpc_server_base rpc rpc_http_client rpc_commands daemon_rpc_server
-+        fmt
-         wallet easylogging lmdb randomx blocks version)
- install(TARGETS ${oxenlibs}
-     ARCHIVE DESTINATION lib${OXEN_INSTALL_LIBDIR_SUFFIX}
+diff --git a/external/CMakeLists.txt b/external/CMakeLists.txt
+index 06f3fcd..73ead8c 100644
+--- a/external/CMakeLists.txt
++++ b/external/CMakeLists.txt
+@@ -63,6 +63,11 @@ system_or_submodule(OXENC oxenc liboxenc>=1.2.0 oxen-encoding)
+ system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.18 oxen-mq)
+ system_or_submodule(FMT fmt fmt>=9.0.0 fmt)
+ 
++# deb: put our local version of fmt into the oxen-specific lib dir:
++install(TARGETS fmt
++    ARCHIVE DESTINATION lib${OXEN_INSTALL_LIBDIR_SUFFIX}
++    LIBRARY DESTINATION lib${OXEN_INSTALL_LIBDIR_SUFFIX})
++
+ add_subdirectory(db_drivers)
+ add_subdirectory(easylogging++ easyloggingpp)
+ 
