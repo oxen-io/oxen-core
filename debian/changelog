@@ -1,5 +1,9 @@
 oxen (10.6.1-1~ubuntu2204) jammy; urgency=medium
 
+  * drop too-old system fmt dep
+  * Update fmt lib install path
+  * add libfmt .so's to liboxen package
+  * use system oxenc
   * Fix invalid mempool selection with conflicting ONS buys
   * C++20 & updated lib compilation (DROP FROM DEV!)
   * 10.6.1 release
@@ -7,7 +11,7 @@ oxen (10.6.1-1~ubuntu2204) jammy; urgency=medium
   * drop unneeded patch
   * Rediff patches
 
- -- Jason Rhinelander <jason@imaginary.ca>  Mon, 16 Dec 2024 11:02:03 -0400
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 16 Dec 2024 17:52:09 -0400
 
 oxen (10.6.0-2~ubuntu2204) jammy; urgency=medium
 
