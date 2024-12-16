@@ -1,3 +1,14 @@
+oxen (10.6.1-1) unstable; urgency=medium
+
+  * Fix invalid mempool selection with conflicting ONS buys
+  * C++20 & updated lib compilation (DROP FROM DEV!)
+  * 10.6.1 release
+  * update old distros from ci
+  * drop unneeded patch
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 16 Dec 2024 10:58:16 -0400
+
 oxen (10.6.0-2) unstable; urgency=medium
 
   * bump storage server/lokinet versions in oxen-service-node metapackage
