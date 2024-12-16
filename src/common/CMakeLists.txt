@@ -64,7 +64,6 @@ target_link_libraries(common
   PUBLIC
     cncrypto
     oxenmq::oxenmq
-    filesystem
     fmt::fmt
   PRIVATE
     sodium

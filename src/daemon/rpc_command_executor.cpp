@@ -122,7 +122,7 @@ namespace {
     std::string addr_str = peer.host + ":" + std::to_string(peer.port);
     std::string rpc_port = peer.rpc_port ? std::to_string(peer.rpc_port) : "-";
     std::string pruning_seed = epee::string_tools::to_string_hex(peer.pruning_seed);
-    tools::msg_writer() << fmt::format("{:<10} {:<25} {:<25} {:<5} %{:-4} {}", prefix, id_str, addr_str, rpc_port, pruning_seed, elapsed);
+    tools::msg_writer() << fmt::format("{:<10} {:<25} {:<25} {:<5} %{:<4} {}", prefix, id_str, addr_str, rpc_port, pruning_seed, elapsed);
   }
 
   void print_block_header(block_header_response const & header)

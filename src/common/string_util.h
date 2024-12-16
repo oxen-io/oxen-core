@@ -1,4 +1,6 @@
 #pragma once
+#include <oxenc/common.h>
+
 #include <string_view>
 #include <vector>
 #include <cstring>
@@ -124,6 +126,28 @@ T make_from_guts(std::string_view s) {
 }
 
 std::string lowercase_ascii_string(std::string_view src);
+
+// Converts between basic_string_view<T> for different 1-byte T values
+template <oxenc::basic_char To, oxenc::basic_char From>
+std::basic_string_view<To> convert_sv(std::basic_string_view<From> from) {
+    return {reinterpret_cast<const To*>(from.data()), from.size()};
+}
+// Same as above, but converting from a string rather than view.
+template <oxenc::basic_char To, oxenc::basic_char From>
+std::basic_string_view<To> convert_sv(const std::basic_string<From>& from) {
+    return {reinterpret_cast<const To*>(from.data()), from.size()};
+}
+
+// Same as above, but makes a copy into a basic_string
+template <oxenc::basic_char To, oxenc::basic_char From>
+std::basic_string<To> convert_str(std::basic_string_view<From> from) {
+    return {reinterpret_cast<const To*>(from.data()), from.size()};
+}
+// Same as above, but converting from a string rather than view.
+template <oxenc::basic_char To, oxenc::basic_char From>
+std::basic_string<To> convert_str(const std::basic_string<From>& from) {
+    return {reinterpret_cast<const To*>(from.data()), from.size()};
+}
 
 /// Converts a duration into a human friendlier string, such as "3d7d47m12s" or "347µs"
 std::string friendly_duration(std::chrono::nanoseconds dur);
