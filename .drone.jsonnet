@@ -1,4 +1,4 @@
-local distro = 'noble';
+local distro = 'oracular';
 local distro_name = 'Ubuntu ' + distro;
 local distro_docker = 'registry.oxen.rocks/ubuntu-' + distro + '-builder';
 
