@@ -34,6 +34,8 @@
 
 #include "epee/net/connection_basic.hpp"
 
+#include <utility>
+
 #include "epee/net/net_utils_base.h"
 #include "epee/misc_log_ex.h"
 #include <thread>
