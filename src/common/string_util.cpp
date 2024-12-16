@@ -108,7 +108,7 @@ std::string friendly_duration(std::chrono::nanoseconds dur) {
     else if (dur >= 1ms)
       os << seconds * 1000 << "ms";
     else if (dur >= 1us)
-      os << seconds * 1'000'000 << u8"µs";
+      os << seconds * 1'000'000 << "µs";
     else
       os << seconds * 1'000'000'000 << "ns";
   }

@@ -37,5 +37,4 @@ target_link_libraries(checkpoints
     cryptonote_basic
     Boost::program_options
     Boost::serialization
-    filesystem
     extra)
