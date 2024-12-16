@@ -6,8 +6,9 @@ oxen (10.6.1-1~ubuntu2404) noble; urgency=medium
   * update old distros from ci
   * drop unneeded patch
   * Rediff patches
+  * use system oxenc
 
- -- Jason Rhinelander <jason@imaginary.ca>  Mon, 16 Dec 2024 11:01:52 -0400
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 16 Dec 2024 17:51:46 -0400
 
 oxen (10.6.0-2~ubuntu2404) noble; urgency=medium
 
