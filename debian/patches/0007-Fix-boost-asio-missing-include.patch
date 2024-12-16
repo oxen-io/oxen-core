@@ -1,0 +1,20 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Mon, 16 Dec 2024 12:10:08 -0400
+Subject: Fix boost::asio missing include
+
+---
+ contrib/epee/include/epee/net/connection_basic.hpp | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/contrib/epee/include/epee/net/connection_basic.hpp b/contrib/epee/include/epee/net/connection_basic.hpp
+index 1f11ed2..6b66100 100644
+--- a/contrib/epee/include/epee/net/connection_basic.hpp
++++ b/contrib/epee/include/epee/net/connection_basic.hpp
+@@ -48,6 +48,7 @@
+ #include <memory>
+ #include <deque>
+ 
++#include <utility>  // Because boost::asio doesn't include everything it uses
+ #include <boost/asio.hpp>
+ 
+ #include "../shared_sv.h"
