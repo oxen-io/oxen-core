@@ -12,7 +12,7 @@ simplify that greatly.
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/cryptonote_core/cryptonote_core.cpp b/src/cryptonote_core/cryptonote_core.cpp
-index cafe8b8..85f1da5 100644
+index 37dc52a..b57b640 100644
 --- a/src/cryptonote_core/cryptonote_core.cpp
 +++ b/src/cryptonote_core/cryptonote_core.cpp
 @@ -905,7 +905,7 @@ namespace cryptonote
