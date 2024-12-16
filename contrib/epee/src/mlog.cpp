@@ -89,7 +89,8 @@ std::string mlog_get_default_log_path(const char *default_filename)
   else
     default_log_file = default_filename;
 
-  return (fs::u8path(default_log_folder) / fs::u8path(default_log_file)).u8string();
+  auto u8s = (fs::u8path(default_log_folder) / fs::u8path(default_log_file)).u8string();
+  return {reinterpret_cast<const char*>(u8s.data()), u8s.size()};
 }
 
 static void mlog_set_common_prefix()
@@ -185,7 +186,7 @@ void mlog_configure(const std::string &filename_base, bool console, const std::s
       const auto parent_path = filename_base_path.has_parent_path() ? filename_base_path.parent_path() : fs::path(".");
       for (const auto& p : fs::directory_iterator{parent_path})
       {
-        const std::string filename = p.path().u8string();
+        auto filename = p.path().u8string();
         if (filename.size() >= filename_base.size() && std::memcmp(filename.data(), filename_base.data(), filename_base.size()) == 0)
           found_files.push_back(p.path());
       }

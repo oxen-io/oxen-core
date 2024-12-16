@@ -47,7 +47,6 @@ target_link_libraries(wallet_api
     mnemonics
     lmdb
     Boost::serialization
-    filesystem
     Boost::thread
   PRIVATE
     extra)

@@ -946,7 +946,7 @@ std::string WalletImpl::publicMultisigSignerKey() const
 EXPORT
 std::string WalletImpl::path() const
 {
-    return wallet()->path().u8string();
+    return tools::convert_str<char>(wallet()->path().u8string());
 }
 
 EXPORT
@@ -972,13 +972,13 @@ bool WalletImpl::store(std::string_view path_)
 EXPORT
 std::string WalletImpl::filename() const
 {
-    return wallet()->get_wallet_file().u8string();
+    return tools::convert_str<char>(wallet()->get_wallet_file().u8string());
 }
 
 EXPORT
 std::string WalletImpl::keysFilename() const
 {
-    return wallet()->get_keys_file().u8string();
+    return tools::convert_str<char>(wallet()->get_keys_file().u8string());
 }
 
 EXPORT
@@ -1307,7 +1307,7 @@ bool WalletImpl::exportKeyImages(std::string_view filename_)
   {
     if (!w->export_key_images_to_file(filename, false /* requested_ki_only */))
     {
-      setStatusError(tr("failed to save file ") + filename.u8string());
+      setStatusError(tr("failed to save file ") + tools::convert_str<char>(filename.u8string()));
       return false;
     }
   }

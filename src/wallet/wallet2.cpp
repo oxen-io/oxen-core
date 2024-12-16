@@ -157,7 +157,7 @@ namespace {
   std::string get_default_ringdb_path()
   {
     // remove .oxen, replace with .shared-ringdb
-    return tools::get_default_data_dir().replace_filename(".shared-ringdb").u8string();
+    return tools::convert_str<char>(tools::get_default_data_dir().replace_filename(".shared-ringdb").u8string());
   }
 
   std::string pack_multisignature_keys(const std::vector<crypto::public_key>& keys, const crypto::secret_key& signer_secret_key)
@@ -269,11 +269,11 @@ struct options {
     {{ &testnet, &devnet, &regtest }},
     [](std::array<bool, 3> test_dev_fake, bool defaulted, std::string val)->std::string {
       if (test_dev_fake[0])
-        return (fs::u8path(val) / "testnet").u8string();
+        return tools::convert_str<char>((fs::u8path(val) / "testnet").u8string());
       else if (test_dev_fake[1])
-        return (fs::u8path(val) / "devnet").u8string();
+        return tools::convert_str<char>((fs::u8path(val) / "devnet").u8string());
       else if (test_dev_fake[2])
-        return (fs::u8path(val) / "fake").u8string();
+        return tools::convert_str<char>((fs::u8path(val) / "fake").u8string());
       return val;
     }
   };
@@ -493,7 +493,7 @@ std::pair<std::unique_ptr<tools::wallet2>, tools::password_container> generate_f
   const auto do_generate = [&]() -> bool {
     std::string buf;
     if (!tools::slurp_file(json_file, buf)) {
-      THROW_WALLET_EXCEPTION(tools::error::wallet_internal_error, std::string(tools::wallet2::tr("Failed to load file ")) + json_file.u8string());
+      THROW_WALLET_EXCEPTION(tools::error::wallet_internal_error, std::string(tools::wallet2::tr("Failed to load file ")) + tools::convert_str<char>(json_file.u8string()));
       return false;
     }
 
@@ -506,7 +506,7 @@ std::pair<std::unique_ptr<tools::wallet2>, tools::password_container> generate_f
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, version, unsigned, Uint, true, 0);
     const int current_version = 1;
     THROW_WALLET_EXCEPTION_IF(field_version > current_version, tools::error::wallet_internal_error,
-      fmt::format(tools::wallet2::tr("Version {:d} too new; this wallet only supports up to {:d}"), field_version, current_version));
+      fmt::format(fmt::runtime(tools::wallet2::tr("Version {:d} too new; this wallet only supports up to {:d}")), field_version, current_version));
 
     GET_FIELD_FROM_JSON_RETURN_ON_ERROR(json, filename, std::string, String, true, std::string());
 
@@ -4527,7 +4527,7 @@ bool wallet2::verify_password(const fs::path& keys_file_name, const epee::wipeab
   try {
     serialization::parse_binary(buf, keys_file_data);
   } catch (const std::exception& e) {
-    THROW_WALLET_EXCEPTION(error::wallet_internal_error, "internal error: failed to deserialize \"" + keys_file_name.u8string() + "\": " + e.what());
+    THROW_WALLET_EXCEPTION(error::wallet_internal_error, "internal error: failed to deserialize \"" + tools::convert_str<char>(keys_file_name.u8string()) + "\": " + e.what());
   }
   crypto::chacha_key key;
   crypto::generate_chacha_key(password.data(), password.size(), key, kdf_rounds);
@@ -4646,7 +4646,7 @@ bool wallet2::query_device(hw::device::type& device_type, const fs::path& keys_f
   try {
     serialization::parse_binary(buf, keys_file_data);
   } catch (const std::exception& e) {
-    THROW_WALLET_EXCEPTION(error::wallet_internal_error, "internal error: failed to deserialize \"" + keys_file_name.u8string() + "\": " + e.what());
+    THROW_WALLET_EXCEPTION(error::wallet_internal_error, "internal error: failed to deserialize \"" + tools::convert_str<char>(keys_file_name.u8string()) + "\": " + e.what());
   }
   crypto::chacha_key key;
   crypto::generate_chacha_key(password.data(), password.size(), key, kdf_rounds);
@@ -5655,7 +5655,7 @@ void wallet2::load(const fs::path& wallet_, const epee::wipeable_string& passwor
     bool exists = fs::exists(m_keys_file, e);
     THROW_WALLET_EXCEPTION_IF(e || !exists, error::file_not_found, m_keys_file);
     lock_keys_file();
-    THROW_WALLET_EXCEPTION_IF(!is_keys_file_locked(), error::wallet_internal_error, "internal error: \"" + m_keys_file.u8string() + "\" is opened by another wallet program");
+    THROW_WALLET_EXCEPTION_IF(!is_keys_file_locked(), error::wallet_internal_error, "internal error: \"" + tools::convert_str<char>(m_keys_file.u8string()) + "\" is opened by another wallet program");
 
     // this temporary unlocking is necessary for Windows (otherwise the file couldn't be loaded).
     unlock_keys_file();
@@ -5699,7 +5699,7 @@ void wallet2::load(const fs::path& wallet_, const epee::wipeable_string& passwor
       try {
         serialization::parse_binary(use_fs ? cache_file_buf : cache_buf, cache_file_data);
       } catch (const std::exception& e) {
-        THROW_WALLET_EXCEPTION(error::wallet_internal_error, "internal error: failed to deserialize \"" + m_wallet_file.u8string() + "\": " + e.what());
+        THROW_WALLET_EXCEPTION(error::wallet_internal_error, "internal error: failed to deserialize \"" + tools::convert_str<char>(m_wallet_file.u8string()) + "\": " + e.what());
       }
       std::string cache_data;
       cache_data.resize(cache_file_data.cache_data.size());
@@ -6367,7 +6367,7 @@ std::string wallet2::transfers_to_csv(const std::vector<wallet::transfer_view>& 
   }
 
   std::stringstream output;
-  output << fmt::format(title_format, tr("block"), tr("type"), tr("lock"), tr("checkpointed"), tr("timestamp"), tr("amount"),
+  output << fmt::format(fmt::runtime(title_format), tr("block"), tr("type"), tr("lock"), tr("checkpointed"), tr("timestamp"), tr("amount"),
       tr("running balance"), tr("hash"), tr("payment ID"), tr("fee"), tr("destination"), tr("sent_amount"), tr("index"), tr("note"));
 
   for (const auto& transfer : transfers)
@@ -6400,19 +6400,19 @@ std::string wallet2::transfers_to_csv(const std::vector<wallet::transfer_view>& 
     if (transfer.subaddr_indices.size() > 1)
       indices = '"' + indices + '"';
 
-    output << fmt::format(data_format,
+    output << fmt::format(fmt::runtime(data_format),
       transfer.type.size() ? transfer.type : std::to_string(transfer.height),
       pay_type_string(transfer.pay_type),
       transfer.lock_msg,
       (transfer.checkpointed ? "yes" : "no"),
       tools::get_human_readable_timestamp(transfer.timestamp),
-      fmt::format(coin_format, transfer.amount / oxen::COIN, transfer.amount % oxen::COIN),
-      fmt::format(coin_format, running_balance / oxen::COIN, running_balance % oxen::COIN),
+      fmt::format(fmt::runtime(coin_format), transfer.amount / oxen::COIN, transfer.amount % oxen::COIN),
+      fmt::format(fmt::runtime(coin_format), running_balance / oxen::COIN, running_balance % oxen::COIN),
       transfer.txid,
       transfer.payment_id,
       cryptonote::print_money(transfer.fee),
       (transfer.destinations.size() ? transfer.destinations.front().address : "-"),
-      (transfer.destinations.size() ? fmt::format(coin_format, transfer.destinations.front().amount / oxen::COIN, transfer.destinations.front().amount % oxen::COIN) : ""),
+      (transfer.destinations.size() ? fmt::format(fmt::runtime(coin_format), transfer.destinations.front().amount / oxen::COIN, transfer.destinations.front().amount % oxen::COIN) : ""),
       indices,
       transfer.note);
 
@@ -6421,9 +6421,9 @@ std::string wallet2::transfers_to_csv(const std::vector<wallet::transfer_view>& 
 
     // print subsequent destination addresses and amounts
     for (auto it = std::next(transfer.destinations.cbegin()); it != transfer.destinations.cend(); ++it)
-      output << fmt::format(data_format,
+      output << fmt::format(fmt::runtime(data_format),
           "", "", "", "", "", "", "", "", "", "",
-          it->address, fmt::format(coin_format, it->amount / oxen::COIN, it->amount % oxen::COIN), "", "");
+          it->address, fmt::format(fmt::runtime(coin_format), it->amount / oxen::COIN, it->amount % oxen::COIN), "", "");
   }
   return output.str();
 }
@@ -7827,7 +7827,7 @@ oxen_construct_tx_params wallet2::construct_params(hf hf_version, txtype tx_type
 bool wallet2::set_ring_database(fs::path filename)
 {
   m_ring_database = std::move(filename);
-  MINFO("ringdb path set to " << m_ring_database.u8string());
+  MINFO("ringdb path set to " << tools::convert_str<char>(m_ring_database.u8string()));
   m_ringdb.reset();
   if (!m_ring_database.empty())
   {
@@ -13334,11 +13334,11 @@ uint64_t wallet2::import_key_images_from_file(const fs::path& filename, uint64_t
   std::string data;
   bool r = tools::slurp_file(filename, data);
 
-  THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, std::string(tr("failed to read file ")) + filename.u8string());
+  THROW_WALLET_EXCEPTION_IF(!r, error::wallet_internal_error, std::string(tr("failed to read file ")) + tools::convert_str<char>(filename.u8string()));
 
   if (!tools::starts_with(data, KEY_IMAGE_EXPORT_FILE_MAGIC))
   {
-    THROW_WALLET_EXCEPTION(error::wallet_internal_error, std::string("Bad key image export file magic in ") + filename.u8string());
+    THROW_WALLET_EXCEPTION(error::wallet_internal_error, std::string("Bad key image export file magic in ") + tools::convert_str<char>(filename.u8string()));
   }
 
   try
@@ -13348,11 +13348,11 @@ uint64_t wallet2::import_key_images_from_file(const fs::path& filename, uint64_t
   }
   catch (const std::exception &e)
   {
-    THROW_WALLET_EXCEPTION(error::wallet_internal_error, std::string("Failed to decrypt ") + filename.u8string() + ": " + e.what());
+    THROW_WALLET_EXCEPTION(error::wallet_internal_error, std::string("Failed to decrypt ") + tools::convert_str<char>(filename.u8string()) + ": " + e.what());
   }
 
   const size_t headerlen = 4 + 2 * sizeof(crypto::public_key);
-  THROW_WALLET_EXCEPTION_IF(data.size() < headerlen, error::wallet_internal_error, std::string("Bad data size from file ") + filename.u8string());
+  THROW_WALLET_EXCEPTION_IF(data.size() < headerlen, error::wallet_internal_error, std::string("Bad data size from file ") + tools::convert_str<char>(filename.u8string()));
 
   uint32_t offset = oxenc::load_little_to_host<uint32_t>(data.data());
   THROW_WALLET_EXCEPTION_IF(offset > m_transfers.size(), error::wallet_internal_error, "Offset larger than known outputs");
@@ -13366,13 +13366,13 @@ uint64_t wallet2::import_key_images_from_file(const fs::path& filename, uint64_t
     const cryptonote::account_public_address &keys = get_account().get_keys().m_account_address;
     if (public_spend_key != keys.m_spend_public_key || public_view_key != keys.m_view_public_key)
     {
-      THROW_WALLET_EXCEPTION(error::wallet_internal_error, std::string( "Key images from ") + filename.u8string() + " are for a different account");
+      THROW_WALLET_EXCEPTION(error::wallet_internal_error, std::string( "Key images from ") + tools::convert_str<char>(filename.u8string()) + " are for a different account");
     }
   }
 
   const size_t record_size        = sizeof(crypto::key_image) + sizeof(crypto::signature);
   const size_t record_buffer_size = data.size() - headerlen;
-  THROW_WALLET_EXCEPTION_IF(record_buffer_size % record_size, error::wallet_internal_error, std::string("Bad data size from file ") + filename.u8string());
+  THROW_WALLET_EXCEPTION_IF(record_buffer_size % record_size, error::wallet_internal_error, std::string("Bad data size from file ") + tools::convert_str<char>(filename.u8string()));
 
   const size_t num_records = record_buffer_size / record_size;
   std::vector<std::pair<crypto::key_image, crypto::signature>> ski(num_records);
