@@ -1451,8 +1451,6 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
     for (size_t rand_count = 0; rand_count < 3 && !zone.m_net_server.is_stop_signal_sent();
          rand_count++) {
         size_t random_index;
-        const uint32_t next_needed_pruning_stripe =
-                m_payload_handler.get_next_needed_pruning_stripe().second;
 
         // build a set of all the /16s, IPs, peer_ids that we're connected to so that we can prefer
         // and/or filter them out from our potential peer selection below.
@@ -1477,11 +1475,11 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                         return true;
                     });
 
-        std::deque<std::pair<size_t, bool>> filtered;  // {index, is_duplicate_slash16_network}
+        std::vector<size_t> filtered;
         size_t idx = 0;
         zone.m_peerlist.foreach (
                 use_white_list,
-                [this, &seen, &filtered, &idx, next_needed_pruning_stripe](
+                [this, &seen, &filtered, &idx](
                         const peerlist_entry& pe) {
                     ++idx;
                     // Skip peers we're already connected to:
@@ -1491,37 +1489,17 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                     if (is_addr_recently_failed(pe.adr))
                         return true;
 
-                    const bool have_net16 =
-                            pe.adr.get_type_id() == ipv4_type_id &&
-                            seen.net.count(
-                                    pe.adr.template as<
-                                                  const epee::net_utils::ipv4_network_address>()
-                                            .ip() &
-                                    0x0000ffff);
-
-                    if (next_needed_pruning_stripe == 0 || pe.pruning_seed == 0)
-                        filtered.emplace_back(idx - 1, have_net16);
-                    else if (
-                            next_needed_pruning_stripe ==
-                            tools::get_pruning_stripe(pe.pruning_seed))
-                        filtered.emplace_front(idx - 1, have_net16);
+                    filtered.emplace_back(idx - 1);
                     return true;
                 });
 
         if (filtered.empty()) {
             log::debug(
                     logcat,
-                    "No available peer in {} list filtered by {}",
-                    (use_white_list ? "white" : "gray"),
-                    next_needed_pruning_stripe);
+                    "No available peer in {} list",
+                    (use_white_list ? "white" : "gray"));
             return false;
         }
-
-        // Partition our filtered list to move all peers with /16s to which we are already to the
-        // end of the peer list where they are much less likely to be selected:
-        std::stable_partition(filtered.begin(), filtered.end(), [](const auto& idx_dupenet) {
-            return !idx_dupenet.second;
-        });
 
         if (use_white_list) {
             // if using the white list, we bias towards peers we've been using recently
@@ -1529,7 +1507,7 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
             candidate_peers.reserve(filtered.size());
             for (size_t i = 0; i < filtered.size(); ++i) {
                 peerlist_entry pe;
-                if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i].first))
+                if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i]))
                     candidate_peers.push_back(pe.id);
             }
             auto best_peer = select_best_peer(candidate_peers);
@@ -1538,8 +1516,8 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
             bool found = false;
             for (size_t i = 0; i < filtered.size(); ++i) {
                 peerlist_entry pe;
-                if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i].first) && pe.id == *best_peer) {
-                    random_index = filtered[i].first;
+                if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i]) && pe.id == *best_peer) {
+                    random_index = filtered[i];
                     found = true;
                     break;
                 }
@@ -1548,7 +1526,7 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                 return false;
         } else {
             random_index = crypto::rand_idx(filtered.size());
-            random_index = filtered[random_index].first;
+            random_index = filtered[random_index];
         }
 
         CHECK_AND_ASSERT_MES(
@@ -1569,13 +1547,10 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
 
         log::debug(
                 logcat,
-                "Considering connecting (out) to {} list peer: {} {}, pruning seed {} (stripe {} "
-                "needed)",
+                "Considering connecting (out) to {} list peer: {} {}",
                 (use_white_list ? "white" : "gray"),
                 peerid_to_string(pe.id),
-                pe.adr.str(),
-                epee::string_tools::to_string_hex(pe.pruning_seed),
-                next_needed_pruning_stripe);
+                pe.adr.str());
 
         if (is_peer_used(pe)) {
             log::debug(logcat, "Peer is used");
@@ -1590,10 +1565,9 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
 
         log::debug(
                 logcat,
-                "Selected peer: {} {}, pruning seed {} [peer_list={}] last_seen: {}",
+                "Selected peer: {} {} [peer_list={}] last_seen: {}",
                 peerid_to_string(pe.id),
                 pe.adr.str(),
-                epee::string_tools::to_string_hex(pe.pruning_seed),
                 (use_white_list ? "white" : "gray"),
                 format_stamp_ago(pe.last_seen));
 
