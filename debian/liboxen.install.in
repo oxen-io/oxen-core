@@ -1,3 +1,4 @@
 /usr/lib/*/oxen/lib[a-ce-vx-z]*.so.@LIBOXEN_VER@
 /usr/lib/*/oxen/libdevice.so.@LIBOXEN_VER@
 /usr/lib/*/oxen/libd[a-df-z]*.so.@LIBOXEN_VER@
+/usr/lib/*/oxen/libfmt.so.*
