@@ -1,5 +1,11 @@
 oxen (10.6.1-1~ubuntu2004) focal; urgency=medium
 
+  * focal build fixes
+  * Update fmt lib install path
+  * add libfmt .so's to liboxen package
+  * fix control
+  * Hacks for building on focal
+  * use system oxenc
   * Fix invalid mempool selection with conflicting ONS buys
   * C++20 & updated lib compilation (DROP FROM DEV!)
   * 10.6.1 release
@@ -8,7 +14,7 @@ oxen (10.6.1-1~ubuntu2004) focal; urgency=medium
   * drop older fmt patch
   * Rediff patches
 
- -- Jason Rhinelander <jason@imaginary.ca>  Mon, 16 Dec 2024 11:02:10 -0400
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 16 Dec 2024 17:52:24 -0400
 
 oxen (10.6.0-2~ubuntu2004) focal; urgency=medium
 
