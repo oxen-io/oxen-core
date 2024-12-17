@@ -803,13 +803,13 @@ void node_server<t_payload_net_handler>::log_detailed_peer_stats() {
       return;
     std::unique_lock lock{peer_stats_map_mutex};
     for (const auto& [peer_id, stats] : peer_stats_map) {
-        log::debug(globallogcat, "Peer ID: {}\n\tConnections: {} success, {} failed\n\tBytes Sent: {}\n\tBytes Received: {}\n\tLast Connected: {}\n\tTotal Connection Time: {} seconds",
-            peer_id, stats.successful_connections, stats.failed_connections, stats.bytes_sent, stats.bytes_received, stats.last_connected_timestamp, stats.total_connection_time);
+        log::debug(globallogcat, "Peer ID: {}\n\tConnections: {} success, {} failed\n\tLast Connected: {}\n\tTotal Connection Time: {} seconds",
+            peer_id, stats.successful_connections, stats.failed_connections, stats.last_connected_timestamp, stats.total_connection_time);
     }
 }
 //-----------------------------------------------------------------------------------
 template<class t_payload_net_handler>
-void node_server<t_payload_net_handler>::update_peer_stats(const peerid_type peer_id, bool success, size_t bytes_sent, size_t bytes_received, uint64_t connection_time) {
+void node_server<t_payload_net_handler>::update_peer_stats(const peerid_type peer_id, bool success, uint64_t connection_time) {
     std::unique_lock lock{peer_stats_map_mutex};
     auto& stats = peer_stats_map[peer_id];
     if (success) {
@@ -817,8 +817,6 @@ void node_server<t_payload_net_handler>::update_peer_stats(const peerid_type pee
     } else {
         stats.failed_connections++;
     }
-    stats.bytes_sent += bytes_sent;
-    stats.bytes_received += bytes_received;
     stats.total_connection_time += connection_time;
     stats.last_connected_timestamp = time(nullptr);
 }
@@ -2531,7 +2529,7 @@ template <class t_payload_net_handler>
 void node_server<t_payload_net_handler>::on_connection_close(p2p_connection_context& context) {
     const auto connection_time = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::steady_clock::now() - context.m_started).count();
-    update_peer_stats(context.peer_id, true, context.m_bytes_sent, context.m_bytes_received, connection_time);
+    update_peer_stats(context.peer_id, true, connection_time);
     network_zone& zone = m_network_zones.at(context.m_remote_address.get_zone());
     if (!zone.m_net_server.is_stop_signal_sent() && !context.m_is_income) {
         epee::net_utils::network_address na{};

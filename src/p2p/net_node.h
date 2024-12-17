@@ -108,8 +108,6 @@ struct p2p_connection_context_t : base_type  // t_payload_net_handler::connectio
     peerid_type peer_id;
     bool m_in_timedsync;
     std::set<epee::net_utils::network_address> sent_addresses;
-    size_t m_bytes_sent = 0;
-    size_t m_bytes_received = 0;
 };
 
 enum class PeerType { anchor = 0, white, gray };
@@ -123,8 +121,6 @@ inline constexpr std::string_view to_string(PeerType pt) {
 struct peer_stats {
   size_t successful_connections = 0;
   size_t failed_connections = 0;
-  size_t bytes_sent = 0;
-  size_t bytes_received = 0;
   uint64_t last_connected_timestamp = 0;
   uint64_t total_connection_time = 0;
 };
@@ -254,7 +250,7 @@ class node_server
 
     // These functions only return information for the "public" zone
     virtual uint64_t get_public_connections_count();
-    virtual void update_peer_stats(const peerid_type peer_id, bool success, size_t bytes_sent = 0, size_t bytes_received = 0, uint64_t connection_time = 0);
+    virtual void update_peer_stats(const peerid_type peer_id, bool success, uint64_t connection_time = 0);
     virtual double calculate_peer_score(const peerid_type peer_id);
     virtual std::optional<std::pair<peerid_type, size_t>> select_best_peer(const std::vector<std::pair<peerid_type, size_t>>& candidate_peers);
     size_t get_public_outgoing_connections_count();
