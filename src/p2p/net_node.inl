@@ -793,12 +793,11 @@ bool node_server<t_payload_net_handler>::run() {
     }
 
     log::info(logcat, "net_service loop stopped.");
-    log_detailed_peer_stats();
+    log_detailed_peer_stats(peer_stats_map, peer_stats_map_mutex);
     return true;
 }
 //-----------------------------------------------------------------------------------
-template<class t_payload_net_handler>
-void node_server<t_payload_net_handler>::log_detailed_peer_stats() {
+static void log_detailed_peer_stats(std::unordered_map<peerid_type, peer_stats>& peer_stats_map, std::mutex& peer_stats_map_mutex) {
     if (log::get_level(logcat) > log::Level::debug)
       return;
     std::unique_lock lock{peer_stats_map_mutex};
@@ -808,8 +807,13 @@ void node_server<t_payload_net_handler>::log_detailed_peer_stats() {
     }
 }
 //-----------------------------------------------------------------------------------
-template<class t_payload_net_handler>
-void node_server<t_payload_net_handler>::update_peer_stats(const peerid_type peer_id, bool success, uint64_t connection_time) {
+static void update_peer_stats(
+    std::unordered_map<peerid_type, peer_stats>& peer_stats_map, 
+    std::mutex& peer_stats_map_mutex, 
+    const peerid_type peer_id, 
+    bool success, 
+    uint64_t connection_time
+) {
     std::unique_lock lock{peer_stats_map_mutex};
     auto& stats = peer_stats_map[peer_id];
     if (success) {
@@ -821,8 +825,10 @@ void node_server<t_payload_net_handler>::update_peer_stats(const peerid_type pee
     stats.last_connected_timestamp = time(nullptr);
 }
 //-----------------------------------------------------------------------------------
-template<class t_payload_net_handler>
-double node_server<t_payload_net_handler>::calculate_peer_score(const peerid_type peer_id) {
+static double calculate_peer_score(
+    std::unordered_map<peerid_type, peer_stats>& peer_stats_map, 
+    std::mutex& peer_stats_map_mutex, 
+    const peerid_type peer_id) {
     std::unique_lock lock{peer_stats_map_mutex};
     constexpr double NEUTRAL_SCORE = 100.0;
     constexpr double MAX_CONNECTION_DURATION_FACTOR = 500.0;
@@ -883,8 +889,11 @@ double node_server<t_payload_net_handler>::calculate_peer_score(const peerid_typ
     return score;
 }
 //-----------------------------------------------------------------------------------
-template<class t_payload_net_handler>
-std::optional<std::pair<peerid_type, size_t>> node_server<t_payload_net_handler>::select_best_peer(const std::vector<std::pair<peerid_type, size_t>>& candidate_peers) {
+static std::optional<std::pair<peerid_type, size_t>> select_best_peer(
+      std::unordered_map<peerid_type, peer_stats>& peer_stats_map, 
+      std::mutex& peer_stats_map_mutex, 
+      const std::vector<std::pair<peerid_type, size_t>>& candidate_peers
+    ) {
     // Create a local copy of the candidate peers to shuffle
     std::vector<std::pair<peerid_type, size_t>> shuffled_peers = candidate_peers;
 
@@ -897,7 +906,7 @@ std::optional<std::pair<peerid_type, size_t>> node_server<t_payload_net_handler>
     std::optional<std::pair<peerid_type, size_t>> best_peer;
 
     for (const auto& peer : shuffled_peers) {
-        double score = calculate_peer_score(peer.first);
+        double score = calculate_peer_score(peer_stats_map, peer_stats_map_mutex, peer.first);
         log::debug(logcat, "Peer {} has score {}", peer.first, score);
 
         if (score > highest_score) {
@@ -1509,7 +1518,7 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                 if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i]))
                     candidate_peers.push_back(std::make_pair(pe.id, filtered[i]));
             }
-            auto maybe_best_peer = select_best_peer(candidate_peers);
+            auto maybe_best_peer = select_best_peer(peer_stats_map, peer_stats_map_mutex, candidate_peers);
             if (!maybe_best_peer)
                 return false;
             random_index = maybe_best_peer->second;
@@ -2529,7 +2538,7 @@ template <class t_payload_net_handler>
 void node_server<t_payload_net_handler>::on_connection_close(p2p_connection_context& context) {
     const auto connection_time = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::steady_clock::now() - context.m_started).count();
-    update_peer_stats(context.peer_id, true, connection_time);
+    update_peer_stats(peer_stats_map, peer_stats_map_mutex, context.peer_id, true, connection_time);
     network_zone& zone = m_network_zones.at(context.m_remote_address.get_zone());
     if (!zone.m_net_server.is_stop_signal_sent() && !context.m_is_income) {
         epee::net_utils::network_address na{};

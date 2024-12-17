@@ -64,9 +64,6 @@ struct i_p2p_endpoint {
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context) = 0;
     virtual void request_callback(const epee::net_utils::connection_context_base& context) = 0;
     virtual uint64_t get_public_connections_count() = 0;
-    virtual void update_peer_stats(const peerid_type peer_id, bool success, uint64_t connection_time) = 0;
-    virtual double calculate_peer_score(const peerid_type peer_id) = 0;
-    virtual std::optional<std::pair<peerid_type, size_t>> select_best_peer(const std::vector<std::pair<peerid_type, size_t>>& candidate_peers) = 0;
     virtual void for_each_connection(std::function<bool(t_connection_context&, peerid_type)> f) = 0;
     virtual bool for_connection(
             const connection_id_t&, std::function<bool(t_connection_context&, peerid_type)> f) = 0;
@@ -120,9 +117,6 @@ struct p2p_endpoint_stub : public i_p2p_endpoint<t_connection_context> {
     }
 
     virtual uint64_t get_public_connections_count() { return false; }
-    virtual void update_peer_stats(const peerid_type peer_id, bool success, uint64_t connection_time) override {};
-    virtual double calculate_peer_score(const peerid_type peer_id) override { return 0.0;};
-    virtual std::optional<std::pair<peerid_type, size_t>> select_best_peer(const std::vector<std::pair<peerid_type, size_t>>& candidate_peers) override {return std::nullopt;};
     virtual bool block_host(const epee::net_utils::network_address& address, time_t seconds) {
         return true;
     }
