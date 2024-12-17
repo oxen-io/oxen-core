@@ -893,7 +893,7 @@ std::optional<std::pair<peerid_type, size_t>> node_server<t_payload_net_handler>
     std::mt19937 gen(rd());
     std::shuffle(shuffled_peers.begin(), shuffled_peers.end(), gen);
 
-    double highest_score = 0;
+    double highest_score = -std::numeric_limits<double>::max();
     std::optional<std::pair<peerid_type, size_t>> best_peer;
 
     for (const auto& peer : shuffled_peers) {
