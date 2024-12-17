@@ -884,9 +884,9 @@ double node_server<t_payload_net_handler>::calculate_peer_score(const peerid_typ
 }
 //-----------------------------------------------------------------------------------
 template<class t_payload_net_handler>
-std::optional<peerid_type> node_server<t_payload_net_handler>::select_best_peer(const std::vector<peerid_type>& candidate_peers) {
+std::optional<std::pair<peerid_type, size_t>> node_server<t_payload_net_handler>::select_best_peer(const std::vector<std::pair<peerid_type, size_t>>& candidate_peers) {
     // Create a local copy of the candidate peers to shuffle
-    std::vector<peerid_type> shuffled_peers = candidate_peers;
+    std::vector<std::pair<peerid_type, size_t>> shuffled_peers = candidate_peers;
 
     // Shuffle the peers
     std::random_device rd;
@@ -894,20 +894,20 @@ std::optional<peerid_type> node_server<t_payload_net_handler>::select_best_peer(
     std::shuffle(shuffled_peers.begin(), shuffled_peers.end(), gen);
 
     double highest_score = 0;
-    std::optional<peerid_type> best_peer;
+    std::optional<std::pair<peerid_type, size_t>> best_peer;
 
-    for (const auto& peer_id : shuffled_peers) {
-        double score = calculate_peer_score(peer_id);
-        log::debug(logcat, "Peer {} has score {}", peer_id, score);
+    for (const auto& peer : shuffled_peers) {
+        double score = calculate_peer_score(peer.first);
+        log::debug(logcat, "Peer {} has score {}", peer.first, score);
 
         if (score > highest_score) {
             highest_score = score;
-            best_peer = peer_id;
+            best_peer = peer;
         }
     }
 
     if (best_peer) {
-        log::info(logcat, "Selected best peer: {} with score {}", *best_peer, highest_score);
+        log::info(logcat, "Selected best peer: {} with score {}", best_peer->first, highest_score);
     } else {
         log::warning(logcat, "No valid peers found during selection");
     }
@@ -1502,28 +1502,17 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
         }
 
         if (use_white_list) {
-            // if using the white list, we bias towards peers we've been using recently
-            std::vector<peerid_type> candidate_peers;
+            std::vector<std::pair<peerid_type, size_t>> candidate_peers;
             candidate_peers.reserve(filtered.size());
             for (size_t i = 0; i < filtered.size(); ++i) {
                 peerlist_entry pe;
                 if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i]))
-                    candidate_peers.push_back(pe.id);
+                    candidate_peers.push_back(std::make_pair(pe.id, filtered[i]));
             }
-            auto best_peer = select_best_peer(candidate_peers);
-            if (!best_peer)
+            auto maybe_best_peer = select_best_peer(candidate_peers);
+            if (!maybe_best_peer)
                 return false;
-            bool found = false;
-            for (size_t i = 0; i < filtered.size(); ++i) {
-                peerlist_entry pe;
-                if (zone.m_peerlist.get_white_peer_by_index(pe, filtered[i]) && pe.id == *best_peer) {
-                    random_index = filtered[i];
-                    found = true;
-                    break;
-                }
-            }
-            if (!found)
-                return false;
+            random_index = maybe_best_peer->second;
         } else {
             random_index = crypto::rand_idx(filtered.size());
             random_index = filtered[random_index];

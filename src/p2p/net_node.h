@@ -256,7 +256,7 @@ class node_server
     virtual uint64_t get_public_connections_count();
     virtual void update_peer_stats(const peerid_type peer_id, bool success, size_t bytes_sent = 0, size_t bytes_received = 0, uint64_t connection_time = 0);
     virtual double calculate_peer_score(const peerid_type peer_id);
-    virtual std::optional<peerid_type> select_best_peer(const std::vector<peerid_type>& candidate_peers);
+    virtual std::optional<std::pair<peerid_type, size_t>> select_best_peer(const std::vector<std::pair<peerid_type, size_t>>& candidate_peers);
     size_t get_public_outgoing_connections_count();
     size_t get_public_white_peers_count();
     size_t get_public_gray_peers_count();
