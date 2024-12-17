@@ -799,6 +799,8 @@ bool node_server<t_payload_net_handler>::run() {
 //-----------------------------------------------------------------------------------
 template<class t_payload_net_handler>
 void node_server<t_payload_net_handler>::log_detailed_peer_stats() {
+    if (log::get_level(logcat) > log::Level::debug)
+      return;
     std::unique_lock lock{peer_stats_map_mutex};
     for (const auto& [peer_id, stats] : peer_stats_map) {
         log::debug(globallogcat, "Peer ID: {}\n\tConnections: {} success, {} failed\n\tBytes Sent: {}\n\tBytes Received: {}\n\tLast Connected: {}\n\tTotal Connection Time: {} seconds",
