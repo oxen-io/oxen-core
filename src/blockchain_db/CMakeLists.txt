@@ -40,6 +40,7 @@ target_link_libraries(blockchain_db
     common
     ringct
     lmdb
+    filesystem
     Boost::thread
     extra)
 
