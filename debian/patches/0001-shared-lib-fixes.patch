@@ -11,7 +11,7 @@ Patch the oxen cmake files to properly build and install shared libs.
  4 files changed, 29 insertions(+), 2 deletions(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 1afea76..f9b9a97 100644
+index 96d5370..43f143c 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -44,7 +44,7 @@ if(CCACHE_PROGRAM)
@@ -23,7 +23,7 @@ index 1afea76..f9b9a97 100644
  message(STATUS "CMake version ${CMAKE_VERSION}")
  
  # Has to be set before `project()`, and ignored on non-macos:
-@@ -880,6 +880,17 @@ if(BUILD_DOCUMENTATION)
+@@ -883,6 +883,17 @@ if(BUILD_DOCUMENTATION)
    endif()
  endif()
  
@@ -56,7 +56,7 @@ index 2af962a..d52baa5 100644
 +    COMPONENT development
 +    FILES_MATCHING PATTERN "*.h" PATTERN "*.inl")
 diff --git a/external/CMakeLists.txt b/external/CMakeLists.txt
-index e592d5c..4b84696 100644
+index 6b33d82..87dd560 100644
 --- a/external/CMakeLists.txt
 +++ b/external/CMakeLists.txt
 @@ -67,6 +67,12 @@ add_subdirectory(db_drivers)
