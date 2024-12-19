@@ -58,6 +58,7 @@ target_link_libraries(wallet
     lmdb
     rpc_http_client
     Boost::serialization
+    filesystem
     Boost::thread
   PRIVATE
     extra)

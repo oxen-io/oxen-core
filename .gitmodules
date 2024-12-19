@@ -22,6 +22,9 @@
 [submodule "external/cpr"]
 	path = external/cpr
 	url = https://github.com/whoshuu/cpr.git
+[submodule "external/ghc-filesystem"]
+	path = external/ghc-filesystem
+	url = https://github.com/gulrak/filesystem.git
 [submodule "external/fmt"]
 	path = external/fmt
 	url = https://github.com/fmtlib/fmt.git
@@ -30,4 +33,4 @@
 	url = https://github.com/SRombauts/SQLiteCpp
 [submodule "external/oxen-encoding"]
 	path = external/oxen-encoding
-	url = https://github.com/session-foundation/oxen-encoding.git
+	url = https://github.com/oxen-io/oxen-encoding.git

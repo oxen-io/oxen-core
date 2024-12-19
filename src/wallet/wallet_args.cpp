@@ -162,7 +162,7 @@ namespace wallet_args
         {
           fs::ifstream cfg{config};
           if (!cfg.is_open())
-            throw std::runtime_error{"Unable to open config file: " + tools::convert_str<char>(config.u8string())};
+            throw std::runtime_error{"Unable to open config file: " + config.u8string()};
           po::store(po::parse_config_file<char>(cfg, desc_params), vm);
         }
         else

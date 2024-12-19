@@ -198,7 +198,7 @@ std::vector<std::string> WalletManagerImpl::findWallets(std::string_view path_)
             filename.replace_extension();
             if (fs::exists(filename)) {
                 LOG_PRINT_L3("Found wallet: " << filename);
-                result.push_back(tools::convert_str<char>(filename.u8string()));
+                result.push_back(filename.u8string());
             }
         }
     }
