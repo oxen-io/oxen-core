@@ -5,4 +5,3 @@
 0006-Make-primary-service-node-key-always-available.patch
 0006-Build-SQLiteCpp-statically.patch
 0008-Update-fmt-lib-install-path.patch
-0008-Hacks-for-building-on-focal.patch
