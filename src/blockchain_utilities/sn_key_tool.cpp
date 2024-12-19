@@ -13,7 +13,6 @@ extern "C" {
 #include <cstring>
 #include <optional>
 #include "common/fs.h"
-#include "common/string_util.h"
 
 std::string_view arg0;
 
@@ -193,7 +192,7 @@ int show(std::list<std::string_view> args) {
     fs::path filename = fs::u8path(args.front());
     fs::ifstream in{filename, std::ios::binary};
     if (!in.good())
-        return error(2, "Unable to open '" + tools::convert_str<char>(filename.u8string()) + "': " + std::strerror(errno));
+        return error(2, "Unable to open '" + filename.u8string() + "': " + std::strerror(errno));
 
     in.seekg(0, std::ios::end);
     auto size = in.tellg();
@@ -215,12 +214,12 @@ int show(std::list<std::string_view> args) {
     std::array<unsigned char, crypto_sign_SECRETKEYBYTES> seckey;
     in.read(reinterpret_cast<char*>(seckey.data()), size >= 64 ? 64 : 32);
     if (!in.good())
-        return error(2, "Failed to read from " + tools::convert_str<char>(filename.u8string()) + ": " + std::strerror(errno));
+        return error(2, "Failed to read from " + filename.u8string() + ": " + std::strerror(errno));
 
     if (legacy) {
         pubkey = pubkey_from_privkey(seckey);
 
-        std::cout << tools::convert_str<char>(filename.u8string()) << " (legacy SN keypair)" << "\n==========" <<
+        std::cout << filename.u8string() << " (legacy SN keypair)" << "\n==========" <<
             "\nPrivate key: " << oxenc::to_hex(seckey.begin(), seckey.begin() + 32) <<
             "\nPublic key:  " << oxenc::to_hex(pubkey.begin(), pubkey.end()) << "\n\n";
         return 0;

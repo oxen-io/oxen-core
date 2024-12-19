@@ -78,7 +78,7 @@ namespace
 
 static bool generate_multisig(uint32_t threshold, uint32_t total, const fs::path& basename, network_type nettype, bool create_address_file)
 {
-  tools::msg_writer() << fmt::format(fmt::runtime(genms::tr("Generating {:d} {:d}/{:d} multisig wallets")), total, threshold, total);
+  tools::msg_writer() << fmt::format(genms::tr("Generating {:d} {:d}/{:d} multisig wallets"), total, threshold, total);
 
   const auto pwd_container = tools::password_container::prompt(true, "Enter password for new multisig wallets");
 
@@ -89,7 +89,7 @@ static bool generate_multisig(uint32_t threshold, uint32_t total, const fs::path
     for (size_t n = 0; n < total; ++n)
     {
       fs::path name = basename;
-      name += fs::path{"-" + std::to_string(n + 1)};
+      name += "-" + std::to_string(n + 1);
       wallets[n].reset(new tools::wallet2(nettype, 1, false));
       wallets[n]->init("");
       wallets[n]->generate(name, pwd_container->password(), rct::rct2sk(rct::skGen()), false, false, create_address_file);
@@ -227,7 +227,7 @@ int main(int argc, char* argv[])
   }
   if (threshold <= 1 || threshold > total)
   {
-    tools::fail_msg_writer() << fmt::format(fmt::runtime(genms::tr("Error: expected N > 1 and N <= M, but got N=={:d} and M=={:d}")), threshold, total);
+    tools::fail_msg_writer() << fmt::format(genms::tr("Error: expected N > 1 and N <= M, but got N=={:d} and M=={:d}"), threshold, total);
     return 1;
   }
   fs::path basename;

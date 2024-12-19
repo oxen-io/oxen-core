@@ -35,6 +35,7 @@ if(MSVC OR MINGW)
   target_link_libraries(daemonizer
     PUBLIC
       common
+      filesystem
       Boost::program_options
     PRIVATE
       extra)
