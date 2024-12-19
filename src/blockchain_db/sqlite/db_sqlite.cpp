@@ -45,7 +45,7 @@
 
 namespace cryptonote {
 
-  BlockchainSQLite::BlockchainSQLite(cryptonote::network_type nettype, fs::path db_path): db::Database(db_path, ""), m_nettype(nettype) {
+  BlockchainSQLite::BlockchainSQLite(cryptonote::network_type nettype, fs::path db_path): db::Database(db_path, ""), m_nettype(nettype), filename {db_path.u8string()} {
     LOG_PRINT_L3("BlockchainDB_SQLITE::" << __func__);
     height = 0;
 
