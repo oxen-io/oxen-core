@@ -38,6 +38,7 @@ target_link_libraries(libwallet_api_tests
     version
     epee
     Boost::serialization
+    filesystem
     icu
     gtest
     extra)
