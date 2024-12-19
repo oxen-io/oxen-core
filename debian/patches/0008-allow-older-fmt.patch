@@ -1,0 +1,26 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Wed, 18 Dec 2024 22:43:21 -0400
+Subject: allow older fmt
+
+---
+ external/CMakeLists.txt | 5 +----
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+
+diff --git a/external/CMakeLists.txt b/external/CMakeLists.txt
+index 789f865..246c77a 100644
+--- a/external/CMakeLists.txt
++++ b/external/CMakeLists.txt
+@@ -59,12 +59,9 @@ macro(system_or_submodule BIGNAME smallname pkgconf subdir)
+   endif()
+ endmacro()
+ 
+-# deb: put our local version of fmt into the oxen-specific lib dir:
+-set(FMT_LIB_DIR lib${OXEN_INSTALL_LIBDIR_SUFFIX} CACHE STRING "" FORCE)
+-
+ system_or_submodule(OXENC oxenc liboxenc<1.1.0 oxen-encoding)
+ system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.18 oxen-mq)
+-system_or_submodule(FMT fmt fmt>=9.0.0 fmt)
++system_or_submodule(FMT fmt fmt fmt)
+ 
+ add_subdirectory(db_drivers)
+ add_subdirectory(easylogging++ easyloggingpp)
