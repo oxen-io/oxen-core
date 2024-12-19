@@ -210,15 +210,6 @@ namespace cryptonote::rpc {
     std::string jsonrpc_id; // pre-formatted json value
     std::vector<std::pair<std::string, std::string>> extra_headers; // Extra headers to send
 
-        call_data(
-                http_server& http,
-                core_rpc_server& core_rpc,
-                HttpResponse& res,
-                std::string uri,
-                const rpc_command* call = nullptr) :
-
-                http{http}, core_rpc{core_rpc}, res{res}, uri{std::move(uri)}, call{call} {}
-
     // If we have to drop the request because we are overloaded we want to reply with an error (so
     // that we close the connection instead of leaking it and leaving it hanging).  We don't do
     // this, of course, if the request got aborted and replied to.
