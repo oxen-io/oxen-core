@@ -1,5 +1,11 @@
 oxen (10.6.2-1~ubuntu2410) oracular; urgency=medium
 
+  * add another missing oxenc dep
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 18 Dec 2024 22:08:14 -0400
+
+oxen (10.6.2-1~ubuntu2410~1) oracular; urgency=medium
+
   * add missing oxenc dep
 
  -- Jason Rhinelander <jason@imaginary.ca>  Wed, 18 Dec 2024 22:02:17 -0400
