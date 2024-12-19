@@ -249,7 +249,7 @@ namespace tools
     struct file_error_base : public wallet_logic_error
     {
       file_error_base(std::string loc, fs::path file, std::error_code e = {})
-        : wallet_logic_error(std::move(loc), std::string(file_error_messages[msg_index]) + " \"" + tools::convert_str<char>(file.u8string()) + '"'
+        : wallet_logic_error(std::move(loc), std::string(file_error_messages[msg_index]) + " \"" + file.u8string() + '"'
                 + (e ? ": " + e.message() : ""))
         , m_file(std::move(file))
       {
@@ -840,7 +840,7 @@ namespace tools
     struct wallet_files_doesnt_correspond : public wallet_logic_error
     {
       explicit wallet_files_doesnt_correspond(std::string&& loc, const fs::path& keys_file, const fs::path& wallet_file)
-        : wallet_logic_error(std::move(loc), "File " + tools::convert_str<char>(wallet_file.u8string()) + " does not correspond to " + tools::convert_str<char>(keys_file.u8string()))
+        : wallet_logic_error(std::move(loc), "File " + wallet_file.u8string() + " does not correspond to " + keys_file.u8string())
       {
       }
     };
