@@ -1,3 +1,12 @@
+oxen (10.6.2-1~ubuntu2004+1) focal; urgency=medium
+
+  * Rediff patches
+  * upgrade fmt
+  * allow older fmt
+  * allow older fmt
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 18 Dec 2024 22:57:09 -0400
+
 oxen (10.6.2-1~ubuntu2004) focal; urgency=medium
 
   * add another missing oxenc dep
