@@ -200,7 +200,7 @@ namespace cryptonote
 
     if (Archive::is_deserializer)
     {
-      if (std::string_view bv{buf, remaining}; bv.find_first_not_of('\0') != std::string::npos)
+      if (std::string_view{buf, remaining}.find_first_not_of('\0') != std::string::npos)
         throw std::invalid_argument{"Invalid non-0 padding byte"};
       pad.size = remaining + 1;
     }

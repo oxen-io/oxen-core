@@ -23,7 +23,7 @@ local default_deps = ['g++'] + default_deps_nocxx;  // g++ sometimes needs repla
 
 local gtest_filter = '-AddressFromURL.Failure:DNSResolver.DNSSEC*';
 
-local docker_base = 'registry.oxen.rocks/';
+local docker_base = 'registry.oxen.rocks/lokinet-ci-';
 
 local submodules_commands = ['git fetch --tags', 'git submodule update --init --recursive --depth=1 --jobs=4'];
 local submodules = {

@@ -40,6 +40,7 @@ target_link_libraries(p2p
     version
     net
     Boost::program_options
+    filesystem
     Boost::serialization
     SQLiteCpp
     extra)
