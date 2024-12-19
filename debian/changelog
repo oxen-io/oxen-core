@@ -1,3 +1,13 @@
+oxen (10.6.2-1~ubuntu2410) oracular; urgency=medium
+
+  * use system oxenc
+  * Revert "C++20 & updated lib compilation (DROP FROM DEV!)"
+  * C++17 compatibility
+  * 10.6.2 release
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 18 Dec 2024 21:29:59 -0400
+
 oxen (10.6.1-1~ubuntu2410) oracular; urgency=medium
 
   * Fix invalid mempool selection with conflicting ONS buys
