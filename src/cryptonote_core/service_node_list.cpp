@@ -72,6 +72,23 @@ extern "C" {
 
 using cryptonote::hf;
 
+
+// TODO: Temporary formatting support shim for Oxen 10.6.1; this is designed to fail to compile when
+// merged with Oxen 11 code: the solution is to simply delete this as Oxen 11 has a more robust
+// formatting solution for this.
+template <typename T, typename Char>
+struct fmt::formatter<T, Char, std::enable_if_t<
+    std::is_same_v<T, crypto::hash> || std::is_same_v<T, crypto::public_key>>
+    > : fmt::formatter<std::string_view> {
+    auto format(const T& val, fmt::format_context& ctx) const {
+        auto out = ctx.out();
+        *out++ = '<';
+        out = oxenc::to_hex(std::begin(val.data), std::end(val.data), out);
+        *out++ = '>';
+        return out;
+    }
+};
+
 namespace service_nodes
 {
   size_t constexpr STORE_LONG_TERM_STATE_INTERVAL = 10000;

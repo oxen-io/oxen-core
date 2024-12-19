@@ -59,7 +59,7 @@ macro(system_or_submodule BIGNAME smallname pkgconf subdir)
   endif()
 endmacro()
 
-system_or_submodule(OXENC oxenc liboxenc>=1.0.10 oxen-encoding)
+system_or_submodule(OXENC oxenc liboxenc<1.1.0 oxen-encoding)
 system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.12 oxen-mq)
 system_or_submodule(FMT fmt fmt>=8.0.0 fmt)
 
