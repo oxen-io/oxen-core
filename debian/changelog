@@ -1,3 +1,18 @@
+oxen (10.6.2-1~deb11) bullseye; urgency=medium
+
+  * fix bundled libfmt install location
+  * drop too old system libfmt dep
+  * Rediff patches
+  * Rediff patches
+  * add libfmt .so's to liboxen package
+  * use system oxenc
+  * Revert "C++20 & updated lib compilation (DROP FROM DEV!)"
+  * C++17 compatibility
+  * 10.6.2 release
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 18 Dec 2024 21:29:35 -0400
+
 oxen (10.6.1-1~deb11) bullseye; urgency=medium
 
   * Fix invalid mempool selection with conflicting ONS buys
