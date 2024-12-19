@@ -63,6 +63,7 @@ endif()
 target_link_libraries(common
   PUBLIC
     cncrypto
+    oxenc::oxenc
     oxenmq::oxenmq
     filesystem
     fmt::fmt
