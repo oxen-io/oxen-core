@@ -7,7 +7,7 @@ Subject: Build SQLiteCpp statically
  1 file changed, 3 insertions(+)
 
 diff --git a/external/CMakeLists.txt b/external/CMakeLists.txt
-index 08e4b73..06f3fcd 100644
+index 6503121..d08c98d 100644
 --- a/external/CMakeLists.txt
 +++ b/external/CMakeLists.txt
 @@ -169,4 +169,7 @@ set(SQLITECPP_RUN_DOXYGEN OFF CACHE BOOL "" FORCE)
