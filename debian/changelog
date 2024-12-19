@@ -1,5 +1,11 @@
 oxen (10.6.2-1~ubuntu2004) focal; urgency=medium
 
+  * add missing oxenc dep
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 18 Dec 2024 22:02:41 -0400
+
+oxen (10.6.2-1~ubuntu2004~) focal; urgency=medium
+
   * fix ci image
   * Revert "C++20 & updated lib compilation (DROP FROM DEV!)"
   * C++17 compatibility
