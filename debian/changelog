@@ -1,3 +1,15 @@
+oxen (10.6.2-1~deb12) bookworm; urgency=medium
+
+  * Fix boost::asio missing include
+  * use system oxenc
+  * fix ci image
+  * Revert "C++20 & updated lib compilation (DROP FROM DEV!)"
+  * C++17 compatibility
+  * 10.6.2 release
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Wed, 18 Dec 2024 21:27:49 -0400
+
 oxen (10.6.1-1~deb12) bookworm; urgency=medium
 
   * Fix invalid mempool selection with conflicting ONS buys
