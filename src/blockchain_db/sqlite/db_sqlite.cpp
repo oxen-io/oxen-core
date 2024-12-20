@@ -372,11 +372,11 @@ void BlockchainSQLite::upgrade_schema() {
         FOR EACH ROW WHEN NEW.height > OLD.height BEGIN
             -- Batched payments
             INSERT INTO batched_payments_accrued_recent SELECT *, NEW.height FROM  batched_payments_accrued;
-            DELETE FROM batched_payments_accrued_recent                      WHERE height < NEW.height - {0};
+            DELETE FROM batched_payments_accrued_recent                      WHERE height < (NEW.height - {0});
 
             -- Delayed payments
             INSERT INTO delayed_payments_recent SELECT *                     FROM  delayed_payments WHERE height == NEW.height;
-            DELETE FROM delayed_payments_recent                              WHERE height < NEW.height - {0};
+            DELETE FROM delayed_payments_recent                              WHERE height < (NEW.height - {0});
 
         END;
 
@@ -395,11 +395,11 @@ void BlockchainSQLite::upgrade_schema() {
 
             -- Batch payments
             INSERT INTO batched_payments_accrued_archive SELECT *, NEW.height FROM  batched_payments_accrued;
-            DELETE FROM batched_payments_accrued_archive                      WHERE height < (NEW.height - (NEW.height % {2}));
+            DELETE FROM batched_payments_accrued_archive                      WHERE height < (NEW.height - {2});
 
             -- Delayed payments
             INSERT INTO delayed_payments_archive SELECT *                     FROM  delayed_payments;
-            DELETE FROM delayed_payments_archive                              WHERE height < (NEW.height - (NEW.height % {2}));
+            DELETE FROM delayed_payments_archive                              WHERE height < (NEW.height - {2});
 
         END;
 
