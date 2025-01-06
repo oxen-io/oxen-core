@@ -247,14 +247,28 @@ daemon::daemon(boost::program_options::variables_map vm_) :
     }
 
 #ifndef _WIN32
-    log::debug(logcat, "- increasing max fds to 32ki");
+    constexpr rlim_t FDLIM = 32768;
     rlimit rlim{};
-    rlim.rlim_cur = 32768;
-    if (int rv = setrlimit(RLIMIT_NOFILE, &rlim); rv != 0)
+    if (int rv = getrlimit(RLIMIT_NOFILE, &rlim); rv != 0) {
         log::warning(
                 logcat,
-                "Failed to increase fd limit: {}. Continuing anyway with unadjusted limit.",
+                "Failed to query current fd limit: {}. Continuing anyway with unadjusted limit.",
                 strerror(errno));
+    } else {
+        auto old_lim = rlim.rlim_cur;
+        rlim.rlim_cur = std::min(rlim.rlim_max, FDLIM);
+        if (rlim.rlim_cur > old_lim) {
+            log::debug(logcat, "- increasing max fds from {} to {}", old_lim, rlim.rlim_cur);
+            if (int rv = setrlimit(RLIMIT_NOFILE, &rlim); rv != 0)
+                log::warning(
+                        logcat,
+                        "Failed to increase fd limit: {}. Continuing anyway with unadjusted limit.",
+                        strerror(errno));
+        } else {
+            log::debug(
+                    logcat, "- not increasing max fds: current={}, max={}", old_lim, rlim.rlim_max);
+        }
+    }
 #endif
 
     log::info(
