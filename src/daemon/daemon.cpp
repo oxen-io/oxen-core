@@ -38,6 +38,12 @@
 #include <stdexcept>
 #include <utility>
 
+#ifndef _WIN32
+extern "C" {
+#include <sys/resource.h>
+}
+#endif
+
 #include "common/command_line.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
@@ -239,6 +245,17 @@ daemon::daemon(boost::program_options::variables_map vm_) :
         http_rpc_public.emplace(
                 *rpc, rpc_config, true /*restricted*/, std::move(rpc_listen_public));
     }
+
+#ifndef _WIN32
+    log::debug(logcat, "- increasing max fds to 32ki");
+    rlimit rlim{};
+    rlim.rlim_cur = 32768;
+    if (int rv = setrlimit(RLIMIT_NOFILE, &rlim); rv != 0)
+        log::warning(
+                logcat,
+                "Failed to increase fd limit: {}. Continuing anyway with unadjusted limit.",
+                strerror(errno));
+#endif
 
     log::info(
             logcat,
