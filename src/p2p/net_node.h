@@ -119,13 +119,11 @@ inline constexpr std::string_view to_string(PeerType pt) {
 }
 
 struct peer_stats {
-  size_t total_connections = 0;
-  size_t failed_connections = 0;
-  uint64_t last_connected_timestamp = 0;
-  uint64_t total_connection_time = 0;
+    size_t total_connections = 0;
+    size_t failed_connections = 0;
+    uint64_t last_connected_timestamp = 0;
+    uint64_t total_connection_time = 0;
 };
-
-
 
 template <class t_payload_net_handler>
 class node_server
@@ -203,7 +201,6 @@ class node_server
         std::atomic<unsigned int> m_current_number_of_out_peers;
         std::atomic<unsigned int> m_current_number_of_in_peers;
         bool m_can_pingback;
-
 
       private:
         void set_config_defaults() noexcept {
@@ -539,6 +536,10 @@ class node_server
     epee::connection_id_t m_network_id{};
     cryptonote::network_type m_nettype;
 };
+
+static void log_detailed_peer_stats(
+        std::unordered_map<peerid_type, peer_stats>& peer_stats_map,
+        std::mutex& peer_stats_map_mutex);
 
 extern const command_line::arg_descriptor<std::string> arg_p2p_bind_ip;
 extern const command_line::arg_descriptor<std::string> arg_p2p_bind_ipv6_address;
