@@ -802,8 +802,8 @@ static void log_detailed_peer_stats(std::unordered_map<peerid_type, peer_stats>&
       return;
     std::unique_lock lock{peer_stats_map_mutex};
     for (const auto& [peer_id, stats] : peer_stats_map) {
-        log::debug(globallogcat, "Peer ID: {}\n\tConnections: {} success, {} failed\n\tLast Connected: {}\n\tTotal Connection Time: {} seconds",
-            peer_id, stats.successful_connections, stats.failed_connections, stats.last_connected_timestamp, stats.total_connection_time);
+        log::debug(globallogcat, "Peer ID: {}\n\tConnections: {} total, {} failed\n\tLast Connected: {}\n\tTotal Connection Time: {} seconds",
+            peer_id, stats.total_connections, stats.failed_connections, stats.last_connected_timestamp, stats.total_connection_time);
     }
 }
 //-----------------------------------------------------------------------------------
@@ -811,17 +811,23 @@ static void update_peer_stats(
     std::unordered_map<peerid_type, peer_stats>& peer_stats_map, 
     std::mutex& peer_stats_map_mutex, 
     const peerid_type peer_id, 
-    bool success, 
     uint64_t connection_time
 ) {
     std::unique_lock lock{peer_stats_map_mutex};
     auto& stats = peer_stats_map[peer_id];
-    if (success) {
-        stats.successful_connections++;
-    } else {
-        stats.failed_connections++;
-    }
+    stats.total_connections++;
     stats.total_connection_time += connection_time;
+    stats.last_connected_timestamp = time(nullptr);
+}
+//-----------------------------------------------------------------------------------
+static void update_peer_failed_connection(
+    std::unordered_map<peerid_type, peer_stats>& peer_stats_map,
+    std::mutex& peer_stats_map_mutex,
+    const peerid_type peer_id
+) {
+    std::unique_lock lock{peer_stats_map_mutex};
+    auto& stats = peer_stats_map[peer_id];
+    stats.failed_connections++;
     stats.last_connected_timestamp = time(nullptr);
 }
 //-----------------------------------------------------------------------------------
@@ -850,10 +856,15 @@ static double calculate_peer_score(
     double connection_duration_factor = stats.total_connection_time / 60.0;
     connection_duration_factor = std::min(connection_duration_factor, MAX_CONNECTION_DURATION_FACTOR);
 
+    double successful_connections = 0.0;
+    if (stats.total_connections > stats.failed_connections) {
+      successful_connections = stats.total_connections - stats.failed_connections;
+    }
+
     // Success Rate will return a [0,1] percentage of how frequently the connection has succeeded vs total connections
-    double success_rate = (stats.successful_connections + stats.failed_connections > 0)
-                              ? static_cast<double>(stats.successful_connections) /
-                                (stats.successful_connections + stats.failed_connections)
+    double success_rate = (stats.total_connections > 0)
+                              ? successful_connections /
+                                stats.total_connections
                               : 0.0;
 
     // Recent Activity factor will return a linearly growing score up until a cap based on how long since we last connected. 
@@ -872,8 +883,8 @@ static double calculate_peer_score(
 
     // We expect the node to have a minumum expected uptime, so we look at their average connection time
     // and if this is less than 20 mins per connection then we give them a penalty
-    double average_uptime = (stats.successful_connections > 0)
-                                ? stats.total_connection_time / static_cast<double>(stats.successful_connections)
+    double average_uptime = (successful_connections > 0)
+                                ? stats.total_connection_time / successful_connections
                                 : 0.0;
 
     double low_uptime_penalty = 0.0;
@@ -1094,6 +1105,7 @@ bool node_server<t_payload_net_handler>::do_handshake_with_peer(
 
     if (!hsh_result) {
         log::warning(logcat, "{}COMMAND_HANDSHAKE Failed", context_);
+        update_peer_failed_connection(peer_stats_map, peer_stats_map_mutex, context_.peer_id);
         if (!timeout)
             zone.m_net_server.get_config_object().close(context_.m_connection_id);
     }
@@ -2218,7 +2230,7 @@ bool node_server<t_payload_net_handler>::try_ping(
             ip,
             port,
             zone.m_config.m_net_config.ping_connection_timeout.count(),
-            [cb, /*context,*/ address, pr, this](
+            [cb, /*context,*/ address, pr, &context, this](
                     const typename net_server::t_connection_context& ping_context,
                     const boost::system::error_code& ec) -> bool {
                 if (ec) {
@@ -2291,6 +2303,7 @@ bool node_server<t_payload_net_handler>::try_ping(
                             ping_context,
                             "back ping invoke failed to ",
                             address.str());
+                    update_peer_failed_connection(peer_stats_map, peer_stats_map_mutex, context.peer_id);
                     zone.m_net_server.get_config_object().close(ping_context.m_connection_id);
                     return false;
                 }
@@ -2538,7 +2551,7 @@ template <class t_payload_net_handler>
 void node_server<t_payload_net_handler>::on_connection_close(p2p_connection_context& context) {
     const auto connection_time = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::steady_clock::now() - context.m_started).count();
-    update_peer_stats(peer_stats_map, peer_stats_map_mutex, context.peer_id, true, connection_time);
+    update_peer_stats(peer_stats_map, peer_stats_map_mutex, context.peer_id, connection_time);
     network_zone& zone = m_network_zones.at(context.m_remote_address.get_zone());
     if (!zone.m_net_server.is_stop_signal_sent() && !context.m_is_income) {
         epee::net_utils::network_address na{};

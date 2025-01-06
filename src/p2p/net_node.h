@@ -119,7 +119,7 @@ inline constexpr std::string_view to_string(PeerType pt) {
 }
 
 struct peer_stats {
-  size_t successful_connections = 0;
+  size_t total_connections = 0;
   size_t failed_connections = 0;
   uint64_t last_connected_timestamp = 0;
   uint64_t total_connection_time = 0;
