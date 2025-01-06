@@ -466,26 +466,20 @@ bls_registration_response bls_aggregator::registration(
 
 namespace {
 
-    // Recursive object held in OMQ response lambdas that puts itself into new request lambdas as
-    // long as there are more requests to make.  Once all the requests are finished and the
-    // individual response callbacks fired (whether successful or not), a final_callback gets fired,
-    // after which there will be no remaining outstanding OMQ callbacks sharing the pointer and it
-    // gets destroyed.
+    // Recursive object held in OMQ response lambdas that puts itself into new request handling
+    // lambdas as long as there are more requests to receive and process.  Once all the requests are
+    // finished and the individual response callbacks fired (whether successful or not), a
+    // final_callback gets fired, after which there will be no remaining outstanding OMQ callbacks
+    // sharing the pointer and it gets destroyed.
     class nodes_request_data : public std::enable_shared_from_this<nodes_request_data> {
         // Private constructor: we must always hold this in a shared pointer (for
         // enable_shared_from_this to work properly), and so you must construct such a shared
         // pointer by passing constructor arguments through make(...).
         nodes_request_data(
                 cryptonote::core& core,
-                std::string request_name,
-                std::string message,
                 request_callback callback,
-                std::function<void(int total_requests)> final_callback,
-                std::chrono::milliseconds timeout) :
+                std::function<void(int total_requests)> final_callback) :
                 core{core},
-                timeout{timeout},
-                request_name{std::move(request_name)},
-                message{std::move(message)},
                 single_callback{std::move(callback)},
                 final_callback{std::move(final_callback)} {
 
@@ -493,49 +487,47 @@ namespace {
                     std::back_inserter(snodes), core.get_nettype());
         }
 
-      public:
         cryptonote::core& core;
-        std::mutex connection_mutex;
         std::vector<service_nodes::service_node_address> snodes;
-        size_t next_snode = 0;
-        size_t active_connections = 0;
-        size_t failures = 0;
-        oxenmq::send_option::request_timeout timeout;
-        inline constexpr static size_t MAX_CONNECTIONS = 900;
-
-        const std::string request_name;
-        const std::string message;
+        std::atomic<int> active_requests = 0;
 
         const request_callback single_callback;
         std::function<void(int)> final_callback;
 
-        void callback(
-                const service_nodes::service_node_address& snode,
-                bool success,
-                std::vector<std::string> data) {
-            try {
-                single_callback(snode, success, std::move(data));
-            } catch (const std::exception& e) {
-                log::warning(logcat, "request callback raised an uncaught exception: {}", e.what());
-            }
+      public:
+        // Constructs and initiates a request to nodes, setting up handlers until they are all
+        // received (or time out).  You can safely ignore the returned shared_ptr if not wanted; its
+        // ownership is shared among all the pending requests.
+        static std::shared_ptr<nodes_request_data> establish(
+                cryptonote::core& core,
+                std::string_view endpoint,
+                std::string_view message,
+                request_callback callback,
+                std::function<void(int total_requests)> final_callback,
+                std::chrono::milliseconds timeout) {
+
+            auto ptr = std::shared_ptr<nodes_request_data>{
+                    new nodes_request_data{core, std::move(callback), std::move(final_callback)}};
+
+            ptr->send_requests(endpoint, message, timeout);
+
+            return ptr;
         }
 
-        template <typename... Args>
-        static std::shared_ptr<nodes_request_data> make(Args&&... args) {
-            return std::shared_ptr<nodes_request_data>{
-                    new nodes_request_data{std::forward<Args>(args)...}};
-        }
+        // The number of service nodes to which requests have been initiated (i.e. this is the count
+        // of reachable nodes at the time the request was initiated).
+        size_t snode_count() { return snodes.size(); }
 
-        // Kicks off the requests, initiating an initial wave of connections up to the request
-        // limit, and then recursively calling itself (until there are no more requests) as requests
-        // finish.  You must call this for this class to do anything, and may not touch any of the
-        // struct's members after calling it.
-        void establish() {
-            std::lock_guard lock{connection_mutex};
+      private:
+        void send_requests(
+                std::string_view endpoint,
+                std::string_view message,
+                std::chrono::milliseconds timeout) {
+            ++active_requests;  // Dummy "request" to avoid potential races with responses arriving
+                                // before we're done sending requests.
 
-            while (active_connections < MAX_CONNECTIONS && next_snode < snodes.size()) {
-                auto& snode = snodes[next_snode++];
-                ++active_connections;
+            for (auto& snode : snodes) {
+                ++active_requests;
 
                 oxenmq::ConnectionID connid;
                 bool is_sn_conn = core.service_node_list.is_funded_service_node(snode.sn_pubkey);
@@ -559,15 +551,14 @@ namespace {
                             snode,
                             /*success=*/false,
                             {{"Non-active node connections unimplemented"s}});
-                    --active_connections;
                     continue;
 #endif
                 }
 
-                log::debug(logcat, "Initiating {} request to {}", request_name, connid.to_string());
+                log::debug(logcat, "Initiating {} request to {}", endpoint, connid.to_string());
                 core.omq().request(
                         connid,
-                        request_name,
+                        endpoint,
                         [this,
                          self = shared_from_this(),
                          disconnect = !is_sn_conn ? connid : oxenmq::ConnectionID{},
@@ -578,24 +569,41 @@ namespace {
                                     success ? "Successful response" : "Failure",
                                     snode.sn_pubkey);
                             callback(snode, success, std::move(data));
-                            {
-                                std::lock_guard lock{connection_mutex};
-                                assert(active_connections);
-                                --active_connections;
-                                if (disconnect)
-                                    core.omq().disconnect(disconnect);
-                            }
-
-                            establish();
+                            if (disconnect)
+                                core.omq().disconnect(disconnect);
                         },
                         message,
                         oxenmq::send_option::request_timeout{timeout});
             }
 
-            if (active_connections == 0 && final_callback)
-                // If this is true here then it means we were called from the callback of the last
-                // request to come back to us (or there simply were no requests at all), so it's
-                // time to call the final callback because we're done.
+            // This call removes our dummy request (and could potentially induce a final-callback
+            // call, typically because all the requests above failed).
+            request_done();
+        }
+
+        // Called with a single result (whether success of failure), passes it to the single
+        // callback, and then calls request_done().
+        void callback(
+                const service_nodes::service_node_address& snode,
+                bool success,
+                std::vector<std::string> data) {
+            try {
+                single_callback(snode, success, std::move(data));
+            } catch (const std::exception& e) {
+                log::warning(logcat, "request callback raised an uncaught exception: {}", e.what());
+            }
+            request_done();
+        }
+
+        // Called after a request is finished to decrement the number of active requests and, upon
+        // the final decrement, invoking the final callback.
+        void request_done() {
+            auto ar = --active_requests;
+            assert(ar >= 0);
+            if (ar)
+                return;
+
+            if (final_callback)
                 try {
                     final_callback(snodes.size());
                 } catch (const std::exception& e) {
@@ -730,7 +738,8 @@ uint64_t bls_aggregator::nodes_request(
     log::debug(logcat, "Initiating nodes request for {}", request_name);
     assert(callback);
 
-    auto reqdata = nodes_request_data::make(
+    log::debug(logcat, "Establishing initial connections");
+    auto reqdata = nodes_request_data::establish(
             core,
             std::move(request_name),
             std::move(message),
@@ -738,11 +747,8 @@ uint64_t bls_aggregator::nodes_request(
             std::move(final_callback),
             5s /* per-request timeout */);
 
-    size_t n_snodes = reqdata->snodes.size();
-
-    log::debug(logcat, "Establishing initial connections ({} reachable snodes total)", n_snodes);
-
-    reqdata->establish();
+    size_t n_snodes = reqdata->snode_count();
+    log::debug(logcat, "{} reachable snodes total", n_snodes);
 
     return n_snodes;
 }
