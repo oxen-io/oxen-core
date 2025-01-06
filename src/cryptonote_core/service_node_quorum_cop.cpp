@@ -279,8 +279,8 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                                       ? REORG_SAFETY_BUFFER_BLOCKS_POST_HF12
                                                       : REORG_SAFETY_BUFFER_BLOCKS_PRE_HF12;
     const auto& my_keys = m_core.get_service_keys();
-    bool voting_enabled = m_core.service_node() && m_core.service_node_list.is_service_node(
-                                                           my_keys.pub, /*require_active=*/true);
+    bool voting_enabled =
+            m_core.service_node() && m_core.service_node_list.is_active_service_node(my_keys.pub);
 
     uint64_t const height = block.get_height();
     uint64_t const latest_height = std::max(

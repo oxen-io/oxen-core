@@ -441,10 +441,21 @@ void service_node_list::set_quorum_history_storage(uint64_t hist_size) {
 }
 
 bool service_node_list::is_service_node(
-        const crypto::public_key& pubkey, bool require_active) const {
-    std::lock_guard lock(m_sn_mutex);
+        const crypto::public_key& pubkey,
+        const std::function<bool(const service_node_info&)>& check) const {
+    std::lock_guard lock{m_sn_mutex};
     auto it = m_state.service_nodes_infos.find(pubkey);
-    return it != m_state.service_nodes_infos.end() && (!require_active || it->second->is_active());
+    if (it == m_state.service_nodes_infos.end())
+        return false;
+    if (!check)
+        return true;
+    return check(*it->second);
+}
+bool service_node_list::is_active_service_node(const crypto::public_key& pubkey) const {
+    return is_service_node(pubkey, [](const auto& sni) { return sni.is_active(); });
+}
+bool service_node_list::is_funded_service_node(const crypto::public_key& pubkey) const {
+    return is_service_node(pubkey, [](const auto& sni) { return sni.is_fully_funded(); });
 }
 
 bool service_node_list::is_key_image_locked(

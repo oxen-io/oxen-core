@@ -538,8 +538,7 @@ namespace {
                 ++active_connections;
 
                 oxenmq::ConnectionID connid;
-                bool is_sn_conn = core.service_node_list.is_service_node(
-                        snode.sn_pubkey, /*require_active*/ true);
+                bool is_sn_conn = core.service_node_list.is_funded_service_node(snode.sn_pubkey);
                 if (is_sn_conn) {
                     connid = tools::view_guts(snode.x_pubkey);
                 } else {

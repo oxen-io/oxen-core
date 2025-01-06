@@ -2181,7 +2181,7 @@ bool core::handle_uptime_proof(
     crypto::x25519_public_key x_pkey{};
     bool result = service_node_list.handle_uptime_proof(
             std::move(proof), my_uptime_proof_confirmation, x_pkey);
-    if (result && service_node_list.is_service_node(pubkey, true /*require_active*/) && x_pkey) {
+    if (result && service_node_list.is_active_service_node(pubkey) && x_pkey) {
         oxenmq::pubkey_set added;
         added.insert(tools::copy_guts(x_pkey));
         m_omq->update_active_sns(added, {} /*removed*/);
@@ -2446,7 +2446,7 @@ void core::do_uptime_proof_call() {
 
             auto pubkey = service_node_list.find_public_key(m_service_keys.pub_x25519);
             if (pubkey && pubkey != m_service_keys.pub &&
-                service_node_list.is_service_node(pubkey, false /*don't require active*/)) {
+                service_node_list.is_service_node(pubkey)) {
                 log::error(
                         globallogcat,
                         fg(fmt::terminal_color::red) | fmt::emphasis::bold,

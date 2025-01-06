@@ -515,7 +515,21 @@ class service_node_list {
         std::lock_guard lock{m_sn_mutex};
         return m_state.get_next_block_leader();
     }
-    bool is_service_node(const crypto::public_key& pubkey, bool require_active = true) const;
+
+    // Checks whether a service node is registered, with an optional additional check.  If the
+    // service node is *not* registered at all, this returns false.  Otherwise, if `check` is
+    // provided, returns the result of invoking it with the service_node_info record.  Otherwise
+    // (i.e. exists and no check given) returns true.
+    bool is_service_node(
+            const crypto::public_key& pubkey,
+            const std::function<bool(const service_node_info&)>& check = nullptr) const;
+    // Queries whether the given pubkey is that of a registered, fully funded service node that is
+    // not current decommissioned.
+    bool is_active_service_node(const crypto::public_key& pubkey) const;
+    // Queries whether the given pubkey is that of a registered, fully funded service node,
+    // regardless of whether the node is currently active or decommissioned.
+    bool is_funded_service_node(const crypto::public_key& pubkey) const;
+
     bool is_key_image_locked(
             crypto::key_image const& check_image,
             uint64_t* unlock_height = nullptr,
