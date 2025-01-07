@@ -701,9 +701,18 @@ bool Blockchain::init(
     // This avoids additional problems in unit tests where BlockchainDB is mocked and querying the
     // mocked-block's height fails due to a missing txin_gen.
     if (!m_db->is_read_only() && m_nettype != network_type::FAKECHAIN) {
+
+        // NOTE: Can happen out-of-band (e.g. SQL DB was corrupt/deleted)
+        uint64_t detach_height = m_db->height();
+        if (m_sqlite_db && service_node_list.height() != m_sqlite_db->height) {
+            detach_height = std::min(detach_height, service_node_list.height());
+            detach_height = std::min(detach_height, m_sqlite_db->height);
+            detach_height = std::max(detach_height, static_cast<uint64_t>(1));
+        }
+
         if (!exec_detach_hooks(
                     *this,
-                    m_db->height(),
+                    detach_height,
                     m_blockchain_detached_hooks,
                     /*by_pop_blocks*/ false,
                     /*load_missing_blocks_into_oxen_subsystems*/ true,

@@ -3703,7 +3703,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
     // _should_ rejig the system back into sync.
 
     const auto& netconf = get_config(blockchain.nettype());
-    uint64_t target_height = height - 1;
+    uint64_t target_height = height ? height - 1 : 0;
     uint64_t archive_height = target_height - (target_height % netconf.HISTORY_ARCHIVE_INTERVAL);
     auto history = cryptonote::BlockchainSQLite::PaymentTableType::Nil;
 
@@ -3762,7 +3762,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
         case cryptonote::BlockchainSQLite::PaymentTableType::Nil: {  // NOTE: Not found
             m_transient->state_history.clear();
             m_transient->state_archive.clear();
-            init();
+            reset(true);
             detach_label = " (via reset)";
         } break;
 
