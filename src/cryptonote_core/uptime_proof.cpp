@@ -46,9 +46,11 @@ Proof::Proof(
         public_ip{sn_public_ip},
         storage_https_port{sn_storage_https_port},
         storage_omq_port{sn_storage_omq_port},
-        qnet_port{quorumnet_port} {
+        qnet_port{quorumnet_port},
+        version_tag(OXEN_VERSION_TAG) {
 
     if (hardfork == feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV) {
+
         assert(keys.pub_bls);
         pop_bls = eth::sign(
                 nettype,
@@ -91,6 +93,14 @@ Proof::Proof(
                 tools::make_from_guts<eth::bls_public_key>(proof.require<std::string_view>("bk"sv));
         pop_bls =
                 tools::make_from_guts<eth::bls_signature>(proof.require<std::string_view>("bp"sv));
+    }
+
+    if (hardfork >= feature::ETH_TRANSITION && nettype != cryptonote::network_type::MAINNET) {
+        if (proof.skip_until("gh")) {
+            version_tag = proof.consume_string();
+        }
+        if (version_tag.size() > 100)
+            throw oxen::traced<std::runtime_error>{"version tag too long"};
     }
 
     if (auto ip = proof.require<std::string>("ip");
@@ -155,6 +165,9 @@ std::string Proof::bt_encode_uptime_proof(hf hardfork, cryptonote::network_type 
         nettype == cryptonote::network_type::LOCALDEV) {
         proof.append("bk", tools::view_guts(pubkey_bls));
         proof.append("bp", tools::view_guts(pop_bls));
+    }
+    if (hardfork >= feature::ETH_TRANSITION && nettype != cryptonote::network_type::MAINNET) {
+        proof.append("gh", version_tag);
     }
     proof.append("ip", epee::string_tools::get_ip_string_from_int32(public_ip));
     if (hardfork >= cryptonote::feature::ETH_TRANSITION)

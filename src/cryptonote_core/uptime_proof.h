@@ -45,6 +45,9 @@ class Proof {
     uint16_t storage_omq_port{};
     uint16_t qnet_port{};
 
+    // Non-consensus field: stores the current git version or release tag to assist debugging.
+    std::string version_tag;
+
     // The hash of the proof data, computed during construction as either the hash of the incoming
     // proof data, or the hash of the outgoing serialized proof data.  This is only available for a
     // freshly created proof (incoming or outgoing) but will not be available across restarts (i.e.

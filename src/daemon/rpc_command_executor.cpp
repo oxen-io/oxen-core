@@ -1767,6 +1767,9 @@ static void append_printable_service_node_list_entry(
         else
             stream << "v(unknown)\n";
 
+        if (auto e = entry.find("version_tag"); e != entry.end())
+            stream << "version: " << entry["version_tag"].get<std::string_view>() << "\n";
+
         if (detailed_view) {
             stream << indent2 << "Total Contributed/Staking Requirement: "
                    << cryptonote::print_money(entry["total_contributed"].get<uint64_t>()) << "/"
