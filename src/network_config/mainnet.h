@@ -67,8 +67,7 @@ inline constexpr network_config config{
         .UNLOCK_DURATION = 15 * 24h,
         .HARDFORK_DEREGISTRATION_GRACE_PERIOD = 7 * 24h / TARGET_BLOCK_TIME,
         .HISTORY_ARCHIVE_INTERVAL = 10'000,
-        .HISTORY_ARCHIVE_KEEP_WINDOW =
-                2 * 365 * 24h / TARGET_BLOCK_TIME,  // 2yrs worth
+        .HISTORY_ARCHIVE_KEEP_WINDOW = 2 * 365 * 24h / TARGET_BLOCK_TIME,  // 2yrs worth
         .HISTORY_RECENT_KEEP_WINDOW = 360,
         .ETH_EXIT_BUFFER = 7 * 24h / TARGET_BLOCK_TIME,
         .ETHEREUM_CHAIN_ID = 42161,  // Arbitrum One
