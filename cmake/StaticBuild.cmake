@@ -536,7 +536,19 @@ else()
   endif()
   set(hidapi_cmake_toolchain)
   if(CMAKE_TOOLCHAIN_FILE)
-    set(hidapi_cmake_toolchain "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
+    # If the toolchain is passed as a relative path, the toolchain is _relative_
+    # to the original directory that CMake was invoked in. At this step we are
+    # currently deep in the 'static-deps' directory for this dependency.
+    #
+    # The relative path used here from CMAKE_TOOLCHAIN_FILE will not resolve to
+    # the correct path, e.g:
+    #
+    #   cd /ox/build/release/static-deps-sources/src/hidapi_external && mkdir -p build && cd build && cmake .. -DCMAKE_TOOLCHAIN_FILE=../../cmake/64-bit-toolchain.cmake ..
+    #
+    # Resolves to the wrong path, to amend that we take the absolute path. Note
+    # if the path is already absolute, this is a no-op.
+    get_filename_component(cmake_toolchain_file_abs_path "${CMAKE_TOOLCHAIN_FILE}" ABSOLUTE BASE_DIR $ENV{PWD})
+    set(hidapi_cmake_toolchain "-DCMAKE_TOOLCHAIN_FILE=${cmake_toolchain_file_abs_path}")
   endif()
   build_external(hidapi
     DEPENDS ${maybe_eudev} libusb_external
