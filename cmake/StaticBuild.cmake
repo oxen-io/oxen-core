@@ -348,17 +348,21 @@ add_static_target(zlib zlib_external libz.a)
 
 
 
-set(boost_threadapi "pthread")
+if(ARCH_TRIPLET MATCHES mingw)
+  set(boost_threadapi "win32")
+else()
+  set(boost_threadapi "pthread")
+endif()
 set(boost_bootstrap_cxx "--cxx=${deps_cxx}")
 set(boost_toolset "")
 set(boost_extra "")
 if(USE_LTO)
   list(APPEND boost_extra "lto=on")
 endif()
+
 if(CMAKE_CROSSCOMPILING)
   set(boost_bootstrap_cxx "") # need to use our native compiler to bootstrap
   if(ARCH_TRIPLET MATCHES mingw)
-    set(boost_threadapi win32)
     list(APPEND boost_extra "target-os=windows")
     if(ARCH_TRIPLET MATCHES x86_64)
       list(APPEND boost_extra "address-model=64")
