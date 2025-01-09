@@ -339,7 +339,7 @@ endfunction()
 
 
 build_external(zlib
-  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS} -fPIC" ${cross_extra} ./configure --prefix=${DEPS_DESTDIR} --static
+  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS} -fPIC" ${cross_extra} env ./configure --prefix=${DEPS_DESTDIR} --static
   BUILD_BYPRODUCTS
     ${DEPS_DESTDIR}/lib/libz.a
     ${DEPS_DESTDIR}/include/zlib.h
