@@ -1,22 +1,22 @@
 // Copyright (c) 2018-2020, The Loki Project
 // Copyright (c) 2014-2019, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -26,47 +26,53 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 //
 #include "file.h"
-#include "epee/misc_log_ex.h"
+
+#include <fmt/std.h>
 #include <unistd.h>
+
 #include <cstdio>
+#include <fstream>
+#include <string_view>
+
+#include "common/string_util.h"
+#include "logging/oxen_logger.h"
 
 #ifdef WIN32
 #include "epee/string_tools.h"
 #ifndef STRSAFE_NO_DEPRECATE
 #define STRSAFE_NO_DEPRECATE
 #endif
-  #include <windows.h>
-  #include <shlobj.h>
-  #include <strsafe.h>
-#else 
-  #include <sys/file.h>
-  #include <sys/utsname.h>
-  #include <sys/stat.h>
+#include <shlobj.h>
+#include <strsafe.h>
+#include <windows.h>
+#else
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <sys/utsname.h>
 #endif
 
 #ifdef __GLIBC__
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <dirent.h>
-#include <cstring>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <cctype>
+#include <cstring>
 #endif
 
 #include "cryptonote_config.h"
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "util"
-
 namespace tools {
 
+static auto logcat = log::Cat("util");
+
 #ifndef _WIN32
-  static int flock_exnb(int fd)
-  {
+static int flock_exnb(int fd) {
     struct flock fl;
     int ret;
 
@@ -77,259 +83,238 @@ namespace tools {
     fl.l_len = 0;
     ret = fcntl(fd, F_SETLK, &fl);
     if (ret < 0)
-      MERROR("Error locking fd " << fd << ": " << errno << " (" << strerror(errno) << ")");
+        log::error(logcat, "Error locking fd {}: {} ({})", fd, errno, strerror(errno));
     return ret;
-  }
+}
 #endif
 
-  private_file::private_file() noexcept : m_handle(), m_filename() {}
+private_file::private_file() noexcept : m_handle(), m_filename() {}
 
-  private_file::private_file(std::FILE* handle, fs::path filename) noexcept
-    : m_handle(handle), m_filename(std::move(filename)) {}
+private_file::private_file(std::FILE* handle, fs::path filename) noexcept :
+        m_handle(handle), m_filename(std::move(filename)) {}
 
-  private_file private_file::create(fs::path name)
-  {
+private_file private_file::create(fs::path name) {
 #ifdef WIN32
-    struct close_handle
-    {
-      void operator()(HANDLE handle) const noexcept
-      {
-        CloseHandle(handle);
-      }
+    struct close_handle {
+        void operator()(HANDLE handle) const noexcept { CloseHandle(handle); }
     };
 
     std::unique_ptr<void, close_handle> process = nullptr;
     {
-      HANDLE temp{};
-      const bool fail = OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, std::addressof(temp)) == 0;
-      process.reset(temp);
-      if (fail)
-        return {};
+        HANDLE temp{};
+        const bool fail =
+                OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, std::addressof(temp)) == 0;
+        process.reset(temp);
+        if (fail)
+            return {};
     }
 
     DWORD sid_size = 0;
     GetTokenInformation(process.get(), TokenOwner, nullptr, 0, std::addressof(sid_size));
     if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
-      return {};
+        return {};
 
     std::unique_ptr<char[]> sid{new char[sid_size]};
-    if (!GetTokenInformation(process.get(), TokenOwner, sid.get(), sid_size, std::addressof(sid_size)))
-      return {};
+    if (!GetTokenInformation(
+                process.get(), TokenOwner, sid.get(), sid_size, std::addressof(sid_size)))
+        return {};
 
     const PSID psid = reinterpret_cast<const PTOKEN_OWNER>(sid.get())->Owner;
     const DWORD daclSize =
-      sizeof(ACL) + sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(psid) - sizeof(DWORD);
+            sizeof(ACL) + sizeof(ACCESS_ALLOWED_ACE) + GetLengthSid(psid) - sizeof(DWORD);
 
     const std::unique_ptr<char[]> dacl{new char[daclSize]};
     if (!InitializeAcl(reinterpret_cast<PACL>(dacl.get()), daclSize, ACL_REVISION))
-      return {};
+        return {};
 
-    if (!AddAccessAllowedAce(reinterpret_cast<PACL>(dacl.get()), ACL_REVISION, (READ_CONTROL | FILE_GENERIC_READ | DELETE), psid))
-      return {};
+    if (!AddAccessAllowedAce(
+                reinterpret_cast<PACL>(dacl.get()),
+                ACL_REVISION,
+                (READ_CONTROL | FILE_GENERIC_READ | DELETE),
+                psid))
+        return {};
 
     SECURITY_DESCRIPTOR descriptor{};
     if (!InitializeSecurityDescriptor(std::addressof(descriptor), SECURITY_DESCRIPTOR_REVISION))
-      return {};
+        return {};
 
-    if (!SetSecurityDescriptorDacl(std::addressof(descriptor), true, reinterpret_cast<PACL>(dacl.get()), false))
-      return {};
+    if (!SetSecurityDescriptorDacl(
+                std::addressof(descriptor), true, reinterpret_cast<PACL>(dacl.get()), false))
+        return {};
 
     SECURITY_ATTRIBUTES attributes{sizeof(SECURITY_ATTRIBUTES), std::addressof(descriptor), false};
-    std::unique_ptr<void, close_handle> file{
-      CreateFileW(
-        name.c_str(),
-        GENERIC_WRITE, FILE_SHARE_READ,
-        std::addressof(attributes),
-        CREATE_NEW, (FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE),
-        nullptr
-      )
-    };
-    if (file)
-    {
-      const int fd = _open_osfhandle(reinterpret_cast<intptr_t>(file.get()), 0);
-      if (0 <= fd)
-      {
-        file.release();
-        std::FILE* real_file = _fdopen(fd, "w");
-        if (!real_file)
-        {
-          _close(fd);
+    std::unique_ptr<void, close_handle> file{CreateFileW(
+            name.c_str(),
+            GENERIC_WRITE,
+            FILE_SHARE_READ,
+            std::addressof(attributes),
+            CREATE_NEW,
+            (FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE),
+            nullptr)};
+    if (file) {
+        const int fd = _open_osfhandle(reinterpret_cast<intptr_t>(file.get()), 0);
+        if (0 <= fd) {
+            file.release();
+            std::FILE* real_file = _fdopen(fd, "w");
+            if (!real_file) {
+                _close(fd);
+            }
+            return {real_file, std::move(name)};
         }
-        return {real_file, std::move(name)};
-      }
     }
 #else
     const int fdr = open(name.c_str(), (O_RDONLY | O_CREAT), S_IRUSR);
-    if (0 <= fdr)
-    {
-      struct stat rstats = {};
-      if (fstat(fdr, std::addressof(rstats)) != 0)
-      {
-        close(fdr);
-        return {};
-      }
-      fchmod(fdr, (S_IRUSR | S_IWUSR));
-      const int fdw = open(name.c_str(), O_RDWR);
-      fchmod(fdr, rstats.st_mode);
-      close(fdr);
-
-      if (0 <= fdw)
-      {
-        struct stat wstats = {};
-        if (fstat(fdw, std::addressof(wstats)) == 0 &&
-            rstats.st_dev == wstats.st_dev && rstats.st_ino == wstats.st_ino &&
-            flock_exnb(fdw) == 0 && ftruncate(fdw, 0) == 0)
-        {
-          std::FILE* file = fdopen(fdw, "w");
-          if (file) return {file, std::move(name)};
+    if (0 <= fdr) {
+        struct stat rstats = {};
+        if (fstat(fdr, std::addressof(rstats)) != 0) {
+            close(fdr);
+            return {};
         }
-        close(fdw);
-      }
+        fchmod(fdr, (S_IRUSR | S_IWUSR));
+        const int fdw = open(name.c_str(), O_RDWR);
+        fchmod(fdr, rstats.st_mode);
+        close(fdr);
+
+        if (0 <= fdw) {
+            struct stat wstats = {};
+            if (fstat(fdw, std::addressof(wstats)) == 0 && rstats.st_dev == wstats.st_dev &&
+                rstats.st_ino == wstats.st_ino && flock_exnb(fdw) == 0 && ftruncate(fdw, 0) == 0) {
+                std::FILE* file = fdopen(fdw, "w");
+                if (file)
+                    return {file, std::move(name)};
+            }
+            close(fdw);
+        }
     }
 #endif
     return {};
-  }
+}
 
-  private_file::~private_file() noexcept
-  {
+private_file::~private_file() noexcept {
     std::error_code ignored;
     fs::remove(filename(), ignored);
-  }
+}
 
-  file_locker::file_locker(const fs::path& filename)
-  {
+file_locker::file_locker(const fs::path& filename) {
 #ifdef WIN32
     m_fd = INVALID_HANDLE_VALUE;
-    m_fd = CreateFileW(filename.c_str(), GENERIC_READ, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (m_fd != INVALID_HANDLE_VALUE)
-    {
-      OVERLAPPED ov;
-      memset(&ov, 0, sizeof(ov));
-      if (!LockFileEx(m_fd, LOCKFILE_FAIL_IMMEDIATELY | LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, &ov))
-      {
-        MERROR("Failed to lock " << filename << ": " << std::error_code(GetLastError(), std::system_category()));
-        CloseHandle(m_fd);
-        m_fd = INVALID_HANDLE_VALUE;
-      }
-    }
-    else
-    {
-      MERROR("Failed to open " << filename << ": " << std::error_code(GetLastError(), std::system_category()));
+    m_fd = CreateFileW(
+            filename.c_str(), GENERIC_READ, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (m_fd != INVALID_HANDLE_VALUE) {
+        OVERLAPPED ov;
+        memset(&ov, 0, sizeof(ov));
+        if (!LockFileEx(m_fd, LOCKFILE_FAIL_IMMEDIATELY | LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, &ov)) {
+            log::error(
+                    logcat,
+                    "Failed to lock {}: {}",
+                    filename,
+                    std::error_code(GetLastError(), std::system_category()).message());
+            CloseHandle(m_fd);
+            m_fd = INVALID_HANDLE_VALUE;
+        }
+    } else {
+        log::error(
+                logcat,
+                "Failed to open {}: {}",
+                filename,
+                std::error_code(GetLastError(), std::system_category()).message());
     }
 #else
     m_fd = open(filename.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0666);
-    if (m_fd != -1)
-    {
-      if (flock_exnb(m_fd) == -1)
-      {
-        MERROR("Failed to lock " << filename << ": " << std::strerror(errno));
-        close(m_fd);
-        m_fd = -1;
-      }
-    }
-    else
-    {
-      MERROR("Failed to open " << filename << ": " << std::strerror(errno));
+    if (m_fd != -1) {
+        if (flock_exnb(m_fd) == -1) {
+            log::error(logcat, "Failed to lock {}: {}", filename, std::strerror(errno));
+            close(m_fd);
+            m_fd = -1;
+        }
+    } else {
+        log::error(logcat, "Failed to open {}: {}", filename, std::strerror(errno));
     }
 #endif
-  }
-  file_locker::~file_locker()
-  {
-    if (locked())
-    {
+}
+file_locker::~file_locker() {
+    if (locked()) {
 #ifdef WIN32
-      CloseHandle(m_fd);
+        CloseHandle(m_fd);
 #else
-      close(m_fd);
+        close(m_fd);
 #endif
     }
-  }
-  bool file_locker::locked() const
-  {
+}
+bool file_locker::locked() const {
 #ifdef WIN32
     return m_fd != INVALID_HANDLE_VALUE;
 #else
     return m_fd != -1;
 #endif
-  }
-
+}
 
 #ifdef _WIN32
-  fs::path get_special_folder_path(int nfolder, bool iscreate)
-  {
+fs::path get_special_folder_path(int nfolder, bool iscreate) {
     WCHAR psz_path[MAX_PATH] = L"";
 
-    if (SHGetSpecialFolderPathW(NULL, psz_path, nfolder, iscreate))
-    {
-      return fs::path{psz_path};
+    if (SHGetSpecialFolderPathW(NULL, psz_path, nfolder, iscreate)) {
+        return fs::path{psz_path};
     }
 
-    LOG_ERROR("SHGetSpecialFolderPathW() failed, could not obtain requested path.");
+    log::error(logcat, "SHGetSpecialFolderPathW() failed, could not obtain requested path.");
     return "";
-  }
+}
 #endif
 
-  // Windows < Vista: C:\Documents and Settings\Username\Application Data\...
-  // Windows >= Vista: C:\Users\Username\AppData\Roaming\...
-  // Sane OSes: ~/
-  static fs::path get_default_parent_dir() {
+// Windows < Vista: C:\Documents and Settings\Username\Application Data\...
+// Windows >= Vista: C:\Users\Username\AppData\Roaming\...
+// Sane OSes: ~/
+static fs::path get_default_parent_dir() {
 #ifdef _WIN32
     return get_special_folder_path(CSIDL_COMMON_APPDATA, true);
 #else
-    char* home = std::getenv("HOME");
-    return home && std::strlen(home) ? fs::u8path(home) : fs::current_path();
+    auto home = std::getenv("HOME");
+    return home && std::strlen(home)
+                 ? fs::path{std::u8string_view{reinterpret_cast<const char8_t*>(home)}}
+                 : fs::current_path();
 #endif
-  }
+}
 
-  fs::path get_default_data_dir()
-  {
-    return get_default_parent_dir() / fs::u8path(cryptonote::DATA_DIRNAME);
-  }
-  fs::path get_depreciated_default_data_dir()
-  {
-    return get_default_parent_dir() / fs::u8path(cryptonote::old::DATA_DIRNAME);
-  }
+fs::path get_default_data_dir() {
+    return get_default_parent_dir() / cryptonote::DATA_DIRNAME;
+}
+fs::path get_depreciated_default_data_dir() {
+    return get_default_parent_dir() / cryptonote::old::DATA_DIRNAME;
+}
 
-  void set_strict_default_file_permissions(bool strict)
-  {
+void set_strict_default_file_permissions(bool strict) {
 #if defined(__MINGW32__) || defined(__MINGW__)
     // no clue about the odd one out
 #else
     mode_t mode = strict ? 077 : 0;
     umask(mode);
 #endif
-  }
+}
 
-  bool slurp_file(const fs::path& filename, std::string& contents)
-  {
-    fs::ifstream in;
-    in.exceptions(std::ifstream::failbit | std::ifstream::badbit);
+bool slurp_file(const fs::path& filename, std::string& contents) {
+
     try {
-      in.open(filename, std::ios::binary | std::ios::in | std::ios::ate);
-      contents.clear();
-      contents.resize(in.tellg());
-      in.seekg(0);
-      in.read(contents.data(), contents.size());
-      auto bytes_read = in.gcount();
-      if (static_cast<size_t>(bytes_read) < contents.size())
-        contents.resize(bytes_read);
-      return true;
+        std::ifstream in{filename, std::ios::binary};
+        std::string content(
+                (std::istreambuf_iterator<char>(in)), (std::istreambuf_iterator<char>()));
+        contents = std::move(content);
+        return true;
     } catch (...) {
-      return false;
+        return false;
     }
-  }
+}
 
-  bool dump_file(const fs::path& filename, std::string_view contents)
-  {
-    fs::ofstream out;
+bool dump_file(const fs::path& filename, std::string_view contents) {
+    std::ofstream out;
     out.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     try {
-      out.open(filename, std::ios::binary | std::ios::out | std::ios::trunc);
-      out.write(contents.data(), contents.size());
-      return true;
+        out.open(filename, std::ios::binary | std::ios::out | std::ios::trunc);
+        out.write(contents.data(), contents.size());
+        return true;
     } catch (...) {
-      return false;
+        return false;
     }
-  }
-
 }
+
+}  // namespace tools

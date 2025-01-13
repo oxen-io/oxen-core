@@ -26,20 +26,18 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(epee
+oxen_add_library(epee
     buffer.cpp
     connection_basic.cpp
     levin_base.cpp
     memwipe.c
     mlocker.cpp
-    mlog.cpp
     net_utils_base.cpp
     network_throttle.cpp
     network_throttle-detail.cpp
     parserse_base_utils.cpp
     portable_storage.cpp
     string_tools.cpp
-    time_helper.cpp
     wipeable_string.cpp
 )
 
@@ -63,10 +61,13 @@ endif()
 
 target_link_libraries(epee
   PUBLIC
-    easylogging
     oxenmq::oxenmq
     oxenc::oxenc
   PRIVATE
-    filesystem
     Boost::thread
+    oxen::logging
     extra)
+
+# Force boost 1.76-ish to use std::invoke_result instead of the removed-from-C++20 std::result_of
+target_compile_definitions(epee
+    PUBLIC BOOST_ASIO_HAS_STD_INVOKE_RESULT)

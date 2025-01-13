@@ -48,10 +48,10 @@ static void test(bool wipe)
   char *quux = (char*)malloc(4); // same size, just after free, so we're likely to get the same, depending on the allocator
   if ((intptr_t)quux == foop)
   {
-    MDEBUG(std::hex << std::setw(8) << std::setfill('0') << *(uint32_t*)quux);
+    //oxen::log::debug(logcat, "{}{}{}{}", std::hex, std::setw(8), std::setfill('0'), *(uint32_t*)quux);
     if (wipe) { ASSERT_TRUE(memcmp(quux, "bar", 3)); }
   }
-  else MWARNING("We did not get the same location, cannot check");
+  //else oxen::log::warning(logcat, "We did not get the same location, cannot check");
   free(quux);
 }
 

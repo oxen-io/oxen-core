@@ -44,14 +44,14 @@ if(CCACHE_PROGRAM)
   endforeach()
 endif()
 
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.13...3.24)
 message(STATUS "CMake version ${CMAKE_VERSION}")
 
 # Has to be set before `project()`, and ignored on non-macos:
-set(CMAKE_OSX_DEPLOYMENT_TARGET 10.13 CACHE STRING "macOS deployment target (Apple clang only)")
+set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "macOS deployment target (Apple clang only)")
 
 project(oxen
-    VERSION 10.6.2
+    VERSION 11.0.6
     LANGUAGES CXX C)
 set(OXEN_RELEASE_CODENAME "Wistful Wagyu")
 # Version update notes:
@@ -71,7 +71,10 @@ if(POLICY CMP0079)
   cmake_policy(SET CMP0079 NEW)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20 CACHE STRING "The C++ standard whose features are requested.")
+if(CMAKE_CXX_STANDARD LESS 20)
+    set(CMAKE_CXX_STANDARD 20 CACHE STRING "" FORCE)
+endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_C_STANDARD 11)
@@ -257,9 +260,6 @@ enable_testing()
 
 option(BUILD_DOCUMENTATION "Build the Doxygen documentation." ON)
 option(BUILD_TESTS "Build tests." OFF)
-if (BUILD_TESTS)
-  add_definitions(-DUNIT_TEST)
-endif()
 
 OPTION(USE_DEVICE_TREZOR "Build Trezor support (currently non-functional)" OFF)
 
@@ -291,14 +291,16 @@ if(NOT MANUAL_SUBMODULES)
     check_submodule(external/rapidjson)
     check_submodule(external/trezor-common)
     check_submodule(external/randomx)
+    check_submodule(external/oxen-encoding)
     check_submodule(external/oxen-mq cppzmq)
     check_submodule(external/SQLiteCpp)
     if(BUILD_TESTS)
       check_submodule(external/googletest)
+      check_submodule(external/Catch2)
     endif()
     check_submodule(external/uWebSockets uSockets)
-    check_submodule(external/ghc-filesystem)
     check_submodule(external/SQLiteCpp)
+    check_submodule(external/pybind11)
   endif()
 endif()
 
@@ -348,8 +350,6 @@ endif()
 #   set(NETBSD TRUE)
 # elseif(CMAKE_SYSTEM_NAME MATCHES ".*BSDI.*")
 #   set(BSDI TRUE)
-
-include(cmake/check_for_std_filesystem.cmake)
 
 include_directories(external/rapidjson/include src external)
 
@@ -431,13 +431,11 @@ endif()
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads)
 
-if (APPLE AND NOT IOS)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=x86-64 -fvisibility=default")
-endif()
-
 add_definition_if_library_exists(c memset_s "string.h" HAVE_MEMSET_S)
 add_definition_if_library_exists(c explicit_bzero "strings.h" HAVE_EXPLICIT_BZERO)
 add_definition_if_function_found(strptime HAVE_STRPTIME)
+
+include(oxen_install)
 
 # Generate header for embedded translations
 add_subdirectory(translations)
@@ -484,14 +482,22 @@ endif()
 
 if(NOT BUILD_STATIC_DEPS)
   find_package(PkgConfig REQUIRED)
+
   pkg_check_modules(SQLITE3 REQUIRED sqlite3>=3.24.0 IMPORTED_TARGET GLOBAL)
   message(STATUS "Found sqlite3 ${SQLITE3_VERSION}")
   add_library(SQLite::SQLite3 ALIAS PkgConfig::SQLITE3)
+
+  pkg_check_modules(GMP REQUIRED gmp IMPORTED_TARGET GLOBAL)
+  message(STATUS "Found gmp ${GMP_VERSION}")
+  add_library(gmp::gmp ALIAS PkgConfig::GMP)
 endif()
 
-add_subdirectory(external)
+set(OXEN_EXECUTABLE_SUFFIX "" CACHE STRING "suffix to add to executable names")
+set(OXEN_INSTALL_INCLUDEDIR_SUFFIX "/oxen" CACHE STRING "subdirectory name for headers for the install target")
+set(OXEN_INSTALL_LIBDIR_SUFFIX "/oxen" CACHE STRING "subdirectory name for library files for the install target")
+option(OXEN_VERSION_SO "Add the project version into shared library filenames (e.g. libcryptonote_core11.2.3.so instead of libcryptonote_core.so)" OFF)
 
-target_compile_definitions(easylogging PRIVATE AUTO_INITIALIZE_EASYLOGGINGPP)
+add_subdirectory(external)
 
 if(USE_DEVICE_TREZOR)
   include(CheckTrezor)
@@ -614,6 +620,13 @@ else()
   if (NOT WIN32 AND NOT OPENBSD AND NOT APPLE)
     add_c_flag_if_supported(-fstack-clash-protection C_SECURITY_FLAGS)
     add_cxx_flag_if_supported(-fstack-clash-protection CXX_SECURITY_FLAGS)
+  endif()
+
+  # GCC 12's stringop-overflow warnings are really broken, with tons and tons of false positives all
+  # over the place (not just in our code, but also in its own stdlibc++ code).  It's better in 13
+  # w.r.t. stdlibc++, but our code still throws tons of warnings, so disable it for now.
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER 12)
+    set(CXX_WARNINGS "${CXX_WARNINGS} -Wno-stringop-overflow")
   endif()
 
   # Removed in GCC 9.1 (or before ?), but still accepted, so spams the output
@@ -739,6 +752,9 @@ else()
   # At least some CLANGs default to not enough for monero
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ftemplate-depth=900")
 
+  include(cmake/check_atomic.cmake)
+  link_libatomic()
+
   if(STATIC)
     # STATIC already configures most deps to be linked in statically,
     # here we make more deps static if the platform permits it
@@ -851,8 +867,8 @@ if(CMAKE_C_COMPILER_ID STREQUAL "Clang" AND ARCH_WIDTH EQUAL "32" AND NOT IOS AN
 endif()
 
 
-add_subdirectory(contrib)
 add_subdirectory(src)
+add_subdirectory(contrib)
 
 if(BUILD_TESTS)
   message(STATUS "Building tests")
@@ -945,7 +961,7 @@ set(default_archive create_tarxz)
 if(tar_os STREQUAL "Linux")
   set(tar_os "linux-${CMAKE_SYSTEM_PROCESSOR}")
 elseif(tar_os STREQUAL "Darwin")
-  set(tar_os "macos")
+  set(tar_os "macos-${CMAKE_SYSTEM_PROCESSOR}")
 elseif(tar_os STREQUAL "Windows")
   if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES i686-.*mingw)
     set(tar_os "win-x86")

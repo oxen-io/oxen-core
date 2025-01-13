@@ -37,35 +37,33 @@ if(NOT STATIC AND NOT BUILD_STATIC_DEPS)
   find_package(PkgConfig REQUIRED)
 endif()
 
-macro(system_or_submodule BIGNAME smallname pkgconf subdir)
-  option(FORCE_${BIGNAME}_SUBMODULE "force using ${smallname} submodule" OFF)
-  if(NOT STATIC AND NOT FORCE_${BIGNAME}_SUBMODULE)
-    pkg_check_modules(${BIGNAME} ${pkgconf} IMPORTED_TARGET)
-  endif()
-  if(${BIGNAME}_FOUND)
-    add_library(${smallname} INTERFACE)
-    if(NOT TARGET PkgConfig::${BIGNAME} AND CMAKE_VERSION VERSION_LESS "3.21")
-      # Work around cmake bug 22180 (PkgConfig::THING not set if no flags needed)
-    else()
-      target_link_libraries(${smallname} INTERFACE PkgConfig::${BIGNAME})
-    endif()
-    message(STATUS "Found system ${smallname} ${${BIGNAME}_VERSION}")
-  else()
-    message(STATUS "using ${smallname} submodule")
-    add_subdirectory(${subdir})
-  endif()
-  if(NOT TARGET ${smallname}::${smallname})
-    add_library(${smallname}::${smallname} ALIAS ${smallname})
-  endif()
-endmacro()
+include(system_or_submodule)
 
-system_or_submodule(OXENC oxenc liboxenc<1.1.0 oxen-encoding)
-system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.12 oxen-mq)
-system_or_submodule(FMT fmt fmt>=8.0.0 fmt)
+system_or_submodule(OXENC oxenc liboxenc>=1.1.0 oxen-encoding)
+system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.13 oxen-mq)
 
 add_subdirectory(db_drivers)
-add_subdirectory(easylogging++ easyloggingpp)
 add_subdirectory(randomx EXCLUDE_FROM_ALL)
+oxen_install_library(randomx)
+add_subdirectory(date EXCLUDE_FROM_ALL)
+
+set(BN256_ENABLE_TEST OFF CACHE BOOL "" FORCE)
+set(BUILD_DOC OFF CACHE BOOL "" FORCE)
+add_subdirectory(bn256 EXCLUDE_FROM_ALL)
+oxen_install_library(bn256)
+
+if(BUILD_STATIC_DEPS)
+  set(OXEN_LOGGING_FORCE_SUBMODULES TRUE CACHE BOOL "" FORCE)
+endif()
+add_subdirectory(oxen-logging)
+oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}")
+oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}/src")
+
+install(
+    DIRECTORY boost
+    DESTINATION include${OXEN_INSTALL_INCLUDEDIR_SUFFIX}
+    COMPONENT development
+    FILES_MATCHING PATTERN "*.hpp")
 
 # uSockets doesn't really have a proper build system (just a very simple Makefile) so build it
 # ourselves.
@@ -98,47 +96,13 @@ file(COPY uWebSockets/src/ DESTINATION uWebSockets/uWebSockets FILES_MATCHING PA
 add_library(uWebSockets INTERFACE)
 target_include_directories(uWebSockets INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/uWebSockets)
 target_link_libraries(uWebSockets INTERFACE uSockets)
-target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK UWS_NO_ZLIB)
-
-
-# cpr configuration.  Ideally we'd just do this via add_subdirectory, but cpr's cmake requires
-# 3.15+, and we target lower than that (and this is fairly simple to build).
-
-if(NOT BUILD_STATIC_DEPS)
-  find_package(CURL REQUIRED COMPONENTS HTTP HTTPS SSL)
-
-  # CURL::libcurl wasn't added to FindCURL until cmake 3.12, so add it if necessary
-  if (CMAKE_VERSION VERSION_LESS 3.12 AND NOT TARGET CURL::libcurl)
-    add_library(libcurl UNKNOWN IMPORTED GLOBAL)
-    set_target_properties(libcurl PROPERTIES
-      IMPORTED_LOCATION ${CURL_LIBRARIES}
-      INTERFACE_INCLUDE_DIRECTORIES "${CURL_INCLUDE_DIRS}")
-    add_library(CURL_libcurl INTERFACE)
-    target_link_libraries(CURL_libcurl INTERFACE libcurl)
-    add_library(CURL::libcurl ALIAS CURL_libcurl)
-  endif()
-endif()
-
-file(GLOB cpr_sources ${conf_depends} cpr/cpr/*.cpp)
-
-add_library(cpr STATIC EXCLUDE_FROM_ALL ${cpr_sources})
-target_link_libraries(cpr PUBLIC CURL::libcurl)
-target_include_directories(cpr PUBLIC cpr/include)
-target_compile_definitions(cpr PUBLIC CPR_CURL_NOSIGNAL)
-add_library(cpr::cpr ALIAS cpr)
-
-file(READ cpr/CMakeLists.txt cpr_cmake_head LIMIT 1000)
-if(cpr_cmake_head MATCHES "project\\(cpr VERSION ([0-9]+)\.([0-9]+)\.([0-9]+) LANGUAGES CXX\\)")
-    set(cpr_VERSION_MAJOR ${CMAKE_MATCH_1})
-    set(cpr_VERSION_MINOR ${CMAKE_MATCH_2})
-    set(cpr_VERSION_PATCH ${CMAKE_MATCH_3})
-    set(cpr_VERSION "${cpr_VERSION_MAJOR}.${cpr_VERSION_MINOR}.${cpr_VERSION_PATCH}")
-    set(cpr_VERSION_NUM "(${cpr_VERSION_MAJOR} * 0x10000 + ${cpr_VERSION_MINOR} * 0x100 + ${cpr_VERSION_PATCH})")
-
-    configure_file(cpr/cmake/cprver.h.in "${CMAKE_CURRENT_BINARY_DIR}/cpr_generated_includes/cpr/cprver.h")
-    target_include_directories(cpr PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/cpr_generated_includes")
+target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK)
+if(TARGET zlib)
+    target_link_libraries(uWebSockets INTERFACE zlib)
 else()
-    message(FATAL_ERROR "Could not identify cpr submodule version!")
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(ZLIB zlib REQUIRED IMPORTED_TARGET)
+    target_link_libraries(uWebSockets INTERFACE PkgConfig::ZLIB)
 endif()
 
 
@@ -158,5 +122,39 @@ set(SQLITECPP_RUN_CPPCHECK OFF CACHE BOOL "" FORCE)
 set(SQLITECPP_RUN_DOXYGEN OFF CACHE BOOL "" FORCE)
 set(SQLITECPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SQLITECPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SQLITE_OMIT_LOAD_EXTENSION ON CACHE BOOL "" FORCE)
 
-add_subdirectory(SQLiteCpp)
+
+add_subdirectory(SQLiteCpp EXCLUDE_FROM_ALL)
+oxen_install_library(SQLiteCpp)
+
+
+add_subdirectory(Catch2)
+
+if(BUILD_PYBIND)
+  add_subdirectory(pybind11 EXCLUDE_FROM_ALL)
+endif()
+
+
+if(NOT WIN32 AND NOT APPLE)
+  set(CPR_FORCE_OPENSSL_BACKEND ON CACHE BOOL "" FORCE)
+endif()
+set(ethyl_ENABLE_CRYPTO_LIBRARY FALSE CACHE BOOL "" FORCE)
+set(ethyl_ENABLE_SIGNER FALSE CACHE BOOL "" FORCE)
+set(ethyl_ENABLE_LTO FALSE CACHE BOOL "" FORCE)
+add_subdirectory(ethyl EXCLUDE_FROM_ALL)
+oxen_install_library(ethyl)
+oxen_install_library(cpr)  # comes via ethyl
+
+if(NOT TARGET nlohmann_json::nlohmann_json)
+    set(JSON_BuildTests OFF CACHE INTERNAL "")
+    set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
+    system_or_submodule(NLOHMANN nlohmann_json nlohmann_json>=3.7.0 nlohmann-json)
+endif()
+
+
+# NOTE: By default cpptrace is configured to make stack-traces using libdwarf.
+# On this codebase libdward segfaults trying to handle our stack-traces so we
+# switch to a more primitive method, addr2line which does work.
+set(CPPTRACE_GET_SYMBOLS_WITH_ADDR2LINE ON CACHE BOOL "")
+add_subdirectory(cpptrace EXCLUDE_FROM_ALL)

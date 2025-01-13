@@ -27,19 +27,22 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(cncrypto
+oxen_add_library(cncrypto
   aesb.c
   blake256.c
   chacha.c
+  chacha.cpp
   crypto-ops-data.c
   crypto-ops.c
   crypto.cpp
+  eth.cpp
   groestl.c
   hash-extra-blake.c
   hash-extra-groestl.c
   hash-extra-jh.c
   hash-extra-skein.c
   hash.c
+  hash.cpp
   hmac-keccak.c
   jh.c
   keccak.c
@@ -53,7 +56,7 @@ add_library(cncrypto
   rx-slow-hash.c
   tree-hash.c)
 
-option(MONERO_SLOW_HASH "Enable support for Monero CNv0/CNv1 hashing (currently only used in the Android wallet). Defaults to disabled because this causes many false alarms in virus/malware detection software." OFF)
+option(MONERO_SLOW_HASH "Enable support for Monero CNv0/CNv1 hashing (currently only used in the Android wallet). Defaults to disabled because this causes many false alarms in virus/malware detection software." ${BUILD_EVERYTHING})
 if(MONERO_SLOW_HASH)
   target_sources(cncrypto PRIVATE cn_monero_slow_hash.c)
   target_compile_definitions(cncrypto PUBLIC ENABLE_MONERO_SLOW_HASH)
@@ -64,11 +67,13 @@ target_link_libraries(cncrypto
     epee
     randomx
     Boost::thread
+    $<$<CONFIG:Debug>:cpptrace::cpptrace>
     sodium
   PRIVATE
+    logging
     extra)
 
-if (CMAKE_CXX_COMPILER_ID MATCHES Clang OR CMAKE_CXX_COMPILER_ID STREQUAL GNU)
+if (CMAKE_CXX_COMPILER_ID MATCHES "^(.*Clang|GNU)$" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^([xX]86[_-]|[aA][mM][dD])64$")
   # If we're compiling for x86/amd64 then we need to force on -maes -msse2 for the hard intel code:
   # it has a run-time check to not actually call it if not supported by the running CPU.
   # Unfortunately CMake sucks for actually reliably giving us the target architecture, so we'll just

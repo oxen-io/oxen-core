@@ -27,19 +27,20 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(common
+oxen_add_library(common
   aligned.c
   base58.cpp
   combinator.cpp
   command_line.cpp
   error.cpp
   expect.cpp
+  $<$<CONFIG:Debug>:exception.cpp>
   file.cpp
   i18n.cpp
+  json_binary_proxy.cpp
   oxen.cpp
   notify.cpp
   password.cpp
-  perf_timer.cpp
   pruning.cpp
   random.cpp
   rules.cpp
@@ -62,11 +63,14 @@ endif()
 
 target_link_libraries(common
   PUBLIC
+    $<$<CONFIG:Debug>:cpptrace::cpptrace>
     cncrypto
     oxenc::oxenc
     oxenmq::oxenmq
-    filesystem
-    fmt::fmt
+    oxen::logging
+    nlohmann_json::nlohmann_json
+    Boost::program_options
   PRIVATE
     sodium
+    logging
     extra)

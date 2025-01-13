@@ -1,22 +1,22 @@
 // Copyright (c) 2018, The Loki Project
 // Copyright (c) 2014-2019, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -26,150 +26,147 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include <string>
+#include "util.h"
+
+#include <fmt/chrono.h>
+#include <fmt/color.h>
+
+#include <chrono>
 #include <iomanip>
+#include <string>
 #include <thread>
 
+#include "crypto/crypto.h"
+#include "epee/misc_log_ex.h"
+#include "epee/readline_buffer.h"
 #include "epee/string_tools.h"
 #include "epee/wipeable_string.h"
-#include "crypto/crypto.h"
-#include "util.h"
-#include "epee/misc_os_dependent.h"
-#include "epee/readline_buffer.h"
-#include "epee/misc_log_ex.h"
+#include "i18n.h"
+#include "logging/oxen_logger.h"
 #include "string_util.h"
 
-#include "i18n.h"
-
 #ifdef __GLIBC__
-#include <sys/resource.h>
 #include <gnu/libc-version.h>
+#include <sys/resource.h>
 #endif
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "util"
+namespace tools {
+static auto logcat = log::Cat("util");
 
-namespace tools
-{
-
-  bool disable_core_dumps()
-  {
+bool disable_core_dumps() {
 #ifdef __GLIBC__
     // disable core dumps in release mode
     struct rlimit rlimit;
     rlimit.rlim_cur = rlimit.rlim_max = 0;
-    if (setrlimit(RLIMIT_CORE, &rlimit))
-    {
-      MWARNING("Failed to disable core dumps");
-      return false;
+    if (setrlimit(RLIMIT_CORE, &rlimit)) {
+        log::warning(logcat, "Failed to disable core dumps");
+        return false;
     }
 #endif
     return true;
-  }
+}
 
-  ssize_t get_lockable_memory()
-  {
+ssize_t get_lockable_memory() {
 #ifdef __GLIBC__
     struct rlimit rlim;
-    if (getrlimit(RLIMIT_MEMLOCK, &rlim) < 0)
-    {
-      MERROR("Failed to determine the lockable memory limit");
-      return -1;
+    if (getrlimit(RLIMIT_MEMLOCK, &rlim) < 0) {
+        log::error(logcat, "Failed to determine the lockable memory limit");
+        return -1;
     }
     return rlim.rlim_cur;
 #else
     return -1;
 #endif
-  }
+}
 
-  bool on_startup()
-  {
-    mlog_configure("", true);
-
+bool on_startup() {
 #ifdef __GLIBC__
-    const char *ver = ::gnu_get_libc_version();
+    const char* ver = ::gnu_get_libc_version();
     if (!strcmp(ver, "2.25"))
-      MCLOG_RED(el::Level::Warning, "global", "Running with glibc " << ver << ", hangs may occur - change glibc version if possible");
+        log::warning(
+                logcat,
+                fg(fmt::terminal_color::red),
+                "Running with glibc {}, hangs may occur - change glibc version if possible",
+                ver);
 #endif
 
     return true;
-  }
-  namespace
-  {
+}
+namespace {
     std::mutex max_concurrency_lock;
     unsigned max_concurrency = std::thread::hardware_concurrency();
-  }
+}  // namespace
 
-  void set_max_concurrency(unsigned n)
-  {
+void set_max_concurrency(unsigned n) {
     if (n < 1)
-      n = std::thread::hardware_concurrency();
+        n = std::thread::hardware_concurrency();
     unsigned hwc = std::thread::hardware_concurrency();
     if (n > hwc)
-      n = hwc;
+        n = hwc;
     std::lock_guard lock{max_concurrency_lock};
     max_concurrency = n;
-  }
+}
 
-  unsigned get_max_concurrency()
-  {
+unsigned get_max_concurrency() {
     std::lock_guard lock{max_concurrency_lock};
     return max_concurrency;
-  }
+}
 
-  bool is_local_address(const std::string &address)
-  {
-    return address == "localhost"sv
-        || (tools::starts_with(address, "127."sv) && address.find_first_not_of("0123456789."sv) == std::string::npos)
-        || address == "::1"sv
-        || address == "[::1]"sv; // There are other uncommon ways to specify localhost (e.g. 0::1, ::0001) but don't worry about them.
-  }
+bool is_local_address(const std::string& address) {
+    return address == "localhost"sv ||
+           (address.starts_with("127."sv) &&
+            address.find_first_not_of("0123456789."sv) == std::string::npos) ||
+           address == "::1"sv ||
+           address == "[::1]"sv;  // There are other uncommon ways to specify localhost (e.g. 0::1,
+                                  // ::0001) but don't worry about them.
+}
 
-  int vercmp(std::string_view v0, std::string_view v1)
-  {
+int vercmp(std::string_view v0, std::string_view v1) {
     auto f0 = tools::split_any(v0, ".-");
     auto f1 = tools::split_any(v1, ".-");
     const auto max = std::max(f0.size(), f1.size());
     for (size_t i = 0; i < max; ++i) {
-      if (i >= f0.size())
-        return -1;
-      if (i >= f1.size())
-        return 1;
-      int f0i = 0, f1i = 0;
-      tools::parse_int(f0[i], f0i);
-      tools::parse_int(f1[i], f1i);
-      int n = f0i - f1i;
-      if (n)
-        return n;
+        if (i >= f0.size())
+            return -1;
+        if (i >= f1.size())
+            return 1;
+        int f0i = 0, f1i = 0;
+        tools::parse_int(f0[i], f0i);
+        tools::parse_int(f1[i], f1i);
+        int n = f0i - f1i;
+        if (n)
+            return n;
     }
     return 0;
-  }
+}
 
-  std::optional<std::pair<uint32_t, uint32_t>> parse_subaddress_lookahead(const std::string& str)
-  {
+std::optional<std::pair<uint32_t, uint32_t>> parse_subaddress_lookahead(const std::string& str) {
     auto pos = str.find(":");
     bool r = pos != std::string::npos;
     uint32_t major;
     r = r && epee::string_tools::get_xtype_from_string(major, str.substr(0, pos));
     uint32_t minor;
     r = r && epee::string_tools::get_xtype_from_string(minor, str.substr(pos + 1));
-    if (r)
-    {
-      return std::make_pair(major, minor);
+    if (r) {
+        return std::make_pair(major, minor);
+    } else {
+        return std::nullopt;
     }
-    else
-    {
-      return {};
-    }
-  }
+}
 
 #ifdef _WIN32
-  std::string input_line_win()
-  {
-    HANDLE hConIn = CreateFileW(L"CONIN$", GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+std::string input_line_win() {
+    HANDLE hConIn = CreateFileW(
+            L"CONIN$",
+            GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_EXISTING,
+            0,
+            nullptr);
     DWORD oldMode;
 
     FlushConsoleInputBuffer(hConIn);
@@ -179,68 +176,61 @@ namespace tools
     wchar_t buffer[1024];
     DWORD read;
 
-    ReadConsoleW(hConIn, buffer, sizeof(buffer)/sizeof(wchar_t)-1, &read, nullptr);
+    ReadConsoleW(hConIn, buffer, sizeof(buffer) / sizeof(wchar_t) - 1, &read, nullptr);
     buffer[read] = 0;
 
     SetConsoleMode(hConIn, oldMode);
     CloseHandle(hConIn);
-  
+
     int size_needed = WideCharToMultiByte(CP_UTF8, 0, buffer, -1, NULL, 0, NULL, NULL);
     std::string buf(size_needed, '\0');
     WideCharToMultiByte(CP_UTF8, 0, buffer, -1, &buf[0], size_needed, NULL, NULL);
-    buf.pop_back(); //size_needed includes null that we needed to have space for
+    buf.pop_back();  // size_needed includes null that we needed to have space for
     return buf;
-  }
+}
 #endif
 
-  std::string get_human_readable_timestamp(uint64_t ts)
-  {
-    char buffer[64];
-    if (ts < 1234567890)
-      return "<unknown>";
-    time_t tt = ts;
-    struct tm tm;
-    epee::misc_utils::get_gmt_time(tt, tm);
-    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S UTC", &tm);
-    return std::string(buffer);
-  }
+std::string get_human_readable_timestamp(std::time_t t) {
+    if (t < 1234567890)
+        return "<unknown>";
+    return "{:%Y-%m-%d %H:%M:%S} UTC"_format(fmt::gmtime(t));
+}
 
-  std::string get_human_readable_timespan(std::chrono::seconds seconds)
-  {
+std::string get_human_readable_timespan(std::chrono::seconds seconds) {
     uint64_t ts = seconds.count();
     if (ts < 60)
-      return std::to_string(ts) + tr(" seconds");
+        return std::to_string(ts) + tr(" seconds");
     if (ts < 3600)
-      return std::to_string((uint64_t)(ts / 60)) + tr(" minutes");
+        return std::to_string((uint64_t)(ts / 60)) + tr(" minutes");
     if (ts < 3600 * 24)
-      return std::to_string((uint64_t)(ts / 3600)) + tr(" hours");
+        return std::to_string((uint64_t)(ts / 3600)) + tr(" hours");
     if (ts < 3600 * 24 * 30.5)
-      return std::to_string((uint64_t)(ts / (3600 * 24))) + tr(" days");
+        return std::to_string((uint64_t)(ts / (3600 * 24))) + tr(" days");
     if (ts < 3600 * 24 * 365.25)
-      return std::to_string((uint64_t)(ts / (3600 * 24 * 30.5))) + tr(" months");
+        return std::to_string((uint64_t)(ts / (3600 * 24 * 30.5))) + tr(" months");
     return tr("a long time");
-  }
+}
 
-  std::string get_human_readable_bytes(uint64_t bytes)
-  {
-    if (bytes < 1000) return std::to_string(bytes) + " B";
+std::string get_human_readable_bytes(uint64_t bytes) {
+    if (bytes < 1000)
+        return std::to_string(bytes) + " B";
     constexpr std::array units{" kB", " MB", " GB", " TB"};
     double b = bytes;
     for (const auto& suffix : units) {
-      b /= 1000.;
-      if (b < 1000.) {
-        std::ostringstream o;
-        o << std::fixed << std::setprecision(2) << b;
-        return o.str() + suffix;
-      }
+        b /= 1000.;
+        if (b < 1000.) {
+            std::ostringstream o;
+            o << std::fixed << std::setprecision(2) << b;
+            return o.str() + suffix;
+        }
     }
     return std::to_string(std::lround(b)) + units.back();
-  }
+}
 
-  // Calculate a "sync weight" over ranges of blocks in the blockchain, suitable for
-  // calculating sync time estimates
-  uint64_t cumulative_block_sync_weight(cryptonote::network_type nettype, uint64_t start_block, uint64_t num_blocks)
-  {
+// Calculate a "sync weight" over ranges of blocks in the blockchain, suitable for
+// calculating sync time estimates
+uint64_t cumulative_block_sync_weight(
+        cryptonote::network_type nettype, uint64_t start_block, uint64_t num_blocks) {
     // No detailed data available except for Mainnet: Give back the number of blocks
     // as a very simple and non-varying block sync weight for ranges of Testnet and
     // Devnet blocks
@@ -315,5 +305,5 @@ namespace tools
     }
     return weight;
 #endif
-  }
 }
+}  // namespace tools

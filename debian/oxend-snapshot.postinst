@@ -1,0 +1,42 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = configure ]; then
+    # Create _loki user if it doesn't exist
+    if ! getent passwd _loki >/dev/null; then
+        adduser --force-badname --system --quiet --home /var/lib/oxen --group --gecos "Session node" _loki
+    fi
+    # Make sure the group gets created (in case _loki was preexisting)
+    if ! getent group _loki >/dev/null; then
+        addgroup --force-badname --system --quiet _loki
+    fi
+    # Make sure the _loki user is part of the _loki group
+    if ! id -Gn _loki | grep -qw _loki; then
+        adduser --force-badname --quiet _loki _loki
+    fi
+
+    # Create and chown /var/{lib,log}/oxen
+    for d in lib log; do
+        if ! [ -d /var/$d/oxen ]; then
+            if [ -d /var/$d/loki ]; then
+                # Symlink for migration from /var/{lib,log}/loki -> /var/{lib,log}/oxen
+                ln -s loki /var/$d/oxen
+            else
+                mkdir -p /var/$d/oxen
+            fi
+        fi
+
+        su -s /bin/sh _loki -c "test -O /var/$d/oxen &&
+            test -G /var/$d/oxen" || \
+            chown _loki:_loki /var/$d/oxen
+    done
+
+    # Make /var/lib/loki -> oxen compatibility symlink (lokinet, at least, still depends on
+    # this)
+    if ! [ -d /var/lib/loki ] && ! [ -h /var/lib/loki ] && [ -d /var/lib/oxen ]; then
+        ln -s oxen /var/lib/loki
+    fi
+fi
+
+#DEBHELPER#

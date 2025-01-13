@@ -28,13 +28,13 @@
 
 add_executable(difficulty-tests
   difficulty.cpp)
+
 target_link_libraries(difficulty-tests
   PRIVATE
-    cncrypto
-    epee
     cryptonote_basic
-    easylogging
+    common
     extra)
+
 set_property(TARGET difficulty-tests
   PROPERTY
     FOLDER "tests")

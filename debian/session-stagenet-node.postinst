@@ -1,0 +1,48 @@
+#!/bin/sh
+
+set -e
+
+restart_oxend=
+
+if [ "$1" = configure ]; then
+    . /usr/share/debconf/confmodule
+    db_get oxen-service-node/ip-address
+    IP="$RET"
+    db_get session-stagenet-node/l2-provider
+    L2="$RET"
+
+    tmpdir=$(mktemp --tmpdir -d session-stagenet-node.XXXXXXXXXX)
+    cp /usr/share/oxend/stagenet.conf ${tmpdir}/stagenet.conf
+
+    # Replace commented or uncommented `service_node=...` with `service-node=1`.  Append to the end
+    # if not found.
+    sed -i '/^#\?service-node=/{h;s/.*=.*/service-node=1/};${x;/^$/{s//service-node=1/;H};x}' \
+        ${tmpdir}/stagenet.conf
+    # Replace commented or uncommented `service_node-public-ip=...` with
+    # `service-node-public-ip=$IP`, or append if not found.
+    sed -i '/^#\?service-node-public-ip=/{h;s/.*=.*/service-node-public-ip='"$IP"'/};${x;/^$/{s//service-node-public-ip='"$IP"'/;H};x}' \
+        ${tmpdir}/stagenet.conf
+    # Replaced *first* uncommented `l2-provider` with `l2-provider=$L2`, but leave commented and
+    # subsequent ones alone.  Append to the end if not found.
+    sed -i '0,/^l2-provider=/{/^l2-provider=/{h;s#.*=.*#l2-provider='"$L2"'#}};${x;/^$/{s##l2-provider='"$L2"'#;H};x}' \
+        ${tmpdir}/stagenet.conf
+
+    mkdir -p /etc/oxen
+    for x in stagenet.conf; do
+        if ! [ -f /etc/oxen/$x ]; then
+            mv ${tmpdir}/$x /etc/oxen/$x
+            ucfr session-stagenet-node /etc/oxen/$x
+        else
+            ucf --debconf-ok ${tmpdir}/$x /etc/oxen/$x
+        fi
+    done
+
+    rm -rf ${tmpdir}
+
+    for conf in stagenet.conf; do
+        # NB: also purge in postrm
+        ucfr session-stagenet-node /etc/oxen/$conf
+    done
+fi
+
+#DEBHELPER#

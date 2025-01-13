@@ -28,19 +28,90 @@
 
 #pragma once
 
+#include <concepts>
 #include <mutex>
+#include <shared_mutex>
 #include <tuple>
 
 namespace tools {
 
+template <typename T>
+concept lockable = requires(T a) {
+    a.lock();
+    a.unlock();
+    { a.try_lock() } -> std::convertible_to<bool>;
+};
+
+template <typename T>
+concept shared_lockable = requires(T a) {
+    a.lock_shared();
+    a.unlock_shared();
+    { a.try_lock_shared() } -> std::convertible_to<bool>;
+};
+
 /// Takes any number of lockable objects, locks them atomically, and returns a tuple of
 /// std::unique_lock holding the individual locks.
-template <typename... T>
-[[nodiscard]]
-std::tuple<std::unique_lock<T>...> unique_locks(T& ...lockables) {
+template <lockable... T>
+[[nodiscard]] std::tuple<std::unique_lock<T>...> unique_locks(T&... lockables) {
     std::lock(lockables...);
     auto locks = std::make_tuple(std::unique_lock<T>(lockables, std::adopt_lock)...);
     return locks;
 }
 
+template <typename T>
+struct shared_or_unique_lock_t {
+    using type = std::unique_lock<T>;
+};
+template <shared_lockable T>
+struct shared_or_unique_lock_t<T> {
+    using type = std::shared_lock<T>;
+};
+template <typename T>
+using shared_or_unique_lock = typename shared_or_unique_lock_t<T>::type;
+
+/// Takes any number of shared lockable or lockable objects, locks them all, and returns a tuple of
+/// std::unique_lock or std::shared_locks holding the individual locks: std::shared_lock is used if
+/// the lockable object supports shared locking, otherwise you get a std::unique_lock.
+template <typename... T>
+    requires((shared_lockable<T> || lockable<T>) && ...)
+[[nodiscard]] std::tuple<shared_or_unique_lock<T>...> shared_locks(T&... lockables) {
+    auto locks = std::make_tuple(shared_or_unique_lock<T>(lockables, std::defer_lock)...);
+    std::apply(std::lock<shared_or_unique_lock<T>...>, locks);
+    return locks;
 }
+
+/// Takes a std::shared_lock, unlocks it (if locked), then re-locks the mutex in a std::unique_lock
+/// which gets returned.  If the shared_lock is *not* initially locked (or is empty) then the
+/// returned unique_lock will also be unlocked (or empty).
+template <lockable Mutex>
+[[nodiscard]] std::unique_lock<Mutex> upgrade_lock(std::shared_lock<Mutex>& shared) {
+    auto* mutex = shared.mutex();
+    if (!mutex)
+        return {};
+
+    std::unique_lock unique{*mutex, std::defer_lock};
+    if (shared) {
+        shared.unlock();
+        unique.lock();
+    }
+    return unique;
+}
+
+/// Takes a std::unique_lock, unlocks it (if locked), then re-locks the mutex in a std::shared_lock
+/// which gets returned.  If the unique_lock is *not* initially locked (or is empty) then the
+/// returned shared_lock will also be unlocked (or empty).
+template <shared_lockable Mutex>
+[[nodiscard]] std::shared_lock<Mutex> downgrade_lock(std::unique_lock<Mutex>& unique) {
+    auto* mutex = unique.mutex();
+    if (!mutex)
+        return {};
+
+    std::shared_lock shared{*mutex, std::defer_lock};
+    if (unique) {
+        unique.unlock();
+        shared.lock();
+    }
+    return shared;
+}
+
+}  // namespace tools

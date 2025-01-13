@@ -28,33 +28,28 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include "common_defines.h"
-#include "epee/misc_log_ex.h"
 #include "common/util.h"
+#include "common_defines.h"
+#include "wallet.h"
 
-namespace Wallet {
-namespace Utils {
+namespace Wallet::Utils {
 
 EXPORT
-bool isAddressLocal(const std::string &address)
-{ 
+bool isAddressLocal(const std::string& address) {
     try {
         return tools::is_local_address(address);
-    } catch (const std::exception &e) {
-        MERROR("error: " << e.what());
+    } catch (const std::exception& e) {
+        log::error(logcat, "error: {}", e.what());
         return false;
     }
 }
 
 EXPORT
-void onStartup()
-{
+void onStartup() {
     tools::on_startup();
 #ifdef NDEBUG
     tools::disable_core_dumps();
 #endif
 }
 
-}
-
-} // namespace
+}  // namespace Wallet::Utils

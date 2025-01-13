@@ -29,2174 +29,2550 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include "cryptonote_config.h"
-#include "epee/string_tools.h"
-#include "common/password.h"
-#include "common/scoped_message_writer.h"
-#include "common/pruning.h"
-#include "common/hex.h"
-#include "common/median.h"
 #include "daemon/rpc_command_executor.h"
-#include "epee/int-util.h"
-#include "oxen_economy.h"
-#include "rpc/core_rpc_server_commands_defs.h"
-#include "cryptonote_core/service_node_rules.h"
-#include "cryptonote_basic/hardfork.h"
-#include "checkpoints/checkpoints.h"
-#include <chrono>
-#include <exception>
-#include <oxenc/base32z.h>
-#include <fmt/core.h>
 
-#include <fstream>
+#include <cpr/cpr.h>
+#include <fmt/chrono.h>
+#include <fmt/color.h>
+#include <fmt/core.h>
+#include <oxenc/base32z.h>
+#include <oxenc/variant.h>
+#include <oxenmq/connections.h>
+
+#include <chrono>
 #include <ctime>
-#include <string>
+#include <exception>
+#include <iterator>
+#include <limits>
 #include <numeric>
 #include <stack>
+#include <string>
+#include <type_traits>
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "daemon"
+#include "checkpoints/checkpoints.h"
+#include "common/exception.h"
+#include "common/guts.h"
+#include "common/median.h"
+#include "common/password.h"
+#include "common/pruning.h"
+#include "common/scoped_message_writer.h"
+#include "common/string_util.h"
+#include "cryptonote_basic/hardfork.h"
+#include "cryptonote_config.h"
+#include "cryptonote_core/service_node_rules.h"
+#include "epee/int-util.h"
+#include "epee/string_tools.h"
+#include "oxen_economy.h"
+#include "rpc/core_rpc_server_commands_defs.h"
 
 using namespace cryptonote::rpc;
 using cryptonote::hf;
 
+using nlohmann::json;
+
 namespace daemonize {
 
 namespace {
-  enum class input_line_result { yes, no, cancel, back, };
+    enum class input_line_result {
+        yes,
+        no,
+        cancel,
+        back,
+    };
 
-  template <typename... Args>
-  std::string input_line(Args&&... prompt)
-  {
-    rdln::suspend_readline pause_readline;
-    (std::cout << ... << prompt) << std::flush;
-    std::string result;
-    std::getline(std::cin, result);
+    template <typename... Args>
+    std::string input_line(Args&&... prompt) {
+        rdln::suspend_readline pause_readline;
+        (std::cout << ... << prompt) << std::flush;
+        std::string result;
+        std::getline(std::cin, result);
 
-    return result;
-  }
-
-  input_line_result input_line_ask(std::string_view msg)
-  {
-    auto input = input_line(msg, " (Y/Yes/N/No/B/Back/C/Cancel): ");
-
-    if (command_line::is_yes(input))  return input_line_result::yes;
-    if (command_line::is_no(input))   return input_line_result::no;
-    if (command_line::is_back(input)) return input_line_result::back;
-    return input_line_result::cancel;
-  }
-
-  std::pair<input_line_result, std::string> input_line_value(
-      std::string_view msg,
-      bool back = true,
-      const std::string& extra_opt = "",
-      const std::string& default_ = "")
-  {
-    std::string_view end = ""sv;
-    if (msg.back() == '\n') {
-      end = "\n"sv;
-      msg.remove_suffix(1);
+        return result;
     }
-    auto input = input_line(msg, (back ? " (B/Back/C/Cancel" : " (C/Cancel") + extra_opt + ")" +
-        (!default_.empty() ? " [" + default_ + "]" : "") + ": ", end);
 
-    return {
-      back && command_line::is_back(input) ? input_line_result::back :
-        command_line::is_cancel(input) ? input_line_result::cancel :
-        input_line_result::yes,
-      input.empty() ? default_ : input};
-  }
+    input_line_result input_line_ask(std::string_view msg) {
+        auto input = input_line(msg, " (Y/Yes/N/No/B/Back/C/Cancel): ");
 
-  void print_peer(std::string const & prefix, GET_PEER_LIST::peer const & peer, bool pruned_only, bool publicrpc_only)
-  {
-    if (pruned_only && peer.pruning_seed == 0)
-      return;
-    if (publicrpc_only && peer.rpc_port == 0)
-      return;
+        if (command_line::is_yes(input))
+            return input_line_result::yes;
+        if (command_line::is_no(input))
+            return input_line_result::no;
+        if (command_line::is_back(input))
+            return input_line_result::back;
+        return input_line_result::cancel;
+    }
 
-    time_t now = std::time(nullptr);
-    time_t last_seen = static_cast<time_t>(peer.last_seen);
+    std::pair<input_line_result, std::string> input_line_value(
+            std::string_view msg,
+            bool back = true,
+            const std::string& extra_opt = "",
+            const std::string& default_ = "") {
+        std::string_view end = ""sv;
+        if (msg.back() == '\n') {
+            end = "\n"sv;
+            msg.remove_suffix(1);
+        }
+        auto input = input_line(
+                msg,
+                (back ? " (B/Back/C/Cancel" : " (C/Cancel") + extra_opt + ")" +
+                        (!default_.empty() ? " [" + default_ + "]" : "") + ": ",
+                end);
 
-    std::string elapsed = peer.last_seen == 0 ? "never" : epee::misc_utils::get_time_interval_string(now - last_seen);
-    std::string id_str = epee::string_tools::pad_string(epee::string_tools::to_string_hex(peer.id), 16, '0', true);
-    std::string addr_str = peer.host + ":" + std::to_string(peer.port);
-    std::string rpc_port = peer.rpc_port ? std::to_string(peer.rpc_port) : "-";
-    std::string pruning_seed = epee::string_tools::to_string_hex(peer.pruning_seed);
-    tools::msg_writer() << fmt::format("{:<10} {:<25} {:<25} {:<5} %{:-4} {}", prefix, id_str, addr_str, rpc_port, pruning_seed, elapsed);
-  }
+        return {back && command_line::is_back(input) ? input_line_result::back
+                : command_line::is_cancel(input)     ? input_line_result::cancel
+                                                     : input_line_result::yes,
+                input.empty() ? default_ : input};
+    }
 
-  void print_block_header(block_header_response const & header)
-  {
-    tools::success_msg_writer()
-      << "timestamp: " << header.timestamp << " (" << tools::get_human_readable_timestamp(header.timestamp) << ")" << "\n"
-      << "previous hash: " << header.prev_hash << "\n"
-      << "nonce: " << header.nonce << "\n"
-      << "is orphan: " << header.orphan_status << "\n"
-      << "height: " << header.height << "\n"
-      << "depth: " << header.depth << "\n"
-      << "hash: " << header.hash << "\n"
-      << "difficulty: " << header.difficulty << "\n"
-      << "cumulative_difficulty: " << header.cumulative_difficulty << "\n"
-      << "POW hash: " << header.pow_hash.value_or("N/A") << "\n"
-      << "block size: " << header.block_size << "\n"
-      << "block weight: " << header.block_weight << "\n"
-      << "long term weight: " << header.long_term_weight << "\n"
-      << "num txes: " << header.num_txes << "\n"
-      << "reward: " << cryptonote::print_money(header.reward) << "\n"
-      << "coinbase payouts: " << cryptonote::print_money(header.coinbase_payouts) << "\n"
-      << "service node winner: " << header.service_node_winner << "\n"
-      << "miner tx hash: " << header.miner_tx_hash;
-  }
+    void print_block_header(const nlohmann::json& header) {
+        tools::success_msg_writer(
+                R"(timestamp: {} ({})
+previous hash: {}
+nonce: {}
+is orphan: {}
+height: {}
+depth: {}
+hash: {}
+difficulty: {}
+cumulative_difficulty: {}
+POW hash: {}
+block size: {}
+block weight: {}
+long term weight: {}
+num txes: {}
+reward: {}
+coinbase payouts: {}
+service node winner: {}
+miner tx hash: {})",
+                header["timestamp"].get<uint64_t>(),
+                tools::get_human_readable_timestamp(header["timestamp"].get<uint64_t>()),
+                header["prev_hash"].get<std::string_view>(),
+                header["nonce"].get<uint32_t>(),
+                header["orphan_status"].get<bool>(),
+                header["height"].get<uint64_t>(),
+                header["depth"].get<uint64_t>(),
+                header["hash"].get<std::string_view>(),
+                header["difficulty"].get<uint64_t>(),
+                header["cumulative_difficulty"].get<uint64_t>(),
+                header.value<std::string_view>("pow_hash", "N/A"),
+                header["block_size"].get<uint64_t>(),
+                header["block_weight"].get<uint64_t>(),
+                header["long_term_weight"].get<uint64_t>(),
+                header["num_txes"].get<uint64_t>(),
+                cryptonote::print_money(header["reward"].get<uint64_t>()),
+                cryptonote::print_money(header["coinbase_payouts"].get<uint64_t>()),
+                header["service_node_winner"].get<std::string_view>(),
+                header.value<std::string_view>("miner_tx_hash", "N/A"));
+    }
 
-  template <typename Rep, typename Period>
-  std::string get_human_time_ago(std::chrono::duration<Rep, Period> ago_dur, bool abbreviate = false)
-  {
-    auto ago = std::chrono::duration_cast<std::chrono::seconds>(ago_dur);
-    if (ago == 0s)
-      return "now";
-    auto dt = ago > 0s ? ago : -ago;
-    std::string s;
-    if (dt < 90s)
-      s = std::to_string(dt.count()) + (abbreviate ? "sec" : dt == 1s ? " second" : " seconds");
-    else if (dt < 90min)
-      s = fmt::format("{:.1f}{:s}", ((float)dt.count()/60), abbreviate ? "min" : " minutes");
-    else if (dt < 36h)
-      s = fmt::format("{:.1f}{:s}", ((float)dt.count()/3600), abbreviate ? "hr" : " hours");
-    else
-      s = fmt::format("{:.1f} days", ((float)dt.count()/86400));
-    if (abbreviate) {
-        if (ago < 0s)
-            return s + " (in fut.)";
+    template <typename Rep, typename Period>
+    std::string get_human_time_ago(
+            std::chrono::duration<Rep, Period> ago_dur, bool abbreviate = false) {
+        auto ago = std::chrono::duration_cast<std::chrono::seconds>(ago_dur);
+        if (ago == 0s)
+            return "now";
+        auto dt = ago > 0s ? ago : -ago;
+        std::string s;
+        if (dt < 90s)
+            s = std::to_string(dt.count()) + (abbreviate ? "sec"
+                                              : dt == 1s ? " second"
+                                                         : " seconds");
+        else if (dt < 90min)
+            s = "{:.1f}{:s}"_format(dt.count() / 60.0, abbreviate ? "min" : " minutes");
+        else if (dt < 36h)
+            s = "{:.1f}{:s}"_format(dt.count() / 3600.0, abbreviate ? "hr" : " hours");
+        else
+            s = "{:.1f} days"_format(dt.count() / 86400.0);
+        if (abbreviate) {
+            if (ago < 0s)
+                s += " (in fut.)";
+        } else {
+            s += ' ';
+            s += (ago < 0s ? "in the future" : "ago");
+        }
         return s;
     }
-    return s + " " + (ago < 0s ? "in the future" : "ago");
-  }
 
-  std::string get_human_time_ago(std::time_t t, std::time_t now, bool abbreviate = false) {
-    return get_human_time_ago(std::chrono::seconds{now - t}, abbreviate);
-  }
+    std::string get_human_time_ago(std::time_t t, std::time_t now, bool abbreviate = false) {
+        return get_human_time_ago(std::chrono::seconds{now - t}, abbreviate);
+    }
 
-  char const *get_date_time(time_t t)
-  {
-    static char buf[128];
-    buf[0] = 0;
+    bool print_peer(std::string_view prefix, const json& peer, bool pruned_only) {
+        auto pruning_seed = peer.value<uint64_t>("pruning_seed", 0);
+        if (pruned_only && pruning_seed == 0)
+            return false;
 
-    struct tm tm;
-    epee::misc_utils::get_gmt_time(t, tm);
-    strftime(buf, sizeof(buf), "%Y-%m-%d %I:%M:%S %p UTC", &tm);
-    return buf;
-  }
+        time_t now = std::time(nullptr);
+        time_t last_seen = peer.value<time_t>("last_seen", 0);
 
-  std::string get_time_hms(time_t t)
-  {
-    unsigned int hours = t / 3600;
-    t %= 3600;
-    unsigned int minutes = t / 60;
-    unsigned int seconds = t % 60;
-    return fmt::format("{:02}:{:02}:{:02}", hours, minutes, seconds);
-  }
-}
+        tools::msg_writer(
+                "{:<10} {:016x}    {:<30} {}",
+                prefix,
+                peer["id"].get<uint64_t>(),
+                "{}:{}"_format(peer["host"].get<std::string_view>(), peer["port"].get<uint16_t>()),
+                last_seen == 0 ? "never" : get_human_time_ago(last_seen, now));
+        return true;
+    }
+
+    template <typename... Args>
+    void print_peers(std::string_view prefix, const json& peers, size_t& limit, Args&&... args) {
+        if (limit > 0)
+            tools::msg_writer(
+                    "{:<10} {:<16}    {:<30} {}", "Type", "Peer id", "Remote address", "Last seen");
+        for (auto it = peers.begin(); it != peers.end() && limit > 0; it++)
+            if (print_peer(prefix, *it, std::forward<Args>(args)...))
+                limit--;
+    }
+
+}  // namespace
 
 rpc_command_executor::rpc_command_executor(
-    std::string remote_url,
-    const std::optional<tools::login>& login
-  )
-{
-  m_rpc_client.emplace(remote_url);
-  if (login)
-    m_rpc_client->set_auth(login->username, std::string{login->password.password().view()});
+        std::string http_url, const std::optional<tools::login>& login) :
+        m_rpc{std::in_place_type<cryptonote::rpc::http_client>, http_url} {
+    if (login)
+        var::get<cryptonote::rpc::http_client>(m_rpc).set_auth(
+                login->username, std::string{login->password.password().view()});
 }
 
-bool rpc_command_executor::print_checkpoints(uint64_t start_height, uint64_t end_height, bool print_json)
-{
-  GET_CHECKPOINTS::request  req{start_height, end_height};
-  if (req.start_height == GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE &&
-      req.end_height   == GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE)
-  {
-    req.count = GET_CHECKPOINTS::NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT;
-  }
-  else if (req.start_height == GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE ||
-           req.end_height   == GET_CHECKPOINTS::HEIGHT_SENTINEL_VALUE)
-  {
-    req.count = 1;
-  }
-  // Otherwise, neither heights are set to HEIGHT_SENTINEL_VALUE, so get all the checkpoints between start and end
+rpc_command_executor::rpc_command_executor(oxenmq::OxenMQ& omq, oxenmq::ConnectionID conn) :
+        m_rpc{std::move(conn)}, m_omq{&omq} {}
 
-  GET_CHECKPOINTS::response res{};
-  if (!invoke<GET_CHECKPOINTS>(std::move(req), res, "Failed to query blockchain checkpoints"))
-    return false;
+template <typename Callback>
+static auto try_running(Callback code, std::string_view error_prefix)
+        -> std::optional<decltype(code())> {
+    try {
+        return code();
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer("{}: {}", error_prefix, e.what());
+        return std::nullopt;
+    }
+}
 
-  std::string entry;
-  if (print_json) entry.append("{\n\"checkpoints\": [");
-  for (size_t i = 0; i < res.checkpoints.size(); i++)
-  {
-    GET_CHECKPOINTS::checkpoint_serialized &checkpoint = res.checkpoints[i];
+json rpc_command_executor::invoke(
+        std::string_view method,
+        bool public_method,
+        std::optional<json> params,
+        bool check_status_ok) {
+
+    json result;
+
+    if (auto* rpc_client = std::get_if<cryptonote::rpc::http_client>(&m_rpc)) {
+        result = rpc_client->json_rpc(method, std::move(params).value_or(nullptr));
+    } else {
+        assert(m_omq);
+        auto conn = var::get<oxenmq::ConnectionID>(m_rpc);
+        auto endpoint = (public_method ? "rpc." : "admin.") + std::string{method};
+        std::promise<json> result_p;
+        m_omq->request(
+                conn,
+                endpoint,
+                [endpoint, &result_p](bool success, const std::vector<std::string>& data) {
+                    oxen::log::trace(
+                            oxen::log::Cat("rpc"),
+                            "{} RPC response ({}) {}",
+                            endpoint,
+                            data.size(),
+                            tools::join(" ", data));
+                    try {
+                        if (!success)
+                            throw oxen::traced<std::runtime_error>{"Request timed out"};
+                        if (data.size() >= 2 && data[0] == "200")
+                            result_p.set_value(json::parse(data[1]));
+                        else
+                            throw oxen::traced<std::runtime_error>{
+                                    "RPC method failed: " +
+                                    (data.empty() ? "empty response" : tools::join(" ", data))};
+                    } catch (...) {
+                        result_p.set_exception(std::current_exception());
+                    }
+                },
+                params ? params->dump() : "{}");
+
+        result = result_p.get_future().get();
+    }
+
+    if (check_status_ok) {
+        if (auto it = result.find("status");
+            it == result.end() || it->get<std::string_view>() != cryptonote::rpc::STATUS_OK)
+            throw oxen::traced<std::runtime_error>{
+                    "Received status " +
+                    (it == result.end() ? "(empty)" : it->get_ref<const std::string&>()) +
+                    " != OK"};
+    }
+
+    return result;
+}
+
+bool rpc_command_executor::print_checkpoints(
+        std::optional<uint64_t> start_height, std::optional<uint64_t> end_height, bool print_json) {
+
+    uint32_t count = 0;
+    if (!start_height && !end_height)
+        count = GET_CHECKPOINTS::NUM_CHECKPOINTS_TO_QUERY_BY_DEFAULT;
+    else if (!start_height || !end_height)
+        count = 1;
+    // Otherwise, both start/end are set so get all the checkpoints between start and end
+
+    auto maybe_checkpoints = try_running(
+            [&] {
+                json params{{"count", count}};
+                if (start_height)
+                    params["start_height"] = *start_height;
+                if (end_height)
+                    params["end_height"] = *end_height;
+                return invoke<GET_CHECKPOINTS>(std::move(params));
+            },
+            "Failed to query blockchain checkpoints");
+    if (!maybe_checkpoints)
+        return false;
+
+    auto& checkpoints = maybe_checkpoints->at("checkpoints");
+
+    std::string entry;
     if (print_json)
-    {
-      entry.append("\n");
-      entry.append(epee::serialization::store_t_to_json(checkpoint));
-      entry.append(",\n");
+        entry = checkpoints.dump();
+    else {
+        for (size_t i = 0; i < checkpoints.size(); i++) {
+            auto& cp = checkpoints[i];
+            int type = cp["type"].get<int>();
+            fmt::format_to(
+                    std::back_inserter(entry),
+                    "[{}] Type: {}, Height: {}, Hash: {}\n",
+                    i,
+                    type == 0 ? "hard-coded" : "Service Node",
+                    cp["height"].get<int64_t>(),
+                    cp["block_hash"].get<std::string_view>());
+        }
+        if (entry.empty())
+            entry = "No Checkpoints";
     }
-    else
-    {
-      entry.append("[");
-      entry.append(std::to_string(i));
-      entry.append("]");
 
-      entry.append(" Type: ");
-      entry.append(checkpoint.type);
-
-      entry.append(" Height: ");
-      entry.append(std::to_string(checkpoint.height));
-
-      entry.append(" Hash: ");
-      entry.append(checkpoint.block_hash);
-      entry.append("\n");
-    }
-  }
-
-  if (print_json)
-  {
-    entry.append("]\n}");
-  }
-  else
-  {
-    if (entry.empty())
-      entry.append("No Checkpoints");
-  }
-
-  tools::success_msg_writer() << entry;
-  return true;
+    tools::success_msg_writer() + entry;
+    return true;
 }
 
-bool rpc_command_executor::print_sn_state_changes(uint64_t start_height, uint64_t end_height)
-{
-  GET_SN_STATE_CHANGES::request  req{};
-  GET_SN_STATE_CHANGES::response res{};
+bool rpc_command_executor::print_sn_state_changes(
+        uint64_t start_height, std::optional<uint64_t> end_height) {
+    auto maybe_sn_state = try_running(
+            [&] {
+                json params{{"start_height", start_height}};
+                if (end_height)
+                    params["end_height"] = *end_height;
+                return invoke<GET_SN_STATE_CHANGES>(std::move(params));
+            },
+            "Failed to query service node state changes");
+    if (!maybe_sn_state)
+        return false;
 
-  req.start_height = start_height;
-  req.end_height   = end_height;
+    auto changes = *maybe_sn_state;
 
-  if (!invoke<GET_SN_STATE_CHANGES>(std::move(req), res, "Failed to query service nodes state changes"))
-    return false;
+    tools::success_msg_writer(
+            "Service Node State Changes (blocks {}-{})\n"
+            " Recommissions:       {}\n"
+            " Unlocks:             {}\n"
+            " Decommissions:       {}\n"
+            " Deregistrations:     {}\n"
+            " IP change penalties: {}",
+            changes["start_height"].get<int>(),
+            changes["end_height"].get<int>(),
+            changes["total_recommission"].get<int>(),
+            changes["total_unlock"].get<int>(),
+            changes["total_decommission"].get<int>(),
+            changes["total_deregister"].get<int>(),
+            changes["total_ip_change_penalty"].get<int>());
 
-  std::stringstream output;
-
-  output << "Service Node State Changes (blocks " << res.start_height << "-" << res.end_height << ")" << std::endl;
-  output << " Recommissions:\t\t" << res.total_recommission << std::endl;
-  output << " Unlocks:\t\t" << res.total_unlock << std::endl;
-  output << " Decommissions:\t\t" << res.total_decommission << std::endl;
-  output << " Deregistrations:\t" << res.total_deregister << std::endl;
-  output << " IP change penalties:\t" << res.total_ip_change_penalty << std::endl;
-
-  tools::success_msg_writer() << output.str();
-  return true;
+    return true;
 }
 
-bool rpc_command_executor::print_peer_list(bool white, bool gray, size_t limit, bool pruned_only, bool publicrpc_only) {
-  GET_PEER_LIST::response res{};
+bool rpc_command_executor::print_peer_list(bool white, bool gray, size_t limit, bool pruned_only) {
+    auto maybe_pl =
+            try_running([this] { return invoke<GET_PEER_LIST>(); }, "Failed to retrieve peer list");
+    if (!maybe_pl)
+        return false;
+    auto& pl = *maybe_pl;
 
-  if (!invoke<GET_PEER_LIST>({}, res, "Couldn't retrieve peer list"))
-    return false;
-
-  if (white)
-  {
-    auto peer = res.white_list.cbegin();
-    const auto end = limit ? peer + std::min(limit, res.white_list.size()) : res.white_list.cend();
-    for (; peer != end; ++peer)
-    {
-      print_peer("white", *peer, pruned_only, publicrpc_only);
+    if (!limit)
+        limit = std::numeric_limits<size_t>::max();
+    if (white) {
+        tools::success_msg_writer("{} whitelist peers:", pl["white_list"].size());
+        print_peers("white", pl["white_list"], limit, pruned_only);
     }
-  }
-
-  if (gray)
-  {
-    auto peer = res.gray_list.cbegin();
-    const auto end = limit ? peer + std::min(limit, res.gray_list.size()) : res.gray_list.cend();
-    for (; peer != end; ++peer)
-    {
-      print_peer("gray", *peer, pruned_only, publicrpc_only);
+    if (gray) {
+        tools::success_msg_writer("{} graylist peers:", pl["gray_list"].size());
+        print_peers("gray", pl["gray_list"], limit, pruned_only);
     }
-  }
 
-  return true;
+    return true;
 }
 
 bool rpc_command_executor::print_peer_list_stats() {
-  GET_PEER_LIST::response res{};
+    auto maybe_info =
+            try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
+    if (!maybe_info)
+        return false;
+    auto& info = *maybe_info;
 
-  if (!invoke<GET_PEER_LIST>({}, res, "Couldn't retrieve peer list"))
-    return false;
+    auto wls = info.find("white_peerlist_size");
+    auto gls = info.find("grey_peerlist_size");
+    if (wls == info.end() || gls == info.end()) {
+        tools::fail_msg_writer("Failed to retrieve whitelist info");
+        return false;
+    }
 
-  tools::msg_writer()
-    << "White list size: " << res.white_list.size() << "/" << cryptonote::p2p::LOCAL_WHITE_PEERLIST_LIMIT << " (" << res.white_list.size() *  100.0 / cryptonote::p2p::LOCAL_WHITE_PEERLIST_LIMIT << "%)" << std::endl
-    << "Gray list size: " << res.gray_list.size() << "/" << cryptonote::p2p::LOCAL_GRAY_PEERLIST_LIMIT << " (" << res.gray_list.size() *  100.0 / cryptonote::p2p::LOCAL_GRAY_PEERLIST_LIMIT << "%)";
+    tools::msg_writer(
+            "White list size: {}/{} ({:.1f}%)\nGray list size: {}/{} ({:.1f}%)",
+            wls->get<int>(),
+            cryptonote::p2p::LOCAL_WHITE_PEERLIST_LIMIT,
+            wls->get<int>() * 100.0 / cryptonote::p2p::LOCAL_WHITE_PEERLIST_LIMIT,
+            gls->get<int>(),
+            cryptonote::p2p::LOCAL_GRAY_PEERLIST_LIMIT,
+            gls->get<int>() * 100.0 / cryptonote::p2p::LOCAL_GRAY_PEERLIST_LIMIT);
 
-  return true;
+    return true;
 }
 
 bool rpc_command_executor::save_blockchain() {
-  SAVE_BC::response res{};
-
-  if (!invoke<SAVE_BC>({}, res, "Couldn't save blockchain"))
-    return false;
-
-  tools::success_msg_writer() << "Blockchain saved";
-
-  return true;
-}
-
-bool rpc_command_executor::show_hash_rate() {
-  SET_LOG_HASH_RATE::request req{};
-  SET_LOG_HASH_RATE::response res{};
-  req.visible = true;
-
-  if (!invoke<SET_LOG_HASH_RATE>(std::move(req), res, "Couldn't enable hash rate logging"))
-    return false;
-
-  tools::success_msg_writer() << "Hash rate logging is on";
-
-  return true;
-}
-
-bool rpc_command_executor::hide_hash_rate() {
-  SET_LOG_HASH_RATE::request req{};
-  SET_LOG_HASH_RATE::response res{};
-  req.visible = false;
-
-  if (!invoke<SET_LOG_HASH_RATE>(std::move(req), res, "Couldn't disable hash rate logging"))
-    return false;
-
-  tools::success_msg_writer() << "Hash rate logging is off";
-
-  return true;
+    return invoke_simple<SAVE_BC>("Couldn't save blockchain", "Blockchain saved");
 }
 
 bool rpc_command_executor::show_difficulty() {
-  GET_INFO::response res{};
-  if (!invoke<GET_INFO>({}, res, "Failed to get node info"))
-    return false;
+    auto maybe_info =
+            try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
+    if (!maybe_info)
+        return false;
+    auto& info = *maybe_info;
 
-  tools::success_msg_writer() <<   "BH: " << res.height
-                              << ", TH: " << res.top_block_hash
-                              << ", DIFF: " << res.difficulty
-                              << ", CUM_DIFF: " << res.cumulative_difficulty
-                              << ", HR: " << res.difficulty / res.target << " H/s";
+    auto msg = tools::success_msg_writer(
+            "HEIGHT: {}, HASH: {}",
+            info["height"].get<uint64_t>(),
+            info["top_block_hash"].get<std::string_view>());
+    if (info.value("pulse", false))
+        msg += ", PULSE";
+    else
+        msg.append(
+                ", DIFF: {}, CUM_DIFF: {}, HR: {} H/s",
+                info["difficulty"].get<uint64_t>(),
+                info["cumulative_difficulty"].get<uint64_t>(),
+                info["difficulty"].get<uint64_t>() / info["target"].get<uint64_t>());
 
-  return true;
+    return true;
 }
 
-static std::string get_mining_speed(uint64_t hr)
-{
-  if (hr >= 1e9) return fmt::format("{:.2f} GH/s", hr*1e-9);
-  if (hr >= 1e6) return fmt::format("{:.2f} MH/s", hr*1e-6);
-  if (hr >= 1e3) return fmt::format("{:.2f} kH/s", hr*1e-3);
-  return fmt::format("{:d} H/s", hr);
+static std::string get_mining_speed(uint64_t hr) {
+    if (hr >= 1e9)
+        return "{:.2f} GH/s"_format(hr * 1e-9);
+    if (hr >= 1e6)
+        return "{:.2f} MH/s"_format(hr * 1e-6);
+    if (hr >= 1e3)
+        return "{:.2f} kH/s"_format(hr * 1e-3);
+    return "{:d} H/s"_format(hr);
 }
 
-static std::ostream& print_fork_extra_info(std::ostream& o, uint64_t t, uint64_t now, std::chrono::seconds block_time)
-{
-  double blocks_per_day = 24h / block_time;
+static tools::scoped_message_writer& print_fork_extra_info(
+        tools::scoped_message_writer& msg,
+        uint64_t t,
+        uint64_t now,
+        std::chrono::seconds block_time) {
+    double blocks_per_day = 24h / block_time;
 
-  if (t == now)
-    return o << " (forking now)";
-  if (t < now)
-    return o;
-  uint64_t dblocks = t - now;
-  if (dblocks > blocks_per_day * 30)
-    return o;
-  o << " (next fork in ";
-  if (dblocks <= 30)
-    return o << dblocks << " blocks)";
-  if (dblocks <= blocks_per_day / 2)
-    return o << fmt::format("{:.1f} hours)", dblocks / blocks_per_day * 24);
-  return o << fmt::format("{:.1f} days)", dblocks / blocks_per_day);
+    if (t == now)
+        return msg += " (forking now)";
+    if (t < now)
+        return msg;
+    uint64_t dblocks = t - now;
+    if (dblocks > blocks_per_day * 30)
+        return msg;
+    msg.append(" (next fork in ");
+    if (dblocks <= 30)
+        return msg.append("{} blocks)", dblocks);
+    if (dblocks <= blocks_per_day / 2)
+        return msg.append("{:.1f} hours)", dblocks / blocks_per_day * 24);
+    return msg.append("{:.1f} days)", dblocks / blocks_per_day);
 }
 
-static float get_sync_percentage(uint64_t height, uint64_t target_height)
-{
-  target_height = target_height ? target_height < height ? height : target_height : height;
-  float pc = 100.0f * height / target_height;
-  if (height < target_height && pc > 99.9f)
-    return 99.9f; // to avoid 100% when not fully synced
-  return pc;
+static float get_sync_percentage(uint64_t height, uint64_t target_height) {
+    target_height = target_height ? target_height < height ? height : target_height : height;
+    float pc = 100.0f * height / target_height;
+    if (height < target_height && pc > 99.9f)
+        return 99.9f;  // to avoid 100% when not fully synced
+    return pc;
 }
 
 bool rpc_command_executor::show_status() {
-  GET_INFO::response ires{};
-  HARD_FORK_INFO::request hfreq{};
-  HARD_FORK_INFO::response hfres{};
-  MINING_STATUS::response mres{};
-  bool has_mining_info = false;
-
-  hfreq.version = 0;
-  bool mining_busy = false;
-  if (!invoke<GET_INFO>({}, ires, "Failed to get node info") ||
-      !invoke<HARD_FORK_INFO>(std::move(hfreq), hfres, "Failed to retrieve hard fork info"))
-    return false;
-  if (ires.start_time) // This will only be non-null if we were recognized as admin (which we need for mining info)
-  {
-    has_mining_info = invoke<MINING_STATUS>({}, mres, "Failed to retrieve mining info", false);
-    if (has_mining_info) {
-      if (mres.status == STATUS_BUSY)
-        mining_busy = true;
-      else if (mres.status != STATUS_OK) {
-        tools::fail_msg_writer() << "Failed to retrieve mining info";
+    auto maybe_info =
+            try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
+    if (!maybe_info)
         return false;
-      }
-    }
-  }
+    auto& info = *maybe_info;
 
-  std::string my_sn_key;
-  int64_t my_decomm_remaining = 0;
-  uint64_t my_sn_last_uptime = 0;
-  bool my_sn_registered = false, my_sn_staked = false, my_sn_active = false;
-  uint16_t my_reason_all = 0, my_reason_any = 0;
-  if (ires.service_node && *ires.service_node) {
-    GET_SERVICE_KEYS::response res{};
+    auto maybe_hf = try_running(
+            [this] { return invoke<HARD_FORK_INFO>(); }, "Failed to retrieve hard fork info");
+    if (!maybe_hf)
+        return false;
+    auto& hfinfo = *maybe_hf;
+    bool has_mining_info = false, mining_active = false;
+    long mining_hashrate = 0;
 
-    if (!invoke<GET_SERVICE_KEYS>({}, res, "Failed to retrieve service node keys"))
-      return false;
-
-    my_sn_key = std::move(res.service_node_pubkey);
-    GET_SERVICE_NODES::request sn_req{};
-    GET_SERVICE_NODES::response sn_res{};
-
-    sn_req.service_node_pubkeys.push_back(my_sn_key);
-    if (invoke<GET_SERVICE_NODES>(std::move(sn_req), sn_res, "") && sn_res.service_node_states.size() == 1)
+    bool mining_busy = false;
+    bool restricted_response = false;
+    if (auto it = info.find("start_time");
+        it != info.end() &&
+        it->get<uint64_t>() > 0)  // This will only be non-null if we were recognized as admin
+                                  // (which we need for mining info)
     {
-      auto &entry = sn_res.service_node_states.front();
-      my_sn_registered = true;
-      my_sn_staked = entry.total_contributed >= entry.staking_requirement;
-      my_sn_active = entry.active;
-      my_decomm_remaining = entry.earned_downtime_blocks;
-      my_sn_last_uptime = entry.last_uptime_proof;
-      my_reason_all = entry.last_decommission_reason_consensus_all;
-      my_reason_any = entry.last_decommission_reason_consensus_any;
+        restricted_response = true;
+        if (auto maybe_mining_info = try_running(
+                    [this] { return invoke<MINING_STATUS>(false); },
+                    "Failed to retrieve mining info")) {
+            has_mining_info = true;
+            auto& mres = *maybe_mining_info;
+            if (mres["status"] == STATUS_BUSY)
+                mining_busy = true;
+            else if (mres["status"] != STATUS_OK) {
+                tools::fail_msg_writer("Failed to retrieve mining info");
+                return false;
+            } else {
+                mining_active = mres["active"].get<bool>();
+                if (mining_active)
+                    mining_hashrate = mres["speed"].get<long>();
+            }
+        } else {
+            return false;
+        }
     }
-  }
 
-  uint64_t net_height = ires.target_height > ires.height ? ires.target_height : ires.height;
-  std::string bootstrap_msg;
+    std::string my_sn_key, my_bls;
+    int64_t my_decomm_remaining = 0;
+    uint64_t my_sn_last_uptime = 0;
+    bool my_sn_registered = false, my_sn_staked = false, my_sn_active = false;
+    uint16_t my_reason_all = 0, my_reason_any = 0;
+    if (info["service_node"].get<bool>()) {
+        auto maybe_service_keys = try_running(
+                [this] { return invoke<GET_SERVICE_KEYS>(json{}); },
+                "Failed to retrieve service node keys");
+        if (!maybe_service_keys)
+            return false;
 
-  std::ostringstream str;
-  str << "Height: " << ires.height;
-  if (ires.height != net_height)
-    str << fmt::format("/{} ({:.1f}%)", net_height, get_sync_percentage(ires.height, net_height));
+        my_sn_key = (*maybe_service_keys)["service_node_pubkey"];
+        my_bls = (*maybe_service_keys)["service_node_bls_pubkey"];
 
-  if (ires.testnet)     str << " ON TESTNET";
-  else if (ires.devnet) str << " ON DEVNET";
-
-  if (ires.height < ires.target_height)
-    str << ", syncing";
-
-  if (ires.was_bootstrap_ever_used && *ires.was_bootstrap_ever_used && ires.bootstrap_daemon_address)
-  {
-    str << ", bootstrap " << *ires.bootstrap_daemon_address;
-    if (ires.untrusted) {
-      auto hwb = *ires.height_without_bootstrap;
-      str << fmt::format(", local height: {} ({:.1f}%)", hwb, get_sync_percentage(hwb, net_height));
+        auto maybe_sns = try_running(
+                [&] {
+                    return invoke<GET_SERVICE_NODES>(
+                            json{{"service_node_pubkeys", json::array({my_sn_key})}});
+                },
+                "Failed to retrieve service node info");
+        if (maybe_sns) {
+            if (auto it = maybe_sns->find("service_node_states");
+                it != maybe_sns->end() && it->is_array() && it->size() > 0) {
+                auto& state = it->front();
+                my_sn_registered = true;
+                my_sn_staked = state["total_contributed"].get<uint64_t>() >=
+                               state["staking_requirement"].get<uint64_t>();
+                my_sn_active = state["active"].get<bool>();
+                my_decomm_remaining = state["earned_downtime_blocks"].get<uint64_t>();
+                my_sn_last_uptime = state["last_uptime_proof"].get<uint64_t>();
+                my_reason_all = state.value<uint16_t>("last_decommission_reason_consensus_all", 0);
+                my_reason_any = state.value<uint16_t>("last_decommission_reason_consensus_any", 0);
+            }
+        }
     }
-    else
-      str << " was used";
-  }
 
-  if (hfres.version < cryptonote::feature::PULSE && !has_mining_info)
-    str << ", mining info unavailable";
-  if (has_mining_info && !mining_busy && mres.active)
-    str << ", mining at " << get_mining_speed(mres.speed);
+    uint64_t height = info["height"].get<uint64_t>();
+    uint64_t net_height = std::max(info["target_height"].get<uint64_t>(), height);
 
-  if (hfres.version < cryptonote::feature::PULSE)
-    str << ", net hash " << get_mining_speed(ires.difficulty / ires.target);
+    auto msg = tools::success_msg_writer("Height: {}", height);
+    if (height != net_height)
+        msg.append("/{} ({:.1f}%)", net_height, get_sync_percentage(height, net_height));
 
-  str << ", v" << (ires.version.empty() ? "?.?.?" : ires.version);
-  str << "(net v" << static_cast<int>(hfres.version) << ')';
-  if (hfres.earliest_height)
-    print_fork_extra_info(str, *hfres.earliest_height, net_height, 1s * ires.target);
-
-  std::time_t now = std::time(nullptr);
-
-  // restricted RPC does not disclose these:
-  if (ires.outgoing_connections_count && ires.incoming_connections_count && ires.start_time)
-  {
-    std::time_t uptime = now - *ires.start_time;
-    str << ", " << *ires.outgoing_connections_count << "(out)+" << *ires.incoming_connections_count << "(in) connections"
-      << ", uptime "
-      << (uptime / (24*60*60)) << 'd'
-      << (uptime / (60*60)) % 24 << 'h'
-      << (uptime / 60) % 60 << 'm'
-      << uptime % 60 << 's';
-  }
-
-  tools::success_msg_writer() << str.str();
-
-  if (!my_sn_key.empty()) {
-    str.str("");
-    str << "SN: " << my_sn_key << ' ';
-    if (!my_sn_registered)
-      str << "not registered";
-    else
-      str << (!my_sn_staked ? "awaiting" : my_sn_active ? "active" : "DECOMMISSIONED (" + std::to_string(my_decomm_remaining) + " blocks credit)")
-        << ", proof: " << (my_sn_last_uptime ? get_human_time_ago(my_sn_last_uptime, now) : "(never)");
-    str << ", last pings: ";
-    if (*ires.last_storage_server_ping > 0)
-        str << get_human_time_ago(*ires.last_storage_server_ping, now, true /*abbreviate*/);
-    else
-        str << "NOT RECEIVED";
-    str << " (storage), ";
-
-    if (*ires.last_lokinet_ping > 0)
-        str << get_human_time_ago(*ires.last_lokinet_ping, now, true /*abbreviate*/);
-    else
-        str << "NOT RECEIVED";
-    str << " (lokinet)";
-
-    tools::success_msg_writer() << str.str();
-
-    if (my_sn_registered && my_sn_staked && !my_sn_active && (my_reason_all | my_reason_any)) {
-      str.str("Decomm reasons: ");
-      if (auto reasons = cryptonote::readable_reasons(my_reason_all); !reasons.empty())
-        str << tools::join(", ", reasons);
-      if (auto reasons = cryptonote::readable_reasons(my_reason_any & ~my_reason_all); !reasons.empty()) {
-        for (auto& r : reasons)
-          r += "(some)";
-        str << (my_reason_all ? ", " : "") << tools::join(", ", reasons);
-      }
-      tools::fail_msg_writer() << str.str();
+    auto nettype = cryptonote::network_type_from_string(info.value("nettype", ""));
+    if (nettype != cryptonote::network_type::MAINNET) {
+        msg += " ON ";
+        msg += tools::uppercase_ascii_string(cryptonote::network_type_to_string(nettype));
     }
-  }
+    auto& netconf = cryptonote::get_config(nettype);
 
-  return true;
+    if (height < net_height)
+        msg += ", syncing";
+
+    auto hf_version = hfinfo["version"].get<cryptonote::hf>();
+    if (hf_version < cryptonote::feature::PULSE && !has_mining_info)
+        msg += ", mining info unavailable";
+    if (has_mining_info && !mining_busy && mining_active)
+        msg.append(", mining at {}", get_mining_speed(mining_hashrate));
+
+    if (hf_version < cryptonote::feature::PULSE)
+        msg.append(
+                ", net hash {}",
+                get_mining_speed(
+                        info["difficulty"].get<uint64_t>() / info["target"].get<uint64_t>()));
+
+    msg.append(
+            ", v{}(net v{})",
+            info["version"].get<std::string_view>(),
+            static_cast<int>(hf_version));
+    auto earliest = hfinfo.value("earliest_height", uint64_t{0});
+    if (earliest)
+        print_fork_extra_info(msg, earliest, net_height, 1s * info["target"].get<uint64_t>());
+
+    std::time_t now = std::time(nullptr);
+
+    if (restricted_response) {
+        std::chrono::seconds uptime{now - info["start_time"].get<std::time_t>()};
+        msg.append(
+                ", {}(out)+{}(in) connections, uptime {}",
+                info["outgoing_connections_count"].get<int>(),
+                info["incoming_connections_count"].get<int>(),
+                tools::friendly_duration(uptime));
+    }
+
+    if (!my_sn_key.empty()) {
+        msg.flush().append("SN: {} ", my_sn_key);
+        if (!my_sn_registered)
+            msg += "not registered";
+        else if (!my_sn_staked)
+            msg += "awaiting";
+        else if (my_sn_active)
+            msg += "active";
+        else
+            msg.append("DECOMMISSIONED ({} blocks credit)", my_decomm_remaining);
+
+        msg.append(
+                ", proof: {}",
+                my_sn_last_uptime ? get_human_time_ago(my_sn_last_uptime, now) : "(never)");
+
+        if (netconf.HAVE_STORAGE_AND_LOKINET) {
+            auto last_ss_ping = info["last_storage_server_ping"].get<uint64_t>();
+            auto last_lokinet_ping = info["last_lokinet_ping"].get<uint64_t>();
+
+            msg.append(
+                    ", last pings: {} (storage), {} (lokinet)",
+                    last_ss_ping > 0 ? get_human_time_ago(last_ss_ping, now, true /*abbreviate*/)
+                                     : "NOT RECEIVED",
+                    last_lokinet_ping > 0
+                            ? get_human_time_ago(last_lokinet_ping, now, true /*abbreviate*/)
+                            : "NOT RECEIVED");
+        }
+
+        if (my_sn_registered && my_sn_staked && !my_sn_active && (my_reason_all | my_reason_any)) {
+            msg.flush().append("Decomm reasons: ");
+            if (auto reasons = cryptonote::readable_reasons(my_reason_all); !reasons.empty())
+                msg.append("{}", fmt::join(reasons, ", "));
+            if (auto reasons = cryptonote::readable_reasons(my_reason_any & ~my_reason_all);
+                !reasons.empty()) {
+                for (auto& r : reasons)
+                    r += "(some)";
+                msg.append("{}{}", my_reason_all ? ", " : "", fmt::join(reasons, ", "));
+            }
+        }
+
+        msg.flush().append("BLS pk: {}", my_bls);
+    }
+
+    return true;
 }
 
 bool rpc_command_executor::mining_status() {
-  MINING_STATUS::response mres{};
+    auto maybe_mining_info = try_running(
+            [this] { return invoke<MINING_STATUS>(false); }, "Failed to retrieve mining info");
+    if (!maybe_mining_info)
+        return false;
 
-  if (!invoke<MINING_STATUS>({}, mres, "Failed to retrieve mining info", false))
-    return false;
+    bool mining_busy = false;
+    auto& mres = *maybe_mining_info;
+    if (mres["status"].get<std::string_view>() == STATUS_BUSY)
+        mining_busy = true;
+    else if (mres["status"].get<std::string_view>() != STATUS_OK) {
+        tools::fail_msg_writer("Failed to retrieve mining info");
+        return false;
+    }
+    bool active = mres["active"].get<bool>();
+    if (mining_busy || !active)
+        tools::msg_writer("Not currently mining");
+    else {
+        tools::msg_writer(
+                "Mining at {} with {} threads",
+                get_mining_speed(mres["speed"].get<long>()),
+                mres["threads_count"].get<int>());
+        tools::msg_writer("Mining address: {}", mres["address"].get<std::string_view>());
+    }
+    tools::msg_writer("PoW algorithm: {}", mres["pow_algorithm"].get<std::string_view>());
 
-  bool mining_busy = false;
-  if (mres.status == STATUS_BUSY)
-  {
-    mining_busy = true;
-  }
-  else if (mres.status != STATUS_OK)
-  {
-    tools::fail_msg_writer() << "Failed to retrieve mining info";
-    return false;
-  }
+    return true;
+}
 
-  if (mining_busy || !mres.active)
-  {
-    tools::msg_writer() << "Not currently mining";
-  }
-  else
-  {
-    tools::msg_writer() << "Mining at " << get_mining_speed(mres.speed) << " with " << mres.threads_count << " threads";
-  }
-
-  tools::msg_writer() << "PoW algorithm: " << mres.pow_algorithm;
-  if (mres.active)
-  {
-    tools::msg_writer() << "Mining address: " << mres.address;
-  }
-
-  if (!mining_busy && mres.active && mres.speed > 0 && mres.block_target > 0 && mres.difficulty > 0)
-  {
-    uint64_t daily = 86400 / (double)mres.difficulty * mres.speed * mres.block_reward;
-    tools::msg_writer() << "Expected: " << cryptonote::format_money(daily) << " daily, " << cryptonote::format_money(7*daily) << " weekly";
-  }
-
-  return true;
+static const char* get_address_type_name(epee::net_utils::address_type address_type) {
+    switch (address_type) {
+        default:
+        case epee::net_utils::address_type::invalid: return "invalid";
+        case epee::net_utils::address_type::ipv4: return "IPv4";
+        case epee::net_utils::address_type::ipv6: return "IPv6";
+        case epee::net_utils::address_type::i2p: return "I2P";
+        case epee::net_utils::address_type::tor: return "Tor";
+    }
 }
 
 bool rpc_command_executor::print_connections() {
-  GET_CONNECTIONS::response res{};
-
-  if (!invoke<GET_CONNECTIONS>({}, res, "Failed to retrieve connection info"))
-    return false;
-
-  constexpr auto hdr_fmt = "{:<30}{:<8}{:<20}{:<30}{:<25}{:<20}{:<12s}{:<14s}{:<10s}{:<13s}"sv;
-  constexpr auto row_fmt = "{:<30}{:<8}{:<20}{:<30}{:<25}{:<20}{:<12.1f}{:<14.1f}{:<10.1f}{:<13.1f}{}{}"sv;
-  tools::msg_writer() << fmt::format(hdr_fmt,
-      "Remote Host", "Type", "Peer id", "Recv/Sent (inactive,sec)", "State", "Livetime(sec)",
-      "Down (kB/sec)", "Down(now)", "Up (kB/s)", "Up(now)");
-
-  for (auto & info : res.connections)
-  {
-    std::string address = info.incoming ? "INC " : "OUT ";
-    address += info.ip;
-    address += ':';
-    address += info.port;
-    tools::msg_writer() << fmt::format(row_fmt,
-        address,
-        info.address_type,
-        info.peer_id,
-        fmt::format("{}({}/{})", info.recv_count,
-          tools::friendly_duration(info.recv_idle_time),
-          tools::friendly_duration(info.send_idle_time)),
-        info.state,
-        tools::friendly_duration(info.live_time),
-        info.avg_upload / 1000.,
-        info.current_download / 1000.,
-        info.avg_upload / 1000.,
-        info.current_upload / 1000.,
-        info.localhost ? "[LOCALHOST]" : "",
-        info.local_ip ? "[LAN]" : "");
-  }
-
-  return true;
-}
-
-bool rpc_command_executor::print_net_stats()
-{
-  GET_NET_STATS::response net_stats_res{};
-  GET_LIMIT::response limit_res{};
-
-  if (!invoke<GET_NET_STATS>({}, net_stats_res, "Unable to retrieve net statistics") ||
-      !invoke<GET_LIMIT>({}, limit_res, "Unable to retrieve bandwidth limits"))
-    return false;
-
-  uint64_t seconds = (uint64_t)time(NULL) - net_stats_res.start_time;
-  uint64_t average = seconds > 0 ? net_stats_res.total_bytes_in / seconds : 0;
-  uint64_t limit = limit_res.limit_down * 1024;   // convert to bytes, as limits are always kB/s
-  double percent = (double)average / (double)limit * 100.0;
-  tools::success_msg_writer() << fmt::format("Received {} bytes ({}) in {} packets, average {}/s = {:.2f}% of the limit of {}/s",
-    net_stats_res.total_bytes_in,
-    tools::get_human_readable_bytes(net_stats_res.total_bytes_in),
-    net_stats_res.total_packets_in,
-    tools::get_human_readable_bytes(average),
-    percent,
-    tools::get_human_readable_bytes(limit));
-
-  average = seconds > 0 ? net_stats_res.total_bytes_out / seconds : 0;
-  limit = limit_res.limit_up * 1024;
-  percent = (double)average / (double)limit * 100.0;
-  tools::success_msg_writer() << fmt::format("Sent {} bytes ({}) in {} packets, average {}/s = {:.2f}% of the limit of {}/s",
-    net_stats_res.total_bytes_out,
-    tools::get_human_readable_bytes(net_stats_res.total_bytes_out),
-    net_stats_res.total_packets_out,
-    tools::get_human_readable_bytes(average),
-    percent,
-    tools::get_human_readable_bytes(limit));
-
-  return true;
-}
-
-bool rpc_command_executor::print_blockchain_info(int64_t start_block_index, uint64_t end_block_index) {
-  GET_BLOCK_HEADERS_RANGE::request req{};
-  GET_BLOCK_HEADERS_RANGE::response res{};
-
-  // negative: relative to the end
-  if (start_block_index < 0)
-  {
-    GET_INFO::response ires;
-    if (!invoke<GET_INFO>(GET_INFO::request{}, ires, "Failed to query daemon info"))
+    auto maybe_conns = try_running(
+            [this] { return invoke<GET_CONNECTIONS>(); }, "Failed to retrieve connection info");
+    if (!maybe_conns)
         return false;
+    auto& conns = *maybe_conns;
 
-    if (start_block_index < 0 && (uint64_t)-start_block_index >= ires.height)
-    {
-      tools::fail_msg_writer() << "start offset is larger than blockchain height";
-      return false;
+    constexpr auto hdr_fmt = "{:<30}{:<8}{:<20}{:<30}{:<25}{:<20}{:<12s}{:<14s}{:<10s}{:<13s}"sv;
+    constexpr auto row_fmt =
+            "{:<30}{:<8}{:<20}{:<30}{:<25}{:<20}{:<12.1f}{:<14.1f}{:<10.1f}{:<13.1f}{}{}"sv;
+    tools::msg_writer(
+            hdr_fmt,
+            "Remote Host",
+            "Type",
+            "Peer id",
+            "Recv/Sent (inactive,sec)",
+            "State",
+            "Livetime(sec)",
+            "Down (kB/sec)",
+            "Down(now)",
+            "Up (kB/s)",
+            "Up(now)");
+
+    for (auto& info : conns["connections"]) {
+        tools::msg_writer(
+                row_fmt,
+                "{} {}:{}"_format(
+                        info["incoming"].get<bool>() ? "INC" : "OUT",
+                        info["ip"].get<std::string_view>(),
+                        info["port"].get<uint16_t>()),
+                get_address_type_name(info["address_type"].get<epee::net_utils::address_type>()),
+                info["peer_id"].get<std::string_view>(),
+                "{}({}/{})"_format(
+                        info["recv_count"].get<uint64_t>(),
+                        tools::friendly_duration(1ms * info["recv_idle_ms"].get<int64_t>()),
+                        tools::friendly_duration(1ms * info["send_idle_ms"].get<int64_t>())),
+                info["state"].get<std::string_view>(),
+                tools::friendly_duration(1ms * info["live_ms"].get<int64_t>()),
+                info["avg_download"].get<uint64_t>() / 1000.,
+                info["current_download"].get<uint64_t>() / 1000.,
+                info["avg_upload"].get<uint64_t>() / 1000.,
+                info["current_upload"].get<uint64_t>() / 1000.,
+                info.value("localhost", false) ? "[LOCALHOST]" : "",
+                info.value("local_ip", false) ? "[LAN]" : "");
     }
 
-    start_block_index = ires.height + start_block_index;
-    end_block_index = start_block_index + end_block_index - 1;
-  }
-
-  req.start_height = start_block_index;
-  req.end_height = end_block_index;
-  req.fill_pow_hash = false;
-
-  if (!invoke<GET_BLOCK_HEADERS_RANGE>(std::move(req), res, "Failed to retrieve block headers"))
-    return false;
-
-  bool first = true;
-  for (auto & header : res.headers)
-  {
-    if (first)
-      first = false;
-    else
-      tools::msg_writer() << "\n";
-
-    tools::msg_writer()
-      << "height: " << header.height << ", timestamp: " << header.timestamp << " (" << tools::get_human_readable_timestamp(header.timestamp) << ")"
-      << ", size: " << header.block_size << ", weight: " << header.block_weight << " (long term " << header.long_term_weight << "), transactions: " << header.num_txes
-      << "\nmajor version: " << (unsigned)header.major_version << ", minor version: " << (unsigned)header.minor_version
-      << "\nblock id: " << header.hash << ", previous block id: " << header.prev_hash
-      << "\ndifficulty: " << header.difficulty << ", nonce " << header.nonce << ", reward " << cryptonote::print_money(header.reward) << "\n";
-  }
-
-  return true;
+    return true;
 }
 
-bool rpc_command_executor::print_quorum_state(uint64_t start_height, uint64_t end_height)
-{
-  GET_QUORUM_STATE::request req{};
-  GET_QUORUM_STATE::response res{};
+bool rpc_command_executor::print_net_stats() {
+    auto maybe_stats = try_running(
+            [this] { return invoke<GET_NET_STATS>(); }, "Failed to retrieve net statistics");
+    auto maybe_limit = try_running(
+            [this] { return invoke<GET_LIMIT>(); }, "Failed to retrieve bandwidth limits");
+    if (!maybe_stats || !maybe_limit)
+        return false;
+    auto& stats = *maybe_stats;
+    auto& limit = *maybe_limit;
+    auto uptime = time(nullptr) - stats["start_time"].get<std::time_t>();
 
-  req.start_height = start_height;
-  req.end_height   = end_height;
-  req.quorum_type  = GET_QUORUM_STATE::ALL_QUORUMS_SENTINEL_VALUE;
+    for (bool in : {true, false}) {
+        auto bytes = stats[in ? "total_bytes_in" : "total_bytes_out"].get<uint64_t>();
+        double average = uptime > 0 ? bytes / (double)uptime : 0.0;
+        uint64_t lim = limit[in ? "limit_down" : "limit_up"].get<uint64_t>() *
+                       1024;  // convert to bytes, as limits are always kB/s
+        tools::success_msg_writer(
+                "{} {} in {} packets, average {}/s = {:.2f}% of the limit of {}/s",
+                in ? "Received" : "Sent",
+                tools::get_human_readable_bytes(bytes),
+                stats[in ? "total_packets_in" : "total_packets_out"].get<uint64_t>(),
+                tools::get_human_readable_bytes(average),
+                average / lim * 100.0,
+                tools::get_human_readable_bytes(lim));
+    }
 
-  if (!invoke<GET_QUORUM_STATE>(std::move(req), res, "Failed to retrieve quorum state"))
-    return false;
-
-  std::string output;
-  output.append("{\n\"quorums\": [");
-  for (GET_QUORUM_STATE::quorum_for_height const &quorum : res.quorums)
-  {
-    output.append("\n");
-    output.append(epee::serialization::store_t_to_json(quorum));
-    output.append(",\n");
-  }
-  output.append("]\n}");
-  tools::success_msg_writer() << output;
-  return true;
+    return true;
 }
 
+bool rpc_command_executor::print_blockchain_info(
+        int64_t start_block_index, uint64_t end_block_index) {
+    // negative: relative to the end
+    if (start_block_index < 0) {
+        auto maybe_info =
+                try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
+        if (!maybe_info)
+            return false;
+        auto& info = *maybe_info;
 
-bool rpc_command_executor::set_log_level(int8_t level) {
-  SET_LOG_LEVEL::response res{};
-  if (!invoke<SET_LOG_LEVEL>({level}, res, "Failed to set log level"))
-    return false;
+        if (start_block_index < 0 && -start_block_index >= info["height"].get<int64_t>()) {
+            tools::fail_msg_writer("start offset is larger than blockchain height");
+            return false;
+        }
 
-  tools::success_msg_writer() << "Log level is now " << std::to_string(level);
+        start_block_index += info["height"].get<int64_t>();
+        end_block_index += start_block_index - 1;
+    }
 
-  return true;
+    auto maybe_block_headers = try_running(
+            [this, start_block_index, end_block_index] {
+                return invoke<GET_BLOCK_HEADERS_RANGE>(
+                        json{{"start_height", start_block_index},
+                             {"end_height", end_block_index},
+                             {"fill_pow_hash", false}});
+            },
+            "Failed to retrieve block headers");
+    if (!maybe_block_headers)
+        return false;
+    auto& block_headers = *maybe_block_headers;
+
+    auto writer = tools::msg_writer("\n");
+    for (auto& header : block_headers["headers"]) {
+        writer.flush().append(
+                "height: {}, timestamp: {} ({}), size: {}, weight: {} (long term {}), "
+                "transactions: {}\n"
+                "major version: {}, minor version: {}\n"
+                "block id: {}, previous block id: {}\n"
+                "difficulty: {}, nonce {}, reward {}\n",
+                header["height"].get<int64_t>(),
+                header["timestamp"].get<int64_t>(),
+                tools::get_human_readable_timestamp(header["timestamp"].get<uint64_t>()),
+                header["block_size"].get<int64_t>(),
+                header["block_weight"].get<int64_t>(),
+                header["long_term_weight"].get<int64_t>(),
+                header["num_txes"].get<int64_t>(),
+                header["major_version"].get<int64_t>(),
+                header["minor_version"].get<int64_t>(),
+                header["hash"].get<std::string_view>(),
+                header["prev_hash"].get<std::string_view>(),
+                header["difficulty"].get<uint64_t>(),
+                header["nonce"].get<int64_t>(),
+                cryptonote::print_money(header["reward"].get<uint64_t>()));
+    }
+
+    return true;
 }
 
-bool rpc_command_executor::set_log_categories(std::string categories) {
-  SET_LOG_CATEGORIES::response res{};
+bool rpc_command_executor::print_quorum_state(
+        std::optional<uint64_t> start_height, std::optional<uint64_t> end_height) {
+    auto maybe_quorums = try_running(
+            [this, start_height, end_height] {
+                json params;
+                if (start_height)
+                    params["start_height"] = *start_height;
+                if (end_height)
+                    params["end_height"] = *end_height;
+                return invoke<GET_QUORUM_STATE>(std::move(params));
+            },
+            "Failed to retrieve quorum state");
 
-  if (!invoke<SET_LOG_CATEGORIES>({std::move(categories)}, res, "Failed to set log categories"))
-    return false;
+    if (!maybe_quorums)
+        return false;
+    auto& quorums = *maybe_quorums;
 
-  tools::success_msg_writer() << "Log categories are now " << res.categories;
+    tools::success_msg_writer("{{\n\"quorums\": {}\n}}", quorums["quorums"].dump(2));
+    return true;
+}
 
-  return true;
+bool rpc_command_executor::set_log_level(std::string categories) {
+    auto maybe_categories = try_running(
+            [this, &categories] {
+                return invoke<SET_LOG_LEVEL>(json{{"categories", std::move(categories)}});
+            },
+            "Failed to set log level");
+    if (!maybe_categories)
+        return false;
+
+    auto& cats = *maybe_categories;
+
+    tools::success_msg_writer(
+            "Applied log categories {}",
+            fmt::join(cats["applied"].get<std::vector<std::string_view>>(), ", "));
+
+    return true;
 }
 
 bool rpc_command_executor::print_height() {
-  GET_HEIGHT::response res{};
-
-  if (!invoke<GET_HEIGHT>({}, res, "Failed to retrieve height"))
+    if (auto height = try_running(
+                [this] { return invoke<GET_HEIGHT>().at("height").get<int>(); },
+                "Failed to retrieve height")) {
+        tools::success_msg_writer("{}", *height);
+        return true;
+    }
     return false;
-
-  tools::success_msg_writer() << res.height;
-
-  return true;
-}
-
-bool rpc_command_executor::print_block(GET_BLOCK::request&& req, bool include_hex) {
-  req.fill_pow_hash = true;
-  GET_BLOCK::response res{};
-
-  if (!invoke<GET_BLOCK>(std::move(req), res, "Block retrieval failed"))
-    return false;
-
-  if (include_hex)
-    tools::success_msg_writer() << res.blob << std::endl;
-  print_block_header(res.block_header);
-  tools::success_msg_writer() << res.json << "\n";
-
-  return true;
 }
 
 bool rpc_command_executor::print_block_by_hash(const crypto::hash& block_hash, bool include_hex) {
-  GET_BLOCK::request req{};
-  req.hash = tools::type_to_hex(block_hash);
-  return print_block(std::move(req), include_hex);
+    auto maybe_block = try_running(
+            [this, &block_hash] {
+                return invoke<GET_BLOCK>(
+                        json{{"hash", tools::hex_guts(block_hash)}, {"fill_pow_hash", true}});
+            },
+            "Block retrieval failed");
+    if (!maybe_block)
+        return false;
+    auto& block = *maybe_block;
+
+    if (include_hex)
+        tools::success_msg_writer() + block["blob"].get<std::string_view>() + "\n";
+    print_block_header(block["block_header"]);
+    tools::success_msg_writer() + block["json"].get<std::string_view>() + "\n";
+
+    return true;
 }
 
 bool rpc_command_executor::print_block_by_height(uint64_t height, bool include_hex) {
-  GET_BLOCK::request req{};
-  req.height = height;
-  return print_block(std::move(req), include_hex);
+    auto maybe_block = try_running(
+            [this, height] {
+                return invoke<GET_BLOCK>(json{{"height", height}, {"fill_pow_hash", true}});
+            },
+            "Block retrieval failed");
+    if (!maybe_block)
+        return false;
+    auto& block = *maybe_block;
+
+    if (include_hex)
+        tools::success_msg_writer("{}\n", block["blob"].get<std::string_view>());
+    print_block_header(block["block_header"]);
+    tools::success_msg_writer("{}\n", block["json"].get<std::string_view>());
+
+    return true;
 }
 
-bool rpc_command_executor::print_transaction(const crypto::hash& transaction_hash,
-  bool include_metadata,
-  bool include_hex,
-  bool include_json) {
-  GET_TRANSACTIONS::request req{};
-  GET_TRANSACTIONS::response res{};
+bool rpc_command_executor::print_transaction(
+        const crypto::hash& transaction_hash,
+        bool include_metadata,
+        bool include_hex,
+        bool include_json) {
 
-  req.txs_hashes.push_back(tools::type_to_hex(transaction_hash));
-  req.split = true;
-  if (!invoke<GET_TRANSACTIONS>(std::move(req), res, "Transaction retrieval failed"))
-    return false;
+    auto maybe_tx = try_running(
+            [this, &transaction_hash] {
+                return invoke<GET_TRANSACTIONS>(
+                        json{{"tx_hashes", json::array({tools::hex_guts(transaction_hash)})},
+                             {"split", true}});
+            },
+            "Transaction retrieval failed");
+    if (!maybe_tx)
+        return false;
 
-  if (1 == res.txs.size())
-  {
-    auto& tx = res.txs.front();
-    bool pruned = tx.prunable_hash && !tx.prunable_as_hex;
+    auto& txi = *maybe_tx;
+    auto txs = txi["txs"];
+    if (txs.size() != 1) {
+        tools::fail_msg_writer("Transaction wasn't found: {}\n", transaction_hash);
+        return true;
+    }
 
-    if (tx.in_pool)
-      tools::success_msg_writer() << "Found in pool";
+    auto tx = txs.front();
+    auto prunable_hash = tx.value<std::string_view>("prunable_hash", ""sv);
+    auto prunable_hex = tx.value<std::string_view>("prunable", ""sv);
+    bool pruned = !prunable_hash.empty() && prunable_hex.empty();
+
+    bool in_pool = tx.value("in_pool", false);
+    if (in_pool)
+        tools::success_msg_writer("Found in pool");
     else
-      tools::success_msg_writer() << "Found in blockchain at height " << tx.block_height << (pruned ? " (pruned)" : "");
+        tools::success_msg_writer(
+                "Found in blockchain at height {}{}",
+                tx["block_height"].get<uint64_t>(),
+                pruned ? " (pruned)" : "");
 
-    const std::string &pruned_as_hex = *tx.pruned_as_hex; // Always included with req.split=true
+    auto pruned_hex = tx["pruned"].get<std::string_view>();  // Always included with req.split=true
 
     std::optional<cryptonote::transaction> t;
-    if (include_metadata || include_json)
-    {
-      if (oxenc::is_hex(pruned_as_hex) && (!tx.prunable_as_hex || oxenc::is_hex(*tx.prunable_as_hex)))
-      {
-        std::string blob = oxenc::from_hex(pruned_as_hex);
-        if (tx.prunable_as_hex)
-          blob += oxenc::from_hex(*tx.prunable_as_hex);
+    if (include_metadata || include_json) {
+        if (oxenc::is_hex(pruned_hex) && oxenc::is_hex(prunable_hex)) {
+            std::string blob = oxenc::from_hex(pruned_hex);
+            if (!prunable_hex.empty())
+                blob += oxenc::from_hex(prunable_hex);
 
-        bool parsed = pruned
-          ? cryptonote::parse_and_validate_tx_base_from_blob(blob, t.emplace())
-          : cryptonote::parse_and_validate_tx_from_blob(blob, t.emplace());
-        if (!parsed)
-        {
-          tools::fail_msg_writer() << "Failed to parse transaction data";
-          t.reset();
+            bool parsed =
+                    pruned ? cryptonote::parse_and_validate_tx_base_from_blob(blob, t.emplace())
+                           : cryptonote::parse_and_validate_tx_from_blob(blob, t.emplace());
+            if (!parsed) {
+                tools::fail_msg_writer("Failed to parse transaction data");
+                t.reset();
+            }
         }
-      }
     }
 
     // Print metadata if requested
-    if (include_metadata)
-    {
-      if (!tx.in_pool)
-        tools::msg_writer() << "Block timestamp: " << tx.block_timestamp << " (" << tools::get_human_readable_timestamp(tx.block_timestamp) << ")";
-      tools::msg_writer() << "Size: " << tx.size;
-      if (t)
-        tools::msg_writer() << "Weight: " << cryptonote::get_transaction_weight(*t);
+    if (include_metadata) {
+        if (!in_pool) {
+            auto ts = tx["block_timestamp"].get<std::time_t>();
+            tools::msg_writer(
+                    "Block timestamp: {} ({})", ts, tools::get_human_readable_timestamp(ts));
+        }
+        tools::msg_writer("Size: {}", tx["size"].get<int>());
+        if (t)
+            tools::msg_writer("Weight: {}", cryptonote::get_transaction_weight(*t));
     }
 
     // Print raw hex if requested
     if (include_hex)
-      tools::success_msg_writer() << pruned_as_hex << (tx.prunable_as_hex ? *tx.prunable_as_hex : "") << '\n';
+        tools::success_msg_writer("{}{}\n", pruned_hex, prunable_hex);
 
     // Print json if requested
     if (include_json && t)
-      tools::success_msg_writer() << cryptonote::obj_to_json_str(*t) << '\n';
-  }
-  else
-    tools::fail_msg_writer() << "Transaction wasn't found: " << transaction_hash << std::endl;
+        tools::success_msg_writer("{}\n", cryptonote::obj_to_json_str(*t));
 
-  return true;
-}
-
-bool rpc_command_executor::is_key_image_spent(const crypto::key_image &ki) {
-  IS_KEY_IMAGE_SPENT::response res{};
-  if (!invoke<IS_KEY_IMAGE_SPENT>({{tools::type_to_hex(ki)}}, res, "Failed to retrieve key image status"))
-    return false;
-
-  if (1 == res.spent_status.size())
-  {
-    // first as hex
-    tools::success_msg_writer() << ki << ": " << (res.spent_status.front() ? "spent" : "unspent") << (res.spent_status.front() == IS_KEY_IMAGE_SPENT::SPENT_IN_POOL ? " (in pool)" : "");
     return true;
-  }
-
-  tools::fail_msg_writer() << "key image status could not be determined" << std::endl;
-  return false;
 }
 
-static void print_pool(const std::vector<cryptonote::rpc::tx_info> &transactions, bool include_json) {
-  if (transactions.empty())
-  {
-    tools::msg_writer() << "Pool is empty" << std::endl;
-    return;
-  }
-  const time_t now = time(NULL);
-  tools::msg_writer() << "Transactions:";
-  for (auto &tx_info : transactions)
-  {
-    auto w = tools::msg_writer();
-    w << "id: " << tx_info.id_hash << "\n";
-    if (include_json) w << tx_info.tx_json << "\n";
-    w << "blob_size: " << tx_info.blob_size << "\n"
-      << "weight: " << tx_info.weight << "\n"
-      << "fee: " << cryptonote::print_money(tx_info.fee) << "\n"
-      /// NB(Oxen): in v13 we have min_fee = per_out*outs + per_byte*bytes, only the total fee/byte matters for
-      /// the purpose of building a block template from the pool, so we still print the overall fee / byte here.
-      /// (we can't back out the individual per_out and per_byte that got used anyway).
-      << "fee/byte: " << cryptonote::print_money(tx_info.fee / (double)tx_info.weight) << "\n"
-      << "receive_time: " << tx_info.receive_time << " (" << get_human_time_ago(tx_info.receive_time, now) << ")\n"
-      << "relayed: " << (tx_info.relayed ? std::to_string(tx_info.last_relayed_time) + " (" + get_human_time_ago(tx_info.last_relayed_time, now) + ")" : "no") << "\n"
-      << std::boolalpha
-      << "do_not_relay: " << tx_info.do_not_relay << "\n"
-      << "blink: " << tx_info.blink << "\n"
-      << "kept_by_block: " << tx_info.kept_by_block << "\n"
-      << "double_spend_seen: " << tx_info.double_spend_seen << "\n"
-      << std::noboolalpha
-      << "max_used_block_height: " << tx_info.max_used_block_height << "\n"
-      << "max_used_block_id: " << tx_info.max_used_block_id_hash << "\n"
-      << "last_failed_height: " << tx_info.last_failed_height << "\n"
-      << "last_failed_id: " << tx_info.last_failed_id_hash << "\n";
-  }
+bool rpc_command_executor::is_key_image_spent(const std::vector<crypto::key_image>& ki) {
+
+    auto maybe_spent = try_running(
+            [this, &ki] {
+                auto kis = json::array();
+                for (auto& k : ki)
+                    kis.push_back(tools::hex_guts(k));
+                return invoke<IS_KEY_IMAGE_SPENT>(json{{"key_images", std::move(kis)}});
+            },
+            "Failed to retrieve key image status");
+    if (!maybe_spent)
+        return false;
+    auto& spent_status = (*maybe_spent)["spent_status"];
+
+    if (spent_status.size() != ki.size()) {
+        tools::fail_msg_writer("key image status could not be determined\n");
+        return false;
+    }
+
+    for (size_t i = 0; i < ki.size(); i++) {
+        int status = spent_status[i].get<int>();
+        tools::success_msg_writer(
+                "{}: {}",
+                ki[i],
+                status == 0   ? "unspent"
+                : status == 1 ? "spent"
+                : status == 2 ? "spent (in pool)"
+                              : "unknown");
+    }
+    return true;
 }
 
-bool rpc_command_executor::print_transaction_pool_long() {
-  GET_TRANSACTION_POOL::response res{};
+static void print_pool(const json& txs) {
+    if (txs.empty()) {
+        tools::msg_writer("Pool is empty\n");
+        return;
+    }
+    const time_t now = time(nullptr);
+    auto msg = tools::msg_writer("{} Transactions:\n", txs.size());
+    for (auto& tx : txs) {
+        std::vector<std::string_view> status;
+        if (tx.value("blink", false))
+            status.push_back("blink"sv);
+        status.push_back(tx["relayed"].get<bool>() ? "relayed"sv : "not relayed"sv);
+        if (tx.value("do_not_relay", false))
+            status.push_back("do not relay"sv);
+        if (tx.value("double_spend_seen", false))
+            status.push_back("double spend"sv);
+        if (tx.value("kept_by_block", false))
+            status.push_back("from popped block"sv);
 
-  if (!invoke<GET_TRANSACTION_POOL>({}, res, "Failed to retrieve transaction pool details"))
-    return false;
-
-  print_pool(res.transactions, true);
-
-  if (res.spent_key_images.empty())
-  {
-    if (! res.transactions.empty())
-      tools::msg_writer() << "WARNING: Inconsistent pool state - no spent key images";
-  }
-  else
-  {
-    tools::msg_writer() << ""; // one newline
-    tools::msg_writer() << "Spent key images: ";
-    for (const auto& kinfo : res.spent_key_images)
-    {
-      tools::msg_writer() << "key image: " << kinfo.id_hash;
-      if (kinfo.txs_hashes.size() == 1)
-      {
-        tools::msg_writer() << "  tx: " << kinfo.txs_hashes[0];
-      }
-      else if (kinfo.txs_hashes.size() == 0)
-      {
-        tools::msg_writer() << "  WARNING: spent key image has no txs associated";
-      }
-      else
-      {
-        tools::msg_writer() << "  NOTE: key image for multiple txs: " << kinfo.txs_hashes.size();
-        for (const std::string& tx_id : kinfo.txs_hashes)
-        {
-          tools::msg_writer() << "  tx: " << tx_id;
+        msg.flush().append("{}:\n", tx["tx_hash"].get_ref<const std::string&>());
+        msg.append("    size/weight: {}/{}\n", tx["size"].get<int>(), tx["weight"].get<int>());
+        msg.append(
+                "    fee: {} ({}/byte)\n",
+                cryptonote::print_money(tx["fee"].get<uint64_t>()),
+                cryptonote::print_money(tx["fee"].get<double>() / tx["weight"].get<double>()));
+        msg.append(
+                "    received: {} ({})\n",
+                tx["received_timestamp"].get<std::time_t>(),
+                get_human_time_ago(tx["received_timestamp"].get<std::time_t>(), now));
+        msg.append("    status: {}\n", fmt::join(status, ", "));
+        if (auto muh = tx.value<uint64_t>("max_used_height", 0)) {
+            msg.append(
+                    "    top required block: {} ({})\n",
+                    muh,
+                    tx["max_used_block"].get<std::string_view>());
         }
-      }
+        if (auto lfh = tx.value<uint64_t>("last_failed_height", 0))
+            msg.append(
+                    "    last failed block: {} ({})\n",
+                    lfh,
+                    tx["last_failed_block"].get<std::string_view>());
+        if (auto extra = tx.find("extra"); extra != tx.end()) {
+            msg.append("    transaction extra: ");
+            auto extra_json = extra->dump(2);
+            for (auto line : tools::split(extra_json, "\n", true))
+                msg.append("      {}\n", line);
+        }
+        msg.append("\n");
     }
-    if (res.transactions.empty())
-    {
-      tools::msg_writer() << "WARNING: Inconsistent pool state - no transactions";
-    }
-  }
-
-  return true;
 }
 
-bool rpc_command_executor::print_transaction_pool_short() {
-  GET_TRANSACTION_POOL::request req{};
-  GET_TRANSACTION_POOL::response res{};
+bool rpc_command_executor::print_transaction_pool(bool long_format) {
+    json args{{"memory_pool", true}};
+    if (long_format)
+        args["tx_extra"] = true;
+    auto maybe_pool = try_running(
+            [this, &args] { return invoke<GET_TRANSACTIONS>(args); },
+            "Failed to retrieve transaction pool details");
+    if (!maybe_pool)
+        return false;
+    auto& pool = *maybe_pool;
 
-  if (!invoke<GET_TRANSACTION_POOL>({}, res, "Failed to retrieve transaction pool details"))
-    return false;
+    print_pool(pool["txs"]);
 
-  print_pool(res.transactions, false);
+    if (long_format && !pool["mempool_key_images"].empty()) {
+        auto msg = tools::msg_writer("\nSpent key images:");
+        for (const auto& [key, tx_hashes] : pool["mempool_key_images"].items()) {
+            msg.flush().append("key image: {}\n", key);
+            if (tx_hashes.size() == 1)
+                msg.append("  tx: {}\n", tx_hashes.front().get<std::string_view>());
+            else if (tx_hashes.empty())
+                msg.append("  WARNING: spent key image has no txs associated!\n");
+            else {
+                msg.append("  NOTE: key image for multiple transactions ({}):\n", tx_hashes.size());
+                for (const auto& txid : tx_hashes)
+                    msg.append("    - {}\n", txid.get<std::string_view>());
+            }
+        }
+        if (pool["txs"].empty())
+            msg.flush().append(
+                    "WARNING: Inconsistent pool state - key images but no no transactions");
+    }
 
-  return true;
+    return true;
 }
 
 bool rpc_command_executor::print_transaction_pool_stats() {
-  GET_TRANSACTION_POOL_STATS::response res{};
-  GET_INFO::response ires{};
 
-  if (!invoke<GET_TRANSACTION_POOL_STATS>({}, res, "Failed to retreive transaction pool statistics") ||
-      !invoke<GET_INFO>({}, ires, "Failed to retrieve node info"))
-    return false;
+    auto full_reward_zone = try_running(
+            [this] { return invoke<GET_INFO>().at("block_size_limit").get<uint64_t>() / 2; },
+            "Failed to retrieve node info");
+    if (!full_reward_zone)
+        return false;
 
-  size_t n_transactions = res.pool_stats.txs_total;
-  const uint64_t now = time(NULL);
-  size_t avg_bytes = n_transactions ? res.pool_stats.bytes_total / n_transactions : 0;
+    auto maybe_stats = try_running(
+            [this] {
+                return invoke<GET_TRANSACTION_POOL_STATS>(json{{"include_unrelayed", true}});
+            },
+            "Failed to retrieve transaction pool statistics");
+    if (!maybe_stats)
+        return false;
+    auto& pstats = maybe_stats->at("pool_stats");
 
-  std::string backlog_message;
-  const uint64_t full_reward_zone = ires.block_weight_limit / 2;
-  if (res.pool_stats.bytes_total <= full_reward_zone)
-  {
-    backlog_message = "no backlog";
-  }
-  else
-  {
-    uint64_t backlog = (res.pool_stats.bytes_total + full_reward_zone - 1) / full_reward_zone;
-    backlog_message = fmt::format("estimated {} block ({} minutes) backlog", backlog, (backlog * cryptonote::TARGET_BLOCK_TIME / 1min));
-  }
+    size_t n_transactions = pstats["txs_total"].get<int>();
+    const uint64_t now = time(NULL);
+    auto bytes_total = pstats["bytes_total"].get<uint64_t>();
+    size_t avg_bytes = n_transactions ? bytes_total / n_transactions : 0;
 
-  tools::msg_writer() << n_transactions << " tx(es), " << res.pool_stats.bytes_total << " bytes total (min " << res.pool_stats.bytes_min << ", max " << res.pool_stats.bytes_max << ", avg " << avg_bytes << ", median " << res.pool_stats.bytes_med << ")" << std::endl
-      << "fees " << cryptonote::print_money(res.pool_stats.fee_total) << " (avg " << cryptonote::print_money(n_transactions ? res.pool_stats.fee_total / n_transactions : 0) << " per tx" << ", " << cryptonote::print_money(res.pool_stats.bytes_total ? res.pool_stats.fee_total / res.pool_stats.bytes_total : 0) << " per byte)" << std::endl
-      << res.pool_stats.num_double_spends << " double spends, " << res.pool_stats.num_not_relayed << " not relayed, " << res.pool_stats.num_failing << " failing, " << res.pool_stats.num_10m << " older than 10 minutes (oldest " << (res.pool_stats.oldest == 0 ? "-" : get_human_time_ago(res.pool_stats.oldest, now)) << "), " << backlog_message;
-
-  if (n_transactions > 1 && res.pool_stats.histo.size())
-  {
-    std::vector<uint64_t> times;
-    uint64_t numer;
-    size_t i, n = res.pool_stats.histo.size(), denom;
-    times.resize(n);
-    if (res.pool_stats.histo_98pc)
-    {
-      numer = res.pool_stats.histo_98pc;
-      denom = n-1;
-      for (i=0; i<denom; i++)
-        times[i] = i * numer / denom;
-      times[i] = now - res.pool_stats.oldest;
-    } else
-    {
-      numer = now - res.pool_stats.oldest;
-      denom = n;
-      for (i=0; i<denom; i++)
-        times[i] = i * numer / denom;
+    std::string backlog_message = "no backlog";
+    if (bytes_total > *full_reward_zone) {
+        uint64_t backlog = (bytes_total + *full_reward_zone - 1) / *full_reward_zone;
+        backlog_message = "estimated {} block backlog"_format(backlog);
     }
-    tools::msg_writer() << "   Age      Txes       Bytes";
-    for (i=0; i<n; i++)
-    {
-      tools::msg_writer() << get_time_hms(times[i]) << std::setw(8) << res.pool_stats.histo[i].txs << std::setw(12) << res.pool_stats.histo[i].bytes;
-    }
-  }
-  tools::msg_writer();
 
-  return true;
+    uint64_t fee_total = pstats["fee_total"].get<uint64_t>();
+    std::time_t oldest = pstats["oldest"].get<std::time_t>();
+    tools::msg_writer(
+            "{} tx(s), {} bytes total (min {}, max {}, avg {}, median {})\n"
+            "fees {} (avg {} per tx, {} per byte)\n"
+            "{} double spends, {} not relayed, {} failing, {} older than 10 minutes (oldest {}), "
+            "{}",
+            n_transactions,
+            bytes_total,
+            pstats["bytes_min"].get<uint64_t>(),
+            pstats["bytes_max"].get<uint64_t>(),
+            avg_bytes,
+            pstats["bytes_med"].get<uint64_t>(),
+            cryptonote::print_money(fee_total),
+            cryptonote::print_money(n_transactions ? fee_total / n_transactions : 0),
+            cryptonote::print_money(bytes_total ? fee_total / bytes_total : 0),
+            pstats["num_double_spends"].get<uint64_t>(),
+            pstats["num_not_relayed"].get<uint64_t>(),
+            pstats["num_failing"].get<uint64_t>(),
+            pstats["num_10m"].get<uint64_t>(),
+            oldest == 0 ? "-" : get_human_time_ago(oldest, now),
+            backlog_message);
+
+    auto histo = pstats["histo"].get<std::vector<std::pair<uint64_t, uint64_t>>>();
+    if (n_transactions > 1 && !histo.empty()) {
+        std::array<uint64_t, 11> times;
+        bool last_is_gt = false;
+        if (auto it = pstats.find("histo_98pc"); it != pstats.end()) {
+            auto histo98 = it->get<uint64_t>();
+            for (size_t i = 0; i < 11; i++)
+                times[i] = i * histo98 / 9;
+            last_is_gt = true;
+        } else {
+            auto histo_max = pstats["histo_max"].get<uint64_t>();
+            for (size_t i = 0; i < 11; i++)
+                times[i] = i * histo_max / 10;
+        }
+
+        constexpr auto hist_fmt = "{:>10} - {:<14} {:>7} {:>11}"sv;
+        tools::msg_writer("{:^23}     {:>7} {:>11}", "Age", "Txes", "Bytes");
+        for (size_t i = 0; i < 10; i++)
+            tools::msg_writer(
+                    hist_fmt,
+                    get_human_time_ago(times[i] * 1s, true),
+                    (last_is_gt && i == 10 ? ""
+                                           : get_human_time_ago(times[i + 1] * 1s, true) + " ago"),
+                    histo[i].first,
+                    histo[i].second);
+    }
+    tools::msg_writer();
+
+    return true;
 }
 
-bool rpc_command_executor::start_mining(const cryptonote::account_public_address& address, uint64_t num_threads, uint32_t num_blocks, cryptonote::network_type nettype) {
-  START_MINING::request req{};
-  START_MINING::response res{};
-  req.num_blocks    = num_blocks;
-  req.miner_address = cryptonote::get_account_address_as_str(nettype, false, address);
-  req.threads_count = num_threads;
+bool rpc_command_executor::start_mining(std::string address, int num_threads, int num_blocks) {
+    json args{
+            {"num_blocks", num_blocks},
+            {"threads_count", num_threads},
+            {"miner_address", std::move(address)}};
+    if (!try_running(
+                [this, &args] { return invoke<START_MINING>(args); }, "Unable to start mining"))
+        return false;
 
-  if (!invoke<START_MINING>(std::move(req), res, "Unable to start mining"))
-    return false;
-
-  std::stringstream stream;
-  stream << "Mining started";
-  if (num_threads) stream << " with " << num_threads << " thread(s).";
-  else             stream << ", auto detecting the number of threads to use.";
-
-  if (num_blocks) stream << " Mining for " << num_blocks << " blocks before stopping or until manually stopped.";
-  tools::success_msg_writer() << stream.str();
-  return true;
+    tools::success_msg_writer(
+            "Mining started with {} thread(s).{}",
+            std::max(num_threads, 1),
+            num_blocks ? " Will stop after {} blocks"_format(num_blocks) : "");
+    return true;
 }
 
 bool rpc_command_executor::stop_mining() {
-  STOP_MINING::response res{};
-
-  if (!invoke<STOP_MINING>({}, res, "Unable to stop mining"))
-    return false;
-
-  tools::success_msg_writer() << "Mining stopped";
-  return true;
+    return invoke_simple<STOP_MINING>("Couldn't stop mining", "Mining stopped");
 }
 
-bool rpc_command_executor::stop_daemon()
-{
-  STOP_DAEMON::response res{};
-
-  if (!invoke<STOP_DAEMON>({}, res, "Failed to stop daemon"))
-    return false;
-
-  tools::success_msg_writer() << "Stop signal sent";
-
-  return true;
+bool rpc_command_executor::stop_daemon() {
+    return invoke_simple<STOP_DAEMON>("Couldn't stop daemon", "Stop signal sent");
 }
 
-bool rpc_command_executor::print_status()
-{
-  if (!m_rpc_client)
-  {
-    tools::fail_msg_writer() << "print_status makes no sense in interactive mode";
-    return false;
-  }
+bool rpc_command_executor::get_limit() {
+    auto maybe_limit = try_running(
+            [this] { return invoke<GET_LIMIT>(); }, "Failed to retrieve current traffic limits");
+    if (!maybe_limit)
+        return false;
+    auto& limit = *maybe_limit;
 
-  // Make a request to get_height because it is public and relatively simple
-  GET_HEIGHT::response res;
-  if (invoke<GET_HEIGHT>({}, res, "oxend is NOT running")) {
-    tools::success_msg_writer() << "oxend is running (height: " << res.height << ")";
+    tools::msg_writer(
+            "Current limits are {} kiB/s down, {} kiB/s up",
+            limit["limit_down"].get<uint64_t>(),
+            limit["limit_up"].get<uint64_t>());
     return true;
-  }
-  return false;
 }
 
-bool rpc_command_executor::get_limit(bool up, bool down)
-{
-  GET_LIMIT::response res{};
+bool rpc_command_executor::set_limit(int64_t limit_down, int64_t limit_up) {
+    json args{{"limit_down", limit_down}, {"limit_up", limit_up}};
+    auto maybe_limit = try_running(
+            [this, &args] { return invoke<SET_LIMIT>(args); }, "Failed to set traffic limits");
+    if (!maybe_limit)
+        return false;
+    auto& limit = *maybe_limit;
 
-  if (!invoke<GET_LIMIT>({}, res, "Failed to retrieve current bandwidth limits"))
-    return false;
-
-  if (down)
-    tools::msg_writer() << "limit-down is " << res.limit_down << " kB/s";
-  if (up)
-    tools::msg_writer() << "limit-up is " << res.limit_up << " kB/s";
-  return true;
+    tools::success_msg_writer(
+            "New limits are {} kiB/s down, {} kiB/s up",
+            limit["limit_down"].get<uint64_t>(),
+            limit["limit_up"].get<uint64_t>());
+    return true;
 }
 
-bool rpc_command_executor::set_limit(int64_t limit_down, int64_t limit_up)
-{
-  SET_LIMIT::response res{};
-  if (!invoke<SET_LIMIT>({limit_down, limit_up}, res, "Failed to set bandwidth limits"))
-    return false;
+bool rpc_command_executor::out_peers(bool set, uint32_t limit) {
+    auto maybe_out_peers = try_running(
+            [this, set, limit] {
+                return invoke<OUT_PEERS>(json{{"set", set}, {"out_peers", limit}});
+            },
+            "Failed to set max out peers");
+    if (!maybe_out_peers)
+        return false;
+    auto& out_peers = *maybe_out_peers;
 
-  tools::msg_writer() << "Set limit-down to " << res.limit_down << " kB/s";
-  tools::msg_writer() << "Set limit-up to " << res.limit_up << " kB/s";
-  return true;
+    auto peers = out_peers["out_peers"].get<uint32_t>();
+    tools::msg_writer().append(
+            "Max number of outgoing peers set to {}\n",
+            peers == std::numeric_limits<uint32_t>::max() ? "unlimited" : "{}"_format(peers));
+
+    return true;
 }
 
+bool rpc_command_executor::in_peers(bool set, uint32_t limit) {
+    auto maybe_in_peers = try_running(
+            [this, set, limit] {
+                return invoke<IN_PEERS>(json{{"set", set}, {"in_peers", limit}});
+            },
+            "Failed to set max in peers");
+    if (!maybe_in_peers)
+        return false;
+    auto& in_peers = *maybe_in_peers;
 
-bool rpc_command_executor::out_peers(bool set, uint32_t limit)
-{
-    OUT_PEERS::request req{set, limit};
-	OUT_PEERS::response res{};
-    if (!invoke<OUT_PEERS>(std::move(req), res, "Failed to set max out peers"))
-      return false;
+    auto peers = in_peers["in_peers"].get<uint32_t>();
+    tools::msg_writer().append(
+            "Max number of incoming peers set to {}\n",
+            peers == std::numeric_limits<uint32_t>::max() ? "unlimited" : "{}"_format(peers));
 
-	const std::string s = res.out_peers == (uint32_t)-1 ? "unlimited" : std::to_string(res.out_peers);
-	tools::msg_writer() << "Max number of out peers set to " << s << std::endl;
-
-	return true;
+    return true;
 }
 
-bool rpc_command_executor::in_peers(bool set, uint32_t limit)
-{
-    IN_PEERS::request req{set, limit};
-	IN_PEERS::response res{};
-    if (!invoke<IN_PEERS>(std::move(req), res, "Failed to set max in peers"))
-      return false;
-
-	const std::string s = res.in_peers == (uint32_t)-1 ? "unlimited" : std::to_string(res.in_peers);
-	tools::msg_writer() << "Max number of in peers set to " << s << std::endl;
-
-	return true;
-}
-
-bool rpc_command_executor::print_bans()
-{
-    GETBANS::response res{};
-
-    if (!invoke<GETBANS>({}, res, "Failed to retrieve ban list"))
-      return false;
-
-    if (!res.bans.empty())
-    {
-        for (auto i = res.bans.begin(); i != res.bans.end(); ++i)
-        {
-            tools::msg_writer() << i->host << " banned for " << i->seconds << " seconds";
-        }
+bool rpc_command_executor::print_bans() {
+    auto maybe_bans =
+            try_running([this] { return invoke<GET_BANS>(); }, "Failed to retrieve ban list");
+    if (!maybe_bans)
+        return false;
+    auto bans = *maybe_bans;
+    auto ban_array = bans.at("bans");
+    assert(ban_array.is_array() && "Internal error, RPC API has changed");
+    if (ban_array.empty()) {
+        tools::msg_writer("No IPs are banned");
+        return true;
     }
-    else 
-        tools::msg_writer() << "No IPs are banned";
+
+    for (const auto& ban : ban_array) {
+        tools::msg_writer(
+                "{} banned for {} seconds",
+                ban["host"].get<std::string_view>(),
+                ban["seconds"].get<int64_t>());
+    }
+    return true;
+}
+
+bool rpc_command_executor::ban(const std::string& address, time_t seconds, bool clear_ban) {
+    auto maybe_banned = try_running(
+            [this, &address, seconds, clear_ban] {
+                return invoke<SET_BANS>(
+                        json{{"host", std::move(address)},
+                             {"ip", 0},
+                             {"seconds", seconds},
+                             {"ban", !clear_ban}});
+            },
+            clear_ban ? "Failed to clear ban" : "Failed to set ban");
+    if (!maybe_banned)
+        return false;
 
     return true;
 }
 
-bool rpc_command_executor::ban(const std::string &address, time_t seconds, bool clear_ban)
-{
-    SETBANS::request req{};
-    SETBANS::response res{};
-
-    req.bans.emplace_back();
-    auto& ban = req.bans.back();
-    ban.host = address;
-    ban.ip = 0;
-    ban.ban = !clear_ban;
-    ban.seconds = seconds;
-
-    if (!invoke<SETBANS>(std::move(req), res, clear_ban ? "Failed to clear ban" : "Failed to set ban"))
-      return false;
-
-    return true;
-}
-
-bool rpc_command_executor::unban(const std::string &address)
-{
+bool rpc_command_executor::unban(const std::string& address) {
     return ban(std::move(address), 0, true);
 }
 
-bool rpc_command_executor::banned(const std::string &address)
-{
-    BANNED::request req{};
-    BANNED::response res{};
+bool rpc_command_executor::banned(const std::string& address) {
+    auto maybe_banned = try_running(
+            [this, &address] {
+                return invoke<BANNED>(json{{"address", std::move(address)}});
+            },
+            "Failed to retrieve ban information");
+    if (!maybe_banned)
+        return false;
+    auto& banned_response = *maybe_banned;
 
-    req.address = address;
-
-    if (!invoke<BANNED>({address}, res, "Failed to retrieve ban information"))
-      return false;
-
-    if (res.banned)
-      tools::msg_writer() << address << " is banned for " << res.seconds << " seconds";
+    if (banned_response["banned"].get<bool>())
+        tools::msg_writer(
+                "{} is banned for {} seconds", address, banned_response["seconds"].get<int64_t>());
     else
-      tools::msg_writer() << address << " is not banned";
+        tools::msg_writer("{} is not banned", address);
 
     return true;
 }
 
-bool rpc_command_executor::flush_txpool(std::string txid)
-{
-    FLUSH_TRANSACTION_POOL::request req{};
-    FLUSH_TRANSACTION_POOL::response res{};
-
+bool rpc_command_executor::flush_txpool(std::string txid) {
+    std::vector<std::string> txids{};
     if (!txid.empty())
-      req.txids.push_back(std::move(txid));
+        txids.push_back(std::move(txid));
 
-    if (!invoke<FLUSH_TRANSACTION_POOL>(std::move(req), res, "Failed to flush tx pool"))
-      return false;
+    try {
+        invoke<FLUSH_TRANSACTION_POOL>(json{{"txids", std::move(txids)}});
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer("Failed to flush tx pool: {}", e.what());
+        return false;
+    }
 
-    tools::success_msg_writer() << "Pool successfully flushed";
+    tools::success_msg_writer("Pool successfully flushed");
     return true;
 }
 
-bool rpc_command_executor::output_histogram(const std::vector<uint64_t> &amounts, uint64_t min_count, uint64_t max_count)
-{
-    GET_OUTPUT_HISTOGRAM::request req{};
-    GET_OUTPUT_HISTOGRAM::response res{};
-
-    req.amounts = amounts;
-    req.min_count = min_count;
-    req.max_count = max_count;
-    req.unlocked = false;
-    req.recent_cutoff = 0;
-
-    if (!invoke<GET_OUTPUT_HISTOGRAM>(std::move(req), res, "Failed to retrieve output histogram"))
-      return false;
-
-    std::sort(res.histogram.begin(), res.histogram.end(),
-        [](const auto& e1, const auto& e2)->bool { return e1.total_instances < e2.total_instances; });
-    for (const auto &e: res.histogram)
-    {
-        tools::msg_writer() << e.total_instances << "  " << cryptonote::print_money(e.amount);
-    }
+bool rpc_command_executor::output_histogram(
+        const std::vector<uint64_t>& amounts, uint64_t min_count, uint64_t max_count) {
+    auto maybe_histogram = try_running(
+            [this, &amounts, min_count, max_count] {
+                return invoke<GET_OUTPUT_HISTOGRAM>(
+                        json{{"amounts", amounts},
+                             {"min_count", min_count},
+                             {"max_count", max_count},
+                             {"unlocked", false},
+                             {"recent_cutoff", 0}});
+            },
+            "Failed to retrieve output histogram");
+    if (!maybe_histogram)
+        return false;
+    std::vector<GET_OUTPUT_HISTOGRAM::entry> histogram = (*maybe_histogram)["histogram"];
+    std::sort(histogram.begin(), histogram.end(), [](const auto& e1, const auto& e2) -> bool {
+        return e1.total_instances < e2.total_instances;
+    });
+    for (const auto& e : histogram)
+        tools::msg_writer("{}  {}", e.total_instances, cryptonote::print_money(e.amount));
 
     return true;
 }
 
-bool rpc_command_executor::print_coinbase_tx_sum(uint64_t height, uint64_t count)
-{
-  GET_COINBASE_TX_SUM::response res{};
-  if (!invoke<GET_COINBASE_TX_SUM>({height, count}, res, "Failed to retrieve coinbase info"))
-    return false;
+bool rpc_command_executor::print_coinbase_tx_sum(uint64_t height, uint64_t count) {
+    auto maybe_coinbase = try_running(
+            [this, &height, &count] {
+                return invoke<GET_COINBASE_TX_SUM>(json{{"height", height}, {"count", count}});
+            },
+            "Failed to retrieve coinbase info");
+    if (!maybe_coinbase)
+        return false;
+    auto& coinbase = *maybe_coinbase;
 
-  tools::msg_writer() << "Sum of coinbase transactions between block heights ["
-    << height << ", " << (height + count) << ") is "
-    << cryptonote::print_money(res.emission_amount + res.fee_amount) << " "
-    << "consisting of " << cryptonote::print_money(res.emission_amount)
-    << " in emissions, and " << cryptonote::print_money(res.fee_amount) << " in fees";
-  return true;
+    tools::msg_writer(
+            "Sum of coinbase transactions between block heights [{}, {}) is {} consisting of {} in "
+            "emissions and {} in fees",
+            height,
+            height + count,
+            cryptonote::print_money(
+                    coinbase["emission_amount"].get<int64_t>() +
+                    coinbase["fee_amount"].get<int64_t>()),
+            cryptonote::print_money(coinbase["emission_amount"]),
+            cryptonote::print_money(coinbase["fee_amount"]));
+    return true;
 }
 
-bool rpc_command_executor::alt_chain_info(const std::string &tip, size_t above, uint64_t last_blocks)
-{
-  GET_INFO::response ires{};
-  GET_ALTERNATE_CHAINS::response res{};
+bool rpc_command_executor::alt_chain_info(
+        const std::string& tip, size_t above, uint64_t last_blocks) {
 
-  if (!invoke<GET_INFO>({}, ires, "Failed to retrieve node info") ||
-      !invoke<GET_ALTERNATE_CHAINS>({}, res, "Failed to retrieve alt chain data"))
-    return false;
+    auto maybe_info =
+            try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
+    if (!maybe_info)
+        return false;
+    auto& info = *maybe_info;
+    auto height = info.value("height", 0);
+    if (!height)
+        return false;
+    auto nettype = cryptonote::network_type_from_string(info.value("nettype", ""));
 
-  if (tip.empty())
-  {
-    auto chains = res.chains;
-    std::sort(chains.begin(), chains.end(), [](const GET_ALTERNATE_CHAINS::chain_info &info0, GET_ALTERNATE_CHAINS::chain_info &info1){ return info0.height < info1.height; });
-    std::vector<size_t> display;
-    for (size_t i = 0; i < chains.size(); ++i)
-    {
-      const auto &chain = chains[i];
-      if (chain.length <= above)
-        continue;
-      const uint64_t start_height = (chain.height - chain.length + 1);
-      if (last_blocks > 0 && ires.height - 1 - start_height >= last_blocks)
-        continue;
-      display.push_back(i);
-    }
-    tools::msg_writer() << display.size() << " alternate chains found:";
-    for (const size_t idx: display)
-    {
-      const auto &chain = chains[idx];
-      const uint64_t start_height = (chain.height - chain.length + 1);
-      tools::msg_writer() << chain.length << " blocks long, from height " << start_height << " (" << (ires.height - start_height - 1)
-          << " deep), diff " << chain.difficulty << ": " << chain.block_hash;
-    }
-  }
-  else
-  {
-    const uint64_t now = time(NULL);
-    const auto i = std::find_if(res.chains.begin(), res.chains.end(), [&tip](GET_ALTERNATE_CHAINS::chain_info &info){ return info.block_hash == tip; });
-    if (i != res.chains.end())
-    {
-      const auto &chain = *i;
-      tools::success_msg_writer() << "Found alternate chain with tip " << tip;
-      uint64_t start_height = (chain.height - chain.length + 1);
-      tools::msg_writer() << chain.length << " blocks long, from height " << start_height << " (" << (ires.height - start_height - 1)
-          << " deep), diff " << chain.difficulty << ":";
-      for (const std::string &block_id: chain.block_hashes)
-        tools::msg_writer() << "  " << block_id;
-      tools::msg_writer() << "Chain parent on main chain: " << chain.main_chain_parent_block;
-      GET_BLOCK_HEADER_BY_HASH::request bhreq{};
-      GET_BLOCK_HEADER_BY_HASH::response bhres{};
-      bhreq.hashes = chain.block_hashes;
-      bhreq.hashes.push_back(chain.main_chain_parent_block);
-      bhreq.fill_pow_hash = false;
-      if (!invoke<GET_BLOCK_HEADER_BY_HASH>(std::move(bhreq), bhres, "Failed to query block header by hash"))
+    auto maybe_chains = try_running(
+            [this] { return invoke<GET_ALTERNATE_CHAINS>(); }, "Failed to retrieve node info");
+    if (!maybe_chains)
         return false;
 
-      if (bhres.block_headers.size() != chain.length + 1)
-      {
-        tools::fail_msg_writer() << "Failed to get block header info for alt chain";
-        return true;
-      }
-      uint64_t t0 = bhres.block_headers.front().timestamp, t1 = t0;
-      for (const block_header_response &block_header: bhres.block_headers)
-      {
-        t0 = std::min<uint64_t>(t0, block_header.timestamp);
-        t1 = std::max<uint64_t>(t1, block_header.timestamp);
-      }
-      const uint64_t dt = t1 - t0;
-      const uint64_t age = std::max(dt, t0 < now ? now - t0 : 0);
-      tools::msg_writer() << "Age: " << tools::get_human_readable_timespan(std::chrono::seconds(age));
-      if (chain.length > 1)
-      {
-        tools::msg_writer() << "Time span: " << tools::get_human_readable_timespan(std::chrono::seconds(dt));
-        cryptonote::difficulty_type start_difficulty = bhres.block_headers.back().difficulty;
-        if (start_difficulty > 0)
-          tools::msg_writer() << "Approximated " << 100.f * tools::to_seconds(cryptonote::TARGET_BLOCK_TIME) * chain.length / dt << "% of network hash rate";
-        else
-          tools::fail_msg_writer() << "Bad cmumulative difficulty reported by dameon";
-      }
+    std::vector<GET_ALTERNATE_CHAINS::chain_info> chains = (*maybe_chains)["chains"];
+    if (tip.empty()) {
+        std::sort(chains.begin(), chains.end(), [](const auto& info0, auto& info1) {
+            return info0.height < info1.height;
+        });
+        std::vector<size_t> display;
+        for (size_t i = 0; i < chains.size(); ++i) {
+            const auto& chain = chains[i];
+            if (chain.length <= above)
+                continue;
+            const uint64_t start_height = (chain.height - chain.length + 1);
+            if (last_blocks > 0 && height - 1 - start_height >= last_blocks)
+                continue;
+            display.push_back(i);
+        }
+        tools::msg_writer("{} alternate chains found:", display.size());
+        for (const size_t idx : display) {
+            const auto& chain = chains[idx];
+            const uint64_t start_height = (chain.height - chain.length + 1);
+            tools::msg_writer(
+                    "{} blocks long, from height {} ({} deep), diff {}: {}",
+                    chain.length,
+                    start_height,
+                    height - start_height - 1,
+                    chain.difficulty,
+                    chain.block_hash);
+        }
+    } else {
+        const uint64_t now = time(NULL);
+        const auto i = std::find_if(
+                chains.begin(), chains.end(), [&tip](GET_ALTERNATE_CHAINS::chain_info& info) {
+                    return info.block_hash == tip;
+                });
+        if (i != chains.end()) {
+            const auto& chain = *i;
+            tools::success_msg_writer("Found alternate chain with tip {}", tip);
+            uint64_t start_height = (chain.height - chain.length + 1);
+            auto msg = tools::msg_writer(
+                    "{} blocks long, from height {} ({} deep), diff {}:",
+                    chain.length,
+                    start_height,
+                    height - start_height - 1,
+                    chain.difficulty);
+            for (const std::string& block_id : chain.block_hashes)
+                msg.append("\n  {}", block_id);
+            msg.append("\nChain parent on main chain: {}", chain.main_chain_parent_block);
+            msg.flush();
+
+            std::vector<std::string> hashes{chain.block_hashes};
+            hashes.push_back(chain.main_chain_parent_block);
+            auto maybe_headers = try_running(
+                    [&] {
+                        return invoke<GET_BLOCK_HEADER_BY_HASH>(
+                                json{{"hashes", hashes}, {"fill_pow_hash", false}});
+                    },
+                    "Failed to query block header by hash");
+            if (!maybe_headers)
+                return false;
+            auto headers = *maybe_headers;
+
+            if (headers["block_headers"].size() != chain.length + 1) {
+                tools::fail_msg_writer("Failed to get block header info for alt chain");
+                return true;
+            }
+            uint64_t t0 = std::numeric_limits<uint64_t>::max(),
+                     t1 = std::numeric_limits<uint64_t>::min();
+            for (const auto& block_header : headers["block_headers"]) {
+                const uint64_t ts = block_header.get<uint64_t>();
+                t0 = std::min(t0, ts);
+                t1 = std::max(t1, ts);
+            }
+            const uint64_t dt = t1 - t0;
+            const uint64_t age = std::max(dt, t0 < now ? now - t0 : 0);
+            tools::msg_writer(
+                    "Age: {}", tools::get_human_readable_timespan(std::chrono::seconds(age)));
+            if (chain.length > 1) {
+                tools::msg_writer(
+                        "Time span: {}",
+                        tools::get_human_readable_timespan(std::chrono::seconds(dt)));
+                cryptonote::difficulty_type start_difficulty =
+                        headers["block_headers"].back()["difficulty"];
+                if (start_difficulty > 0)
+                    tools::msg_writer(
+                            "Approximately {:.2f}% of network hash rate",
+                            100.0 * tools::to_seconds(get_config(nettype).TARGET_BLOCK_TIME) *
+                                    chain.length / dt);
+                else
+                    tools::fail_msg_writer("Bad cumulative difficulty reported by dameon");
+            }
+        } else
+            tools::fail_msg_writer(
+                    "Block hash {} is not the tip of any known alternate chain", tip);
     }
-    else
-      tools::fail_msg_writer() << "Block hash " << tip << " is not the tip of any known alternate chain";
-  }
-  return true;
-}
-
-bool rpc_command_executor::print_blockchain_dynamic_stats(uint64_t nblocks)
-{
-  GET_INFO::response ires{};
-  GET_BASE_FEE_ESTIMATE::response feres{};
-  HARD_FORK_INFO::response hfres{};
-
-  if (!invoke<GET_INFO>({}, ires, "Failed to retrieve node info") ||
-      !invoke<GET_BASE_FEE_ESTIMATE>({}, feres, "Failed to retrieve current fee info") ||
-      !invoke<HARD_FORK_INFO>({static_cast<uint8_t>(cryptonote::feature::PER_BYTE_FEE)}, hfres, "Failed to retrieve hard fork info"))
-    return false;
-
-  tools::msg_writer() << "Height: " << ires.height << ", diff " << ires.difficulty << ", cum. diff " << ires.cumulative_difficulty
-      << ", target " << ires.target << " sec" << ", dyn fee " << cryptonote::print_money(feres.fee_per_byte) << "/" << (hfres.enabled ? "byte" : "kB")
-      << " + " << cryptonote::print_money(feres.fee_per_output) << "/out";
-
-  if (nblocks > 0)
-  {
-    if (nblocks > ires.height)
-      nblocks = ires.height;
-
-    GET_BLOCK_HEADERS_RANGE::request bhreq{};
-    GET_BLOCK_HEADERS_RANGE::response bhres{};
-
-    bhreq.start_height = ires.height - nblocks;
-    bhreq.end_height = ires.height - 1;
-    bhreq.fill_pow_hash = false;
-    if (!invoke<GET_BLOCK_HEADERS_RANGE>(std::move(bhreq), bhres, "Failed to retrieve block headers"))
-      return false;
-
-    double avgdiff = 0;
-    double avgnumtxes = 0;
-    double avgreward = 0;
-    std::vector<uint64_t> weights;
-    weights.reserve(nblocks);
-    uint64_t earliest = std::numeric_limits<uint64_t>::max(), latest = 0;
-    std::map<unsigned, std::pair<unsigned, unsigned>> versions; // version -> {majorcount, minorcount}
-    for (const auto &bhr: bhres.headers)
-    {
-      avgdiff += bhr.difficulty;
-      avgnumtxes += bhr.num_txes;
-      avgreward += bhr.reward;
-      weights.push_back(bhr.block_weight);
-      versions[bhr.major_version].first++;
-      versions[bhr.minor_version].second++;
-      earliest = std::min(earliest, bhr.timestamp);
-      latest = std::max(latest, bhr.timestamp);
-    }
-    avgdiff /= nblocks;
-    avgnumtxes /= nblocks;
-    avgreward /= nblocks;
-    uint64_t median_block_weight = tools::median(std::move(weights));
-    tools::msg_writer() << "Last " << nblocks << ": avg. diff " << (uint64_t)avgdiff << ", " << (latest - earliest) / nblocks << " avg sec/block, avg num txes " << avgnumtxes
-        << ", avg. reward " << cryptonote::print_money(avgreward) << ", median block weight " << median_block_weight;
-
-    std::ostringstream s;
-    bool first = true;
-    for (auto& v : versions)
-    {
-      if (first) first = false;
-      else s << "; ";
-      s << "v" << v.first << " (" << v.second.first << "/" << v.second.second << ")";
-    }
-    tools::msg_writer() << "Block versions (major/minor): " << s.str();
-  }
-  return true;
-}
-
-bool rpc_command_executor::relay_tx(const std::string &txid)
-{
-    RELAY_TX::response res{};
-    if (!invoke<RELAY_TX>({{txid}}, res, "Failed to relay tx"))
-      return false;
-
-    tools::success_msg_writer() << "Transaction successfully relayed";
     return true;
 }
 
-bool rpc_command_executor::sync_info()
-{
-    SYNC_INFO::response res{};
+bool rpc_command_executor::print_blockchain_dynamic_stats(uint64_t nblocks) {
+    auto maybe_info =
+            try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
+    if (!maybe_info)
+        return false;
+    auto& info = *maybe_info;
 
-    if (!invoke<SYNC_INFO>({}, res, "Failed to retrieve synchronization info"))
-      return false;
+    auto maybe_hf = try_running(
+            [this] { return invoke<HARD_FORK_INFO>(); }, "Failed to retrieve hard fork info");
+    if (!maybe_hf)
+        return false;
+    auto& hfinfo = *maybe_hf;
 
-    uint64_t target = res.target_height < res.height ? res.height : res.target_height;
-    tools::success_msg_writer() << "Height: " << res.height << ", target: " << target << " (" << (100.0 * res.height / target) << "%)";
+    auto maybe_fees = try_running(
+            [this] { return invoke<GET_FEE_ESTIMATE>(json{}); },
+            "Failed to retrieve current fee info");
+    if (!maybe_fees)
+        return false;
+    auto& feres = *maybe_fees;
+
+    auto height = info["height"].get<uint64_t>();
+    tools::msg_writer(
+            "Height: {}, diff {}, cum. diff {}, target {} sec, dyn fee {}/{} + {}/out",
+            height,
+            info["difficulty"].get<uint64_t>(),
+            info["cumulative_difficulty"].get<uint64_t>(),
+            info["target"].get<int>(),
+            cryptonote::print_money(feres["fee_per_byte"]),
+            hfinfo["enabled"].get<bool>() ? "byte" : "kB",
+            cryptonote::print_money(feres["fee_per_output"]));
+
+    if (nblocks > 0) {
+        if (nblocks > height)
+            nblocks = height;
+
+        auto maybe_block_headers = try_running(
+                [this, height, nblocks] {
+                    return invoke<GET_BLOCK_HEADERS_RANGE>(
+                            json{{"start_height", height - nblocks},
+                                 {"end_height", height - 1},
+                                 {"fill_pow_hash", false}});
+                },
+                "Failed to retrieve block headers");
+        if (!maybe_block_headers)
+            return false;
+        auto& block_headers = *maybe_block_headers;
+
+        double avgdiff = 0;
+        double avgnumtxes = 0;
+        double avgreward = 0;
+        std::vector<uint64_t> weights;
+        weights.reserve(nblocks);
+        uint64_t earliest = std::numeric_limits<uint64_t>::max(), latest = 0;
+        std::map<unsigned, std::pair<unsigned, unsigned>>
+                versions;  // version -> {majorcount, minorcount}
+        for (const auto& bhr : block_headers["headers"]) {
+            avgdiff += bhr["difficulty"].get<double>();
+            avgnumtxes += bhr["num_txes"].get<double>();
+            avgreward += bhr["reward"].get<double>();
+            weights.push_back(bhr["block_weight"].get<uint64_t>());
+            versions[bhr["major_version"]].first++;
+            versions[bhr["minor_version"]].second++;
+            earliest = std::min(earliest, bhr["timestamp"].get<uint64_t>());
+            latest = std::max(latest, bhr["timestamp"].get<uint64_t>());
+        }
+        avgdiff /= nblocks;
+        avgnumtxes /= nblocks;
+        avgreward /= nblocks;
+        uint64_t median_block_weight = tools::median(std::move(weights));
+        tools::msg_writer(
+                "Last {}: avg. diff {}, {} avg sec/block, avg num txes {}, avg. reward {}, median "
+                "block weight {}",
+                nblocks,
+                (uint64_t)avgdiff,
+                (latest - earliest) / nblocks,
+                avgnumtxes,
+                cryptonote::print_money(avgreward),
+                median_block_weight);
+
+        auto msg = tools::msg_writer("Block versions (major/minor): ");
+        bool first = true;
+        for (auto& v : versions) {
+            if (first)
+                first = false;
+            else
+                msg.append("; ");
+            msg.append("v{} ({}/{})", v.first, v.second.first, v.second.second);
+        }
+    }
+    return true;
+}
+
+bool rpc_command_executor::relay_tx(const std::string& txid) {
+    auto maybe_relay = try_running(
+            [&] {
+                return invoke<RELAY_TX>(json{{"txid", txid}});
+            },
+            "Failed to relay tx");
+    if (!maybe_relay)
+        return false;
+
+    tools::success_msg_writer("Transaction successfully relayed");
+    return true;
+}
+
+bool rpc_command_executor::sync_info() {
+    auto maybe_sync =
+            try_running([this] { return invoke<SYNC_INFO>(); }, "Failed to retrieve sync info");
+    if (!maybe_sync)
+        return false;
+    auto& sync = *maybe_sync;
+
+    uint64_t height = sync["height"].get<uint64_t>();
+    uint64_t target = std::max(sync.value("target_height", height), height);
+    auto msg = tools::success_msg_writer(
+            "Height: {}, target: {} ({}%)", height, target, 100.0 * height / target);
+    auto& spans = sync["spans"];
+    auto& peers = sync["peers"];
     uint64_t current_download = 0;
-    for (const auto &p: res.peers)
-      current_download += p.info.current_download;
-    tools::success_msg_writer() << "Downloading at " << current_download << " kB/s";
-    if (res.next_needed_pruning_seed)
-      tools::success_msg_writer() << "Next needed pruning seed: " << res.next_needed_pruning_seed;
+    for (const auto& p : peers)
+        current_download += p["current_download"].get<uint64_t>();
+    msg.append("\nDownloading at {:.1f} kB/s", current_download / 1000.0);
+    if (auto nnps = sync.value("next_needed_pruning_seed", 0))
+        msg.append("\nNext needed pruning seed: {}", nnps);
 
-    tools::success_msg_writer() << std::to_string(res.peers.size()) << " peers";
-    for (const auto &p: res.peers)
-    {
-      std::string address = epee::string_tools::pad_string(p.info.address, 24);
-      uint64_t nblocks = 0, size = 0;
-      for (const auto &s: res.spans)
-        if (s.connection_id == p.info.connection_id)
-          nblocks += s.nblocks, size += s.size;
-      tools::success_msg_writer() << address << "  " << p.info.peer_id << "  " <<
-          epee::string_tools::pad_string(p.info.state, 16) << "  " <<
-          epee::string_tools::pad_string(epee::string_tools::to_string_hex(p.info.pruning_seed), 8) << "  " << p.info.height << "  "  <<
-          p.info.current_download << " kB/s, " << nblocks << " blocks / " << size/1e6 << " MB queued";
+    msg.append("\n{} peers", peers.size());
+    for (const auto& [cid, p] : peers.items()) {
+        std::string address = "{}:{}"_format(p["ip"].get<std::string>(), p["port"].get<uint16_t>());
+        uint64_t nblocks = 0, size = 0;
+        for (const auto& s : spans) {
+            if (s["connection_id"] == cid) {
+                nblocks += s["nblocks"].get<uint64_t>();
+                size += s["size"].get<uint64_t>();
+            }
+        }
+        msg.append(
+                "\n{:<24s}  {}  {:<16s}  {}  {:.1f} kB/s, {} blocks / {:.2f} MB queued",
+                address,
+                p["peer_id"].get<std::string_view>(),
+                p["state"].get<std::string_view>(),
+                p["height"].get<uint64_t>(),
+                p["current_download"].get<uint64_t>() / 1000.0,
+                nblocks,
+                size / 1'000'000.0);
     }
 
     uint64_t total_size = 0;
-    for (const auto &s: res.spans)
-      total_size += s.size;
-    tools::success_msg_writer() << std::to_string(res.spans.size()) << " spans, " << total_size/1e6 << " MB";
-    tools::success_msg_writer() << res.overview;
-    for (const auto &s: res.spans)
-    {
-      std::string address = epee::string_tools::pad_string(s.remote_address, 24);
-      std::string pruning_seed = epee::string_tools::to_string_hex(tools::get_pruning_seed(s.start_block_height, std::numeric_limits<uint64_t>::max(), cryptonote::PRUNING_LOG_STRIPES));
-      if (s.size == 0)
-      {
-        tools::success_msg_writer() << address << "  " << s.nblocks << "/" << pruning_seed << " (" << s.start_block_height << " - " << (s.start_block_height + s.nblocks - 1) << ")  -";
-      }
-      else
-      {
-        tools::success_msg_writer() << address << "  " << s.nblocks << "/" << pruning_seed << " (" << s.start_block_height << " - " << (s.start_block_height + s.nblocks - 1) << ", " << (uint64_t)(s.size/1e3) << " kB)  " << (unsigned)(s.rate/1e3) << " kB/s (" << s.speed/100.0f << ")";
-      }
+    for (const auto& s : spans)
+        total_size += s["size"].get<uint64_t>();
+    msg.append("\n{} spans, {:.2f} MB", spans.size(), total_size / 1'000'000.0);
+    if (auto overview = sync["overview"].get<std::string_view>(); overview != "[]"sv)
+        msg.append("\n{}", overview);
+    for (const auto& s : spans) {
+        auto& c = peers[s["connection_id"].get_ref<const std::string&>()];
+        std::string address = "(unknown)";
+        if (c.is_object())
+            address = "{}:{}"_format(c["ip"].get<std::string_view>(), c["port"].get<uint16_t>());
+        auto size = s["size"].get<uint64_t>();
+        auto start = s["start_block_height"].get<uint64_t>();
+        auto nblocks = s["nblocks"].get<uint64_t>();
+        msg.append("\n{:<24s}  {} ({} - {}", address, nblocks, start, start + nblocks - 1);
+        if (size == 0)
+            msg.append(")  -");
+        else
+            msg.append(
+                    ", {:.1f} kB)  {} kB/s ({})",
+                    size / 1000.0,
+                    s["rate"].get<uint64_t>() / 1000.0,
+                    s["speed"].get<uint64_t>() / 100.0);
     }
 
     return true;
 }
 
 static std::string to_string_rounded(double d, int precision) {
-  std::ostringstream ss;
-  ss << std::fixed << std::setprecision(precision) << d;
-  return ss.str();
+    std::ostringstream ss;
+    ss << std::fixed << std::setprecision(precision) << d;
+    return ss.str();
 }
 
-static void print_vote_history(std::ostringstream &stream, std::vector<service_nodes::participation_entry> const &votes)
-{
-  if (votes.empty())
-    stream << "(Awaiting votes from service node)";
-
-  // NOTE: Votes were stored in a ring buffer and copied naïvely into the vote
-  // array so they may be out of order. Find the smallest entry (by height) and
-  // print starting from that entry.
-  auto it       = std::min_element(votes.begin(), votes.end(), [](const auto &a, const auto &b) { return a.height < b.height; });
-  size_t offset = std::distance(votes.begin(), it);
-
-  for (size_t i = 0; i < votes.size(); i++)
-  {
-    if (i > 0) stream << ", ";
-    const auto& entry = votes[(offset + i) % votes.size()];
-    stream << "[" << entry.height;
-    if (entry.is_pulse and entry.pulse.round > 0)
-      // For a typical pulse round just [1234,yes].  For a backup round: [1234+3,yes]
-      stream << "+" << +entry.pulse.round;
-
-    stream << "," << (entry.voted ? "yes" : "NO") << "]";
-  }
+template <typename E, typename EPrinter>
+void print_votes(std::ostream& o, const json& elem, const std::string& key, EPrinter eprint) {
+    std::vector<E> voted, missed;
+    if (auto it = elem.find(key); it != elem.end()) {
+        (*it)["voted"].get_to(voted);
+        (*it)["missed"].get_to(missed);
+    }
+    if (voted.empty() && missed.empty())
+        o << "(Awaiting votes from service node)";
+    else {
+        o << voted.size() << " voted";
+        if (!voted.empty())
+            o << " [" << tools::join_transform(" ", voted, eprint) << "]";
+        if (missed.empty())
+            o << ", none missed.";
+        else
+            o << ", " << missed.size() << " MISSED VOTES ["
+              << tools::join_transform(" ", missed, eprint) << "]";
+    }
 }
 
-template <class participationEntry>
-static void print_participation_history(std::ostringstream &stream, std::vector<participationEntry> const &votes)
-{
-  if (votes.empty())
-    stream << "(Awaiting timesync data from service node)";
+static void append_printable_service_node_list_entry(
+        cryptonote::network_type nettype,
+        bool detailed_view,
+        uint64_t blockchain_height,
+        uint64_t entry_index,
+        const json& entry,
+        std::string& buffer) {
+    const char indent1[] = "  ";
+    const char indent2[] = "    ";
+    const char indent3[] = "      ";
+    bool is_funded = entry["funded"].get<bool>();
 
-  for (size_t i = 0; i < votes.size(); i++)
-  {
-    if (i > 0) stream << ", ";
-    stream << "["<< (votes[i].pass() ? "yes" : "NO") << "]";
-  }
-}
+    std::ostringstream stream;
 
-static void append_printable_service_node_list_entry(cryptonote::network_type nettype, bool detailed_view, uint64_t blockchain_height, uint64_t entry_index, GET_SERVICE_NODES::response::entry const &entry, std::string &buffer)
-{
-  const char indent1[] = "  ";
-  const char indent2[] = "    ";
-  const char indent3[] = "      ";
-  bool is_registered = entry.total_contributed >= entry.staking_requirement;
+    auto& conf = get_config(nettype);
 
-  std::ostringstream stream;
-
-  // Print Funding Status
-  {
-    stream << indent1 << "[" << entry_index << "] " << "Service Node: " << entry.service_node_pubkey << " ";
-    stream << "v" << tools::join(".", entry.service_node_version) << "\n";
-
-    if (detailed_view)
+    // Print Funding Status
     {
-      stream << indent2 << "Total Contributed/Staking Requirement: " << cryptonote::print_money(entry.total_contributed) << "/" << cryptonote::print_money(entry.staking_requirement) << "\n";
-      stream << indent2 << "Total Reserved: " << cryptonote::print_money(entry.total_reserved) << "\n";
-    }
-  }
+        stream << indent1 << "[" << entry_index << "] "
+               << "Service Node: " << entry["service_node_pubkey"].get<std::string_view>() << " ";
+        if (auto e = entry.find("service_node_version"); e != entry.end())
+            stream << "v" << tools::join(".", entry["service_node_version"].get<std::vector<int>>())
+                   << "\n";
+        else
+            stream << "v(unknown)\n";
 
-  // Print expiry information
-  uint64_t const now = time(nullptr);
-  {
-    uint64_t expiry_height = 0;
-    auto reg_hf = static_cast<hf>(entry.registration_hf_version);
-    if (reg_hf >= hf::hf11_infinite_staking)
-    {
-      expiry_height = entry.requested_unlock_height;
-    }
-    else if (reg_hf >= hf::hf10_bulletproofs)
-    {
-        expiry_height = entry.registration_height + service_nodes::staking_num_lock_blocks(nettype);
-        expiry_height += cryptonote::old::STAKING_REQUIREMENT_LOCK_BLOCKS_EXCESS;
-    }
-    else
-    {
-        expiry_height = entry.registration_height + service_nodes::staking_num_lock_blocks(nettype);
-    }
-
-    stream << indent2 << "Registration: Hardfork Version: " << static_cast<int>(entry.registration_hf_version) << "; Height: " << entry.registration_height << "; Expiry: ";
-    if (expiry_height == service_nodes::KEY_IMAGE_AWAITING_UNLOCK_HEIGHT)
-    {
-        stream << "Staking Infinitely (stake unlock not requested)\n";
-    }
-    else
-    {
-      uint64_t delta_height      = (blockchain_height >= expiry_height) ? 0 : expiry_height - blockchain_height;
-      uint64_t expiry_epoch_time = now + (delta_height * tools::to_seconds(cryptonote::TARGET_BLOCK_TIME));
-      stream << expiry_height << " (in " << delta_height << ") blocks\n";
-      stream << indent2 << "Expiry Date (estimated): " << get_date_time(expiry_epoch_time) << " (" << get_human_time_ago(expiry_epoch_time, now) << ")\n";
-    }
-  }
-
-  if (detailed_view && is_registered) // Print reward status
-  {
-    stream << indent2 << "Last Reward (Or Penalty) At (Height/TX Index): " << entry.last_reward_block_height << "/" << entry.last_reward_transaction_index << "\n";
-  }
-
-  if (detailed_view) // Print operator information
-  {
-    stream << indent2 << "Operator Cut (\% Of Reward): " << to_string_rounded((entry.portions_for_operator / (double)cryptonote::old::STAKING_PORTIONS) * 100.0, 2) << "%\n";
-    stream << indent2 << "Operator Address: " << entry.operator_address << "\n";
-  }
-
-  if (is_registered) // Print service node tests
-  {
-    epee::console_colors uptime_proof_color = (entry.last_uptime_proof == 0) ? epee::console_color_red : epee::console_color_green;
-
-    stream << indent2;
-    if (entry.last_uptime_proof == 0)
-    {
-      stream << "Last Uptime Proof Received: (Awaiting confirmation from network)";
-    }
-    else
-    {
-      stream << "Last Uptime Proof Received: " << get_human_time_ago(entry.last_uptime_proof, time(nullptr));
-    }
-
-    //
-    // NOTE: Node Identification
-    //
-    stream << "\n";
-    stream << indent2 << "IP Address & Ports: ";
-    if (entry.public_ip == "0.0.0.0")
-      stream << "(Awaiting confirmation from network)";
-    else
-      stream << entry.public_ip << " :" << entry.storage_port << " (storage https), :" << entry.storage_lmq_port
-             << " (storage omq), :" << entry.quorumnet_port << " (quorumnet)";
-
-    stream << "\n";
-    if (detailed_view)
-      stream << indent2 << "Auxiliary Public Keys:\n"
-             << indent3 << (entry.pubkey_ed25519.empty() ? "(not yet received)" : entry.pubkey_ed25519) << " (Ed25519)\n"
-             << indent3 << (entry.pubkey_ed25519.empty() ? "(not yet received)" : oxenc::to_base32z(oxenc::from_hex(entry.pubkey_ed25519)) + ".snode") << " (Lokinet)\n"
-             << indent3 << (entry.pubkey_x25519.empty()  ? "(not yet received)" : entry.pubkey_x25519)  << " (X25519)\n";
-
-    //
-    // NOTE: Storage Server Test
-    //
-    auto print_reachable = [&stream, &now] (bool reachable, auto first_unreachable, auto last_unreachable, auto last_reachable) {
-      if (first_unreachable == 0) {
-        if (last_reachable == 0)
-          stream << "Not yet tested";
-        else {
-          stream << "Yes (last tested " << get_human_time_ago(last_reachable, now);
-          if (last_unreachable)
-            stream << "; last failure " << get_human_time_ago(last_unreachable, now);
-          stream << ")";
+        if (detailed_view) {
+            stream << indent2 << "Total Contributed/Staking Requirement: "
+                   << cryptonote::print_money(entry["total_contributed"].get<uint64_t>()) << "/"
+                   << cryptonote::print_money(entry["staking_requirement"].get<uint64_t>()) << "\n";
+            if (auto it = entry.find("total_reserved"); it != entry.end())
+                stream << indent2
+                       << "Total Reserved: " << cryptonote::print_money(it->get<uint64_t>())
+                       << "\n";
         }
-      } else {
-        stream << "NO";
-        if (!reachable)
-          stream << " - FAILING!";
-        stream << " (last tested " << get_human_time_ago(last_unreachable, now)
-          << "; failing since " << get_human_time_ago(first_unreachable, now);
-        if (last_reachable)
-          stream << "; last good " << get_human_time_ago(last_reachable, now);
-        stream << ")";
-      }
-      stream << '\n';
-    };
-    stream << indent2 << "Storage Server Reachable: ";
-    print_reachable(entry.storage_server_reachable, entry.storage_server_first_unreachable, entry.storage_server_last_unreachable, entry.storage_server_last_reachable);
-    stream << indent2 << "Lokinet Reachable: ";
-    print_reachable(entry.lokinet_reachable, entry.lokinet_first_unreachable, entry.lokinet_last_unreachable, entry.lokinet_last_reachable);
-
-    //
-    // NOTE: Component Versions
-    //
-    stream << indent2 << "Storage Server / Lokinet Router versions: "
-        << ((entry.storage_server_version[0] == 0 && entry.storage_server_version[1] == 0 && entry.storage_server_version[2] == 0) ? "(Storage server ping not yet received) " : tools::join(".", entry.storage_server_version)) << " / " << ((entry.lokinet_version[0] == 0 && entry.lokinet_version[1] == 0 && entry.lokinet_version[2] == 0) ? "(Lokinet ping not yet received)" : tools::join(".", entry.lokinet_version)) << "\n";
-
-
-
-
-    //
-    // NOTE: Print Voting History
-    //
-    stream << indent2 <<  "Checkpoints [Height,Voted]: ";
-    print_vote_history(stream, entry.checkpoint_participation);
-
-    stream << "\n" << indent2 << "Pulse [Height,Voted]: ";
-    print_vote_history(stream, entry.pulse_participation);
-
-    stream << "\n" << indent2 << "Timestamps [in_sync]: ";
-    print_participation_history(stream, entry.timestamp_participation);
-
-    stream << "\n" << indent2 << "Timesync [responded]: ";
-    print_participation_history(stream, entry.timesync_status);
-  }
-
-  stream << "\n";
-  if (detailed_view) // Print contributors
-  {
-    for (size_t j = 0; j < entry.contributors.size(); ++j)
-    {
-      const auto& contributor = entry.contributors[j];
-      stream << indent2 << "[" << j << "] Contributor: " << contributor.address  << "\n";
-      stream << indent3 << "Amount / Reserved: " << cryptonote::print_money(contributor.amount) << "/" << cryptonote::print_money(contributor.reserved) << "\n";
     }
-  }
 
-  //
-  // NOTE: Overall status
-  //
-  if (entry.active) {
-    stream << indent2 << "Current Status: ACTIVE\n";
-    stream << indent2 << "Downtime Credits: " << entry.earned_downtime_blocks << " blocks"
-      << " (about " << to_string_rounded(entry.earned_downtime_blocks / (double) cryptonote::BLOCKS_PER_HOUR, 2)  << " hours)";
-    if (entry.earned_downtime_blocks < service_nodes::DECOMMISSION_MINIMUM)
-      stream << " (Note: " << service_nodes::DECOMMISSION_MINIMUM << " blocks required to enable deregistration delay)";
-  } else if (is_registered) {
-    stream << indent2 << "Current Status: DECOMMISSIONED" ;
-    if (entry.last_decommission_reason_consensus_all || entry.last_decommission_reason_consensus_any)
-      stream << " - ";
-    if (auto reasons = cryptonote::readable_reasons(entry.last_decommission_reason_consensus_all); !reasons.empty())
-      stream << tools::join(", ", reasons);
-    // Add any "any" reasons that aren't in all with a (some) qualifier
-    if (auto reasons = cryptonote::readable_reasons(entry.last_decommission_reason_consensus_any & ~entry.last_decommission_reason_consensus_all); !reasons.empty()) {
-      for (auto& r : reasons)
-        r += "(some)";
-      stream << (entry.last_decommission_reason_consensus_all ? ", " : "") << tools::join(", ", reasons);
+    // Print expiry information
+    uint64_t const now = time(nullptr);
+    {
+        auto expiry_height = entry["requested_unlock_height"].get<uint64_t>();
+
+        stream << indent2
+               << "Registration: Hardfork Version: " << entry["registration_hf_version"].get<int>()
+               << "; Height: " << entry["registration_height"].get<uint64_t>() << "; Expiry: ";
+        if (!expiry_height)
+            stream << "Staking Infinitely (stake unlock not requested)\n";
+        else {
+            uint64_t delta_height =
+                    (blockchain_height >= expiry_height) ? 0 : expiry_height - blockchain_height;
+            auto expiry_epoch_time =
+                    now + (delta_height * tools::to_seconds(conf.TARGET_BLOCK_TIME));
+            stream << expiry_height << " (in " << delta_height << ") blocks\n";
+
+            stream << indent2 << "Expiry Date (estimated): "
+                   << "{:%Y-%m-%d %I:%M:%S %p} UTC"_format(fmt::gmtime(expiry_epoch_time)) << " ("
+                   << get_human_time_ago(expiry_epoch_time, now) << ")\n";
+        }
+    }
+
+    if (detailed_view && is_funded)  // Print reward status
+    {
+        stream << indent2 << "Last Reward (Or Penalty) At (Height/TX Index): "
+               << entry["last_reward_block_height"].get<uint64_t>() << "/"
+               << entry["last_reward_transaction_index"].get<uint64_t>() << "\n";
+    }
+
+    if (detailed_view)  // Print operator information
+    {
+        // MERGEFIX: figure out what this *should* do and check the corresponding RPC method
+        stream << indent2
+               << "Operator Fee: " << to_string_rounded(entry["operator_fee"].get<int>() / 1000., 3)
+               << "%\n";
+        stream << indent2
+               << "Operator Address: " << entry["operator_address"].get<std::string_view>() << "\n";
+        // stream << indent2 << "Operator Cut (\% Of Reward): " <<
+        // to_string_rounded((entry.portions_for_operator /
+        // (double)cryptonote::old::STAKING_PORTIONS) * 100.0, 2) << "%\n"; stream << indent2 <<
+        // "Operator Address: " << entry.operator_address << "\n";
+    }
+
+    if (is_funded)  // Print service node tests
+    {
+        auto proof_time = entry.value("last_uptime_proof", uint64_t{0});
+        epee::console_colors uptime_proof_color =
+                proof_time ? epee::console_color_red : epee::console_color_green;
+
+        stream << indent2 << "Last Uptime Proof Received: "
+               << (proof_time == 0 ? "(Awaiting confirmation from network)"
+                                   : get_human_time_ago(proof_time, time(nullptr)));
+
+        //
+        // NOTE: Node Identification
+        //
+        stream << "\n";
+        stream << indent2 << "IP Address & Ports: ";
+        if (entry.value("public_ip", "0.0.0.0"s) == "0.0.0.0")
+            stream << "(Awaiting confirmation from network)";
+        else
+            stream << entry["public_ip"].get<std::string_view>() << " ";
+        if (conf.HAVE_STORAGE_AND_LOKINET)
+            stream << ": {} (storage https), :{} (storage omq), "_format(
+                    entry["storage_port"].get<uint16_t>(),
+                    entry["storage_lmq_port"].get<uint16_t>());
+
+        // NOTE: Quorumnet port is omitted if we haven't received a uptime proof yet
+        if (auto quorumnet_port_it = entry.find("quorumnet_port");
+            quorumnet_port_it != entry.end()) {
+            uint16_t quorumnet_port = *quorumnet_port_it;
+            stream << ": {} (oxen quorums)"_format(quorumnet_port);
+        } else {
+            stream << ": (oxen quorums port not received yet)";
+        }
+
+        stream << "\n";
+        if (detailed_view) {
+            auto ed_pk = entry.value("pubkey_ed25519", ""sv);
+            // OXEN11 TODO FIXME: add BLS key
+            stream << indent2 << "Auxiliary Public Keys:\n"
+                   << indent3 << (ed_pk.empty() ? "(not yet received)"sv : ed_pk) << " (Ed25519)\n";
+            if (conf.HAVE_STORAGE_AND_LOKINET) {
+                stream << indent3
+                       << (ed_pk.empty() ? "(not yet received)"s
+                                         : oxenc::to_base32z(oxenc::from_hex(ed_pk)) + ".snode")
+                       << " (Lokinet)\n";
+            }
+            stream << indent3 << entry.value("pubkey_x25519", "(not yet received)"sv)
+                   << " (X25519)\n";
+        }
+
+        if (conf.HAVE_STORAGE_AND_LOKINET) {
+            //
+            // NOTE: Storage Server Test
+            //
+            auto print_reachable = [&stream, &now](const json& j, const std::string& prefix) {
+                auto first_unreachable = j.value<time_t>(prefix + "_first_unreachable", 0),
+                     last_unreachable = j.value<time_t>(prefix + "_last_unreachable", 0),
+                     last_reachable = j.value<time_t>(prefix + "_last_reachable", 0);
+
+                if (first_unreachable == 0) {
+                    if (last_reachable == 0)
+                        stream << "Not yet tested";
+                    else {
+                        stream << "Yes (last tested " << get_human_time_ago(last_reachable, now);
+                        if (last_unreachable)
+                            stream << "; last failure "
+                                   << get_human_time_ago(last_unreachable, now);
+                        stream << ")";
+                    }
+                } else {
+                    stream << "NO";
+                    if (!j.value(prefix + "_reachable", false))
+                        stream << " - FAILING!";
+                    stream << " (last tested " << get_human_time_ago(last_unreachable, now)
+                           << "; failing since " << get_human_time_ago(first_unreachable, now);
+                    if (last_reachable)
+                        stream << "; last good " << get_human_time_ago(last_reachable, now);
+                    stream << ")";
+                }
+                stream << '\n';
+            };
+            stream << indent2 << "Storage Server Reachable: ";
+            print_reachable(entry, "storage_server");
+            stream << indent2 << "Lokinet Reachable: ";
+            print_reachable(entry, "lokinet");
+
+            //
+            // NOTE: Component Versions
+            //
+            auto show_component_version = [](const json& j, std::string_view name) {
+                if (!j.is_array() || j.front().get<int>() == 0)
+                    return "("s + std::string{name} + " ping not yet received)"s;
+                return tools::join(".", j.get<std::array<int, 3>>());
+            };
+            stream << indent2 << "Storage Server / Lokinet Router versions: "
+                   << show_component_version(entry["storage_server_version"], "Storage Server")
+                   << " / " << show_component_version(entry["storage_server_version"], "Lokinet")
+                   << "\n";
+        }
+
+        //
+        // NOTE: Print Voting History
+        //
+        stream << indent2 << "Checkpoints votes: ";
+        print_votes<uint64_t>(
+                stream, entry, "checkpoint_votes", [](uint64_t height) { return height; });
+
+        stream << '\n' << indent2 << "Pulse blocks: ";
+        print_votes<std::pair<uint64_t, uint8_t>>(
+                stream, entry, "pulse_votes", [](const auto& val) {
+                    if (val.second)
+                        return "{} {}"_format(val.first, val.second);
+                    return "{}"_format(val.first);
+                });
+
+        auto print_pass_fail = [&stream, &entry](const std::string& key) {
+            std::pair<int, int> val;
+            auto& [success, fail] = val;
+            if (auto it = entry.find(key); it != entry.end())
+                it->get_to(val);
+
+            if (!success && !fail)
+                stream << "(Awaiting test data)";
+            else {
+                stream << success << " passes, ";
+                if (fail)
+                    stream << fail << " FAILURES";
+                else
+                    stream << "no failures";
+            }
+        };
+
+        stream << '\n' << indent2 << "Quorumnet tests: ";
+        print_pass_fail("quorumnet_tests");
+
+        stream << '\n' << indent2 << "Timesync tests: ";
+        print_pass_fail("timesync_tests");
+        stream << '\n';
+    }
+
+    if (detailed_view)  // Print contributors
+    {
+        auto n_contributors = entry["contributors"].size();
+        stream << indent2 << "Contributors (" << n_contributors << "):\n";
+        for (auto& contributor : entry["contributors"]) {
+            auto addr = contributor["address"].get<std::string_view>();
+            // FIXME: case-format an ETH address instead of going all lower-case?
+            stream << indent3 << (addr.size() == 40 ? "0x" : "") << addr;
+            auto amount = contributor["amount"].get<uint64_t>();
+            auto reserved = contributor.value("reserved", amount);
+            stream << " (" << cryptonote::print_money(amount, true);
+            if (reserved != amount)
+                stream << " / " << cryptonote::print_money(reserved, true);
+            if (!is_funded || n_contributors > 1) {
+                auto required = entry["staking_requirement"].get<uint64_t>();
+                stream << " = " << std::round(reserved / (double)required * 10000.) / 100. << "%";
+            }
+            stream << ")\n";
+        }
+    }
+
+    //
+    // NOTE: Overall status
+    //
+    if (entry["active"].get<bool>()) {
+        stream << indent2 << "Current Status: ACTIVE\n";
+        auto downtime = entry["earned_downtime_blocks"].get<uint64_t>();
+        stream << indent2 << "Downtime Credits: " << downtime << " blocks"
+               << " (about " << to_string_rounded(downtime / (double)conf.BLOCKS_PER_HOUR(), 2)
+               << " hours)";
+        if (uint64_t min_blocks = conf.BLOCKS_IN(service_nodes::DECOMMISSION_MINIMUM);
+            downtime < min_blocks)
+            stream << " (Note: " << min_blocks
+                   << " blocks required to enable deregistration delay)";
+    } else if (is_funded) {
+        stream << indent2 << "Current Status: DECOMMISSIONED";
+        auto reason_all = entry.value<uint16_t>("last_decommission_reason_consensus_all", 0);
+        auto reason_any = entry.value<uint16_t>("last_decommission_reason_consensus_any", 0);
+        if (reason_any)
+            stream << " - ";
+        if (auto reasons = cryptonote::readable_reasons(reason_all); !reasons.empty())
+            stream << tools::join(", ", reasons);
+        // Add any "any" reasons that aren't in all with a (some) qualifier
+        if (auto reasons = cryptonote::readable_reasons(reason_any & ~reason_all);
+            !reasons.empty()) {
+            for (auto& r : reasons)
+                r += "(some)";
+            stream << (reason_all ? ", " : "") << tools::join(", ", reasons);
+        }
+        stream << "\n";
+        stream << indent2 << "Remaining Decommission Time Until DEREGISTRATION: "
+               << entry["earned_downtime_blocks"].get<uint64_t>() << " blocks";
+    } else {
+        stream << indent2 << "Current Status: awaiting contributions\n";
     }
     stream << "\n";
-    stream << indent2 << "Remaining Decommission Time Until DEREGISTRATION: " << entry.earned_downtime_blocks << " blocks";
-  } else {
-      stream << indent2 << "Current Status: awaiting contributions\n";
-  }
-  stream << "\n";
 
-  buffer.append(stream.str());
+    buffer.append(stream.str());
 }
 
-bool rpc_command_executor::print_sn(const std::vector<std::string> &args)
-{
-    GET_SERVICE_NODES::request req{};
-    GET_SERVICE_NODES::response res{};
+bool rpc_command_executor::print_sn(const std::vector<std::string>& args, bool self) {
+    std::vector<std::string> pubkeys;
 
     bool detailed_view = false;
-    for (auto& arg : args)
-    {
-      if (arg == "+json")
-        req.include_json = true;
-      else if (arg == "+detail")
-        detailed_view = true;
-      else
-        req.service_node_pubkeys.push_back(arg);
+    for (auto& arg : args) {
+        if (arg == "+json")
+            tools::fail_msg_writer("+json is no longer supported");
+        else if (arg == "+detail")
+            detailed_view = true;
+        else if (self) {
+            tools::fail_msg_writer("print_sn_status takes no pubkey arguments");
+            return false;
+        } else
+            pubkeys.push_back(arg);
     }
 
-    GET_INFO::response get_info_res{};
+    auto maybe_info =
+            try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
+    if (!maybe_info)
+        return false;
+    auto& info = *maybe_info;
 
-    if (!invoke<GET_INFO>({}, get_info_res, "Failed to retrieve node info") ||
-        !invoke<GET_SERVICE_NODES>(std::move(req), res, "Failed to retrieve service node data"))
-      return false;
+    auto nettype = cryptonote::network_type_from_string(info.value("nettype", ""));
+    uint64_t curr_height = info["height"].get<uint64_t>();
 
-    cryptonote::network_type nettype =
-      get_info_res.mainnet ? cryptonote::network_type::MAINNET :
-      get_info_res.devnet  ? cryptonote::network_type::DEVNET  :
-      get_info_res.testnet ? cryptonote::network_type::TESTNET :
-      cryptonote::network_type::UNDEFINED;
-    uint64_t curr_height = get_info_res.height;
+    std::vector<json> awaiting;
+    std::vector<json> registered;
 
-    std::vector<const GET_SERVICE_NODES::response::entry*> unregistered;
-    std::vector<const GET_SERVICE_NODES::response::entry*> registered;
-    registered.reserve(res.service_node_states.size());
+    std::string my_sn_pk;
+    if (!self) {
+        auto maybe_sns = try_running(
+                [&] {
+                    return invoke<GET_SERVICE_NODES>(json{{"service_node_pubkeys", pubkeys}});
+                },
+                "Failed to retrieve service node data");
+        if (!maybe_sns)
+            return false;
 
-    for (auto &entry : res.service_node_states)
-    {
-      if (entry.total_contributed == entry.staking_requirement)
-        registered.push_back(&entry);
-      else
-        unregistered.push_back(&entry);
+        for (auto& entry : (*maybe_sns)["service_node_states"]) {
+            if (entry["total_contributed"].get<uint64_t>() ==
+                entry["staking_requirement"].get<uint64_t>())
+                registered.push_back(std::move(entry));
+            else
+                awaiting.push_back(std::move(entry));
+        }
+    } else {
+        auto maybe_sn = try_running(
+                [&] { return invoke<GET_SERVICE_NODE_STATUS>(); },
+                "Failed to retrieve service node status");
+        if (!maybe_sn)
+            return false;
+        auto& sn = (*maybe_sn)["service_node_state"];
+        my_sn_pk = sn["service_node_pubkey"];
+        if (sn.find("registration_height") != sn.end()) {
+            if (sn["total_contributed"].get<uint64_t>() ==
+                sn["staking_requirement"].get<uint64_t>())
+                registered.push_back(std::move(sn));
+            else
+                awaiting.push_back(std::move(sn));
+        }
     }
 
-    std::sort(unregistered.begin(), unregistered.end(), [](auto *a, auto *b) {
-        uint64_t a_remaining = a->staking_requirement - a->total_reserved;
-        uint64_t b_remaining = b->staking_requirement - b->total_reserved;
+    if (awaiting.size() == 0 && registered.size() == 0) {
+        if (pubkeys.size() > 0)
+            tools::msg_writer(
+                    "No service node is currently known on the network: {}",
+                    fmt::join(pubkeys, ", "));
+        else if (self)
+            tools::msg_writer(
+                    "Service node {} is not currently registered on the network", my_sn_pk);
+        else
+            tools::msg_writer("No service nodes are currently known on the network");
+
+        return true;
+    }
+
+    std::sort(awaiting.begin(), awaiting.end(), [](const json& a, const json& b) {
+        auto a_res = a.find("total_reserved");
+        auto b_res = b.find("total_reserved");
+        uint64_t total_a = (a_res == a.end() ? a["total_contributed"] : *a_res).get<uint64_t>();
+        uint64_t total_b = (b_res == b.end() ? b["total_contributed"] : *b_res).get<uint64_t>();
+        uint64_t a_remaining = a["staking_requirement"].get<uint64_t>() - total_a;
+        uint64_t b_remaining = b["staking_requirement"].get<uint64_t>() - total_b;
 
         if (b_remaining == a_remaining)
-          return b->portions_for_operator < a->portions_for_operator;
+            return b["portions_for_operator"].get<uint64_t>() <
+                   a["portions_for_operator"].get<uint64_t>();
 
         return b_remaining < a_remaining;
     });
 
-    std::sort(registered.begin(), registered.end(), [](auto *a, auto *b) {
-        return std::make_tuple(a->last_reward_block_height, a->last_reward_transaction_index, a->service_node_pubkey)
-             < std::make_tuple(b->last_reward_block_height, b->last_reward_transaction_index, b->service_node_pubkey);
+    std::sort(registered.begin(), registered.end(), [](const json& a, const json& b) {
+        return std::make_tuple(
+                       a["last_reward_block_height"].get<uint64_t>(),
+                       a["last_reward_transaction_index"].get<uint64_t>(),
+                       a["service_node_pubkey"].get<std::string_view>()) <
+               std::make_tuple(
+                       b["last_reward_block_height"].get<uint64_t>(),
+                       b["last_reward_transaction_index"].get<uint64_t>(),
+                       b["service_node_pubkey"].get<std::string_view>());
     });
 
-    if (req.include_json)
-    {
-      std::cout << res.as_json << std::endl;
-      return true;
-    }
-
-    if (unregistered.size() == 0 && registered.size() == 0)
-    {
-      if (req.service_node_pubkeys.size() > 0)
-      {
-        int str_size = 0;
-        for (const std::string &arg : req.service_node_pubkeys) str_size += (arg.size() + 2);
-
-        std::string buffer;
-        buffer.reserve(str_size);
-        for (size_t i = 0; i < req.service_node_pubkeys.size(); ++i)
-        {
-          buffer.append(req.service_node_pubkeys[i]);
-          if (i < req.service_node_pubkeys.size() - 1) buffer.append(", ");
-        }
-
-        tools::msg_writer() << "No service node is currently known on the network: " << buffer;
-      }
-      else
-      {
-        tools::msg_writer() << "No service node is currently known on the network";
-      }
-
-      return true;
-    }
-
-    std::string unregistered_print_data;
+    std::string awaiting_print_data;
     std::string registered_print_data;
-    for (size_t i = 0; i < unregistered.size(); i++)
-    {
-      if (i) unregistered_print_data.append("\n");
-      append_printable_service_node_list_entry(nettype, detailed_view, curr_height, i, *unregistered[i], unregistered_print_data);
+    for (size_t i = 0; i < awaiting.size(); i++) {
+        if (i > 0)
+            awaiting_print_data += '\n';
+        append_printable_service_node_list_entry(
+                nettype, detailed_view, curr_height, i, awaiting[i], awaiting_print_data);
     }
 
-    for (size_t i = 0; i < registered.size(); i++)
-    {
-      if (i) registered_print_data.append("\n");
-      append_printable_service_node_list_entry(nettype, detailed_view, curr_height, i, *registered[i], registered_print_data);
+    for (size_t i = 0; i < registered.size(); i++) {
+        if (i > 0)
+            registered_print_data += '\n';
+        append_printable_service_node_list_entry(
+                nettype, detailed_view, curr_height, i, registered[i], registered_print_data);
     }
 
-    if (unregistered.size() > 0)
-      tools::msg_writer() << "Service Node Unregistered State [" << unregistered.size() << "]\n" << unregistered_print_data;
+    if (awaiting.size() > 0)
+        tools::msg_writer(
+                "Service Node Awaiting State [{}]\n{}", awaiting.size(), awaiting_print_data);
 
     if (registered.size() > 0)
-      tools::msg_writer() << "Service Node Registration State [" << registered.size() << "]\n"   << registered_print_data;
+        tools::msg_writer(
+                "Service Node Registration State [{}]\n{}",
+                registered.size(),
+                registered_print_data);
 
     return true;
 }
 
-bool rpc_command_executor::flush_cache(bool bad_txs, bool bad_blocks)
-{
-  FLUSH_CACHE::response res{};
-  FLUSH_CACHE::request req{};
-  req.bad_txs    = bad_txs;
-  req.bad_blocks = bad_blocks;
-  if (!invoke<FLUSH_CACHE>(std::move(req), res, "Failed to flush TX cache"))
-      return false;
-  return true;
+bool rpc_command_executor::flush_cache(bool bad_txs, bool bad_blocks) {
+    try {
+        invoke<FLUSH_CACHE>(json{{"bad_txs", bad_txs}, {"bad_blocks", bad_blocks}});
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer("Failed to flush cache: {}", e.what());
+        return false;
+    }
+
+    tools::success_msg_writer("Cache flushed successfully");
+    return true;
 }
 
-bool rpc_command_executor::print_sn_status(std::vector<std::string> args)
-{
-  if (args.size() > 1)
-  {
-    tools::fail_msg_writer() << "Unexpected arguments";
-    return false;
-  }
+bool rpc_command_executor::claim_rewards(std::string_view address) {
+    if (address.starts_with("0x"))
+        address.remove_prefix(2);
+    auto maybe_withdrawal_response = try_running(
+            [this, address] {
+                return invoke<BLS_REWARDS_REQUEST>(json{{"address", address}});
+            },
+            "Failed to get withdrawal rewards");
+    if (!maybe_withdrawal_response)
+        return false;
+    auto& withdrawal_response = *maybe_withdrawal_response;
 
-  GET_SERVICE_KEYS::response res{};
-  if (!invoke<GET_SERVICE_KEYS>({}, res, "Failed to retrieve service node keys"))
-    return false;
-
-  args.push_back(std::move(res.service_node_pubkey));
-
-  return print_sn(args);
+    tools::msg_writer(
+            "Address: {}\nAmount: {}\nHeight: {}\nSignature: {}\n",
+            withdrawal_response["address"].get<std::string_view>(),
+            withdrawal_response["amount"].get<uint64_t>(),
+            withdrawal_response["height"].get<uint64_t>(),
+            withdrawal_response["signature"].get<std::string_view>());
+    return true;
 }
 
-bool rpc_command_executor::print_sr(uint64_t height)
-{
-  GET_STAKING_REQUIREMENT::response res{};
-  if (!invoke<GET_STAKING_REQUIREMENT>({height}, res, "Failed to retrieve staking requirements"))
-    return false;
-
-  tools::success_msg_writer() << "Staking Requirement: " << cryptonote::print_money(res.staking_requirement);
-  return true;
+bool rpc_command_executor::print_sn_status(std::vector<std::string> args) {
+    return print_sn(std::move(args), true);
 }
 
-bool rpc_command_executor::pop_blocks(uint64_t num_blocks)
-{
-  POP_BLOCKS::response res{};
-  if (!invoke<POP_BLOCKS>({num_blocks}, res, "Popping blocks failed"))
-    return false;
+bool rpc_command_executor::print_sr(uint64_t height) {
+    auto maybe_staking_requirement = try_running(
+            [this, height] {
+                return invoke<GET_STAKING_REQUIREMENT>(json{{"height", height}});
+            },
+            "Failed to retrieve staking requirements");
+    if (!maybe_staking_requirement)
+        return false;
+    auto& staking_requirement = *maybe_staking_requirement;
 
-  tools::success_msg_writer() << "new height: " << res.height;
-  return true;
+    tools::success_msg_writer(
+            "Staking Requirement: {}",
+            cryptonote::print_money(staking_requirement["staking_requirement"]));
+    return true;
 }
 
-bool rpc_command_executor::print_sn_key()
-{
-  GET_SERVICE_KEYS::response res{};
+bool rpc_command_executor::pop_blocks(uint64_t num_blocks) {
+    auto maybe_pop_blocks = try_running(
+            [this, num_blocks] {
+                return invoke<POP_BLOCKS>(json{{"nblocks", num_blocks}});
+            },
+            "Failed to pop blocks");
+    if (!maybe_pop_blocks)
+        return false;
+    auto& pop_blocks = *maybe_pop_blocks;
 
-  if (!invoke<GET_SERVICE_KEYS>({}, res, "Failed to retrieve service node keys"))
-    return false;
+    tools::success_msg_writer("new height: {}", pop_blocks["height"].get<int64_t>());
+    return true;
+}
 
-  tools::success_msg_writer()
-    <<   "Service Node Public Key: " << res.service_node_pubkey
-    << "\n     Ed25519 Public Key: " << res.service_node_ed25519_pubkey
-    << "\n      X25519 Public Key: " << res.service_node_x25519_pubkey;
-  return true;
+bool rpc_command_executor::print_sn_key() {
+
+    auto maybe_service_keys = try_running(
+            [this] { return invoke<GET_SERVICE_KEYS>(json{}); },
+            "Failed to retrieve service node keys");
+    if (!maybe_service_keys)
+        return false;
+
+    auto my_sn_keys = *maybe_service_keys;
+
+    std::string_view snpk = my_sn_keys.value("service_node_pubkey", ""sv);
+    std::string_view edpk = my_sn_keys["service_node_ed25519_pubkey"].get<std::string_view>();
+    std::string maybe_sn_pubkey, maybe_bls;
+    if (!snpk.empty() && snpk != edpk)
+        maybe_sn_pubkey = " Legacy Public Key: {}\n"_format(snpk);
+    if (std::string_view blspk = my_sn_keys.value("service_node_bls_pubkey", ""sv); !blspk.empty())
+        maybe_bls = "    BLS Public Key: {}\n"_format(blspk);
+
+    tools::success_msg_writer(
+            "{}"
+            "Ed25519 Public Key: {}\n"
+            " X25519 Public Key: {}\n"
+            "{}"
+            "{}",
+            maybe_sn_pubkey,
+            edpk,
+            my_sn_keys["service_node_x25519_pubkey"].get<std::string_view>(),
+            maybe_bls,
+            my_sn_keys.value("is_service_node", false) ? ""
+                                                       : "Note: this oxend is NOT configured as a "
+                                                         "service node");
+
+    return true;
 }
 
 namespace {
 
-// Returns an error message on invalid, nullopt if good
-std::optional<std::string_view> is_invalid_staking_address(
-    std::string_view addr,
-    const cryptonote::network_type nettype) {
-  cryptonote::address_parse_info info;
-  bool valid = get_account_address_from_str(info, nettype, addr);
-  if (!valid)
-    return "Invalid OXEN address"sv;
-  if (info.is_subaddress)
-    return "Staking from subaddresses is not supported"sv;
-  if (info.has_payment_id)
-    return "Staking with a payment id/integrated address is not supported"sv;
-  return std::nullopt;
-}
-
-bool check_service_node_running(const GET_INFO::response& info, bool force_registration) {
-
-  if (!info.service_node.value_or(false))
-  {
-    tools::fail_msg_writer() << "Unable to prepare registration: this daemon is not running in --service-node mode";
-    return false;
-  }
-  if (!info.devnet) // Devnet doesn't run storage-server / lokinet
-  {
-    auto now = std::chrono::system_clock::now();
-    if (auto last_lokinet_ping = std::chrono::system_clock::from_time_t(info.last_lokinet_ping.value_or(0));
-        last_lokinet_ping < now - 1min && !force_registration)
-    {
-      tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from lokinet "
-        << (info.last_lokinet_ping == 0 ? "yet" : "since " + get_human_time_ago(now - last_lokinet_ping));
-      return false;
+    // Returns an error message on invalid, nullopt if good
+    std::optional<std::string_view> is_invalid_staking_address(
+            std::string_view addr, const cryptonote::network_type nettype) {
+        cryptonote::address_parse_info info;
+        bool valid = get_account_address_from_str(info, nettype, addr);
+        if (!valid)
+            return "Invalid OXEN address"sv;
+        if (info.is_subaddress)
+            return "Staking from subaddresses is not supported"sv;
+        if (info.has_payment_id)
+            return "Staking with a payment id/integrated address is not supported"sv;
+        return std::nullopt;
     }
-    if (auto last_storage_server_ping = std::chrono::system_clock::from_time_t(info.last_storage_server_ping.value_or(0));
-        last_storage_server_ping < now - 1min && !force_registration)
-    {
-      tools::fail_msg_writer() << "Unable to prepare registration: this daemon has not received a ping from the storage server "
-        << (info.last_storage_server_ping == 0 ? "yet" : "since " + get_human_time_ago(now - last_storage_server_ping));
-      return false;
+
+    std::string highlight_money(uint64_t amount) {
+        return "\x1b[36;1m{}\x1b[0m"_format(cryptonote::format_money(amount));
+    };
+
+    bool check_if_node_is_reasonably_synced(rpc_command_executor* rpc, const nlohmann::json& info) {
+        uint64_t block_height =
+                std::max(info["height"].get<uint64_t>(), info["target_height"].get<uint64_t>());
+
+        // Query the latest block we've synced and check that the timestamp is sensible, issue a
+        // warning if not
+        {
+            auto const& maybe_header = try_running(
+                    [rpc] { return rpc->invoke<GET_LAST_BLOCK_HEADER>().at("block_header"); },
+                    "Node is syncing, please wait until all blocks are synced");
+            if (!maybe_header)
+                return false;
+
+            auto const& header = *maybe_header;
+
+            const auto now = std::chrono::system_clock::now();
+            const auto block_ts =
+                    std::chrono::system_clock::from_time_t(header["timestamp"].get<uint64_t>());
+
+            if (now - block_ts >= 10min) {
+                tools::fail_msg_writer(
+                        "The last block this Service Node knows about was at least {}\n"
+                        "Your node is possibly desynced from the network or still syncing to the "
+                        "network.\n\n"
+                        "Registering this node may result in a deregistration due to being out of "
+                        "date "
+                        "with the network\n",
+                        get_human_time_ago(now - block_ts));
+            }
+
+            if (auto synced_height = header["height"].get<uint64_t>();
+                block_height >= synced_height) {
+                uint64_t delta = block_height - synced_height;
+                if (delta > 5) {
+                    tools::fail_msg_writer(
+                            "The last block this Service Node synced is {} blocks away from the "
+                            "longest chain we know about.\n\n"
+                            "Registering this node may result in a deregistration due to being out "
+                            "of "
+                            "date with the network\n",
+                            delta);
+                }
+            }
+        }
+
+        return true;
     }
-  }
-  return true;
-}
 
-bool check_blockchain_synced(rpc_command_executor& e, uint64_t block_height) {
-  GET_LAST_BLOCK_HEADER::response res{};
+}  // namespace
 
-  if (!e.invoke<GET_LAST_BLOCK_HEADER>({}, res, "Get latest block failed, unable to check sync status"))
-    return false;
+bool rpc_command_executor::prepare_registration(bool force_registration) {
+    auto maybe_info =
+            try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
+    if (!maybe_info)
+        return false;
+    auto& info = *maybe_info;
 
-  const auto& header = res.block_header;
-  const auto now = std::chrono::system_clock::now();
-  const auto block_ts = std::chrono::system_clock::from_time_t(header.timestamp);
-
-  if (now - block_ts >= 10min)
-    tools::fail_msg_writer() << "The last block this Service Node knows about was about " << get_human_time_ago(now - block_ts)
-                             << "\nYour node is possibly desynced from the network or still syncing to the network."
-                             << "\n\nRegistering this node may result in a deregistration due to being out of sync with the network\n";
-
-  if (block_height >= header.height + 5)
-    tools::fail_msg_writer() << "The last block this Service Node synced is " << block_height - header.height << " blocks away from the longest chain we know about."
-                               << "\n\nRegistering this node may result in a deregistration due to being out of sync with the network\n";
-
-  return true;
-}
-
-// RAII-style class to temporarily clear categories and restore upon destruction (i.e. upon returning).
-struct clear_log_categories {
-  std::string categories;
-  clear_log_categories() { categories = mlog_get_categories(); mlog_set_categories(""); }
-  ~clear_log_categories() { mlog_set_categories(categories.c_str()); }
-};
-
-std::string highlight_money(uint64_t amount) {
-  return fmt::format("\x1b[36;1m{}\x1b[0m", cryptonote::format_money(amount));
-};
-
-}  // anon. namespace
-
-bool rpc_command_executor::prepare_registration(bool force_registration)
-{
-
-  HARD_FORK_INFO::response hf_res{};
-  if (!invoke<HARD_FORK_INFO>({}, hf_res, "Failed to retrieve hard fork info"))
-    return false;
-
-  auto hf_version = hf_res.version;
-  if (hf_version < hf::hf19_reward_batching) {
-    tools::fail_msg_writer() << "Error: this command only supports HF19+";
-    return false;
-  }
-
-  auto scoped_log_cats = std::make_unique<clear_log_categories>();
-
-  // Check if the daemon was started in Service Node or not
-  GET_INFO::response res{};
-  GET_SERVICE_KEYS::response kres{};
-  if (!invoke<GET_INFO>({}, res, "Failed to get node info") ||
-      !invoke<GET_SERVICE_KEYS>({}, kres, "Failed to retrieve service node keys"))
-    return false;
-
-  cryptonote::network_type const nettype =
-    res.mainnet ? cryptonote::network_type::MAINNET :
-    res.devnet  ? cryptonote::network_type::DEVNET :
-    res.testnet ? cryptonote::network_type::TESTNET :
-    res.nettype == "fakechain" ? cryptonote::network_type::FAKECHAIN :
-    cryptonote::network_type::UNDEFINED;
-
-  if (!check_service_node_running(res, force_registration))
-    return false;
-
-  uint64_t block_height = std::max(res.height, res.target_height);
-
-  // Query the latest block we've synced and check that the timestamp is sensible, issue a warning if not
-  if (!check_blockchain_synced(*this, block_height))
-    return false;
-
-  const uint64_t staking_requirement = service_nodes::get_staking_requirement(nettype, hf_version);
-
-  fmt::print("\n\n\x1b[33;1m"
-      "Oxen Service Node Registration\n"
-      "------------------------------\n"
-      "Service Node Pubkey: \x1b[32;1m{}\x1b[33;1m\n"
-      "Staking requirement: {} from up to {} contributors\n\n",
-      kres.service_node_pubkey,
-      highlight_money(staking_requirement),
-      oxen::MAX_CONTRIBUTORS_HF19);
-
-  enum struct register_step
-  {
-    ask_address,
-    ask_amount,
-    get_operator_fee,
-    summary_info,
-    final_summary,
-    cancelled_by_user,
-  };
-
-  struct prepare_registration_state
-  {
-    register_step prev_step = register_step::ask_address;
-    uint16_t operator_fee = cryptonote::STAKING_FEE_BASIS;
-    uint64_t total_reserved_contributions = 0;
-    std::vector<std::pair<std::string, uint64_t>> contributions;
-  };
-
-  prepare_registration_state state{};
-  std::stack<prepare_registration_state> state_stack;
-  state_stack.push(state);
-
-
-  bool finished = false;
-  bool go_back = false;
-  auto step = register_step::ask_address;
-
-  auto next_step = [&](register_step next)
-  {
-    state.prev_step = step;
-    step = next;
-    state_stack.push(state);
-    std::cout << std::endl;
-  };
-  auto check_cancel_back = [&](input_line_result result) -> bool {
-    switch (result) {
-      case input_line_result::cancel:
-        step = register_step::cancelled_by_user;
-        return true;
-      case input_line_result::back:
-        go_back = true;
-        return true;
-      default:
+    // Check if the daemon was started in Service Node or not
+    if (!info.value("service_node", false)) {
+        tools::fail_msg_writer(
+                "Unable to prepare registration: this daemon is not running in --service-node "
+                "mode");
         return false;
     }
-  };
 
-  while (!finished)
-  {
-    if (go_back)
-    {
-      step = state.prev_step;
-      state_stack.pop();
-      state = state_stack.top();
-      go_back = false;
-      std::cout << std::endl;
+    auto maybe_hf = try_running(
+            [this] { return invoke<HARD_FORK_INFO>(); }, "Failed to retrieve hard fork info");
+    if (!maybe_hf)
+        return false;
+    auto& hfinfo = *maybe_hf;
+    auto hf_version = hfinfo["version"].get<cryptonote::hf>();
+    if (hf_version < hf::hf19_reward_batching) {
+        tools::fail_msg_writer("Error: this command only supports HF19");
+        return false;
+    } else if (hf_version == cryptonote::feature::ETH_TRANSITION) {
+        tools::fail_msg_writer(
+                "Error: New SN registrations are disabled during OXEN->SENT transition");
+        return false;
+    } else if (hf_version >= cryptonote::feature::ETH_BLS) {
+        tools::fail_msg_writer(
+                "Error: New SN registrations must be initiated via the Session token; did you "
+                "mean to use the 'register' command instead?");
+        return false;
     }
 
-    switch(step)
+    auto maybe_keys = try_running(
+            [this] { return invoke<GET_SERVICE_KEYS>(); }, "Failed to retrieve service node keys");
+    if (!maybe_keys)
+        return false;
+    auto& snode_keys = *maybe_keys;
+
+    auto nettype = cryptonote::network_type_from_string(info["nettype"].get<std::string_view>());
+    auto& netconf = get_config(nettype);
+
+    if (!netconf.HAVE_STORAGE_AND_LOKINET)  // Devnet/stagenet don't run storage-server / lokinet
     {
-      case register_step::ask_address:
-      {
-        bool is_operator = state.contributions.empty();
-        std::string prompt;
-        if (is_operator)
-          prompt = "\n\nEnter the OXEN address of the the Service Node operator\n";
-        else
-          prompt = fmt::format("\n\nThis service node requires an additional stake of {}.\n\n"
-            "To add a reserved contribution spot enter the contributor's OXEN address now.\n"
-            "Leave this blank to leave the remaining stake open to public contributors.\n",
-            highlight_money(staking_requirement - state.total_reserved_contributions));
-        auto [result, address_str] = input_line_value(prompt, /*back=*/ !is_operator);
-
-        if (check_cancel_back(result))
-          break;
-
-        if (!is_operator && address_str.empty())
-          next_step(register_step::get_operator_fee);
-        else if (auto bad = is_invalid_staking_address(address_str, nettype))
-          tools::fail_msg_writer() << *bad << std::endl;
-        else if (std::any_of(state.contributions.begin(), state.contributions.end(), [a=address_str](auto& b) { return b.first == a; }))
-          tools::fail_msg_writer() << "Invalid OXEN address: you cannot provide the same address twice" << std::endl;
-        else
-        {
-          state.contributions.emplace_back(std::move(address_str), 0);
-          next_step(register_step::ask_amount);
+        auto now = std::chrono::system_clock::now();
+        auto last_lokinet_ping_timet = info.value<std::time_t>("last_lokinet_ping", 0);
+        if (auto last_lokinet_ping =
+                    std::chrono::system_clock::from_time_t(last_lokinet_ping_timet);
+            last_lokinet_ping < now - 1min && !force_registration) {
+            tools::fail_msg_writer(
+                    "Unable to prepare registration: this daemon has not received a ping from "
+                    "lokinet {}",
+                    last_lokinet_ping_timet == 0
+                            ? "yet"
+                            : "since " + get_human_time_ago(now - last_lokinet_ping));
+            return false;
         }
-        break;
-      }
-
-      case register_step::ask_amount:
-      {
-        bool is_operator = state.total_reserved_contributions == 0;
-        uint64_t amount_left = staking_requirement - state.total_reserved_contributions;
-        uint64_t min_contribution = is_operator
-          ? (nettype == cryptonote::network_type::MAINNET
-              ? oxen::MINIMUM_OPERATOR_CONTRIBUTION : oxen::MINIMUM_OPERATOR_CONTRIBUTION_TESTNET)
-          : service_nodes::get_min_node_contribution(hf_version, staking_requirement, state.total_reserved_contributions,
-              state.contributions.size() - 1 /* -1 because we already added this address to the list */);
-
-        auto [result, contribution_str] = input_line_value(fmt::format(
-            "\n\nThe {} must stake between {} and {}.\n\n"
-            "How much OXEN does {} want to stake?",
-            is_operator ? "operator" : "next contributor",
-            highlight_money(min_contribution),
-            highlight_money(amount_left),
-            is_operator ? "the operator" : fmt::format("contributor {}", state.contributions.size() - 1)),
-            true,
-            "/\x1b[36;1mmax\x1b[0m/\x1b[36;1mmin\x1b[0m",
-            "max"
-            );
-
-        if (check_cancel_back(result))
-          break;
-
-        uint64_t contribution;
-        if (contribution_str == "max")
-        {
-          fmt::print("Using maximum contribution ({})\n", highlight_money(amount_left));
-          contribution = amount_left;
+        auto last_ss_ping_timet = info.value<std::time_t>("last_storage_server_ping", 0);
+        if (auto last_storage_server_ping =
+                    std::chrono::system_clock::from_time_t(last_ss_ping_timet);
+            last_storage_server_ping < now - 1min && !force_registration) {
+            tools::fail_msg_writer(
+                    "Unable to prepare registration: this daemon has not received a ping from the "
+                    "storage server {}",
+                    last_ss_ping_timet == 0
+                            ? "yet"
+                            : "since " + get_human_time_ago(now - last_storage_server_ping));
+            return false;
         }
-        else if (contribution_str == "min")
-        {
-          fmt::print("Using minimum contribution ({})\n", highlight_money(min_contribution));
-          contribution = min_contribution;
+    }
+
+    if (!check_if_node_is_reasonably_synced(this, info))
+        return false;
+
+    const uint64_t staking_requirement =
+            service_nodes::get_default_staking_requirement(nettype, hf_version);
+
+    fmt::print(
+            "\n\n\x1b[33;1m"
+            "Oxen Service Node Registration\n"
+            "------------------------------\n"
+            "Service Node Pubkey: \x1b[32;1m{}\x1b[33;1m\n"
+            "Staking requirement: {} from up to {} contributors\n\n",
+            snode_keys.value<std::string>("service_node_pubkey", ""),
+            highlight_money(staking_requirement),
+            oxen::MAX_CONTRIBUTORS_HF19);
+
+    enum struct register_step {
+        ask_address,
+        ask_amount,
+        get_operator_fee,
+        summary_info,
+        final_summary,
+        cancelled_by_user,
+    };
+
+    struct prepare_registration_state {
+        register_step prev_step = register_step::ask_address;
+        uint16_t operator_fee = cryptonote::STAKING_FEE_BASIS;
+        uint64_t total_reserved_contributions = 0;
+        std::vector<std::pair<std::string, uint64_t>> contributions;
+    };
+
+    prepare_registration_state state{};
+    std::stack<prepare_registration_state> state_stack;
+    state_stack.push(state);
+
+    bool finished = false;
+    bool go_back = false;
+    auto step = register_step::ask_address;
+
+    auto next_step = [&](register_step next) {
+        state.prev_step = step;
+        step = next;
+        state_stack.push(state);
+        std::cout << std::endl;
+    };
+    auto check_cancel_back = [&](input_line_result result) -> bool {
+        switch (result) {
+            case input_line_result::cancel: step = register_step::cancelled_by_user; return true;
+            case input_line_result::back: go_back = true; return true;
+            default: return false;
         }
-        else if (auto c = cryptonote::parse_amount(contribution_str))
-          contribution = *c;
-        else
-        {
-          tools::fail_msg_writer() << "Invalid amount." << std::endl;
-          break;
+    };
+
+    while (!finished) {
+        if (go_back) {
+            step = state.prev_step;
+            state_stack.pop();
+            state = state_stack.top();
+            go_back = false;
+            std::cout << std::endl;
         }
 
-        if (contribution > amount_left)
-        {
-          tools::fail_msg_writer() << fmt::format(
-              "Invalid amount: The contribution exceeds the remaining staking requirement ({}).\n",
-              highlight_money(amount_left));
-          break;
-        }
-        else if (contribution < min_contribution)
-        {
-          tools::fail_msg_writer() << fmt::format(
-              "Invalid amount: The contribution does not meet the minimum staking requirement ({}).\n",
-              highlight_money(min_contribution));
-          break;
-        }
+        switch (step) {
+            case register_step::ask_address: {
+                bool is_operator = state.contributions.empty();
+                std::string prompt;
+                if (is_operator)
+                    prompt = "\n\nEnter the OXEN address of the the Service Node operator\n";
+                else
+                    prompt = fmt::format(
+                            "\n\nThis service node requires an additional stake of {}.\n\n"
+                            "To add a reserved contribution spot enter the contributor's OXEN "
+                            "address now.\n"
+                            "Leave this blank to leave the remaining stake open to public "
+                            "contributors.\n",
+                            highlight_money(
+                                    staking_requirement - state.total_reserved_contributions));
+                auto [result, address_str] = input_line_value(prompt, /*back=*/!is_operator);
 
-        state.contributions.back().second = contribution;
-        state.total_reserved_contributions += contribution;
+                if (check_cancel_back(result))
+                    break;
 
-        next_step(
-            state.total_reserved_contributions < staking_requirement ? register_step::ask_address :
-            register_step::get_operator_fee);
-        break;
-      }
+                if (!is_operator && address_str.empty())
+                    next_step(register_step::get_operator_fee);
+                else if (auto bad = is_invalid_staking_address(address_str, nettype))
+                    tools::fail_msg_writer("{}\n", *bad);
+                else if (std::any_of(
+                                 state.contributions.begin(),
+                                 state.contributions.end(),
+                                 [a = address_str](auto& b) { return b.first == a; }))
+                    tools::fail_msg_writer(
+                            "Invalid OXEN address: you cannot provide the same address twice\n");
+                else {
+                    state.contributions.emplace_back(std::move(address_str), 0);
+                    next_step(register_step::ask_amount);
+                }
+                break;
+            }
 
-      case register_step::get_operator_fee:
-      {
-        if (state.contributions.size() == 1 && state.total_reserved_contributions == staking_requirement)
-        {
-          // Solo node, don't need to ask the fee
-          state.operator_fee = cryptonote::STAKING_FEE_BASIS;
-          step = register_step::summary_info; // Not next_step() because we have no state to unwind
-        }
-        else
-        {
-          auto [result, operator_fee_str] = input_line_value(R"(
+            case register_step::ask_amount: {
+                bool is_operator = state.total_reserved_contributions == 0;
+                uint64_t amount_left = staking_requirement - state.total_reserved_contributions;
+                uint64_t min_contribution = is_operator ? oxen::MINIMUM_OPERATOR_CONTRIBUTION(
+                                                                  staking_requirement)
+                                                        : service_nodes::get_min_node_contribution(
+                                                                  hf_version,
+                                                                  staking_requirement,
+                                                                  state.total_reserved_contributions,
+                                                                  state.contributions.size() - 1 /* -1 because we already added this address to the list */);
+
+                auto [result, contribution_str] = input_line_value(
+                        fmt::format(
+                                "\n\nThe {} must stake between {} and {}.\n\n"
+                                "How much OXEN does {} want to stake?",
+                                is_operator ? "operator" : "next contributor",
+                                highlight_money(min_contribution),
+                                highlight_money(amount_left),
+                                is_operator
+                                        ? "the operator"
+                                        : "contributor {}"_format(state.contributions.size() - 1)),
+                        true,
+                        "/\x1b[36;1mmax\x1b[0m/\x1b[36;1mmin\x1b[0m",
+                        "max");
+
+                if (check_cancel_back(result))
+                    break;
+
+                uint64_t contribution;
+                if (contribution_str == "max") {
+                    fmt::print("Using maximum contribution ({})\n", highlight_money(amount_left));
+                    contribution = amount_left;
+                } else if (contribution_str == "min") {
+                    fmt::print(
+                            "Using minimum contribution ({})\n", highlight_money(min_contribution));
+                    contribution = min_contribution;
+                } else if (auto c = cryptonote::parse_amount(contribution_str))
+                    contribution = *c;
+                else {
+                    tools::fail_msg_writer("Invalid amount.\n");
+                    break;
+                }
+
+                if (contribution > amount_left) {
+                    tools::fail_msg_writer(
+                            "Invalid amount: The contribution exceeds the remaining staking "
+                            "requirement ({}).\n",
+                            highlight_money(amount_left));
+                    break;
+                } else if (contribution < min_contribution) {
+                    tools::fail_msg_writer(
+                            "Invalid amount: The contribution does not meet the minimum staking "
+                            "requirement ({}).\n",
+                            highlight_money(min_contribution));
+                    break;
+                }
+
+                state.contributions.back().second = contribution;
+                state.total_reserved_contributions += contribution;
+
+                next_step(
+                        state.total_reserved_contributions < staking_requirement
+                                ? register_step::ask_address
+                                : register_step::get_operator_fee);
+                break;
+            }
+
+            case register_step::get_operator_fee: {
+                if (state.contributions.size() == 1 &&
+                    state.total_reserved_contributions == staking_requirement) {
+                    // Solo node, don't need to ask the fee
+                    state.operator_fee = cryptonote::STAKING_FEE_BASIS;
+                    step = register_step::summary_info;  // Not next_step() because we have no state
+                                                         // to unwind
+                } else {
+                    auto [result, operator_fee_str] = input_line_value(R"(
 
 
 This service node has multiple contributors and thus requires an operator fee
@@ -2206,203 +2582,324 @@ the operator) proportionally to their contribution.
 
 Enter the operator fee as a percentage [0.00-100.00])");
 
-          if (check_cancel_back(result))
-            break;
+                    if (check_cancel_back(result))
+                        break;
 
-          try {
-            state.operator_fee = service_nodes::percent_to_basis_points(operator_fee_str);
-            next_step(register_step::summary_info);
-          } catch(const std::exception &e) {
-            tools::fail_msg_writer() << "Invalid value: " << operator_fee_str << ". Fee must be between 0 and 100%" << std::endl;
-          }
-        }
-        break;
-      }
+                    try {
+                        state.operator_fee =
+                                service_nodes::percent_to_basis_points(operator_fee_str);
+                        next_step(register_step::summary_info);
+                    } catch (const std::exception& e) {
+                        tools::fail_msg_writer().append(
+                                "Invalid value: {}. Fee must be between 0 and 100%",
+                                operator_fee_str);
+                    }
+                }
+                break;
+            }
 
-      case register_step::summary_info:
-      {
-        uint64_t open_spots = oxen::MAX_CONTRIBUTORS_HF19 - state.contributions.size();
-        const uint64_t amount_left = staking_requirement - state.total_reserved_contributions;
-        fmt::print("Total reserved contributions: {}\n", highlight_money(state.total_reserved_contributions));
-        if (amount_left == 0)
-        {
-          // Not calling next_step here because we have no state change to push
-          step = register_step::final_summary;
-          std::cout << std::endl;
-          break;
-        }
+            case register_step::summary_info: {
+                uint64_t open_spots = oxen::MAX_CONTRIBUTORS_HF19 - state.contributions.size();
+                const uint64_t amount_left =
+                        staking_requirement - state.total_reserved_contributions;
+                fmt::print(
+                        "Total reserved contributions: {}\n",
+                        highlight_money(state.total_reserved_contributions));
+                if (amount_left == 0) {
+                    // Not calling next_step here because we have no state change to push
+                    step = register_step::final_summary;
+                    std::cout << std::endl;
+                    break;
+                }
 
-        fmt::print(R"(
+                fmt::print(
+                        R"(
 The total reserved amount ({}) is less than the required full stake ({}).
 The remaining stake ({}) will be open to contribution from {}.
 The Service Node will not activate until the entire stake has been contributed.
 
 )",
-              highlight_money(state.total_reserved_contributions),
-              highlight_money(staking_requirement),
-              highlight_money(amount_left),
-              open_spots > 1 ? fmt::format("1-{} public contributors", open_spots) : "1 public contributor"
-        );
+                        highlight_money(state.total_reserved_contributions),
+                        highlight_money(staking_requirement),
+                        highlight_money(amount_left),
+                        open_spots > 1 ? "1-{} public contributors"_format(open_spots)
+                                       : "1 public contributor");
 
-        auto result = input_line_ask("Is this acceptable?");
-        if (result == input_line_result::no)
-          result = input_line_result::cancel;
-        if (check_cancel_back(result))
-          break;
+                auto result = input_line_ask("Is this acceptable?");
+                if (result == input_line_result::no)
+                    result = input_line_result::cancel;
+                if (check_cancel_back(result))
+                    break;
 
-        next_step(register_step::final_summary);
-        break;
-      }
+                next_step(register_step::final_summary);
+                break;
+            }
 
-      case register_step::final_summary:
-      {
-        const uint64_t amount_left = staking_requirement - state.total_reserved_contributions;
+            case register_step::final_summary: {
+                const uint64_t amount_left =
+                        staking_requirement - state.total_reserved_contributions;
 
-        std::cout << "\nRegistration Summary:\n\n";
+                std::cout << "\nRegistration Summary:\n\n";
 
-        std::cout << "Service Node Pubkey: \x1b[32;1m" << kres.service_node_pubkey << "\x1b[0m\n" << std::endl;
+                std::cout << "Service Node Pubkey: \x1b[32;1m" << snode_keys["service_node_pubkey"]
+                          << "\x1b[0m\n"
+                          << std::endl;
 
-        if (amount_left > 0 || state.contributions.size() > 1)
-          fmt::print("Operator fee (as % of Service Node rewards): \x1b[33;1m{}%\x1b[0m\n\n",
-              state.operator_fee * 100.0 / (double) cryptonote::STAKING_FEE_BASIS);
+                if (amount_left > 0 || state.contributions.size() > 1)
+                    fmt::print(
+                            "Operator fee (as % of Service Node rewards): \x1b[33;1m{}%\x1b[0m\n\n",
+                            state.operator_fee * 100.0 / (double)cryptonote::STAKING_FEE_BASIS);
 
-        constexpr auto row = "{:^14}  {:^13}  {:>17}  {:>8}\n"sv;
-        fmt::print(row, "Contributor", "Address", "Contribution", "Contr. %");
-        fmt::print(row, "_____________", "_____________", "_________________", "________");
-        fmt::print("\n");
+                constexpr auto row = "{:^14}  {:^13}  {:>17}  {:>8}\n"sv;
+                fmt::print(row, "Contributor", "Address", "Contribution", "Contr. %");
+                fmt::print(row, "_____________", "_____________", "_________________", "________");
+                fmt::print("\n");
 
-        for (size_t i = 0; i < state.contributions.size(); ++i)
-        {
-          const auto& [addr, amount] = state.contributions[i];
-          fmt::print(row,
-              (i==0) ? "Operator" : "Contributor " + std::to_string(i),
-              addr.substr(0, 9) + ".." + addr.substr(addr.size() - 2),
-              cryptonote::print_money(amount),
-              fmt::format("{:.2f}%", amount * 100.0 / (double)staking_requirement));
+                for (size_t i = 0; i < state.contributions.size(); ++i) {
+                    const auto& [addr, amount] = state.contributions[i];
+                    fmt::print(
+                            row,
+                            (i == 0) ? "Operator" : "Contributor " + std::to_string(i),
+                            addr.substr(0, 9) + ".." + addr.substr(addr.size() - 2),
+                            cryptonote::print_money(amount),
+                            "{:.2f}%"_format(amount * 100.0 / staking_requirement));
+                }
+
+                if (amount_left > 0) {
+                    size_t open_spots = oxen::MAX_CONTRIBUTORS_HF19 - state.contributions.size();
+                    for (size_t i = 0; i < open_spots; i++)
+                        fmt::print(
+                                row,
+                                "(open)",
+                                "(any)",
+                                i == 0 && open_spots == 1 ? cryptonote::print_money(amount_left)
+                                : i == 0                  ? ">=" + cryptonote::print_money(
+                                                          (amount_left + open_spots - 1) /
+                                                          open_spots)
+                                         : "",
+                                i == 0 && open_spots == 1
+                                        ? "{:.2f}%"_format(
+                                                  amount_left * 100.0 / staking_requirement)
+                                : i == 0 ? ">={:.2f}%"_format(
+                                                   amount_left * 100.0 / staking_requirement /
+                                                   open_spots)
+                                         : "");
+                }
+
+                auto result = input_line_ask("\nIs the staking information above correct?");
+                if (result == input_line_result::no)
+                    result = input_line_result::cancel;
+                if (check_cancel_back(result))
+                    break;
+
+                finished = true;
+                break;
+            }
+
+            case register_step::cancelled_by_user: {
+                tools::fail_msg_writer("Registration preparation cancelled.\n");
+                return true;
+            }
         }
-
-        if (amount_left > 0)
-        {
-          size_t open_spots = oxen::MAX_CONTRIBUTORS_HF19 - state.contributions.size();
-          for (size_t i = 0; i < open_spots; i++)
-            fmt::print(row,
-                "(open)",
-                "(any)",
-                i == 0 && open_spots == 1 ? cryptonote::print_money(amount_left) :
-                i == 0 ? ">=" + cryptonote::print_money((amount_left + open_spots - 1) / open_spots) :
-                "",
-                i == 0 && open_spots == 1 ? fmt::format("{:.2f}%", amount_left * 100.0 / staking_requirement) :
-                i == 0 ? fmt::format(">={:.2f}%", amount_left * 100.0 / staking_requirement / open_spots) :
-                "");
-        }
-
-        auto result = input_line_ask("\nIs the staking information above correct?");
-        if (result == input_line_result::no)
-          result = input_line_result::cancel;
-        if (check_cancel_back(result))
-          break;
-
-        finished = true;
-        break;
-      }
-
-      case register_step::cancelled_by_user:
-      {
-        tools::fail_msg_writer() << "Registration preparation cancelled." << std::endl;
-        return true;
-      }
     }
-  }
 
-  // <operator_fee> <address> <amount> [<address> <amount> [...]]]
-  std::vector<std::string> args;
-  args.reserve(1 + 2 * state.contributions.size());
-  args.push_back(std::to_string(state.operator_fee));
-  for (const auto& [addr, portion] : state.contributions)
-  {
-    args.push_back(addr);
-    args.push_back(std::to_string(portion));
-  }
+    // <operator_fee> <address> <amount> [<address> <amount> [...]]]
+    std::vector<std::string> args;
+    args.reserve(1 + 2 * state.contributions.size());
+    args.push_back(std::to_string(state.operator_fee));
+    for (const auto& [addr, portion] : state.contributions) {
+        args.push_back(addr);
+        args.push_back(std::to_string(portion));
+    }
 
-  scoped_log_cats.reset();
+    {
+        auto maybe_registration = try_running(
+                [this, staking_requirement, &args] {
+                    return invoke<GET_SERVICE_NODE_REGISTRATION_CMD_RAW>(
+                            json{{"staking_requirement", staking_requirement},
+                                 {"args", args},
+                                 {"make_friendly", true}});
+                },
+                "Failed to validate registration arguments; check the addresses and registration "
+                "parameters and that the Daemon is running with the '--service-node' flag");
+        if (!maybe_registration)
+            return false;
+        auto& registration = *maybe_registration;
 
-  GET_SERVICE_NODE_REGISTRATION_CMD_RAW::request req{};
-  req.args = args;
-  req.make_friendly = true;
-  req.staking_requirement = staking_requirement;
+        tools::success_msg_writer(
+                "\n\n{}\n\n", registration["registration_cmd"].get<std::string_view>());
+        return true;
+    }
 
-  if (GET_SERVICE_NODE_REGISTRATION_CMD_RAW::response res{};
-      invoke<GET_SERVICE_NODE_REGISTRATION_CMD_RAW>(std::move(req), res,
-        "Failed to validate registration arguments; check the addresses and registration parameters,\n"
-        "make sure oxend is running as a service node, and check oxend's error log for more details."))
-  {
-    std::cout << "\n\n";
-    tools::success_msg_writer() << res.registration_cmd;
-    std::cout << "\n\n";
-    return true;
-  }
-
-  return false;
+    return false;
 }
 
-bool rpc_command_executor::prune_blockchain()
-{
-#if 0
-    PRUNE_BLOCKCHAIN::response res{};
-    if (!invoke<PRUNE_BLOCKCHAIN>({false}, res, "Failed to prune blockchain"))
-      return false;
+bool rpc_command_executor::prepare_eth_registration(
+        const eth::address& op_addr, std::string_view url) {
 
-    tools::success_msg_writer() << "Blockchain pruned";
-#else
-    tools::fail_msg_writer() << "Blockchain pruning is not supported in Oxen yet";
-#endif
-    return true;
-}
-
-bool rpc_command_executor::check_blockchain_pruning()
-{
-    PRUNE_BLOCKCHAIN::response res{};
-    if (!invoke<PRUNE_BLOCKCHAIN>({true}, res, "Failed to check blockchain pruning status"))
-      return false;
-
-    tools::success_msg_writer() << "Blockchain is" << (res.pruning_seed ? "" : " not") << " pruned";
-    return true;
-}
-
-bool rpc_command_executor::set_bootstrap_daemon(
-  const std::string &address,
-  const std::string &username,
-  const std::string &password)
-{
-    SET_BOOTSTRAP_DAEMON::request req{};
-    req.address = address;
-    req.username = username;
-    req.password = password;
-
-    SET_BOOTSTRAP_DAEMON::response res{};
-    if (!invoke<SET_BOOTSTRAP_DAEMON>(std::move(req), res, "Failed to set bootstrap daemon to: " + address))
+    auto maybe_info =
+            try_running([this] { return invoke<GET_INFO>(); }, "Failed to retrieve node info");
+    if (!maybe_info)
         return false;
 
-    tools::success_msg_writer()
-      << "Successfully set bootstrap daemon address to "
-      << (!req.address.empty() ? req.address : "none");
-    return true;
-}
-
-bool rpc_command_executor::version()
-{
-    GET_INFO::response response{};
-    if (!invoke<GET_INFO>(GET_INFO::request{}, response, "Failed to query daemon info"))
+    const nlohmann::json& info = *maybe_info;
+    if (!check_if_node_is_reasonably_synced(this, info))
         return false;
-    tools::success_msg_writer() << response.version;
+
+    auto maybe_reg_info = try_running(
+            [this, addr = "{}"_format(op_addr)] {
+                return invoke<CONTRACT_REGISTRATION>(json{{"operator_address", addr}});
+            },
+            "Failed to generate the service node registration info");
+    if (!maybe_reg_info)
+        return false;
+    auto& reg_info = *maybe_reg_info;
+
+    auto snode_pubkey = reg_info["service_node_pubkey"].get<std::string>();
+    auto ed_sig = reg_info["service_node_signature"].get<std::string>();
+    auto bls_pubkey = reg_info["bls_pubkey"].get<std::string>();
+    auto bls_sig = reg_info["bls_signature"].get<std::string>();
+
+    if (url == "print") {
+        tools::msg_writer(
+                "{}\n",
+                fmt::styled("L2 Contract Registration Information:", fmt::emphasis::underline));
+        tools::msg_writer(
+                "{} {}\n"
+                "{} {} {}\n"
+                "{} {} {}\n"
+                "{} {} {} {} {}\n"
+                "{} {}\n",
+                fmt::styled("   ed25519_pubkey:", fmt::emphasis::bold),
+                fmt::styled(snode_pubkey, fmt::fg(fmt::terminal_color::bright_green)),
+                fmt::styled("       bls_pubkey:", fmt::emphasis::bold),
+                fmt::styled(bls_pubkey.substr(0, 64), fmt::fg(fmt::terminal_color::bright_blue)),
+                fmt::styled(bls_pubkey.substr(64), fmt::fg(fmt::terminal_color::blue)),
+                fmt::styled("ed25519_signature:", fmt::emphasis::bold),
+                fmt::styled(ed_sig.substr(0, 64), fmt::fg(fmt::terminal_color::bright_cyan)),
+                fmt::styled(ed_sig.substr(64), fmt::fg(fmt::terminal_color::cyan)),
+                fmt::styled("    bls_signature:", fmt::emphasis::bold),
+                fmt::styled(bls_sig.substr(0, 64), fmt::fg(fmt::terminal_color::bright_magenta)),
+                fmt::styled(bls_sig.substr(64, 64), fmt::fg(fmt::terminal_color::magenta)),
+                fmt::styled(bls_sig.substr(128, 64), fmt::fg(fmt::terminal_color::bright_magenta)),
+                fmt::styled(bls_sig.substr(192), fmt::fg(fmt::terminal_color::magenta)),
+                fmt::styled(" operator_address:", fmt::emphasis::bold),
+                fmt::styled("{}"_format(op_addr), fmt::fg(fmt::terminal_color::bright_yellow)));
+    } else if (url == "plaintext") {
+        tools::msg_writer(
+                "L2 Contract Registration Information:\n"
+                "ed25519_pubkey: {}\n"
+                "bls_pubkey: {}\n"
+                "ed25519_signature: {}\n"
+                "bls_signature: {}\n"
+                "operator_address: {}\n",
+                snode_pubkey,
+                bls_pubkey,
+                ed_sig,
+                bls_sig,
+                op_addr);
+    } else if (url == "contract") {
+        tools::msg_writer(
+                "\nL2 Contract Registration Information for {}:\n"
+                "Operator address: {}\n"
+                "ServiceNodeRewards.addBLSPublicKey()/multi-contract.reset...() parameters:\n"
+                "   blsPubkey/key=(0x{}, 0x{})\n"
+                "   blsSignature/sig=(0x{}, 0x{}, 0x{}, 0x{})\n"
+                "   serviceNodeParams/params=(0x{}, 0x{}, 0x{}, 0)\n"
+                "\n",
+                snode_pubkey,
+                op_addr,
+                bls_pubkey.substr(0, 64),
+                bls_pubkey.substr(64),
+                bls_sig.substr(0, 64),
+                bls_sig.substr(64, 64),
+                bls_sig.substr(128, 64),
+                bls_sig.substr(192, 64),
+                snode_pubkey,
+                ed_sig.substr(0, 64),
+                ed_sig.substr(64));
+    } else {
+        if (url.empty())
+            url = get_config(cryptonote::network_type_from_string(
+                                     info["nettype"].get<std::string_view>()))
+                          .DEFAULT_STAKING_URL;
+
+        if (url.empty()) {
+            tools::fail_msg_writer(
+                    "Unable to submit L2 staking information: '{}' network has no default staking "
+                    "URL",
+                    info["nettype"].get<std::string_view>());
+            return false;
+        }
+
+        cpr::Url cprurl;
+        try {
+            cprurl = cpr::Url{"{}/api/store/{}"_format(url, snode_pubkey)};
+        } catch (const std::exception& e) {
+            tools::fail_msg_writer("Invalid URL: '{}': {}", url, e.what());
+            return false;
+        }
+
+        tools::msg_writer("Submitting L2 staking information to {} ...", url);
+
+        auto msg = cpr::Multipart{
+                {"sig_ed25519"s, ed_sig},
+                {"pubkey_bls"s, bls_pubkey},
+                {"sig_bls"s, bls_sig},
+                {"operator"s, "{}"_format(op_addr)}};
+
+        auto response = cpr::Post(cprurl, msg);
+
+        if (response.status_code != 200) {
+            tools::fail_msg_writer("Registration info submission failed: {}", response.status_line);
+            return false;
+        } else {
+            tools::success_msg_writer(
+                    "Submitted registration info to the staking website successfully!\n"
+                    "View your registration at: {}/register/{}",
+                    url,
+                    snode_pubkey);
+        }
+    }
+
     return true;
 }
 
-bool rpc_command_executor::test_trigger_uptime_proof()
-{
-  TEST_TRIGGER_UPTIME_PROOF::request req{};
-  TEST_TRIGGER_UPTIME_PROOF::response res{};
-  return invoke<TEST_TRIGGER_UPTIME_PROOF>(std::move(req), res, "Failed to trigger uptime proof");
+bool rpc_command_executor::prune_blockchain() {
+    tools::fail_msg_writer("Blockchain pruning is not supported in Oxen yet");
+    return true;
 }
 
-}// namespace daemonize
+bool rpc_command_executor::check_blockchain_pruning() {
+    auto maybe_pruning = try_running(
+            [this] {
+                return invoke<PRUNE_BLOCKCHAIN>(json{{"check", true}});
+            },
+            "Failed to check blockchain pruning status");
+    if (!maybe_pruning)
+        return false;
+    auto& pruning = *maybe_pruning;
+
+    tools::success_msg_writer(
+            "Blockchain {} pruned", pruning["pruning_seed"].get<uint64_t>() > 0 ? "is" : "is not");
+    return true;
+}
+
+bool rpc_command_executor::version() {
+    auto version = try_running(
+            [this] { return invoke<GET_INFO>().at("version").get<std::string>(); },
+            "Failed to retrieve node info");
+    if (!version)
+        return false;
+    tools::success_msg_writer() + *version;
+    return true;
+}
+
+bool rpc_command_executor::test_trigger_uptime_proof() {
+    tools::success_msg_writer(
+            "{}",
+            invoke<TEST_TRIGGER_UPTIME_PROOF>(json{{}}, "Failed to trigger uptime proof").dump());
+    return true;
+}
+
+}  // namespace daemonize

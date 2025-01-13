@@ -30,63 +30,41 @@
 
 #include <string>
 
-namespace
-{
-    struct net_category : std::error_category
-    {
-        net_category() noexcept
-          : std::error_category()
-        {}
+namespace {
+struct net_category : std::error_category {
+    net_category() noexcept : std::error_category() {}
 
-        const char* name() const noexcept override
-        {
-            return "net::error_category";
+    const char* name() const noexcept override { return "net::error_category"; }
+
+    std::string message(int value) const override {
+        switch (net::error(value)) {
+            case net::error::expected_tld: return "Expected top-level domain";
+            case net::error::invalid_host: return "Host value is not valid";
+            case net::error::invalid_i2p_address: return "Invalid I2P address";
+            case net::error::invalid_port: return "Invalid port value (expected 0-65535)";
+            case net::error::invalid_tor_address: return "Invalid Tor address";
+            case net::error::unsupported_address: return "Network address not supported";
+            default: break;
         }
 
-        std::string message(int value) const override
-        {
-            switch (net::error(value))
-            {
-            case net::error::expected_tld:
-                return "Expected top-level domain";
-            case net::error::invalid_host:
-                return "Host value is not valid";
-            case net::error::invalid_i2p_address:
-                return "Invalid I2P address";
-            case net::error::invalid_port:
-                return "Invalid port value (expected 0-65535)";
-            case net::error::invalid_tor_address:
-                return "Invalid Tor address";
-            case net::error::unsupported_address:
-                return "Network address not supported";
-            default:
-                break;
-            }
-
-            return "Unknown net::error";
-        }
-
-        std::error_condition default_error_condition(int value) const noexcept override
-        {
-            switch (net::error(value))
-            {
-            case net::error::invalid_port:
-                return std::errc::result_out_of_range;
-            case net::error::expected_tld:
-            case net::error::invalid_tor_address:
-            default:
-                break;
-            }
-            return std::error_condition{value, *this};
-        }
-    };
-} // anonymous
-
-namespace net
-{
-    std::error_category const& error_category() noexcept
-    {
-        static const net_category instance{};
-        return instance;
+        return "Unknown net::error";
     }
+
+    std::error_condition default_error_condition(int value) const noexcept override {
+        switch (net::error(value)) {
+            case net::error::invalid_port: return std::errc::result_out_of_range;
+            case net::error::expected_tld:
+            case net::error::invalid_tor_address:
+            default: break;
+        }
+        return std::error_condition{value, *this};
+    }
+};
+}  // namespace
+
+namespace net {
+std::error_category const& error_category() noexcept {
+    static const net_category instance{};
+    return instance;
 }
+}  // namespace net

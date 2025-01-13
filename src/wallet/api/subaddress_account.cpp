@@ -27,73 +27,66 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "subaddress_account.h"
-#include "wallet.h"
-#include "crypto/hash.h"
-#include "wallet/wallet2.h"
-#include "common_defines.h"
 
 #include <vector>
 
+#include "common_defines.h"
+#include "crypto/hash.h"
+#include "wallet.h"
+#include "wallet/wallet2.h"
+
 namespace Wallet {
-  
+
 EXPORT
 SubaddressAccount::~SubaddressAccount() {}
-  
-EXPORT
-SubaddressAccountImpl::SubaddressAccountImpl(WalletImpl *wallet)
-    : m_wallet(wallet) {}
 
 EXPORT
-void SubaddressAccountImpl::addRow(const std::string &label)
-{
-  m_wallet->wallet()->add_subaddress_account(label);
-  refresh();
+SubaddressAccountImpl::SubaddressAccountImpl(WalletImpl* wallet) : m_wallet(wallet) {}
+
+EXPORT
+void SubaddressAccountImpl::addRow(const std::string& label) {
+    m_wallet->wallet()->add_subaddress_account(label);
+    refresh();
 }
 
 EXPORT
-void SubaddressAccountImpl::setLabel(uint32_t accountIndex, const std::string &label)
-{
-  m_wallet->wallet()->set_subaddress_label({accountIndex, 0}, label);
-  refresh();
+void SubaddressAccountImpl::setLabel(uint32_t accountIndex, const std::string& label) {
+    m_wallet->wallet()->set_subaddress_label({accountIndex, 0}, label);
+    refresh();
 }
 
 EXPORT
-void SubaddressAccountImpl::refresh() 
-{
-  LOG_PRINT_L2("Refreshing subaddress account");
-  
-  clearRows();
-  auto w = m_wallet->wallet();
-  for (uint32_t i = 0; i < w->get_num_subaddress_accounts(); ++i)
-  {
-    m_rows.push_back(new SubaddressAccountRow(
-      i,
-      w->get_subaddress_as_str({i,0}),
-      w->get_subaddress_label({i,0}),
-      cryptonote::print_money(w->balance(i, false)),
-      cryptonote::print_money(w->unlocked_balance(i, false))
-    ));
-  }
+void SubaddressAccountImpl::refresh() {
+    log::debug(logcat, "Refreshing subaddress account");
+
+    clearRows();
+    auto w = m_wallet->wallet();
+    for (uint32_t i = 0; i < w->get_num_subaddress_accounts(); ++i) {
+        m_rows.push_back(new SubaddressAccountRow(
+                i,
+                w->get_subaddress_as_str({i, 0}),
+                w->get_subaddress_label({i, 0}),
+                cryptonote::print_money(w->balance(i, false)),
+                cryptonote::print_money(w->unlocked_balance(i, false))));
+    }
 }
 
 EXPORT
 void SubaddressAccountImpl::clearRows() {
-   for (auto r : m_rows) {
-     delete r;
-   }
-   m_rows.clear();
+    for (auto r : m_rows) {
+        delete r;
+    }
+    m_rows.clear();
 }
 
 EXPORT
-std::vector<SubaddressAccountRow*> SubaddressAccountImpl::getAll() const
-{
-  return m_rows;
+std::vector<SubaddressAccountRow*> SubaddressAccountImpl::getAll() const {
+    return m_rows;
 }
 
 EXPORT
-SubaddressAccountImpl::~SubaddressAccountImpl()
-{
-  clearRows();
+SubaddressAccountImpl::~SubaddressAccountImpl() {
+    clearRows();
 }
 
-} // namespace
+}  // namespace Wallet

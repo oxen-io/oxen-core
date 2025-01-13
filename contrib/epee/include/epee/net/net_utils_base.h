@@ -29,7 +29,6 @@
 #ifndef _NET_UTILS_BASE_H_
 #define _NET_UTILS_BASE_H_
 
-#include <boost/uuid/uuid.hpp>
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/address_v6.hpp>
 #include <typeinfo>
@@ -39,6 +38,7 @@
 #include "../misc_log_ex.h"
 #include "../serialization/keyvalue_serialization.h"
 #include "../int-util.h"
+#include <fmt/core.h>
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "net"
@@ -55,6 +55,18 @@
 
 namespace epee
 {
+
+struct connection_id_t : std::array<unsigned char, 16> {
+    // Makes a random connection id.  *NOT* cryptographically secure random.
+    static connection_id_t random();
+
+    constexpr bool is_nil() const {
+        return std::all_of(begin(), end(), [](auto x) { return x == 0; });
+    }
+};
+
+std::ostream& operator<<(std::ostream& out, const connection_id_t& c);
+
 namespace net_utils
 {
 	class ipv4_network_address
@@ -225,6 +237,7 @@ namespace net_utils
 
 			virtual std::string str() const = 0;
 			virtual std::string host_str() const = 0;
+			virtual uint16_t port() const = 0;
 			virtual bool is_loopback() const = 0;
 			virtual bool is_local() const = 0;
 			virtual address_type get_type_id() const = 0;
@@ -255,6 +268,7 @@ namespace net_utils
 
 			virtual std::string str() const override { return value.str(); }
 			virtual std::string host_str() const override { return value.host_str(); }
+			virtual uint16_t port() const override { return value.port(); }
 			virtual bool is_loopback() const override { return value.is_loopback(); }
 			virtual bool is_local() const override { return value.is_local(); }
 			virtual address_type get_type_id() const override { return value.get_type_id(); }
@@ -303,6 +317,7 @@ namespace net_utils
 		bool is_same_host(const network_address &other) const;
 		std::string str() const { return self ? self->str() : "<none>"; }
 		std::string host_str() const { return self ? self->host_str() : "<none>"; }
+		uint16_t port() const { return self ? self->port() : 0; }
 		bool is_loopback() const { return self ? self->is_loopback() : false; }
 		bool is_local() const { return self ? self->is_local() : false; }
 		address_type get_type_id() const { return self ? self->get_type_id() : address_type::invalid; }
@@ -346,7 +361,7 @@ namespace net_utils
 	/************************************************************************/
 	struct connection_context_base
 	{
-    const boost::uuids::uuid m_connection_id;
+    const connection_id_t m_connection_id;
     const network_address m_remote_address;
     const bool     m_is_income;
     std::chrono::steady_clock::time_point m_started;
@@ -359,7 +374,7 @@ namespace net_utils
     double m_max_speed_down;
     double m_max_speed_up;
 
-    connection_context_base(boost::uuids::uuid connection_id,
+    connection_context_base(connection_id_t connection_id,
                             const network_address &remote_address, bool is_income,
                             std::chrono::steady_clock::time_point last_recv = std::chrono::steady_clock::time_point::min(),
                             std::chrono::steady_clock::time_point last_send = std::chrono::steady_clock::time_point::min(),
@@ -406,7 +421,7 @@ namespace net_utils
   private:
     template<class t_protocol_handler>
     friend class connection;
-    void set_details(boost::uuids::uuid connection_id, const network_address &remote_address, bool is_income)
+    void set_details(connection_id_t connection_id, const network_address &remote_address, bool is_income)
     {
       this->~connection_context_base();
       new(this) connection_context_base(connection_id, remote_address, is_income);
@@ -434,39 +449,49 @@ namespace net_utils
 
 
   //some helpers
-
-
   std::string print_connection_context(const connection_context_base& ctx);
   std::string print_connection_context_short(const connection_context_base& ctx);
 
-inline MAKE_LOGGABLE(connection_context_base, ct, os)
-{
-  os << "[" << epee::net_utils::print_connection_context_short(ct) << "] ";
-  return os;
-}
+  inline std::ostream& operator<<(std::ostream& os, const connection_context_base& ct)
+  {
+    os << "[" << epee::net_utils::print_connection_context_short(ct) << "] ";
+    return os;
+  }
 
-#define LOG_ERROR_CC(ct, message) MERROR(ct << message)
-#define LOG_WARNING_CC(ct, message) MWARNING(ct << message)
-#define LOG_INFO_CC(ct, message) MINFO(ct << message)
-#define LOG_DEBUG_CC(ct, message) MDEBUG(ct << message)
-#define LOG_TRACE_CC(ct, message) MTRACE(ct << message)
-#define LOG_CC(level, ct, message) MLOG(level, ct << message)
-
-#define LOG_PRINT_CC_L0(ct, message) LOG_PRINT_L0(ct << message)
-#define LOG_PRINT_CC_L1(ct, message) LOG_PRINT_L1(ct << message)
-#define LOG_PRINT_CC_L2(ct, message) LOG_PRINT_L2(ct << message)
-#define LOG_PRINT_CC_L3(ct, message) LOG_PRINT_L3(ct << message)
-#define LOG_PRINT_CC_L4(ct, message) LOG_PRINT_L4(ct << message)
-
-#define LOG_PRINT_CCONTEXT_L0(message) LOG_PRINT_CC_L0(context, message)
-#define LOG_PRINT_CCONTEXT_L1(message) LOG_PRINT_CC_L1(context, message)
-#define LOG_PRINT_CCONTEXT_L2(message) LOG_PRINT_CC_L2(context, message)
-#define LOG_PRINT_CCONTEXT_L3(message) LOG_PRINT_CC_L3(context, message)
-#define LOG_ERROR_CCONTEXT(message)    LOG_ERROR_CC(context, message)
- 
-#define CHECK_AND_ASSERT_MES_CC(condition, return_val, err_message) CHECK_AND_ASSERT_MES(condition, return_val, "[" << epee::net_utils::print_connection_context_short(context) << "]" << err_message)
+#define CHECK_AND_ASSERT_MES_CC(condition, return_val, ...) CHECK_AND_ASSERT_MES(condition, return_val, "{}: {}", context, fmt::format(__VA_ARGS__))
 
 }
 }
+
+namespace std {
+template <>
+struct hash<epee::connection_id_t> {
+    size_t operator()(const epee::connection_id_t& id) const {
+        constexpr size_t inverse_golden_ratio = sizeof(size_t) >= 8 ? 0x9e37'79b9'7f4a'7c15 : 0x9e37'79b9;
+
+        uint64_t a, b;
+        std::memcpy(&a, id.data(), 8);
+        std::memcpy(&b, id.data() + 8, 8);
+        auto h = hash<uint64_t>{}(a);
+        return hash<uint64_t>{}(b) + inverse_golden_ratio + (h << 6) + (h >> 2);
+    }
+};
+}  // namespace std
+
+template <std::derived_from<epee::net_utils::connection_context_base> T, typename Char>
+struct fmt::formatter<
+        T,
+        Char,
+        // SFINAE shouldn't be needed here in C++20, but gcc-10 disagrees:
+        std::enable_if_t<std::is_base_of_v<epee::net_utils::connection_context_base, T>>>
+        : fmt::formatter<std::string_view> {
+    auto format(
+            const epee::net_utils::connection_context_base& connection_context,
+            format_context& ctx) const {
+        return formatter<std::string_view>::format(
+                fmt::format("[{}]", epee::net_utils::print_connection_context_short(connection_context)),
+                ctx);
+    }
+};
 
 #endif //_NET_UTILS_BASE_H_

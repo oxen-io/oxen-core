@@ -1,30 +1,29 @@
 
 #include "sha256sum.h"
+
+#include <sodium/crypto_hash_sha256.h>
+
 #include <fstream>
+
 #include "crypto/hash.h"
 #include "fs.h"
-#include <sodium/crypto_hash_sha256.h>
 
 namespace tools {
 
-  bool sha256sum_str(std::string_view data, crypto::hash &hash)
-  {
+bool sha256sum_str(std::string_view data, crypto::hash& hash) {
     crypto_hash_sha256(
-            reinterpret_cast<unsigned char*>(hash.data),
-            reinterpret_cast<const unsigned char*>(data.data()),
-            data.size());
+            hash.data(), reinterpret_cast<const unsigned char*>(data.data()), data.size());
     return true;
-  }
+}
 
-  bool sha256sum_file(const fs::path& filename, crypto::hash& hash)
-  {
+bool sha256sum_file(const fs::path& filename, crypto::hash& hash) {
     if (std::error_code ec; !fs::exists(filename, ec) || ec)
-      return false;
-    fs::ifstream f;
+        return false;
+    std::ifstream f;
     f.exceptions(std::ifstream::failbit | std::ifstream::badbit);
     f.open(filename, std::ios_base::binary | std::ios_base::in | std::ios::ate);
     if (!f)
-      return false;
+        return false;
     std::ifstream::pos_type file_size = f.tellg();
     crypto_hash_sha256_state st;
     crypto_hash_sha256_init(&st);
@@ -32,18 +31,17 @@ namespace tools {
     f.seekg(0, std::ios::beg);
 
     std::array<unsigned char, 16384> buf;
-    while (size_left)
-    {
-      auto read_size = std::min(size_left, buf.size());
-      f.read(reinterpret_cast<char*>(buf.data()), read_size);
-      if (!f || !f.good())
-        return false;
-      crypto_hash_sha256_update(&st, buf.data(), read_size);
-      size_left -= read_size;
+    while (size_left) {
+        auto read_size = std::min(size_left, buf.size());
+        f.read(reinterpret_cast<char*>(buf.data()), read_size);
+        if (!f || !f.good())
+            return false;
+        crypto_hash_sha256_update(&st, buf.data(), read_size);
+        size_left -= read_size;
     }
     f.close();
-    crypto_hash_sha256_final(&st, reinterpret_cast<unsigned char*>(hash.data));
+    crypto_hash_sha256_final(&st, hash.data());
     return true;
-  }
-
 }
+
+}  // namespace tools

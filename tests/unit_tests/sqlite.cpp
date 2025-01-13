@@ -50,22 +50,19 @@ TEST(SQLITE, AddSNRewards)
 
   EXPECT_EQ(sqliteDB.batching_count(), 0);
 
-  std::vector<cryptonote::batch_sn_payment> t1;
+  cryptonote::block_payments t1;
 
   cryptonote::address_parse_info wallet_address;
 
   cryptonote::get_account_address_from_str(wallet_address, cryptonote::network_type::FAKECHAIN, "LCFxT37LAogDn1jLQKf4y7aAqfi21DjovX9qyijaLYQSdrxY1U5VGcnMJMjWrD9RhjeK5Lym67wZ73uh9AujXLQ1RKmXEyL");
 
-  t1.emplace_back(wallet_address.address, 16500000001'789/2);
+  t1[wallet_address.address] = 16500000001'789/2;
 
-  bool success = false;
-  success = sqliteDB.add_sn_rewards(t1);
-  EXPECT_TRUE(success);
-
+  EXPECT_NO_THROW(sqliteDB.add_sn_rewards(t1));
   EXPECT_EQ(sqliteDB.batching_count(), 1);
 
   std::vector<cryptonote::batch_sn_payment> p1;
-  const auto expected_payout = wallet_address.address.next_payout_height(0, cryptonote::config::BATCHING_INTERVAL);
+  const auto expected_payout = wallet_address.address.next_payout_height(0, cryptonote::config::mainnet::config.BATCHING_INTERVAL);
   p1 = sqliteDB.get_sn_payments(expected_payout - 1);
   EXPECT_EQ(p1.size(), 0);
 
@@ -73,19 +70,18 @@ TEST(SQLITE, AddSNRewards)
   p2 = sqliteDB.get_sn_payments(expected_payout);
   EXPECT_EQ(p2.size(), 1);
   // We shouldn't get a fractional atomic OXEN amount in the payment amount:
-  uint64_t expected_amount = 8250000000'000;
+  auto expected_amount = cryptonote::reward_money::coin_amount(8'250'000'000);
   EXPECT_EQ(p2[0].amount, expected_amount);
 
   // Pay an amount less than the database expects and test for failure
   std::vector<cryptonote::batch_sn_payment> t2;
-  t2.emplace_back(wallet_address.address, expected_amount - 1000);
+  t2.emplace_back(wallet_address.address, expected_amount - cryptonote::reward_money::coin_amount(1));
   EXPECT_FALSE(sqliteDB.save_payments(expected_payout, t2));
 
   // Pay the amount back out and expect the database to be empty
   std::vector<cryptonote::batch_sn_payment> t3;
   t3.emplace_back(wallet_address.address, expected_amount);
-  success = sqliteDB.save_payments(expected_payout, t3);
-  EXPECT_TRUE(success);
+  EXPECT_NO_THROW(sqliteDB.save_payments(expected_payout, t3));
   EXPECT_EQ(sqliteDB.batching_count(), 0);
 }
 
@@ -103,8 +99,6 @@ TEST(SQLITE, CalculateRewards)
   cryptonote::get_account_address_from_str(first_address, cryptonote::network_type::TESTNET, "T6TzkJb5EiASaCkcH7idBEi1HSrpSQJE1Zq3aL65ojBMPZvqHNYPTL56i3dncGVNEYCG5QG5zrBmRiVwcg6b1cRM1SRNqbp44");
   single_contributor.contributors.emplace_back(0, first_address.address);
   single_contributor.contributors.back().amount = block.reward;
-  std::vector<cryptonote::batch_sn_payment> rewards;
-  sqliteDB.calculate_rewards(block.major_version, block.reward, single_contributor, rewards);
   auto hf_version = block.major_version;
 
   // Check that 3 contributor receives their portion of the block reward
@@ -119,25 +113,24 @@ TEST(SQLITE, CalculateRewards)
   cryptonote::get_account_address_from_str(third_address, cryptonote::network_type::TESTNET, "T6SkkovCyLWViVDMgeJoF7X4vFrHnKX5jXyktaoGmRuNTdoFEx1xXu1joXdmeH9mx2LLNPq998fKKcsAHwdRJWhk126SapptR");
   multiple_contributors.contributors.emplace_back(0, third_address.address);
   multiple_contributors.contributors.back().amount = 34;
-  sqliteDB.calculate_rewards(block.major_version, block.reward, multiple_contributors, rewards);
+  cryptonote::block_payments rewards;
+  sqliteDB.add_rewards(block.major_version, block.reward, multiple_contributors, rewards);
 
-  EXPECT_EQ(rewards[0].amount, 66);
-  EXPECT_EQ(rewards[1].amount, 66);
-  EXPECT_EQ(rewards[2].amount, 68);
+  auto& a1 = first_address.address;
+  auto& a2 = second_address.address;
+  auto& a3 = third_address.address;
+  EXPECT_EQ(rewards[a1], 66);
+  EXPECT_EQ(rewards[a2], 66);
+  EXPECT_EQ(rewards[a3], 68);
 
   // Check that 3 contributors receives their portion of the block reward when the operator takes a 10% fee
   multiple_contributors.portions_for_operator = cryptonote::old::STAKING_PORTIONS/10;
   multiple_contributors.operator_address = first_address.address;
   block.reward = 1000;
-  sqliteDB.calculate_rewards(block.major_version, block.reward, multiple_contributors, rewards);
-  // Operator gets 10%
-  EXPECT_EQ(rewards[0].amount, 99);
-  EXPECT_EQ(tools::view_guts(rewards[0].address_info.address), tools::view_guts(first_address.address));
-  // Contributors (including operator) receive the balance
-  EXPECT_EQ(rewards[1].amount, 297);
-  EXPECT_EQ(tools::view_guts(rewards[1].address_info.address), tools::view_guts(first_address.address));
-  EXPECT_EQ(rewards[2].amount, 297);
-  EXPECT_EQ(tools::view_guts(rewards[2].address_info.address), tools::view_guts(second_address.address));
-  EXPECT_EQ(rewards[3].amount, 306);
-  EXPECT_EQ(tools::view_guts(rewards[3].address_info.address), tools::view_guts(third_address.address));
+  rewards.clear();
+  sqliteDB.add_rewards(block.major_version, block.reward, multiple_contributors, rewards);
+  // Operator gets 10%, remainder split among operator and contributors:
+  EXPECT_EQ(rewards[a1], 99 + 297); // fee + share
+  EXPECT_EQ(rewards[a2], 297);
+  EXPECT_EQ(rewards[a3], 306);
 }

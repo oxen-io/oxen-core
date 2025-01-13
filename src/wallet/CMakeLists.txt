@@ -27,7 +27,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(wallet
+oxen_add_library(wallet
   wallet2.cpp
   wallet_args.cpp
   ringdb.cpp
@@ -51,15 +51,15 @@ target_link_libraries(wallet
   PUBLIC
     multisig
     rpc_commands
-    rpc_server_base
+    rpc_common
     cryptonote_core
     mnemonics
     net
     lmdb
     rpc_http_client
     Boost::serialization
-    filesystem
     Boost::thread
+    logging
   PRIVATE
     extra)
 
@@ -74,10 +74,11 @@ oxen_add_executable(wallet_rpc_server "oxen-wallet-rpc"
 
 target_link_libraries(wallet_rpc_server
   PRIVATE
-    rpc_server_base
+    rpc_common
     wallet
     daemonizer
     Boost::program_options
+    logging
     extra)
 
 

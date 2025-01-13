@@ -1,10 +1,14 @@
 #pragma once
-#include <string>
 #include <oxenc/variant.h>
+
 #include <array>
+#include <string>
 #include <typeinfo>
+
+#include "common/exception.h"
 #ifdef __GNUG__
 #include <cxxabi.h>
+
 #include <cstdlib>
 #endif
 
@@ -12,24 +16,37 @@ namespace tools {
 
 namespace detail {
 
-template <typename T, typename T1, typename... Ts>
-constexpr size_t template_index_impl_inner() {
-    if constexpr (std::is_same_v<T, T1>) return 0;
-    else {
-        static_assert(sizeof...(Ts) > 0, "Type not found");
-        return 1 + template_index_impl_inner<T, Ts...>();
+    template <typename T, typename T1, typename... Ts>
+    constexpr size_t template_index_impl_inner() {
+        if constexpr (std::is_same_v<T, T1>)
+            return 0;
+        else {
+            static_assert(sizeof...(Ts) > 0, "Type not found");
+            return 1 + template_index_impl_inner<T, Ts...>();
+        }
     }
-}
 
-template <typename T, typename C> struct template_index_impl {};
+    template <typename T, typename C>
+    struct template_index_impl {};
 
-template <typename T, template<typename...> typename C, typename... Ts>
-struct template_index_impl<T, C<Ts...>> : std::integral_constant<size_t, template_index_impl_inner<T, Ts...>()> {};
+    template <typename T, template <typename...> typename C, typename... Ts>
+    struct template_index_impl<T, C<Ts...>>
+            : std::integral_constant<size_t, template_index_impl_inner<T, Ts...>()> {};
 
-} // namespace detail
+}  // namespace detail
 
 /// Type wrapper that contains an arbitrary list of types.
-template <typename...> struct type_list {};
+template <typename...>
+struct type_list {};
+
+/// True if T is an instantiation of Class<...> for any ... types
+template <template <typename...> class Class, typename T>
+inline constexpr bool is_instantiation_of = false;
+template <template <typename...> class Class, typename... Us>
+inline constexpr bool is_instantiation_of<Class, Class<Us...>> = true;
+
+template <typename T, template <typename...> class Class>
+concept instantiation_of = is_instantiation_of<Class, T>;
 
 /// Accesses the index of the first T within a template type's type list.  E.g.
 ///
@@ -50,7 +67,7 @@ const std::type_info& variant_type(const std::variant<T...>& v) {
 #ifndef BROKEN_APPLE_VARIANT
     throw std::bad_variant_access{};
 #else
-    throw std::runtime_error{"Bad variant access"};
+    throw oxen::traced<std::runtime_error>{"Bad variant access"};
 #endif
 }
 
@@ -70,6 +87,8 @@ inline std::string type_name(const std::type_info& ti) {
 
 /// Same as above, but uses a templated type instead of a type_info argument.
 template <typename T>
-inline std::string type_name() { return type_name(typeid(T)); }
+inline std::string type_name() {
+    return type_name(typeid(T));
+}
 
-} // namespace tools
+}  // namespace tools

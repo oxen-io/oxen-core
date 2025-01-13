@@ -30,25 +30,21 @@
 
 #pragma once
 
-//#define DBG
+// #define DBG
 
 #include <cstddef>
+#include <utility>
 #include <vector>
-#include <tuple>
-
-#include "crypto/generic-ops.h"
 
 extern "C" {
-#include "crypto/random.h"
 #include "crypto/keccak.h"
+#include "crypto/random.h"
 }
 #include "crypto/crypto.h"
-
-
-#include "rctTypes.h"
 #include "rctOps.h"
+#include "rctTypes.h"
 
-//Define this flag when debugging to get additional info on the console
+// Define this flag when debugging to get additional info on the console
 #ifdef DBG
 #define DP(x) dp(x)
 #else
@@ -56,77 +52,148 @@ extern "C" {
 #endif
 
 namespace hw {
-    class device;
+class device;
 }
-
 
 namespace rct {
 
-    bool verifyBorromean(const boroSig &bb, const key64 P1, const key64 P2);
+bool verifyBorromean(const boroSig& bb, const key64 P1, const key64 P2);
 
-    //Multilayered Spontaneous Anonymous Group Signatures (MLSAG signatures)
-    //These are aka MG signatutes in earlier drafts of the ring ct paper
-    // c.f. https://eprint.iacr.org/2015/1098 section 2.
-    // Gen creates a signature which proves that for some column in the keymatrix "pk"
-    //   the signer knows a secret key for each row in that column
-    // Ver verifies that the MG sig was created correctly
-    bool MLSAG_Ver(const key &message, const keyM &pk, const mgSig &sig, size_t dsRows);
+// Multilayered Spontaneous Anonymous Group Signatures (MLSAG signatures)
+// These are aka MG signatutes in earlier drafts of the ring ct paper
+//  c.f. https://eprint.iacr.org/2015/1098 section 2.
+//  Gen creates a signature which proves that for some column in the keymatrix "pk"
+//    the signer knows a secret key for each row in that column
+//  Ver verifies that the MG sig was created correctly
+bool MLSAG_Ver(const key& message, const keyM& pk, const mgSig& sig, size_t dsRows);
 
-    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l, const multisig_kLRki *kLRki, key *mscout, key *mspout, hw::device &hwdev);
-    clsag CLSAG_Gen(const key &message, const keyV & P, const key & p, const keyV & C, const key & z, const keyV & C_nonzero, const key & C_offset, const unsigned int l);
-    clsag proveRctCLSAGSimple(const key &, const ctkeyV &, const ctkey &, const key &, const key &, const multisig_kLRki *, key *, key *, unsigned int, hw::device &);
-    bool verRctCLSAGSimple(const key &, const clsag &, const ctkeyV &, const key &);
+clsag CLSAG_Gen(
+        const key& message,
+        const keyV& P,
+        const key& p,
+        const keyV& C,
+        const key& z,
+        const keyV& C_nonzero,
+        const key& C_offset,
+        const unsigned int l,
+        const multisig_kLRki* kLRki,
+        key* mscout,
+        key* mspout,
+        hw::device& hwdev);
+clsag CLSAG_Gen(
+        const key& message,
+        const keyV& P,
+        const key& p,
+        const keyV& C,
+        const key& z,
+        const keyV& C_nonzero,
+        const key& C_offset,
+        const unsigned int l);
+clsag proveRctCLSAGSimple(
+        const key&,
+        const ctkeyV&,
+        const ctkey&,
+        const key&,
+        const key&,
+        const multisig_kLRki*,
+        key*,
+        key*,
+        unsigned int,
+        hw::device&);
+bool verRctCLSAGSimple(const key&, const clsag&, const ctkeyV&, const key&);
 
-    //proveRange and verRange
-    //proveRange gives C, and mask such that \sumCi = C
-    //   c.f. https://eprint.iacr.org/2015/1098 section 5.1
-    //   and Ci is a commitment to either 0 or 2^i, i=0,...,63
-    //   thus this proves that "amount" is in [0, 2^64]
-    //   mask is a such that C = aG + bH, and b = amount
-    //verRange verifies that \sum Ci = C and that each Ci is a commitment to 0 or 2^i
-    bool verRange(const key & C, const rangeSig & as);
+// proveRange and verRange
+// proveRange gives C, and mask such that \sumCi = C
+//    c.f. https://eprint.iacr.org/2015/1098 section 5.1
+//    and Ci is a commitment to either 0 or 2^i, i=0,...,63
+//    thus this proves that "amount" is in [0, 2^64]
+//    mask is a such that C = aG + bH, and b = amount
+// verRange verifies that \sum Ci = C and that each Ci is a commitment to 0 or 2^i
+bool verRange(const key& C, const rangeSig& as);
 
-    //Ring-ct MG sigs
-    //Prove:
-    //   c.f. https://eprint.iacr.org/2015/1098 section 4. definition 10.
-    //   This does the MG sig on the "dest" part of the given key matrix, and
-    //   the last row is the sum of input commitments from that column - sum output commitments
-    //   this shows that sum inputs = sum outputs
-    //Ver:
-    //   verifies the above sig is created corretly
-    bool verRctMG(const mgSig &mg, const ctkeyM & pubs, const ctkeyV & outPk, const key &txnFee, const key &message);
-    bool verRctMGSimple(const key &message, const mgSig &mg, const ctkeyV & pubs, const key & C);
+// Ring-ct MG sigs
+// Prove:
+//    c.f. https://eprint.iacr.org/2015/1098 section 4. definition 10.
+//    This does the MG sig on the "dest" part of the given key matrix, and
+//    the last row is the sum of input commitments from that column - sum output commitments
+//    this shows that sum inputs = sum outputs
+// Ver:
+//    verifies the above sig is created corretly
+bool verRctMG(
+        const mgSig& mg,
+        const ctkeyM& pubs,
+        const ctkeyV& outPk,
+        const key& txnFee,
+        const key& message);
+bool verRctMGSimple(const key& message, const mgSig& mg, const ctkeyV& pubs, const key& C);
 
-    //These functions get keys from blockchain
-    //replace these when connecting blockchain
-    //getKeyFromBlockchain grabs a key from the blockchain at "reference_index" to mix with
-    //populateFromBlockchain creates a keymatrix with "mixin" columns and one of the columns is inPk
-    //   the return value are the key matrix, and the index where inPk was put (random).
-    void getKeyFromBlockchain(ctkey & a, size_t reference_index);
-    std::tuple<ctkeyM, xmr_amount> populateFromBlockchain(ctkeyV inPk, int mixin);
+// These functions get keys from blockchain
+// replace these when connecting blockchain
+// getKeyFromBlockchain grabs a key from the blockchain at "reference_index" to mix with
+// populateFromBlockchain creates a keymatrix with "mixin" columns and one of the columns is inPk
+//    the return value are the key matrix, and the index where inPk was put (random).
+std::pair<ctkeyM, xmr_amount> populateFromBlockchain(const ctkeyV& inPk, int mixin);
 
-    //RingCT protocol
-    //genRct:
-    //   creates an rctSig with all data necessary to verify the rangeProofs and that the signer owns one of the
-    //   columns that are claimed as inputs, and that the sum of inputs  = sum of outputs.
-    //   Also contains masked "amount" and "mask" so the receiver can see how much they received
-    //verRct:
-    //   verifies that all signatures (rangeProogs, MG sig, sum inputs = outputs) are correct
-    //decodeRct: (c.f. https://eprint.iacr.org/2015/1098 section 5.1.1)
-    //   uses the attached ecdh info to find the amounts represented by each output commitment
-    //   must know the destination private key to find the correct amount, else will return a random number
-    rctSig genRctSimple(const key & message, const ctkeyV & inSk, const ctkeyV & inPk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, const keyV &amount_keys, const std::vector<multisig_kLRki> *kLRki, multisig_out *msout, xmr_amount txnFee, unsigned int mixin, const RCTConfig &rct_config, hw::device &hwdev);
-    rctSig genRctSimple(const key & message, const ctkeyV & inSk, const keyV & destinations, const std::vector<xmr_amount> & inamounts, const std::vector<xmr_amount> & outamounts, xmr_amount txnFee, const ctkeyM & mixRing, const keyV &amount_keys, const std::vector<multisig_kLRki> *kLRki, multisig_out *msout, const std::vector<unsigned int> & index, ctkeyV &outSk, const RCTConfig &rct_config, hw::device &hwdev);
-    bool verRct(const rctSig & rv, bool semantics);
-    inline bool verRct(const rctSig & rv) { return verRct(rv, true) && verRct(rv, false); }
-    bool verRctSemanticsSimple(const rctSig & rv);
-    bool verRctSemanticsSimple(const std::vector<const rctSig*> & rv);
-    bool verRctNonSemanticsSimple(const rctSig & rv);
-    inline bool verRctSimple(const rctSig & rv) { return verRctSemanticsSimple(rv) && verRctNonSemanticsSimple(rv); }
-    xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev);
-    xmr_amount decodeRct(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev);
-    xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, key & mask, hw::device &hwdev);
-    xmr_amount decodeRctSimple(const rctSig & rv, const key & sk, unsigned int i, hw::device &hwdev);
-    key get_pre_clsag_hash(const rctSig &rv, hw::device &hwdev);
-    bool signMultisig(rctSig &rv, const std::vector<unsigned int> &indices, const keyV &k, const multisig_out &msout, const key &secret_key);
+// RingCT protocol
+// genRct:
+//    creates an rctSig with all data necessary to verify the rangeProofs and that the signer owns
+//    one of the columns that are claimed as inputs, and that the sum of inputs  = sum of outputs.
+//    Also contains masked "amount" and "mask" so the receiver can see how much they received
+// verRct:
+//    verifies that all signatures (rangeProogs, MG sig, sum inputs = outputs) are correct
+// decodeRct: (c.f. https://eprint.iacr.org/2015/1098 section 5.1.1)
+//    uses the attached ecdh info to find the amounts represented by each output commitment
+//    must know the destination private key to find the correct amount, else will return a random
+//    number
+rctSig genRctSimple(
+        const key& message,
+        const ctkeyV& inSk,
+        const ctkeyV& inPk,
+        const keyV& destinations,
+        const std::vector<xmr_amount>& inamounts,
+        const std::vector<xmr_amount>& outamounts,
+        const keyV& amount_keys,
+        const std::vector<multisig_kLRki>* kLRki,
+        multisig_out* msout,
+        xmr_amount txnFee,
+        unsigned int mixin,
+        const RCTConfig& rct_config,
+        hw::device& hwdev);
+rctSig genRctSimple(
+        const key& message,
+        const ctkeyV& inSk,
+        const keyV& destinations,
+        const std::vector<xmr_amount>& inamounts,
+        const std::vector<xmr_amount>& outamounts,
+        xmr_amount txnFee,
+        const ctkeyM& mixRing,
+        const keyV& amount_keys,
+        const std::vector<multisig_kLRki>* kLRki,
+        multisig_out* msout,
+        const std::vector<unsigned int>& index,
+        ctkeyV& outSk,
+        const RCTConfig& rct_config,
+        hw::device& hwdev);
+bool verRct(const rctSig& rv, bool semantics);
+inline bool verRct(const rctSig& rv) {
+    return verRct(rv, true) && verRct(rv, false);
 }
+bool verRctSemanticsSimple(const rctSig& rv);
+bool verRctSemanticsSimple(const std::vector<const rctSig*>& rv);
+bool verRctNonSemanticsSimple(const rctSig& rv);
+inline bool verRctSimple(const rctSig& rv) {
+    return verRctSemanticsSimple(rv) && verRctNonSemanticsSimple(rv);
+}
+xmr_amount decodeRct(const rctSig& rv, const key& sk, unsigned int i, key& mask, hw::device& hwdev);
+xmr_amount decodeRct(const rctSig& rv, const key& sk, unsigned int i, hw::device& hwdev);
+xmr_amount decodeRctSimple(
+        const rctSig& rv, const key& sk, unsigned int i, key& mask, hw::device& hwdev);
+xmr_amount decodeRctSimple(const rctSig& rv, const key& sk, unsigned int i, hw::device& hwdev);
+key get_pre_clsag_hash(const rctSig& rv, hw::device& hwdev);
+bool signMultisig(
+        rctSig& rv,
+        const std::vector<unsigned int>& indices,
+        const keyV& k,
+        const multisig_out& msout,
+        const key& secret_key);
+}  // namespace rct

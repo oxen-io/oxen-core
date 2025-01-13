@@ -537,6 +537,7 @@ TEST(NetUtils, NetworkAddress)
     constexpr static bool is_same_host(const custom_address&) noexcept { return false; }
     constexpr static bool is_loopback() noexcept { return false; }
     constexpr static bool is_local() noexcept { return false; }
+    constexpr uint16_t port() const noexcept { return 0;};
     static std::string str() { return {}; }
     static std::string host_str() { return {}; }
     constexpr static epee::net_utils::address_type get_type_id() noexcept { return epee::net_utils::address_type(-1); }
@@ -661,8 +662,9 @@ TEST(NetUtils, NetworkAddress)
 
 static bool is_local(const char *s)
 {
+  auto& logcat = epee::logcat;
   uint32_t ip;
-  CHECK_AND_ASSERT_THROW_MES(epee::string_tools::get_ip_int32_from_string(ip, s), std::string("Invalid IP address: ") + s);
+  CHECK_AND_ASSERT_THROW_MES(epee::string_tools::get_ip_int32_from_string(ip, s), "Invalid IP address: {}", s);
   return epee::net_utils::is_ip_local(ip);
 }
 

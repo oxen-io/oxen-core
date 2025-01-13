@@ -1,6 +1,6 @@
 # Oxen
 
-Copyright (c) 2018-2021 The Oxen Project.   
+Copyright (c) 2018-2022 The Oxen Project.   
 Portions Copyright (c) 2014-2019 The Monero Project.   
 Portions Copyright (c) 2012-2013 The Cryptonote developers.
 
@@ -37,27 +37,28 @@ sources are also used for statically-linked builds because distribution
 packages often include only shared library binaries (`.so`) but not static
 library archives (`.a`).
 
-| Dep          | Min. version  | Vendored | Debian/Ubuntu pkg      | Arch pkg     | Fedora              | Optional | Purpose          |
-| ------------ | ------------- | -------- | ---------------------- | ------------ | ------------------- | -------- | ---------------- |
-| GCC          | 8.1.0         | NO       | `g++`[1]               | `base-devel` | `gcc`               | NO       |                  |
-| CMake        | 3.10          | NO       | `cmake`                | `cmake`      | `cmake`             | NO       |                  |
-| pkg-config   | any           | NO       | `pkg-config`           | `base-devel` | `pkgconf`           | NO       |                  |
-| Boost        | 1.65          | NO       | `libboost-all-dev`[2]  | `boost`      | `boost-devel`       | NO       | C++ libraries    |
-| libzmq       | 4.3.0         | YES      | `libzmq3-dev`          | `zeromq`     | `zeromq-devel`      | NO       | ZeroMQ library   |
-| sqlite3      | 3.24.0        | YES      | `libsqlite3-dev`       | `sqlite`     | `sqlite-devel`      | NO       | ONS, batching    |
-| libsodium    | 1.0.9         | YES      | `libsodium-dev`        | `libsodium`  | `libsodium-devel`   | NO       | cryptography     |
-| libcurl      | 4.0           | NO       | `libcurl4-dev`         | `curl`       | `curl-devel`        | NO       | HTTP RPC         |
-| libuv (Win)  | any           | NO       | (Windows only)         | --           | --                  | NO       | RPC event loop   |
-| libunwind    | any           | NO       | `libunwind8-dev`       | `libunwind`  | `libunwind-devel`   | YES      | Stack traces     |
-| liblzma      | any           | NO       | `liblzma-dev`          | `xz`         | `xz-devel`          | YES      | For libunwind    |
-| libreadline  | 6.3.0         | NO       | `libreadline-dev`      | `readline`   | `readline-devel`    | YES      | Input editing    |
-| Doxygen      | any           | NO       | `doxygen`              | `doxygen`    | `doxygen`           | YES      | Documentation    |
-| Graphviz     | any           | NO       | `graphviz`             | `graphviz`   | `graphviz`          | YES      | Documentation    |
-| Qt tools     | 5.x           | NO       | `qttools5-dev`         | `qt5-tools`  | `qt5-linguist`      | YES      | Translations     |
-| libhidapi    | ?             | NO       | `libhidapi-dev`        | `hidapi`     | `hidapi-devel`      | YES      | Hardware wallet  |
-| libusb       | ?             | NO       | `libusb-dev`           | `libusb`     | `libusb-devel`      | YES      | Hardware wallet  |
-| libprotobuf  | ?             | NO       | `libprotobuf-dev`      | `protobuf`   | `protobuf-devel`    | YES      | Hardware wallet  |
-| protoc       | ?             | NO       | `protobuf-compiler`    | `protobuf`   | `protobuf-compiler` | YES      | Hardware wallet  |
+| Dep          | Min. version  | Vendored | Debian/Ubuntu pkg      | Arch pkg     | Fedora              | Optional | Purpose            |
+| ------------ | ------------- | -------- | ---------------------- | ------------ | ------------------- | -------- | ----------------   |
+| GCC          | 8.1.0         | NO       | `g++`[1]               | `base-devel` | `gcc`               | NO       |                    |
+| CMake        | 3.13          | NO       | `cmake`                | `cmake`      | `cmake`             | NO       |                    |
+| pkg-config   | any           | NO       | `pkg-config`           | `base-devel` | `pkgconf`           | NO       |                    |
+| Boost        | 1.65          | NO       | `libboost-all-dev`[2]  | `boost`      | `boost-devel`       | NO       | C++ libraries      |
+| libzmq       | 4.3.0         | YES      | `libzmq3-dev`          | `zeromq`     | `zeromq-devel`      | NO       | ZeroMQ library     |
+| sqlite3      | 3.24.0        | YES      | `libsqlite3-dev`       | `sqlite`     | `sqlite-devel`      | NO       | ONS, batching      |
+| libsodium    | 1.0.9         | YES      | `libsodium-dev`        | `libsodium`  | `libsodium-devel`   | NO       | cryptography       |
+| libcurl      | 4.0           | NO       | `libcurl4-dev`         | `curl`       | `curl-devel`        | NO       | HTTP RPC           |
+| libuv (Win)  | any           | NO       | (Windows only)         | --           | --                  | NO       | RPC event loop     |
+| libgmp       | any           | NO       | `libgmp-dev`           | --           | --                  | NO       | BLS precision math |
+| libunwind    | any           | NO       | `libunwind8-dev`       | `libunwind`  | `libunwind-devel`   | YES      | Stack traces       |
+| liblzma      | any           | NO       | `liblzma-dev`          | `xz`         | `xz-devel`          | YES      | For libunwind      |
+| libreadline  | 6.3.0         | NO       | `libreadline-dev`      | `readline`   | `readline-devel`    | YES      | Input editing      |
+| Doxygen      | any           | NO       | `doxygen`              | `doxygen`    | `doxygen`           | YES      | Documentation      |
+| Graphviz     | any           | NO       | `graphviz`             | `graphviz`   | `graphviz`          | YES      | Documentation      |
+| Qt tools     | 5.x           | NO       | `qttools5-dev`         | `qt5-tools`  | `qt5-linguist`      | YES      | Translations       |
+| libhidapi    | ?             | NO       | `libhidapi-dev`        | `hidapi`     | `hidapi-devel`      | YES      | Hardware wallet    |
+| libusb       | ?             | NO       | `libusb-dev`           | `libusb`     | `libusb-devel`      | YES      | Hardware wallet    |
+| libprotobuf  | ?             | NO       | `libprotobuf-dev`      | `protobuf`   | `protobuf-devel`    | YES      | Hardware wallet    |
+| protoc       | ?             | NO       | `protobuf-compiler`    | `protobuf`   | `protobuf-compiler` | YES      | Hardware wallet    |
 
 
 [1] On Ubuntu Bionic you will need the g++-8 package instead of g++ (which is version 7) and will
@@ -484,6 +485,24 @@ The output of `mdb_stat -ea <path to blockchain dir>` will indicate inconsistenc
 The output of `mdb_dump -s blocks <path to blockchain dir>` and `mdb_dump -s block_info <path to blockchain dir>` is useful for indicating whether blocks and block_info contain the same keys.
 
 These records are dumped as hex data, where the first line is the key and the second line is the data.
+
+## Testing tools
+
+### Local Devnet
+
+The local devnet script in `utils/local-devnet/service_node_network.py` will
+spin up a series of service nodes that can be interacted with locally for
+testing. This script requires that:
+
+- A development Ethereum environment and node is setup at `localhost:8545`
+  (which is the default for port for these environments). Currently we only
+  support Foundry's `anvil` testnet. (Hardhat's node does not support
+  `eth_getProof` calls).
+
+- The smart contracts are deployed from `oxen-io/eth-sn-contracts` by invoking
+  the `deploy-local` Makefile target.
+
+Thereafter the script can be invoked to launch the local network.
 
 # Known Issues
 

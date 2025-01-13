@@ -33,6 +33,7 @@ add_executable(unit_tests
   blockchain_db.cpp
   block_queue.cpp
   block_reward.cpp
+  bls.cpp
   bulletproofs.cpp
   chacha.cpp
   checkpoints.cpp
@@ -51,7 +52,6 @@ add_executable(unit_tests
   logging.cpp
   oxen_name_system.cpp
   long_term_block_weight.cpp
-  lmdb.cpp
   main.cpp
   median.cpp
   memwipe.cpp
@@ -96,7 +96,6 @@ target_link_libraries(unit_tests
     cryptonote_protocol
     cryptonote_core
     blockchain_db
-    lmdb_lib
     rpc
     net
     wallet
@@ -105,6 +104,7 @@ target_link_libraries(unit_tests
     SQLiteCpp
     Boost::thread
     gtest
+    logging
     extra)
 set_property(TARGET unit_tests
   PROPERTY

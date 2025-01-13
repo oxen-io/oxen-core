@@ -77,33 +77,33 @@ class network_throttle : public i_network_throttle {
 	public:
 		network_throttle(const std::string &nameshort, const std::string &name, int window_size=-1);
 		virtual ~network_throttle();
-		virtual void set_name(const std::string &name);
-		virtual void set_target_speed( network_speed_kbps target );
-		virtual network_speed_kbps get_target_speed();
+		void set_name(const std::string &name) override;
+		void set_target_speed( network_speed_kbps target ) override;
+		network_speed_kbps get_target_speed() override;
 
 		// add information about events:
-		virtual void handle_trafic_exact(size_t packet_size); ///< count the new traffic/packet; the size is exact considering all network costs
-		virtual void handle_trafic_tcp(size_t packet_size); ///< count the new traffic/packet; the size is as TCP, we will consider MTU etc
+		void handle_trafic_exact(size_t packet_size) override; ///< count the new traffic/packet; the size is exact considering all network costs
+		void handle_trafic_tcp(size_t packet_size) override; ///< count the new traffic/packet; the size is as TCP, we will consider MTU etc
 
-		virtual void tick(); ///< poke and update timers/history (recalculates, moves the history if needed, checks the real clock etc)
+		void tick() override; ///< poke and update timers/history (recalculates, moves the history if needed, checks the real clock etc)
 
-		virtual double get_time_seconds() const ; ///< timer that we use, time in seconds, monotionic
+		double get_time_seconds() const  override; ///< timer that we use, time in seconds, monotionic
 
 		// time calculations:
-		virtual void calculate_times(size_t packet_size, calculate_times_struct &cts, bool dbg, double force_window) const; ///< MAIN LOGIC (see base class for info)
+		void calculate_times(size_t packet_size, calculate_times_struct &cts, bool dbg, double force_window) const override; ///< MAIN LOGIC (see base class for info)
 
-		virtual network_time_seconds get_sleep_time_after_tick(size_t packet_size); ///< increase the timer if needed, and get the package size
-		virtual network_time_seconds get_sleep_time(size_t packet_size) const; ///< gets the Delay (recommended Delay time) from calc. (not safe: only if time didnt change?) TODO
+		network_time_seconds get_sleep_time_after_tick(size_t packet_size) override; ///< increase the timer if needed, and get the package size
+		network_time_seconds get_sleep_time(size_t packet_size) const override; ///< gets the Delay (recommended Delay time) from calc. (not safe: only if time didnt change?) TODO
 
-		virtual size_t get_recommended_size_of_planned_transport() const; ///< what should be the size (bytes) of next data block to be transported
-		virtual size_t get_recommended_size_of_planned_transport_window(double force_window) const;  ///< ditto, but for given windows time frame
-		virtual double get_current_speed() const;
-		virtual void get_stats(uint64_t &total_packets, uint64_t &total_bytes) const;
+		size_t get_recommended_size_of_planned_transport() const override; ///< what should be the size (bytes) of next data block to be transported
+		size_t get_recommended_size_of_planned_transport_window(double force_window) const;  ///< ditto, but for given windows time frame
+		double get_current_speed() const;
+        std::pair<uint64_t, uint64_t> get_stats() const override;
 
 	private:
-		virtual network_time_seconds time_to_slot(network_time_seconds t) const { return std::floor( t ); } // convert exact time eg 13.7 to rounded time for slot number in history 13
-        virtual void _handle_trafic_exact(size_t packet_size, size_t orginal_size);
-        virtual void logger_handle_net(const std::string &filename, double time, size_t size);
+		network_time_seconds time_to_slot(network_time_seconds t) const { return std::floor( t ); } // convert exact time eg 13.7 to rounded time for slot number in history 13
+        void _handle_trafic_exact(size_t packet_size, size_t orginal_size);
+        void logger_handle_net(const std::string &filename, double time, size_t size) override;
 };
 
 /***

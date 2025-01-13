@@ -29,7 +29,6 @@
 #include <optional>
 #include <cctype>
 #include <algorithm>
-#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -38,8 +37,9 @@
 #include "epee/memwipe.h"
 #include "epee/misc_log_ex.h"
 #include "epee/wipeable_string.h"
+#include <limits>
 
-static constexpr const char hex[] = u8"0123456789abcdef";
+static constexpr const char hex[] = "0123456789abcdef";
 
 namespace
 {
