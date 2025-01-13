@@ -163,93 +163,45 @@ application.
 
 **Preparing the build environment**
 
-* Download and install the [MSYS2 installer](https://www.msys2.org), either the 64-bit (x86_64) or the 32-bit (i686) package, depending on your system.
-* Note: Installation must be on the C drive and root directory as result of [Monero issue 3167](https://github.com/monero-project/monero/issues/3167).
-* Open the MSYS shell via the `MSYS2 MSYS` shortcut in the Start Menu or "C:\msys64\msys2_shell.cmd -msys"
-* Update packages using pacman:  
+* Download and install the [MSYS2 installer 64-bit
+  (x86_64)](https://www.msys2.org).
+
+* Note: On Windows it's recommended to setup MSYS and the repository at the root
+  of `C:/` due to path-length limitations. Dependencies like Boost will fail to
+  build because of long file name paths that exceed `PATH_MAX` on Windows. Long
+  file name path support requires the toolchain to be built aware of these
+  limitations and enabled which is not always enforceable.
+
+  It's highly recommended to also export the variable `USE_SINGLE_BUILDDIR=1` to
+  reduce the build path length(s) for similar reasons.
+
+* Open the MSYS MinGW64 shell by opening `mingw64.exe` in the MSYS installation
+  directory
+
+* Update the base packages and install the dependencies by running the commands:
 
     ```bash
     pacman -Syu
-    ```
-
-* Exit the MSYS shell using Alt+F4 when you get a warning stating: "terminate MSYS2 without returning to shell and check for updates again/for example close your terminal window instead of calling exit"
-
-    ```bash
-    pacman -Syu
-    ```
-
-* Update packages again using pacman: 
-
-        pacman -Syu  
-
-* Install dependencies:
-
-    To build for 64-bit Windows:
-
-    ```bash
-    pacman -S git mingw-w64-x86_64-toolchain make mingw-w64-x86_64-cmake mingw-w64-x86_64-boost mingw-w64-x86_64-zeromq mingw-w64-x86_64-libsodium mingw-w64-x86_64-hidapi mingw-w64-x86_64-sqlite3
-    ```
-
-    To build for 32-bit Windows:
-
-    ```bash
-    pacman -S git mingw-w64-i686-toolchain make mingw-w64-i686-cmake mingw-w64-i686-boost mingw-w64-i686-zeromq mingw-w64-i686-libsodium mingw-w64-i686-hidapi mingw-w64-i686-sqlite3
-    ```
-
-* Close and reopen the MSYS MinGW shell via `MSYS2 MinGW 64-bit` shortcut on
-  64-bit Windows or `MSYS2 MinGW 32-bit` shortcut on 32-bit Windows. Note 
-  that if you are running 64-bit Windows, you will have both 64-bit and
-  32-bit MinGW shells.
-
-**Cloning**
-
-* To git clone, run:
-
-    ```bash
-    git clone --recursive https://github.com/oxen-io/oxen-core.git
+    pacman -S autoconf automake git make mingw-w64-x86_64-toolchain mingw-w64-x86_64-cmake mingw-w64-x86_64-boost mingw-w64-x86_64-zeromq mingw-w64-x86_64-libsodium mingw-w64-x86_64-hidapi mingw-w64-x86_64-sqlite3 mingw-w64-x86_64-libtool
     ```
 
 **Building**
 
-* Change to the cloned directory, run:
-	
+- Clone and build the program by running the commands:
+
     ```bash
+    git clone --recursive https://github.com/oxen-io/oxen-core.git
     cd oxen-core
+    USE_SINGLE_BUILDDIR=1 make release-static-win64
     ```
 
-* If you would like a specific [version/tag](https://github.com/oxen-io/oxen-core/tags), do a git checkout for that version. eg. 'v5.1.2'. If you don't care about the version and just want binaries from master, skip this step:
-	
-    ```bash
-    git checkout v5.1.2
-    ```
+* The resulting executables can be found in `./build/release/bin`
 
-* If you are on a 64-bit system, run:
-
-    ```bash
-    make release-static-win64
-    ```
-
-* If you are on a 32-bit system, run:
-
-    ```bash
-    make release-static-win32
-    ```
-
-* The resulting executables can be found in `build/<MinGW version>/<oxen version>/release/bin`
-
-* **Optional**: to build Windows binaries suitable for debugging on a 64-bit system, run:
+* **Optional**: to build Windows binaries suitable for debugging run:
 
     ```bash
     make debug-static-win64
     ```
-
-* **Optional**: to build Windows binaries suitable for debugging on a 32-bit system, run:
-
-    ```bash
-    make debug-static-win32
-    ```
-
-* The resulting executables can be found in `build/<MinGW version>/<oxen version>/debug/bin`
 
 ### On FreeBSD:
 
