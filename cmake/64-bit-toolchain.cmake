@@ -26,6 +26,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+set (ARCH_TRIPLET x86_64-w64-mingw32)
 if (CMAKE_HOST_WIN32)
   # Building w/ MSYS MinGW as recommended by the readme only ships MinGW with
   # the posix threading API as confirmed by 'x86_64-w64-mingw32-gcc.exe -v'
@@ -40,7 +41,6 @@ else()
   set (CMAKE_CXX_COMPILER ${ARCH_TRIPLET}-g++-posix)
 endif()
 
-set (ARCH_TRIPLET x86_64-w64-mingw32)
 set (CMAKE_SYSTEM_PROCESSOR x86_64)
 set (CMAKE_AR ar CACHE FILEPATH "" FORCE)
 set (CMAKE_NM nm CACHE FILEPATH "" FORCE)
