@@ -80,5 +80,7 @@ inline constexpr network_config config{
         // FIXME: once mainnet is close to launching this will move to an alternative
         // stagenet-specific URL and stake.getsession.org will be used for mainnet staking:
         .DEFAULT_STAKING_URL = "https://stake.getsession.org"sv,
+        .SNAPSHOT_URL = ""sv,                // Empty URL for stagenet
+        .SNAPSHOT_AGE_THRESHOLD = 30 * 24h,  // One month
 };
 }  // namespace cryptonote::config::stagenet

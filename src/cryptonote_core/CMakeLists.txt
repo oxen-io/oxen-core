@@ -37,6 +37,7 @@ oxen_add_library(cryptonote_core
   service_node_swarm.cpp
   tx_blink.cpp
   oxen_name_system.cpp
+  snapshot.cpp
   tx_pool.cpp
   tx_sanity_check.cpp
   cryptonote_tx_utils.cpp
@@ -61,6 +62,7 @@ target_link_libraries(cryptonote_core
     SQLiteCpp
     systemd
     logging
+    cpr::cpr
     extra
     zstd::zstd)
 
