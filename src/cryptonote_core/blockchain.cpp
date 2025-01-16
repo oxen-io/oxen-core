@@ -55,6 +55,7 @@
 #include "common/sha256sum.h"
 #include "common/string_util.h"
 #include "common/threadpool.h"
+#include "common/util.h"
 #include "common/varint.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
@@ -351,34 +352,34 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
     dseconds ons_duration{}, snl_duration{}, ons_iteration_duration{}, snl_iteration_duration{};
 
     // NOTE: Stats
-    uint64_t blocks_per_iteration = 0;
+    uint64_t work_blocks = 0;
+    uint64_t total_bytes = 0, work_bytes = 0;
+
     for (uint64_t height = start_height; height < end_height; height += CHUNK_SIZE) {
         if (abort && *abort)
             return false;
 
         // NOTE: Log progress every 10s
         auto now = clock::now();
-        auto duration = dseconds{now - work_start};
+        dseconds duration{now - work_start};
         bool every_10s = duration >= 10s;
 
         if ((height + CHUNK_SIZE) >= end_height || every_10s) {
             service_node_list.store();
 
-            auto duration_ms =
-                    std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-            float blocks_per_s = blocks_per_iteration / static_cast<float>(duration_ms) / 1000.f;
-            float gb_per_s = sizeof(cryptonote::block) * blocks_per_s / 1024.f / 1024.f;
+            float blocks_per_s = work_blocks / duration.count();
+            float bytes_per_s = work_bytes / duration.count();
 
             log::info(
                     globallogcat,
-                    "... scanning height {} ({:.3f}s) (snl: {:.3f}s; ons: {:.3f}s; {:.1f} blks/s; "
-                    "{} MiB/s)",
+                    "... scanning height {} ({:.2f}s) (snl: {:.2f}s; ons: {:.2f}s; {:.1f} blks/s; "
+                    "{}/s)",
                     height,
                     duration.count(),
                     snl_iteration_duration.count(),
                     ons_iteration_duration.count(),
                     blocks_per_s,
-                    gb_per_s);
+                    tools::get_human_readable_bytes(bytes_per_s));
 #ifdef ENABLE_SYSTEMD
             // Tell systemd that we're doing something so that it should let us continue starting up
             // (giving us 120s until we have to send the next notification):
@@ -394,14 +395,17 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
             ons_iteration_duration = 0s;
             snl_iteration_duration = 0s;
 
-            if (every_10s)  // NOTE: Reset block load counter
-                blocks_per_iteration = 0;
+            if (every_10s) {  // NOTE: Reset iteration stats
+                total_bytes += work_bytes;
+                work_blocks = work_bytes = 0;
+            }
         }
 
         // NOTE: Grab blocks
         std::vector<cryptonote::block> blocks;
-        if (!get_blocks(height, CHUNK_SIZE, blocks)) {
-            log::error(
+        size_t blocks_size;
+        if (!get_blocks(height, CHUNK_SIZE, blocks, nullptr, &blocks_size)) {
+            log::critical(
                     logcat,
                     "Unable to get checkpointed historical blocks [{}-{}] for updating oxen "
                     "subsystems",
@@ -411,18 +415,27 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
         }
 
         // NOTE: Load blocks into subsystems
-        blocks_per_iteration += blocks.size();
+        work_blocks += blocks.size();
+        work_bytes += blocks_size;
+
+        std::vector<cryptonote::transaction> txs;
+        std::unordered_set<crypto::hash> missed_txs;
+
         for (cryptonote::block const& blk : blocks) {
             uint64_t block_height = blk.get_height();
 
-            std::vector<cryptonote::transaction> txs;
-            if (!get_transactions(blk.tx_hashes, txs)) {
-                log::error(
+            txs.clear();
+            size_t txs_size;
+            if (!get_transactions(blk.tx_hashes, txs, &missed_txs, &txs_size) ||
+                !missed_txs.empty()) {
+                log::critical(
                         logcat,
-                        "Unable to get transactions for block for updating ONS DB: {}",
+                        "Unable to get all transactions for subsystem updating from block: {}",
                         cryptonote::get_block_hash(blk));
                 return false;
             }
+
+            work_bytes += txs_size;
 
             if (block_height >= snl_height) {
                 auto snl_start = clock::now();
@@ -439,7 +452,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
                     constexpr bool skip_verify = true;
                     service_node_list.block_add(blk, txs, checkpoint_ptr, skip_verify);
                 } catch (const std::exception& e) {
-                    log::error(
+                    log::critical(
                             logcat,
                             "Unable to process block for updating service node list: {}",
                             e.what());
@@ -451,7 +464,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
             if (m_ons_db.db && (block_height >= ons_height)) {
                 auto ons_start = clock::now();
                 if (!m_ons_db.add_block(blk, txs)) {
-                    log::error(
+                    log::critical(
                             logcat,
                             "Unable to process block for updating ONS DB: {}",
                             cryptonote::get_block_hash(blk));
@@ -465,25 +478,34 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
 
     if (total_blocks > 0) {
         // NOTE: Check that all subsystems ended up synchronised to the same height
-        assert(service_node_list.height() == m_ons_db.height());
-        if (m_sqlite_db)
-            assert(m_ons_db.height() == m_sqlite_db->height);
-        assert(service_node_list.height() == end_height - 1);
+        if (service_node_list.height() != m_ons_db.height() ||
+            (m_sqlite_db && m_ons_db.height() != m_sqlite_db->height) ||
+            service_node_list.height() != end_height - 1) {
+            log::critical(
+                    logcat,
+                    "Mismatched subsystem height after subsystem refresh: "
+                    "blockchain ({}), SN ({}), ONS ({}){}",
+                    end_height - 1,
+                    service_node_list.height(),
+                    m_ons_db.height(),
+                    m_sqlite_db ? ", rewards ({})"_format(m_sqlite_db->height) : "");
+            return false;
+        }
 
-        auto duration = end - scan_start;
-        auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
-        float blocks_per_s = blocks_per_iteration / static_cast<float>(duration_ms) / 1000.f;
-        float gb_per_s = sizeof(cryptonote::block) * blocks_per_s / 1024.f / 1024.f;
+        total_bytes += work_bytes;
+
+        dseconds duration{end - scan_start};
+        float blocks_per_s = total_blocks / duration.count();
+        float bytes_per_s = total_bytes / duration.count();
 
         log::info(
                 globallogcat,
-                "Loading subsystems done in {:.2f}s ({:.2f}s snl; {:.2f}s ons; {:.1f} "
-                "blks/s; {} MiB/s)",
-                dseconds{duration}.count(),
+                "Loaded subsystems in {:.2f}s (snl: {:.2f}s; ons: {:.2f}s; {:.1f} blks/s; {}/s)",
+                duration.count(),
                 snl_duration.count(),
                 ons_duration.count(),
                 blocks_per_s,
-                gb_per_s);
+                tools::get_human_readable_bytes(bytes_per_s));
         service_node_list.store();
     }
 
@@ -2596,10 +2618,14 @@ bool Blockchain::get_blocks(
         uint64_t start_offset,
         size_t count,
         std::vector<block>& blocks,
-        std::vector<std::string>* txs) const {
+        std::vector<std::string>* txs,
+        size_t* size_loaded) const {
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};
     const uint64_t height = m_db->height();
+    if (size_loaded)
+        *size_loaded = 0;
+
     if (start_offset >= height)
         return false;
 
@@ -2607,7 +2633,10 @@ bool Blockchain::get_blocks(
     blocks.reserve(blocks.size() + num_blocks);
     for (size_t i = 0; i < num_blocks; i++) {
         try {
-            blocks.emplace_back(m_db->get_block_from_height(start_offset + i));
+            size_t size;
+            blocks.emplace_back(m_db->get_block_from_height(start_offset + i, &size));
+            if (size_loaded)
+                *size_loaded += size;
         } catch (std::exception const& e) {
             log::error(logcat, "Invalid block at height {}. {}", start_offset + i, e.what());
             return false;
@@ -3143,16 +3172,22 @@ bool Blockchain::get_split_transactions_blobs(
 bool Blockchain::get_transactions(
         const std::vector<crypto::hash>& txs_ids,
         std::vector<transaction>& txs,
-        std::unordered_set<crypto::hash>* missed_txs) const {
+        std::unordered_set<crypto::hash>* missed_txs,
+        size_t* total_size) const {
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};
 
     txs.reserve(txs_ids.size());
     std::string tx;
+    if (total_size)
+        *total_size = 0;
+
     for (const auto& tx_hash : txs_ids) {
         tx.clear();
         try {
             if (m_db->get_tx_blob(tx_hash, tx)) {
+                if (total_size)
+                    *total_size += tx.size();
                 txs.emplace_back();
                 if (!parse_and_validate_tx_from_blob(tx, txs.back())) {
                     log::error(logcat, "Invalid transaction");

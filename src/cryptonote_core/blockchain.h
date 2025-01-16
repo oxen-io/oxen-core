@@ -202,11 +202,16 @@ class Blockchain {
      */
     bool deinit();
 
+    /// Loads `count` blocks (optionally including transaction data within those blocks), starting
+    /// at height `start_offset`.  The total amount of block data consumed (not including
+    /// transactions) will be set in `blocks_size`, if provided.
     bool get_blocks(
             uint64_t start_offset,
             size_t count,
             std::vector<block>& blocks,
-            std::vector<std::string>* txs = nullptr) const;
+            std::vector<std::string>* txs = nullptr,
+            size_t* blocks_size = nullptr) const;
+
     /**
      * @brief get blocks and transactions from blocks based on start height and count
      *
@@ -869,7 +874,8 @@ class Blockchain {
     bool get_transactions(
             const std::vector<crypto::hash>& txs_ids,
             std::vector<transaction>& txs,
-            std::unordered_set<crypto::hash>* missed_txs = nullptr) const;
+            std::unordered_set<crypto::hash>* missed_txs = nullptr,
+            size_t* total_size = nullptr) const;
 
     /**
      * @brief looks up transactions based on a list of transaction hashes and returns the block
