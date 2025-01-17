@@ -3378,7 +3378,8 @@ void service_node_list::state_t::update_from_block(
         auto unconf_it = unconfirmed_l2_txes.begin();
         for (uint32_t i = 0; i < block.l2_votes.size(); i++) {
             bool vote = block.l2_votes[i];
-            auto& [txhash, unconf] = *unconf_it;
+            auto& txhash = unconf_it->first;
+            auto& unconf = unconf_it->second;
             (vote ? unconf.confirmations : unconf.denials) += vote_weight;
 
             if (auto done = unconf.confirmed(height)) {
