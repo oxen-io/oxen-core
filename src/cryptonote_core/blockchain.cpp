@@ -41,6 +41,7 @@
 #include <chrono>
 #include <cstdio>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 
 #include "blockchain_db/blockchain_db.h"
@@ -342,8 +343,6 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
                 ons_height);
     }
 
-    uint64_t constexpr CHUNK_SIZE = 100;
-
     // NOTE: Timers
     using clock = std::chrono::steady_clock;
     using dseconds = std::chrono::duration<double>;
@@ -355,16 +354,141 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
     uint64_t work_blocks = 0;
     uint64_t total_bytes = 0, work_bytes = 0;
 
-    for (uint64_t height = start_height; height < end_height; height += CHUNK_SIZE) {
-        if (abort && *abort)
-            return false;
+    // We do the loading here with two threads: a block loader that preloads the next chunks (up to
+    // MAX_QUEUE_SIZE * CHUNK_SIZE blocks preloaded) from the database, and then the current thread
+    // processes those chunks, so that the next load of blocks (which can be I/O bound, and has
+    // parallelizable parsing of the blocks and transactions) happens in parallel with processing
+    // the current set of blocks (which is CPU limited).
+    uint64_t constexpr CHUNK_SIZE = 50;
+    constexpr size_t MAX_QUEUE_SIZE = 5;
+
+    struct block_data {
+        uint64_t height;  // Height of blocks[0] and txs[0]
+        std::vector<cryptonote::block> blocks;
+        std::vector<std::vector<cryptonote::transaction>> txs;
+        size_t size;  // Total block + tx sizes of all the blocks/txs contained here.
+    };
+
+    std::queue<block_data> next_blocks;
+    std::condition_variable block_cv;
+    std::mutex block_mut;
+    dseconds load_duration;
+
+    bool load_failed{false}, load_finished{false};
+
+    std::thread block_loader{[&] {
+        // Deferred callback that gets fired if we return early (or throw) that makes sure the
+        // processing thread gets notified about the failure.
+        auto failure_propagator = oxen::defer([&] {
+            std::unique_lock<std::mutex> lock{block_mut};
+            load_failed = true;
+            block_cv.notify_all();
+        });
+
+        for (uint64_t height = start_height; height < end_height; height += CHUNK_SIZE) {
+            {
+                std::unique_lock lock{block_mut};
+                block_cv.wait(lock, [&] {
+                    return load_failed || (abort && *abort) || next_blocks.size() < MAX_QUEUE_SIZE;
+                });
+
+                if (load_failed || (abort && *abort))
+                    return;
+
+                assert(next_blocks.size() < MAX_QUEUE_SIZE);
+            }
+
+            block_data next_chunk{};
+            next_chunk.height = height;
+            size_t blocks_size;
+            // We call the internal non-locking version of _get_blocks here because our companion
+            // thread already holds a lock on this, and does not call anything that can change the
+            // LMDB, which is all the lock in get_blocks is meant to achieve.
+            if (!_get_blocks(height, CHUNK_SIZE, next_chunk.blocks, &blocks_size)) {
+                log::critical(
+                        logcat,
+                        "Unable to get checkpointed historical blocks [{}-{}] for updating oxen "
+                        "subsystems",
+                        height,
+                        std::min(height + CHUNK_SIZE - 1, end_height));
+                return;
+            }
+            next_chunk.size += blocks_size;
+
+            next_chunk.txs.resize(next_chunk.blocks.size());
+            for (size_t i = 0; i < next_chunk.blocks.size(); i++) {
+                const auto& blk = next_chunk.blocks[i];
+                size_t txs_size;
+                std::unordered_set<crypto::hash> missed_txs;
+                // Non-locking version; see comment about _get_blocks, above, re: safety.
+                if (!_get_transactions(blk.tx_hashes, next_chunk.txs[i], &missed_txs, &txs_size) ||
+                    !missed_txs.empty()) {
+                    log::critical(
+                            logcat,
+                            "Unable to get all transactions for subsystem updating from block: {}",
+                            cryptonote::get_block_hash(blk));
+                    return;
+                }
+                next_chunk.size += txs_size;
+            }
+
+            {
+                std::unique_lock lock{block_mut};
+                next_blocks.push(std::move(next_chunk));
+            }
+            block_cv.notify_all();
+        }
+
+        // Disarm the failure transmitter, then signal the processing thread that we finished
+        // loading everything.
+        failure_propagator.cancel();
+
+        {
+            std::unique_lock lock{block_mut};
+            load_finished = true;
+        }
+        block_cv.notify_all();
+    }};
+
+    // If we bail out of this function in any way before the very end successful `return true` (just
+    // before which we cancel this deferred call) then make sure we signal the loader thread and
+    // rejoin the thread on our way out.
+    auto failure_rejoiner = oxen::defer([&] {
+        {
+            std::unique_lock<std::mutex> lock{block_mut};
+            load_failed = true;
+        }
+        block_cv.notify_all();
+        block_loader.join();
+    });
+
+    while (true) {
+        block_data chunk;
+        {
+            std::unique_lock lock{block_mut};
+            block_cv.wait(lock, [&] {
+                return load_failed || (abort && *abort) || load_finished || !next_blocks.empty();
+            });
+
+            if (load_failed || (abort && *abort))
+                return false;
+
+            if (load_finished && next_blocks.empty())
+                break;
+
+            chunk = std::move(next_blocks.front());
+            next_blocks.pop();
+        }
+        block_cv.notify_all();  // Notify the loader that we've removed a block
+
+        uint64_t height = chunk.height;
 
         // NOTE: Log progress every 10s
         auto now = clock::now();
         dseconds duration{now - work_start};
         bool every_10s = duration >= 10s;
 
-        if ((height + CHUNK_SIZE) >= end_height || every_10s) {
+        if (height + chunk.blocks.size() >= end_height || every_10s) {
             service_node_list.store();
 
             float blocks_per_s = work_blocks / duration.count();
@@ -372,9 +496,10 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
 
             log::info(
                     globallogcat,
-                    "... scanning height {} ({:.2f}s) (snl: {:.2f}s; ons: {:.2f}s; {:.1f} blks/s; "
-                    "{}/s)",
+                    "... scanning height {}/{} ({:.2f}s) (snl: {:.2f}s; ons: {:.2f}s; {:.1f} "
+                    "blks/s; {}/s)",
                     height,
+                    end_height,
                     duration.count(),
                     snl_iteration_duration.count(),
                     ons_iteration_duration.count(),
@@ -401,41 +526,17 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
             }
         }
 
-        // NOTE: Grab blocks
-        std::vector<cryptonote::block> blocks;
-        size_t blocks_size;
-        if (!get_blocks(height, CHUNK_SIZE, blocks, nullptr, &blocks_size)) {
-            log::critical(
-                    logcat,
-                    "Unable to get checkpointed historical blocks [{}-{}] for updating oxen "
-                    "subsystems",
-                    height,
-                    std::min(height + CHUNK_SIZE - 1, end_height));
-            return false;
-        }
-
         // NOTE: Load blocks into subsystems
-        work_blocks += blocks.size();
-        work_bytes += blocks_size;
+        work_blocks += chunk.blocks.size();
+        work_bytes += chunk.size;
 
         std::vector<cryptonote::transaction> txs;
         std::unordered_set<crypto::hash> missed_txs;
 
-        for (cryptonote::block const& blk : blocks) {
+        for (size_t i = 0; i < chunk.blocks.size(); i++) {
+            const auto& blk = chunk.blocks[i];
             uint64_t block_height = blk.get_height();
-
-            txs.clear();
-            size_t txs_size;
-            if (!get_transactions(blk.tx_hashes, txs, &missed_txs, &txs_size) ||
-                !missed_txs.empty()) {
-                log::critical(
-                        logcat,
-                        "Unable to get all transactions for subsystem updating from block: {}",
-                        cryptonote::get_block_hash(blk));
-                return false;
-            }
-
-            work_bytes += txs_size;
+            const auto& txs = chunk.txs[i];
 
             if (block_height >= snl_height) {
                 auto snl_start = clock::now();
@@ -509,6 +610,9 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(const std::atomic<bool
         service_node_list.store();
     }
 
+    failure_rejoiner.cancel();
+    assert(load_finished);
+    block_loader.join();
     return true;
 }
 
@@ -2613,15 +2717,12 @@ bool Blockchain::handle_alternative_block(
 
     return true;
 }
-//------------------------------------------------------------------
-bool Blockchain::get_blocks(
+bool Blockchain::_get_blocks(
         uint64_t start_offset,
         size_t count,
         std::vector<block>& blocks,
-        std::vector<std::string>* txs,
         size_t* size_loaded) const {
-    log::trace(logcat, "Blockchain::{}", __func__);
-    std::unique_lock lock{*this};
+
     const uint64_t height = m_db->height();
     if (size_loaded)
         *size_loaded = 0;
@@ -2642,6 +2743,22 @@ bool Blockchain::get_blocks(
             return false;
         }
     }
+
+    return true;
+}
+
+//------------------------------------------------------------------
+bool Blockchain::get_blocks(
+        uint64_t start_offset,
+        size_t count,
+        std::vector<block>& blocks,
+        std::vector<std::string>* txs,
+        size_t* size_loaded) const {
+    log::trace(logcat, "Blockchain::{}", __func__);
+    std::unique_lock lock{*this};
+
+    if (!_get_blocks(start_offset, count, blocks, size_loaded))
+        return false;
 
     if (txs) {
         for (const auto& blk : blocks) {
@@ -3169,14 +3286,12 @@ bool Blockchain::get_split_transactions_blobs(
     return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::get_transactions(
+bool Blockchain::_get_transactions(
         const std::vector<crypto::hash>& txs_ids,
         std::vector<transaction>& txs,
         std::unordered_set<crypto::hash>* missed_txs,
         size_t* total_size) const {
     log::trace(logcat, "Blockchain::{}", __func__);
-    std::unique_lock lock{*this};
-
     txs.reserve(txs_ids.size());
     std::string tx;
     if (total_size)
@@ -3200,6 +3315,15 @@ bool Blockchain::get_transactions(
         }
     }
     return true;
+}
+bool Blockchain::get_transactions(
+        const std::vector<crypto::hash>& txs_ids,
+        std::vector<transaction>& txs,
+        std::unordered_set<crypto::hash>* missed_txs,
+        size_t* total_size) const {
+    log::trace(logcat, "Blockchain::{}", __func__);
+    std::unique_lock lock{*this};
+    return _get_transactions(txs_ids, txs, missed_txs, total_size);
 }
 //------------------------------------------------------------------
 // Find the split point between us and foreign blockchain and return

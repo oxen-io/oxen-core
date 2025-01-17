@@ -212,6 +212,17 @@ class Blockchain {
             std::vector<std::string>* txs = nullptr,
             size_t* blocks_size = nullptr) const;
 
+  private:
+    /// Private implementation used by the above public get_blocks; this does *not* take a lock and
+    /// must only be used where the lock is already held or safety against LMDB changes is otherwise
+    /// guaranteed.
+    bool _get_blocks(
+            uint64_t start_offset,
+            size_t count,
+            std::vector<block>& blocks,
+            size_t* blocks_size) const;
+
+  public:
     /**
      * @brief get blocks and transactions from blocks based on start height and count
      *
@@ -876,6 +887,16 @@ class Blockchain {
             std::vector<transaction>& txs,
             std::unordered_set<crypto::hash>* missed_txs = nullptr,
             size_t* total_size = nullptr) const;
+
+  private:
+    // Private, non-lock-obtaining implementing code of get_transactions()
+    bool _get_transactions(
+            const std::vector<crypto::hash>& txs_ids,
+            std::vector<transaction>& txs,
+            std::unordered_set<crypto::hash>* missed_txs,
+            size_t* total_size) const;
+
+  public:
 
     /**
      * @brief looks up transactions based on a list of transaction hashes and returns the block
