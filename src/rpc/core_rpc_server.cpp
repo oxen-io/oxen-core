@@ -392,8 +392,10 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
                 res.status = "Failed";
                 return res;
             }
-            for (size_t i = 0; i < indices.size(); ++i)
-                out_ind.emplace_back(std::move(indices[i]));
+            for (size_t i = 0; i < indices.size(); ++i) {
+                auto& dest = out_ind.emplace_back();
+                dest.indices = std::move(indices[i]);
+            }
         }
     }
 
