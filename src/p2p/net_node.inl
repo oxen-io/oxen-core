@@ -745,6 +745,16 @@ node_server<t_payload_net_handler>::get_payload_object() {
     return m_payload_handler;
 }
 //-----------------------------------------------------------------------------------
+static void log_detailed_peer_stats(std::unordered_map<peerid_type, peer_stats>& peer_stats_map, std::mutex& peer_stats_map_mutex) {
+    if (log::get_level(logcat) > log::Level::debug)
+      return;
+    std::unique_lock lock{peer_stats_map_mutex};
+    for (const auto& [peer_id, stats] : peer_stats_map) {
+        log::debug(globallogcat, "Peer ID: {}\n\tConnections: {} total, {} failed\n\tLast Connected: {}\n\tTotal Connection Time: {} seconds",
+            peer_id, stats.total_connections, stats.failed_connections, stats.last_connected_timestamp, stats.total_connection_time);
+    }
+}
+//-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::run() {
     // creating thread to log number of connections
@@ -795,16 +805,6 @@ bool node_server<t_payload_net_handler>::run() {
     log::info(logcat, "net_service loop stopped.");
     log_detailed_peer_stats(peer_stats_map, peer_stats_map_mutex);
     return true;
-}
-//-----------------------------------------------------------------------------------
-static void log_detailed_peer_stats(std::unordered_map<peerid_type, peer_stats>& peer_stats_map, std::mutex& peer_stats_map_mutex) {
-    if (log::get_level(logcat) > log::Level::debug)
-      return;
-    std::unique_lock lock{peer_stats_map_mutex};
-    for (const auto& [peer_id, stats] : peer_stats_map) {
-        log::debug(globallogcat, "Peer ID: {}\n\tConnections: {} total, {} failed\n\tLast Connected: {}\n\tTotal Connection Time: {} seconds",
-            peer_id, stats.total_connections, stats.failed_connections, stats.last_connected_timestamp, stats.total_connection_time);
-    }
 }
 //-----------------------------------------------------------------------------------
 static void update_peer_stats(
