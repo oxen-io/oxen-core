@@ -2046,12 +2046,12 @@ bool service_node_list::state_t::process_confirmed_event(
         // This leads us to storing a cryptonote address in the delayed payments which causes the
         // network to stall as code tries to deserialise that address into an eth address and fails.
         if (contributor.ethereum_address) {
-            returned_stakes.emplace_back(
-                    contributor.ethereum_address,
-                    cryptonote::reward_money::coin_amount(contributor.amount),
-                    confirm.height,
-                    confirm.tx_index,
-                    contrib_index);
+            auto& item = returned_stakes.emplace_back();
+            item.addr = contributor.ethereum_address;
+            item.amount = cryptonote::reward_money::coin_amount(contributor.amount);
+            item.block_height = confirm.height;
+            item.tx_index = confirm.tx_index;
+            item.contributor_index = contrib_index;
         }
     }
 

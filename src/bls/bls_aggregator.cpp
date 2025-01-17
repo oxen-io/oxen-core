@@ -711,8 +711,9 @@ namespace {
                 T&&... args) {
             if (agg_log_lister) {
                 std::lock_guard lock{agg_log_lister->mutex};
-                agg_log_lister->success.emplace_back(
-                        addr, fmt::format(format, std::forward<T>(args)...));
+                agg_log& log = agg_log_lister->success.emplace_back();
+                log.addr = addr;
+                log.msg = fmt::format(format, std::forward<T>(args)...);
             }
         }
         template <typename... T>
@@ -722,8 +723,9 @@ namespace {
                 T&&... args) {
             if (agg_log_lister) {
                 std::lock_guard lock{agg_log_lister->mutex};
-                agg_log_lister->error.emplace_back(
-                        addr, fmt::format(format, std::forward<T>(args)...));
+                agg_log& log = agg_log_lister->error.emplace_back();
+                log.addr = addr;
+                log.msg = fmt::format(format, std::forward<T>(args)...);
             }
         }
     };
