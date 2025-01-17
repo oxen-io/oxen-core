@@ -2937,7 +2937,9 @@ void core_rpc_server::fill_sn_response_entry(
     }
 
     auto& netconf = m_core.get_net_config();
-    auto [hf, snode_rev] = get_network_version_revision(nettype(), top_height);
+    std::pair<hf, uint8_t> network_rev = get_network_version_revision(nettype(), top_height);
+    hf hf = network_rev.first;
+    uint8_t snode_rev = network_rev.second;
 
     if (hf >= feature::SN_PK_IS_ED25519) {
         set_if_requested(reqed, binary, "pubkey_ed25519", sn_pubkey);
