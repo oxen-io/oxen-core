@@ -59,16 +59,16 @@ BlockchainSQLite::BlockchainSQLite(
     height = prepared_get<int64_t>("SELECT height FROM batch_db_info");
 
     uint64_t row_count =
-            batch_payments_accrued_row_count(PaymentTableType::Nil, /*height*/ nullptr);
+            batch_payments_accrued_row_count(PaymentTableType::Nil, /*height*/ std::nullopt);
     uint64_t recent_count =
-            batch_payments_accrued_row_count(PaymentTableType::Recent, /*height*/ nullptr);
+            batch_payments_accrued_row_count(PaymentTableType::Recent, /*height*/ std::nullopt);
     uint64_t recent_min_height =
             prepared_get<int>("SELECT MIN(height) FROM batched_payments_accrued_recent");
     uint64_t recent_max_height =
             prepared_get<int>("SELECT MAX(height) FROM batched_payments_accrued_recent");
 
     uint64_t archive_count =
-            batch_payments_accrued_row_count(PaymentTableType::Archive, /*height*/ nullptr);
+            batch_payments_accrued_row_count(PaymentTableType::Archive, /*height*/ std::nullopt);
     uint64_t archive_min_height =
             prepared_get<int>("SELECT MIN(height) FROM batched_payments_accrued_archive");
     uint64_t archive_max_height =
@@ -479,7 +479,7 @@ void BlockchainSQLite::blockchain_detached(PaymentTableType history, uint64_t ne
     // NOTE: Execute detach
     std::string detach_label = "";
     int rows_restored = 0;
-    int rows_removed = batch_payments_accrued_row_count(PaymentTableType::Nil, nullptr);
+    int rows_removed = batch_payments_accrued_row_count(PaymentTableType::Nil, std::nullopt);
     switch (history) {
         case PaymentTableType::Nil: {
             reset_database();
@@ -489,7 +489,7 @@ void BlockchainSQLite::blockchain_detached(PaymentTableType history, uint64_t ne
         default: {
             std::string batched_payments_history_table = "batched_payments_accrued_{}"_format(
                     history == PaymentTableType::Archive ? "archive" : "recent");
-            rows_restored = batch_payments_accrued_row_count(history, &new_height);
+            rows_restored = batch_payments_accrued_row_count(history, new_height);
 
             db.exec(R"(DELETE FROM batched_payments_raw WHERE height_paid > {0};
                        DELETE FROM batched_payments_accrued;
@@ -572,7 +572,7 @@ void BlockchainSQLite::add_sn_rewards(const block_payments& payments) {
 }
 
 size_t BlockchainSQLite::batch_payments_accrued_row_count(
-        PaymentTableType type, const uint64_t* height) {
+        PaymentTableType type, std::optional<uint64_t> height) {
     size_t result = 0;
     switch (type) {
         case PaymentTableType::Nil:
