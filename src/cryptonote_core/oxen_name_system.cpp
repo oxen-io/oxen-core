@@ -2648,14 +2648,13 @@ bool name_system_db::prune_db(uint64_t height) {
 
         log::debug(
                 logcat,
-                "Detach request for ONS @ {} (is {}), {} to {}",
-                height,
-                this->last_processed_height,
-                result ? "detached to" : "failed to detach",
-                height - 1);
+                "Detach request for ONS (last processed is {}), {} to {}",
+                last_processed_height,
+                result ? "detached" : "failed to detach",
+                height);
 
-        if (result)
-            this->last_processed_height = (height - 1);
+        if (result && height <= last_processed_height)
+            last_processed_height = height - 1;
     }
     return result;
 }
