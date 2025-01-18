@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 
@@ -3715,7 +3716,6 @@ void service_node_list::blockchain_detached(uint64_t height) {
     const auto& netconf = get_config(blockchain.nettype());
     uint64_t target_height = height ? height - 1 : 0;
     uint64_t archive_height = target_height - (target_height % netconf.HISTORY_ARCHIVE_INTERVAL);
-    auto history = cryptonote::BlockchainSQLite::PaymentTableType::Nil;
 
     // NOTE: Early exit if we are already detached to the desired height
     if (m_state.height == target_height) {
@@ -3723,18 +3723,36 @@ void service_node_list::blockchain_detached(uint64_t height) {
             return;
     }
 
+    // NOTE: Checks if the SQL has a backup for the existing height.
+    //
+    // If we are either pre-SQL DB then the SQL DB trivially "has" a backup, because the correct
+    // state is empty.  Otherwise, from HF19 and up, we check that it has actual rows of the given
+    // type at the requested height.
+    const auto sqlite_begins = hard_fork_begins(blockchain.nettype(), hf::hf19_reward_batching)
+                                       .value_or(std::numeric_limits<uint64_t>::max());
+    auto sql_db_has = [this, sqlite_begins](
+                              uint64_t height,
+                              cryptonote::BlockchainSQLite::PaymentTableType table_type) {
+        // NOTE: If we're below HF19 then anything is fine because the correct SQLite DB is
+        // empty:
+        if (height < sqlite_begins)
+            return true;
+
+        // NOTE: Accept if SQL has payment rows for the requested height:
+        return blockchain.sqlite_db().batch_payments_accrued_row_count(
+                       cryptonote::BlockchainSQLite::PaymentTableType::Recent, height) > 0;
+    };
+
     // NOTE: Lookup desired SNL state from recent backups
-    if (history == cryptonote::BlockchainSQLite::PaymentTableType::Nil) {
+    auto history = cryptonote::BlockchainSQLite::PaymentTableType::Nil;
+    {
         state_set& set = m_transient->state_history;
         for (auto it = set.rbegin(); it != set.rend(); it++) {
             // NOTE: Find the closest starting point
             if (it->only_loaded_quorums || it->height > target_height)
                 continue;
 
-            // NOTE: Check if the SQL DB has a backup for the requested height
-            size_t row_count = blockchain.sqlite_db().batch_payments_accrued_row_count(
-                    cryptonote::BlockchainSQLite::PaymentTableType::Recent, &it->height);
-            if (row_count) {  // NOTE: Accept if SQL has
+            if (sql_db_has(it->height, cryptonote::BlockchainSQLite::PaymentTableType::Recent)) {
                 history = cryptonote::BlockchainSQLite::PaymentTableType::Recent;
                 target_height = it->height;
                 break;
@@ -3754,11 +3772,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
                 ((it->height % netconf.HISTORY_ARCHIVE_INTERVAL) != 0))
                 continue;
 
-            // NOTE: Check if the SQL DB has a backup for the requested height
-            size_t row_count = blockchain.sqlite_db().batch_payments_accrued_row_count(
-                    cryptonote::BlockchainSQLite::PaymentTableType::Archive, &it->height);
-
-            if (row_count) {  // NOTE: Accept if SQL has
+            if (sql_db_has(it->height, cryptonote::BlockchainSQLite::PaymentTableType::Archive)) {
                 history = cryptonote::BlockchainSQLite::PaymentTableType::Archive;
                 archive_height = it->height;
                 break;
