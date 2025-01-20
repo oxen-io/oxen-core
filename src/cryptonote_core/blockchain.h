@@ -897,7 +897,6 @@ class Blockchain {
             size_t* total_size) const;
 
   public:
-
     /**
      * @brief looks up transactions based on a list of transaction hashes and returns the block
      * height in which they were mined, or 0 if not found on the blockchain.
