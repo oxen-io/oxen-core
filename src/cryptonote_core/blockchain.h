@@ -1262,7 +1262,8 @@ class Blockchain {
 
     tx_memory_pool& tx_pool;
 
-    bool load_missing_blocks_into_oxen_subsystems(const std::atomic<bool>* abort = nullptr);
+    bool load_missing_blocks_into_oxen_subsystems(
+            const std::atomic<bool>* abort = nullptr, bool use_threaded_load = false);
 
 #ifndef IN_UNIT_TESTS
   private:
