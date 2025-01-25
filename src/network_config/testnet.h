@@ -68,6 +68,7 @@ inline constexpr network_config config{
         .HISTORY_RECENT_KEEP_WINDOW = mainnet::config.HISTORY_RECENT_KEEP_WINDOW,
         // Much shorter than mainnet so that you can test this more easily.
         .ETH_EXIT_BUFFER = 1h / mainnet::config.TARGET_BLOCK_TIME,
+        .ETH_DEREG_BUFFER = 1h / mainnet::config.TARGET_BLOCK_TIME,
         // FIXME!
         .ETHEREUM_CHAIN_ID = 421614,  // Arbitrum Sepolia
         .ETHEREUM_REWARDS_CONTRACT = "",

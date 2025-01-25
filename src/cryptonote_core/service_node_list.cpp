@@ -2021,9 +2021,10 @@ bool service_node_list::state_t::process_confirmed_event(
         return false;
     }
 
-    // NOTE: Calculate how many blocks from now the funds are still to be locked for
+    // NOTE: Calculate how many blocks from now the funds are still to be locked for, if this node
+    // did not leave voluntarily.
     uint64_t block_delay = 0;
-    if (slash_amount > 0) {
+    if (node->type != recently_removed_node::type_t::voluntary_exit) {
         // NOTE: Calculate the height at which funds are unlocked
         auto& netconf = get_config(confirm.nettype);
         uint64_t dereg_height = node->height;
@@ -5368,9 +5369,14 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
                 }
             }
 
+            const auto& netconf = get_config(nettype);
+            const auto exit_buffer = exit_type == recently_removed_node::type_t::voluntary_exit
+                                           ? netconf.ETH_EXIT_BUFFER
+                                           : netconf.ETH_DEREG_BUFFER;
+
             recently_removed_nodes.emplace_back(recently_removed_node{
                     .height = height,
-                    .liquidation_height = height + get_config(nettype).ETH_EXIT_BUFFER,
+                    .liquidation_height = height + exit_buffer,
                     .type = exit_type,
                     .public_ip = public_ip,
                     .qnet_port = qnet_port,

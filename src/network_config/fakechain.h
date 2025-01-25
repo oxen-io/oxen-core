@@ -47,6 +47,7 @@ inline constexpr network_config config{
         .HISTORY_ARCHIVE_KEEP_WINDOW = mainnet::config.HISTORY_ARCHIVE_KEEP_WINDOW,
         .HISTORY_RECENT_KEEP_WINDOW = mainnet::config.HISTORY_RECENT_KEEP_WINDOW,
         .ETH_EXIT_BUFFER = testnet::config.ETH_EXIT_BUFFER,
+        .ETH_DEREG_BUFFER = testnet::config.ETH_DEREG_BUFFER,
         .ETHEREUM_CHAIN_ID = mainnet::config.ETHEREUM_CHAIN_ID,
         .ETHEREUM_REWARDS_CONTRACT = mainnet::config.ETHEREUM_REWARDS_CONTRACT,
         .ETHEREUM_POOL_CONTRACT = mainnet::config.ETHEREUM_POOL_CONTRACT,

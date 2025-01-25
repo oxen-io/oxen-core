@@ -65,6 +65,7 @@ inline constexpr network_config config{
         // locally and pulse quorums take time to create blocks which bloat the
         // test duration.
         .ETH_EXIT_BUFFER = 1,
+        .ETH_DEREG_BUFFER = 1,
         .ETHEREUM_CHAIN_ID = 31337,
         .ETHEREUM_REWARDS_CONTRACT = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"sv,
         .ETHEREUM_POOL_CONTRACT = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"sv,

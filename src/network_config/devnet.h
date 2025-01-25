@@ -68,6 +68,7 @@ inline constexpr network_config config{
         .HISTORY_ARCHIVE_KEEP_WINDOW = mainnet::config.HISTORY_ARCHIVE_KEEP_WINDOW,
         .HISTORY_RECENT_KEEP_WINDOW = mainnet::config.HISTORY_RECENT_KEEP_WINDOW,
         .ETH_EXIT_BUFFER = testnet::config.ETH_EXIT_BUFFER,
+        .ETH_DEREG_BUFFER = testnet::config.ETH_DEREG_BUFFER,
         .ETHEREUM_CHAIN_ID = 421614,  // Arbitrum Sepolia
         .ETHEREUM_REWARDS_CONTRACT = "0x75Dc11700b2D03902FCb5Ca7aFd6A859a1Fa25Cb",
         .ETHEREUM_POOL_CONTRACT = "0xb515C61DE12f28eE908a905b930aFb80B9bAd7cf",
