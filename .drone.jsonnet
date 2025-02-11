@@ -398,7 +398,7 @@ local gui_wallet_step_darwin = {
   // Android builds; we do them all in one image because the android NDK is huge
 
   // TODO FIXME: both android and iOS wallet builds need fixes for recent Oxen 11 changes!
-] + if true then [] else [
+] + [
   {
     name: 'Android wallet_api',
     kind: 'pipeline',
