@@ -163,6 +163,7 @@ local snapshot_deb(distro, deb_suffix_base='-1', buildarch='amd64', debarch='amd
         'eatmydata ' + apt_get_quiet + ' dist-upgrade -y',
         'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git-buildpackage devscripts equivs g++ ccache openssh-client',
         'eatmydata dpkg-reconfigure ccache',
+        'ln -s debian-stagenet debian',
         './debian/setup-build.sh',
         'cd debian',
         'eatmydata mk-build-deps -i -r --tool="' + apt_get_quiet + ' -o Debug::pkgProblemResolver=yes --no-install-recommends -y" control',
