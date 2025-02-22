@@ -26,16 +26,16 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "common/guts.h"
 #include "gtest/gtest.h"
 
 #include "common/sha256sum.h"
 #include "crypto/hash.h"
-#include "common/hex.h"
 
-static bool check(const std::string &data, const char *expected_hash_hex)
+static bool check(const std::string &data, std::string_view expected_hash_hex)
 {
   crypto::hash hash, expected_hash;
-  if (!tools::hex_to_type(expected_hash_hex, expected_hash))
+  if (!tools::try_load_from_hex_guts(expected_hash_hex, expected_hash))
     return false;
   return tools::sha256sum_str(data, hash) && hash == expected_hash;
 }

@@ -27,66 +27,65 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #pragma once
 
+#include <condition_variable>
 #include <cstddef>
-#include <functional>
-#include <utility>
-#include <vector>
 #include <deque>
+#include <functional>
+#include <mutex>
 #include <stdexcept>
 #include <thread>
-#include <mutex>
-#include <condition_variable>
+#include <utility>
+#include <vector>
 
-namespace tools
-{
+namespace tools {
 //! A global thread pool
-class threadpool
-{
-public:
-  static threadpool& getInstance() {
-    static threadpool instance;
-    return instance;
-  }
-  static threadpool *getNewForUnitTests(unsigned max_threads = 0) {
-    return new threadpool(max_threads);
-  }
+class threadpool {
+  public:
+    static threadpool& getInstance() {
+        static threadpool instance;
+        return instance;
+    }
+    static threadpool* getNewForUnitTests(unsigned max_threads = 0) {
+        return new threadpool(max_threads);
+    }
 
-  // The waiter lets the caller know when all of its
-  // tasks are completed.
-  class waiter {
-    std::mutex mt;
-    std::condition_variable cv;
-    int num;
-    public:
-    void inc();
-    void dec();
-    void wait(threadpool *tpool);  //! Wait for a set of tasks to finish.
-    waiter() : num(0){}
-    ~waiter();
-  };
+    // The waiter lets the caller know when all of its
+    // tasks are completed.
+    class waiter {
+        std::mutex mt;
+        std::condition_variable cv;
+        int num;
 
-  // Submit a task to the pool. The waiter pointer may be
-  // NULL if the caller doesn't care to wait for the
-  // task to finish.
-  void submit(waiter *waiter, std::function<void()> f, bool leaf = false);
+      public:
+        void inc();
+        void dec();
+        void wait(threadpool* tpool);  //! Wait for a set of tasks to finish.
+        waiter() : num(0) {}
+        ~waiter();
+    };
 
-  // destroy and recreate threads
-  void recycle();
+    // Submit a task to the pool. The waiter pointer may be
+    // NULL if the caller doesn't care to wait for the
+    // task to finish.
+    void submit(waiter* waiter, std::function<void()> f, bool leaf = false);
 
-  unsigned int get_max_concurrency() const;
+    // destroy and recreate threads
+    void recycle();
 
-  ~threadpool();
-  void stop();
-  void start(unsigned int max_threads = 0);
+    unsigned int get_max_concurrency() const;
+
+    ~threadpool();
+    void stop();
+    void start(unsigned int max_threads = 0);
 
   private:
     threadpool(unsigned int max_threads = 0);
     void destroy();
     void create(unsigned int max_threads);
     typedef struct entry {
-      waiter *wo;
-      std::function<void()> f;
-      bool leaf;
+        waiter* wo;
+        std::function<void()> f;
+        bool leaf;
     } entry;
     std::deque<entry> queue;
     std::condition_variable has_work;
@@ -98,4 +97,4 @@ public:
     void run(bool flush = false);
 };
 
-}
+}  // namespace tools

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = 'oxen_wallet_cli'
+authors = [
+    {name = "Sean Darcy", email = "sean@oxen.io"},
+]
+description = "CLI wallet for Oxen"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "License :: OSI Approved :: GPL-3.0-or-later",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+]
+dependencies = [
+    "Click",
+    "click-repl",
+    "pywallet3",
+    "tqdm",
+]
+dynamic = ["version"]
+
+[project.scripts]
+oxen_wallet_cli = "oxen_wallet_cli.__main__:main"

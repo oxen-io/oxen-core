@@ -37,7 +37,7 @@
 #include <utility>
 #include <vector>
 
-#include "common/hex.h"
+#include "common/guts.h"
 #include "common/string_util.h"
 #include "epee/warnings.h"
 #include "epee/misc_log_ex.h"
@@ -48,18 +48,6 @@
 using namespace std::literals;
 using namespace crypto;
 typedef crypto::hash chash;
-
-bool operator !=(const ec_scalar &a, const ec_scalar &b) {
-  return 0 != memcmp(&a, &b, sizeof(ec_scalar));
-}
-
-bool operator !=(const ec_point &a, const ec_point &b) {
-  return 0 != memcmp(&a, &b, sizeof(ec_point));
-}
-
-bool operator !=(const key_derivation &a, const key_derivation &b) {
-  return 0 != memcmp(&a, &b, sizeof(key_derivation));
-}
 
 DISABLE_GCC_WARNING(maybe-uninitialized)
 
@@ -79,10 +67,7 @@ T extract_single(std::string_view val) {
   } else if constexpr (std::is_same_v<T, std::string_view>) {
     return val;
   } else {
-    T v;
-    if (!tools::hex_to_type(val, v))
-      throw std::runtime_error("Invalid hex [" + std::string{val} + ", size=" + std::to_string(val.size()/2) + "B], could not extract type (T size=" + std::to_string(sizeof(T)) + ") on line " + std::to_string(lineno));
-    return v;
+    return tools::make_from_hex_guts<T>(val);
   }
 }
 
@@ -95,7 +80,7 @@ std::string make_single(const T& val) {
   else if constexpr (std::is_same_v<T, std::string_view>)
     return std::string{val};
   else
-    return tools::type_to_hex(val);
+    return tools::hex_guts(val);
 }
 
 template <typename... T, typename It, size_t... S>

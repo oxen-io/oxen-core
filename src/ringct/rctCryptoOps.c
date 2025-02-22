@@ -1,21 +1,21 @@
 // Copyright (c) 2014-2019, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -25,7 +25,7 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <assert.h>
@@ -33,9 +33,9 @@
 
 #include "crypto/crypto-ops.h"
 
-//DISABLE_VS_WARNINGS(4146 4244)
+// DISABLE_VS_WARNINGS(4146 4244)
 
-void sc_reduce32copy(unsigned char * scopy, const unsigned char *s) {
+void sc_reduce32copy(unsigned char* scopy, const unsigned char* s) {
     int64_t s0 = 2097151 & load_3(s);
     int64_t s1 = 2097151 & (load_4(s + 2) >> 5);
     int64_t s2 = 2097151 & (load_3(s + 5) >> 2);
@@ -62,41 +62,41 @@ void sc_reduce32copy(unsigned char * scopy, const unsigned char *s) {
     int64_t carry10;
     int64_t carry11;
 
-    carry0 = (s0 + (1<<20)) >> 21;
+    carry0 = (s0 + (1 << 20)) >> 21;
     s1 += carry0;
     s0 -= carry0 << 21;
-    carry2 = (s2 + (1<<20)) >> 21;
+    carry2 = (s2 + (1 << 20)) >> 21;
     s3 += carry2;
     s2 -= carry2 << 21;
-    carry4 = (s4 + (1<<20)) >> 21;
+    carry4 = (s4 + (1 << 20)) >> 21;
     s5 += carry4;
     s4 -= carry4 << 21;
-    carry6 = (s6 + (1<<20)) >> 21;
+    carry6 = (s6 + (1 << 20)) >> 21;
     s7 += carry6;
     s6 -= carry6 << 21;
-    carry8 = (s8 + (1<<20)) >> 21;
+    carry8 = (s8 + (1 << 20)) >> 21;
     s9 += carry8;
     s8 -= carry8 << 21;
-    carry10 = (s10 + (1<<20)) >> 21;
+    carry10 = (s10 + (1 << 20)) >> 21;
     s11 += carry10;
     s10 -= carry10 << 21;
 
-    carry1 = (s1 + (1<<20)) >> 21;
+    carry1 = (s1 + (1 << 20)) >> 21;
     s2 += carry1;
     s1 -= carry1 << 21;
-    carry3 = (s3 + (1<<20)) >> 21;
+    carry3 = (s3 + (1 << 20)) >> 21;
     s4 += carry3;
     s3 -= carry3 << 21;
-    carry5 = (s5 + (1<<20)) >> 21;
+    carry5 = (s5 + (1 << 20)) >> 21;
     s6 += carry5;
     s5 -= carry5 << 21;
-    carry7 = (s7 + (1<<20)) >> 21;
+    carry7 = (s7 + (1 << 20)) >> 21;
     s8 += carry7;
     s7 -= carry7 << 21;
-    carry9 = (s9 + (1<<20)) >> 21;
+    carry9 = (s9 + (1 << 20)) >> 21;
     s10 += carry9;
     s9 -= carry9 << 21;
-    carry11 = (s11 + (1<<20)) >> 21;
+    carry11 = (s11 + (1 << 20)) >> 21;
     s12 += carry11;
     s11 -= carry11 << 21;
 

@@ -27,7 +27,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(cryptonote_core
+oxen_add_library(cryptonote_core
   blockchain.cpp
   cryptonote_core.cpp
   service_node_rules.cpp
@@ -40,6 +40,7 @@ add_library(cryptonote_core
   tx_pool.cpp
   tx_sanity_check.cpp
   cryptonote_tx_utils.cpp
+  ethereum_transactions.cpp
   pulse.cpp
   uptime_proof.cpp)
 
@@ -53,13 +54,16 @@ target_link_libraries(cryptonote_core
     device
     checkpoints
     SQLite::SQLite3
+    bls_aggregator
+    l2_tracker
+    ethyl
   PRIVATE
-    Boost::program_options
     SQLiteCpp
     systemd
+    logging
     extra)
 
-if(PER_BLOCK_CHECKPOINT)
+if (PER_BLOCK_CHECKPOINT)
   target_compile_definitions(cryptonote_core PUBLIC PER_BLOCK_CHECKPOINT)
   target_link_libraries(cryptonote_core PUBLIC blocks)
 endif()

@@ -30,6 +30,7 @@
 
 #include "gtest/gtest.h"
 
+#include "common/guts.h"
 #include "epee/string_tools.h"
 #include "ringct/rctOps.h"
 #include "ringct/rctSigs.h"
@@ -37,7 +38,6 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "device/device.hpp"
 #include "epee/misc_log_ex.h"
-#include "common/hex.h"
 
 TEST(bulletproofs, valid_zero)
 {
@@ -179,15 +179,15 @@ TEST(bulletproofs, invalid_31)
   ASSERT_FALSE(rct::bulletproof_VERIFY(proof));
 }
 
-static const char * const torsion_elements[] =
+constexpr std::array torsion_elements =
 {
-  "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa",
-  "0000000000000000000000000000000000000000000000000000000000000000",
-  "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85",
-  "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
-  "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
-  "0000000000000000000000000000000000000000000000000000000000000080",
-  "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+  "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa"sv,
+  "0000000000000000000000000000000000000000000000000000000000000000"sv,
+  "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc85"sv,
+  "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"sv,
+  "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05"sv,
+  "0000000000000000000000000000000000000000000000000000000000000080"sv,
+  "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a"sv,
 };
 
 TEST(bulletproofs, invalid_torsion)
@@ -197,7 +197,7 @@ TEST(bulletproofs, invalid_torsion)
   for (const auto &xs: torsion_elements)
   {
     rct::key x;
-    ASSERT_TRUE(tools::hex_to_type(xs, x));
+    ASSERT_TRUE(tools::try_load_from_hex_guts(xs, x));
     ASSERT_FALSE(rct::isInMainSubgroup(x));
     for (auto &k: proof.V)
     {

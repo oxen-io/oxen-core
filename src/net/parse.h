@@ -28,42 +28,41 @@
 
 #pragma once
 
-#include <string_view>
 #include <cstdint>
+#include <string_view>
 
 #include "common/expect.h"
 #include "epee/net/net_utils_base.h"
 
-namespace net
-{
-    std::pair<std::string_view, std::string_view> get_network_address_host_and_port(const std::string_view address);
+namespace net {
+std::pair<std::string_view, std::string_view> get_network_address_host_and_port(
+        const std::string_view address);
 
-    /*!
-      Identifies onion, i2p and IPv4 addresses and returns them as a generic
-      `network_address`. If the type is unsupported, it might be a hostname,
-      and `error() == net::error::kUnsupportedAddress` is returned.
+/*!
+  Identifies onion, i2p and IPv4 addresses and returns them as a generic
+  `network_address`. If the type is unsupported, it might be a hostname,
+  and `error() == net::error::kUnsupportedAddress` is returned.
 
-      \param address An onion address, i2p address, ipv4 address or hostname. Hostname
-          will return an error.
-      \param default_port If `address` does not specify a port, this value
-          will be used.
+  \param address An onion address, i2p address, ipv4 address or hostname. Hostname
+      will return an error.
+  \param default_port If `address` does not specify a port, this value
+      will be used.
 
-      \return A tor or IPv4 address, else error.
-    */
-    expect<epee::net_utils::network_address>
-        get_network_address(std::string_view address, std::uint16_t default_port);
+  \return A tor or IPv4 address, else error.
+*/
+expect<epee::net_utils::network_address> get_network_address(
+        std::string_view address, std::uint16_t default_port);
 
-    /*!
-      Identifies an IPv4 subnet in CIDR notatioa and returns it as a generic
-      `network_address`. If the type is unsupported, it might be a hostname,
-      and `error() == net::error::kUnsupportedAddress` is returned.
+/*!
+  Identifies an IPv4 subnet in CIDR notatioa and returns it as a generic
+  `network_address`. If the type is unsupported, it might be a hostname,
+  and `error() == net::error::kUnsupportedAddress` is returned.
 
-      \param address An ipv4 address.
-      \param allow_implicit_32 whether to accept "raw" IPv4 addresses, with CIDR notation
+  \param address An ipv4 address.
+  \param allow_implicit_32 whether to accept "raw" IPv4 addresses, with CIDR notation
 
-      \return A tor or IPv4 address, else error.
-    */
-    expect<epee::net_utils::ipv4_network_subnet>
-        get_ipv4_subnet_address(std::string_view address, bool allow_implicit_32 = false);
-}
-
+  \return A tor or IPv4 address, else error.
+*/
+expect<epee::net_utils::ipv4_network_subnet> get_ipv4_subnet_address(
+        std::string_view address, bool allow_implicit_32 = false);
+}  // namespace net

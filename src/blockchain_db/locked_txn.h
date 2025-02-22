@@ -30,27 +30,45 @@
 
 #pragma once
 
-namespace cryptonote
-{
-    // This class is meant to create a batch when none currently exists.
-    // If a batch exists, it can't be from another thread, since we can
-    // only be called with the txpool lock taken, and it is held during
-    // the whole prepare/handle/cleanup incoming block sequence.
-    class LockedTXN {
-    public:
-      LockedTXN(Blockchain &b): m_db{b.get_db()} {
-        m_batch = m_db.batch_start();
-      }
-      LockedTXN(const LockedTXN &) = delete;
-      LockedTXN &operator=(const LockedTXN &) = delete;
-      LockedTXN(LockedTXN &&o) : m_db{o.m_db}, m_batch{o.m_batch} { o.m_batch = false; }
-      LockedTXN &operator=(LockedTXN &&) = delete;
+#include "cryptonote_core/blockchain.h"
 
-      void commit() { try { if (m_batch) { m_db.batch_stop(); m_batch = false; } } catch (const std::exception &e) { MWARNING("LockedTXN::commit filtering exception: " << e.what()); } }
-      void abort() { try { if (m_batch) { m_db.batch_abort(); m_batch = false; } } catch (const std::exception &e) { MWARNING("LockedTXN::abort filtering exception: " << e.what()); } }
-      ~LockedTXN() { this->abort(); }
-    private:
-      BlockchainDB &m_db;
-      bool m_batch;
-    };
-}
+namespace cryptonote {
+// This class is meant to create a batch when none currently exists.
+// If a batch exists, it can't be from another thread, since we can
+// only be called with the txpool lock taken, and it is held during
+// the whole prepare/handle/cleanup incoming block sequence.
+class LockedTXN {
+  public:
+    LockedTXN(Blockchain& b) : m_db{b.db()} { m_batch = m_db.batch_start(); }
+    LockedTXN(const LockedTXN&) = delete;
+    LockedTXN& operator=(const LockedTXN&) = delete;
+    LockedTXN(LockedTXN&& o) : m_db{o.m_db}, m_batch{o.m_batch} { o.m_batch = false; }
+    LockedTXN& operator=(LockedTXN&&) = delete;
+
+    void commit() {
+        try {
+            if (m_batch) {
+                m_db.batch_stop();
+                m_batch = false;
+            }
+        } catch (const std::exception& e) {
+            log::warning(globallogcat, "LockedTXN::commit filtering exception: {}", e.what());
+        }
+    }
+    void abort() {
+        try {
+            if (m_batch) {
+                m_db.batch_abort();
+                m_batch = false;
+            }
+        } catch (const std::exception& e) {
+            log::warning(globallogcat, "LockedTXN::abort filtering exception: {}", e.what());
+        }
+    }
+    ~LockedTXN() { this->abort(); }
+
+  private:
+    BlockchainDB& m_db;
+    bool m_batch;
+};
+}  // namespace cryptonote

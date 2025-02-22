@@ -338,11 +338,9 @@ eof:
         color_prompt += "\001\033[0m\002";
         m_stdin_reader.get_readline_buffer().set_prompt(color_prompt);
 #else
-        epee::set_console_color(epee::console_color_yellow, true);
         std::cout << prompt;
         if (' ' != prompt.back())
           std::cout << ' ';
-        epee::reset_console_color();
         std::cout.flush();
 #endif
       }
@@ -370,26 +368,22 @@ eof:
             break;
           if (m_stdin_reader.eos())
           {
-            MGINFO("EOF on stdin, exiting");
             std::cout << std::endl;
             break;
           }
 
           if (m_cancel)
           {
-            MDEBUG("Input cancelled");
             cmd_handler(std::nullopt);
             m_cancel = false;
             continue;
           }
           if (!get_line_ret)
           {
-            MERROR("Failed to read line.");
           }
 
           string_tools::trim(command);
 
-          LOG_PRINT_L2("Read command: " << command);
           if (command.empty())
           {
             continue;
@@ -405,7 +399,6 @@ eof:
         }
         catch (const std::exception &ex)
         {
-          LOG_ERROR("Exception at [console_handler], what=" << ex.what());
         }
       }
       if (exit_handler)
@@ -529,7 +522,7 @@ eof:
       catch (const std::exception &e)
       {
         rdln::suspend_readline pause_readline;
-        std::cout << "Command errored: " << cmd.front() << ", " << e.what();
+        std::cout << "Command errored: " << cmd.front() << ", " << e.what() << "\n";
       }
 
       return false;

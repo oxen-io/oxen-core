@@ -1,0 +1,50 @@
+
+BasedOnStyle: Google
+AlignAfterOpenBracket: AlwaysBreak
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignEscapedNewlines: Left
+AlignOperands: AlignAfterOperator
+AlignTrailingComments: true
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLambdasOnASingleLine: All
+AllowShortLoopsOnASingleLine: false
+AlwaysBreakAfterReturnType: None
+AlwaysBreakTemplateDeclarations: Yes
+AlwaysBreakBeforeMultilineStrings: true
+BreakBeforeBinaryOperators: None
+BreakBeforeBraces: Attach
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: AfterColon
+Cpp11BracedListStyle: true
+KeepEmptyLinesAtTheStartOfBlocks: true
+NamespaceIndentation: Inner
+CompactNamespaces: true
+PenaltyBreakString: 3
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: false
+SpacesInContainerLiterals: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+Standard: c++20
+UseTab: Never
+SortIncludes: CaseSensitive
+ColumnLimit: 100
+IndentWidth: 4
+AccessModifierOffset: -2
+ConstructorInitializerIndentWidth: 8
+ContinuationIndentWidth: 8
+
+
+# treat pointers and reference declarations as if part of the type
+DerivePointerAlignment: false
+PointerAlignment: Left
+
+# when wrapping function calls/declarations, force each parameter to have its own line
+BinPackParameters: false
+BinPackArguments: false

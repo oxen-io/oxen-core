@@ -5,12 +5,12 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(BOOST_VERSION 1.84.0 CACHE STRING "boost version")
-set(BOOST_MIRROR ${LOCAL_MIRROR} https://boostorg.jfrog.io/artifactory/main/release/${BOOST_VERSION}/source
+set(BOOST_VERSION 1.86.0 CACHE STRING "boost version")
+set(BOOST_MIRROR ${LOCAL_MIRROR} https://archives.boost.io/release/${BOOST_VERSION}/source
     CACHE STRING "boost download mirror(s)")
 string(REPLACE "." "_" BOOST_VERSION_ ${BOOST_VERSION})
 set(BOOST_SOURCE boost_${BOOST_VERSION_}.tar.bz2)
-set(BOOST_HASH SHA256=cc4b893acf645c9d4b698e9a0f08ca8846aa5d6c68275c14c3e7949c24109454
+set(BOOST_HASH SHA256=1bed88e40401b2cb7a1f76d4bab499e352fa4d0c5f31c0dbae64e24d34d7513b
     CACHE STRING "boost source hash")
 
 set(NCURSES_VERSION 6.3 CACHE STRING "ncurses version")
@@ -27,11 +27,11 @@ set(READLINE_SOURCE readline-${READLINE_VERSION}.tar.gz)
 set(READLINE_HASH SHA512=27790d0461da3093a7fee6e89a51dcab5dc61928ec42e9228ab36493b17220641d5e481ea3d8fee5ee0044c70bf960f55c7d3f1a704cf6b9c42e5c269b797e00
     CACHE STRING "readline source hash")
 
-set(SQLITE3_VERSION 3450100 CACHE STRING "sqlite3 version")
+set(SQLITE3_VERSION 3490100 CACHE STRING "sqlite3 version")
 set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2024
     CACHE STRING "sqlite3 download mirror(s)")
 set(SQLITE3_SOURCE sqlite-autoconf-${SQLITE3_VERSION}.tar.gz)
-set(SQLITE3_HASH SHA512=c6bd4eaa67cada28528d1ac31aec1662c0a11048247a1bb148c1842fb0252934e2096843b56fea94bfb96c4eaaa598ec70ac31f2a5e910388f24f152b9fc4211
+set(SQLITE3_HASH SHA512=ace92f20fb13a28a8be0eb3560ebf79e71e882611108179b45abba6e77ec0964d75a96c1e187c0e5f883b83896fd44074ef244e1f589288b6354bc9db85223ca
     CACHE STRING "sqlite3 source hash")
 
 if(SQLITE3_VERSION MATCHES "^([0-9]+)(0([0-9])|([1-9][0-9]))(0([0-9])|([1-9][0-9]))[0-9][0-9]$")
@@ -72,13 +72,13 @@ set(PROTOBUF_SOURCE protobuf-cpp-${PROTOBUF_VERSION}.tar.gz)
 set(PROTOBUF_HASH SHA512=89a3d6207d14cc9afbd50a514a7c0f781c0e530bdbbe720e7e2f645301cdf59fb6772d5a95aea4a35ebcb2e17a738d8fdba8314fbc3aa6f34a97427ccf0c7342
   CACHE STRING "protobuf source hash")
 
-set(SODIUM_VERSION 1.0.19 CACHE STRING "libsodium version")
+set(SODIUM_VERSION 1.0.20 CACHE STRING "libsodium version")
 set(SODIUM_MIRROR ${LOCAL_MIRROR}
   https://download.libsodium.org/libsodium/releases
   https://github.com/jedisct1/libsodium/releases/download/${SODIUM_VERSION}-RELEASE
   CACHE STRING "libsodium mirror(s)")
 set(SODIUM_SOURCE libsodium-${SODIUM_VERSION}.tar.gz)
-set(SODIUM_HASH SHA512=8e9b6d796f6330e00921ce37f1b43545966094250938626ae227deef5fd1279f2fc18b5cd55e23484732a27df4d919cf0d2f07b9c2f1aa0c0ef689e668b0d439
+set(SODIUM_HASH SHA512=7ea165f3c1b1609790e30a16348b9dfdc5731302da00c07c65e125c8ab115c75419a5631876973600f8a4b560ca2c8267001770b68f2eb3eebc9ba095d312702
   CACHE STRING "libsodium source hash")
 
 set(ZMQ_VERSION 4.3.5 CACHE STRING "libzmq version")
@@ -89,19 +89,59 @@ set(ZMQ_HASH SHA512=a71d48aa977ad8941c1609947d8db2679fc7a951e4cd0c3a1127ae026d88
     CACHE STRING "libzmq source hash")
 
 set(ZLIB_VERSION 1.3.1 CACHE STRING "zlib version")
-set(ZLIB_MIRROR ${LOCAL_MIRROR} https://zlib.net
+set(ZLIB_MIRROR ${LOCAL_MIRROR} https://github.com/madler/zlib/releases/download/v${ZLIB_VERSION}
     CACHE STRING "zlib mirror(s)")
 set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.xz)
 set(ZLIB_HASH SHA256=38ef96b8dfe510d42707d9c781877914792541133e1870841463bfa73f883e32
     CACHE STRING "zlib source hash")
 
-set(CURL_VERSION 8.6.0 CACHE STRING "curl version")
+set(CURL_VERSION 8.12.1 CACHE STRING "curl version")
 set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.se/download https://curl.askapache.com
-  CACHE STRING "curl mirror(s)")
+    CACHE STRING "curl mirror(s)")
 set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
-set(CURL_HASH SHA512=359c08d88a5dec441255b36afe1a821730eca0ca8800ba52f57132b9e7d21f32457623907b4ae4876904b5e505eb1a59652372bb7de8dbd8db429dae9785e036
-  CACHE STRING "curl source hash")
+set(CURL_HASH SHA512=88915468fa1bb7256e3dd6c9d058ada6894faa1e3e7800c7d9bfee3e8be4081ae57e7f2bf260c5342b709499fc4302ddc2d7864e25bfa3300fa07f118a3de603
+    CACHE STRING "curl source hash")
 
+set(OPENSSL_VERSION 3.0.16 CACHE STRING "openssl version")
+set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION} CACHE STRING "openssl download mirror(s)")
+set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
+set(OPENSSL_HASH SHA256=57e03c50feab5d31b152af2b764f10379aecd8ee92f16c985983ce4a99f7ef86
+    CACHE STRING "openssl source hash")
+
+set(LIBICONV_VERSION 1.17 CACHE STRING "libiconv version")
+set(LIBICONV_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libiconv
+    CACHE STRING "libiconv mirror(s)")
+set(LIBICONV_SOURCE libiconv-${LIBICONV_VERSION}.tar.gz)
+set(LIBICONV_HASH SHA512=18a09de2d026da4f2d8b858517b0f26d853b21179cf4fa9a41070b2d140030ad9525637dc4f34fc7f27abca8acdc84c6751dfb1d426e78bf92af4040603ced86
+    CACHE STRING "libiconv source hash")
+
+set(LIBUNISTRING_VERSION 1.1 CACHE STRING "libunistring version")
+set(LIBUNISTRING_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libunistring
+    CACHE STRING "libunistring mirror(s)")
+set(LIBUNISTRING_SOURCE libunistring-${LIBUNISTRING_VERSION}.tar.xz)
+set(LIBUNISTRING_HASH SHA512=01a4267bbd301ea5c389b17ee918ae5b7d645da8b2c6c6f0f004ff2dead9f8e50cda2c6047358890a5fceadc8820ffc5154879193b9bb8970f3fb1fea1f411d6
+    CACHE STRING "libunistring source hash")
+
+set(LIBIDN2_VERSION 2.3.4 CACHE STRING "libidn2 version")
+set(LIBIDN2_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libidn
+    CACHE STRING "libidn2 mirror(s)")
+set(LIBIDN2_SOURCE libidn2-${LIBIDN2_VERSION}.tar.gz)
+set(LIBIDN2_HASH SHA512=a6e90ccef56cfd0b37e3333ab3594bb3cec7ca42a138ca8c4f4ce142da208fa792f6c78ca00c01001c2bc02831abcbaf1cf9bcc346a5290fd7b30708f5a462f3
+    CACHE STRING "libidn2 source hash")
+
+set(LIBTASN1_VERSION 4.19.0 CACHE STRING "libtasn1 version")
+set(LIBTASN1_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libtasn1
+    CACHE STRING "libtasn1 mirror(s)")
+set(LIBTASN1_SOURCE libtasn1-${LIBTASN1_VERSION}.tar.gz)
+set(LIBTASN1_HASH SHA512=287f5eddfb5e21762d9f14d11997e56b953b980b2b03a97ed4cd6d37909bda1ed7d2cdff9da5d270a21d863ab7e54be6b85c05f1075ac5d8f0198997cf335ef4
+    CACHE STRING "libtasn1 source hash")
+
+set(GMP_VERSION 6.3.0 CACHE STRING "gmp version")
+set(GMP_MIRROR ${LOCAL_MIRROR} https://gmplib.org/download/gmp
+    CACHE STRING "gmp mirror(s)")
+set(GMP_SOURCE gmp-${GMP_VERSION}.tar.xz)
+set(GMP_HASH SHA512=e85a0dab5195889948a3462189f0e0598d331d3457612e2d3350799dba2e244316d256f8161df5219538eb003e4b5343f989aaa00f96321559063ed8c8f29fd2
+    CACHE STRING "gmp source hash")
 
 
 include(ExternalProject)
@@ -121,12 +161,16 @@ if (ANDROID)
   endif()
   if(CMAKE_ANDROID_ARCH_ABI MATCHES x86_64)
     set(android_clang x86_64-linux-android${ANDROID_PLATFORM_LEVEL}-clang)
+    set(android_machine x86_64)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES x86)
     set(android_clang i686-linux-android${ANDROID_PLATFORM_LEVEL}-clang)
+    set(android_machine i686)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES armeabi-v7a)
     set(android_clang armv7a-linux-androideabi${ANDROID_PLATFORM_LEVEL}-clang)
+    set(android_machine armv7)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES arm64-v8a)
     set(android_clang aarch64-linux-android${ANDROID_PLATFORM_LEVEL}-clang)
+    set(android_machine aarch64)
   else()
     message(FATAL_ERROR "Don't know how to build for android arch abi ${CMAKE_ANDROID_ARCH_ABI}")
   endif()
@@ -155,6 +199,9 @@ function(add_static_target target ext_target libname)
   set_target_properties(${target} PROPERTIES
     IMPORTED_LOCATION ${DEPS_DESTDIR}/lib/${libname}
   )
+  if(ARGN)
+    target_link_libraries(${target} INTERFACE ${ARGN})
+  endif()
 endfunction()
 
 
@@ -172,13 +219,53 @@ if (ANDROID)
   set(cross_extra "LD=${ANDROID_TOOLCHAIN_ROOT}/bin/${CMAKE_LIBRARY_ARCHITECTURE}-ld" "RANLIB=${CMAKE_RANLIB}" "AR=${CMAKE_AR}")
 elseif(CMAKE_CROSSCOMPILING)
   if(APPLE)
-    set(cross_host "--host=${APPLE_TARGET_TRIPLE}")
-  else()
-    set(cross_host "--host=${ARCH_TRIPLET}")
-    if (ARCH_TRIPLET MATCHES mingw AND CMAKE_RC_COMPILER)
-      set(cross_extra "WINDRES=${CMAKE_RC_COMPILER}")
-    endif()
+    set(ARCH_TRIPLET "${APPLE_TARGET_TRIPLE}")
   endif()
+  set(cross_host "--host=${ARCH_TRIPLET}")
+  if (ARCH_TRIPLET MATCHES mingw AND CMAKE_RC_COMPILER)
+    set(cross_extra "WINDRES=${CMAKE_RC_COMPILER}")
+  endif()
+endif()
+
+set(apple_cflags_arch)
+set(apple_cxxflags_arch)
+set(apple_ldflags_arch)
+set(gmp_build_host "${cross_host}")
+if(APPLE AND CMAKE_CROSSCOMPILING)
+    if(build_host MATCHES "^(.*-.*-)ios([0-9.]+)(-.*)?$")
+        set(gmp_build_host "${CMAKE_MATCH_1}darwin${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
+    endif()
+    if(gmp_build_host MATCHES "^(.*-.*-.*)-simulator$")
+        set(gmp_build_host "${CMAKE_MATCH_1}")
+    endif()
+
+    set(apple_arch)
+    if(ARCH_TRIPLET MATCHES "^(arm|aarch)64.*")
+        set(apple_arch "arm64")
+    elseif(ARCH_TRIPLET MATCHES "^x86_64.*")
+        set(apple_arch "x86_64")
+    else()
+        message(FATAL_ERROR "Don't know how to specify -arch for GMP for ${ARCH_TRIPLET} (${APPLE_TARGET_TRIPLE})")
+    endif()
+
+    set(apple_cflags_arch " -arch ${apple_arch}")
+    set(apple_cxxflags_arch " -arch ${apple_arch}")
+    if(CMAKE_OSX_DEPLOYMENT_TARGET)
+      if (SDK_NAME)
+        set(apple_ldflags_arch " -m${SDK_NAME}-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+      elseif(CMAKE_OSX_DEPLOYMENT_TARGET)
+        set(apple_ldflags_arch " -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+      endif()
+    endif()
+    set(apple_ldflags_arch "${apple_ldflags_arch} -arch ${apple_arch}")
+
+    if(CMAKE_OSX_SYSROOT)
+      foreach(f c cxx ld)
+        set(apple_${f}flags_arch "${apple_${f}flags_arch} -isysroot ${CMAKE_OSX_SYSROOT}")
+      endforeach()
+    endif()
+elseif(build_host STREQUAL "" AND CMAKE_LIBRARY_ARCHITECTURE)
+    set(build_host "--build=${CMAKE_LIBRARY_ARCHITECTURE}")
 endif()
 
 
@@ -223,6 +310,14 @@ function(build_external target)
   endforeach()
   string(REPLACE ___TARGET___ ${target} arg_BUILD_BYPRODUCTS "${arg_BUILD_BYPRODUCTS}")
 
+  set(externalproject_extra)
+  if(NOT CMAKE_VERSION VERSION_LESS 3.24)
+    # Default in cmake 3.24+ is to not extract timestamps for ExternalProject, which breaks pretty
+    # much every autotools package (which thinks it must reconfigure) because timestamps got
+    # updated).
+    list(APPEND externalproject_extra DOWNLOAD_EXTRACT_TIMESTAMP ON)
+  endif()
+
   string(TOUPPER "${target}" prefix)
   expand_urls(urls ${${prefix}_SOURCE} ${${prefix}_MIRROR})
   ExternalProject_Add("${target}${arg_TARGET_SUFFIX}_external"
@@ -237,13 +332,14 @@ function(build_external target)
     BUILD_COMMAND ${arg_BUILD_COMMAND}
     INSTALL_COMMAND ${arg_INSTALL_COMMAND}
     BUILD_BYPRODUCTS ${arg_BUILD_BYPRODUCTS}
+    ${externalproject_extra}
   )
 endfunction()
 
 
 
 build_external(zlib
-  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS} -fPIC" ${cross_extra} ./configure --prefix=${DEPS_DESTDIR} --static
+  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS} -fPIC" ${cross_extra} env ./configure --prefix=${DEPS_DESTDIR} --static
   BUILD_BYPRODUCTS
     ${DEPS_DESTDIR}/lib/libz.a
     ${DEPS_DESTDIR}/include/zlib.h
@@ -252,17 +348,21 @@ add_static_target(zlib zlib_external libz.a)
 
 
 
-set(boost_threadapi "pthread")
+if(ARCH_TRIPLET MATCHES mingw)
+  set(boost_threadapi "win32")
+else()
+  set(boost_threadapi "pthread")
+endif()
 set(boost_bootstrap_cxx "--cxx=${deps_cxx}")
 set(boost_toolset "")
 set(boost_extra "")
 if(USE_LTO)
   list(APPEND boost_extra "lto=on")
 endif()
+
 if(CMAKE_CROSSCOMPILING)
   set(boost_bootstrap_cxx "") # need to use our native compiler to bootstrap
   if(ARCH_TRIPLET MATCHES mingw)
-    set(boost_threadapi win32)
     list(APPEND boost_extra "target-os=windows")
     if(ARCH_TRIPLET MATCHES x86_64)
       list(APPEND boost_extra "address-model=64")
@@ -322,7 +422,7 @@ build_external(boost
       threading=multi threadapi=${boost_threadapi} ${boost_buildflags} cxxstd=17 visibility=global
       --disable-icu --user-config=${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam
       --prefix=${DEPS_DESTDIR} --exec-prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib --includedir=${DEPS_DESTDIR}/include
-      --with-program_options --with-system --with-thread --with-serialization
+      --with-program_options --with-system --with-thread --with-serialization --layout=system
       install
   BUILD_BYPRODUCTS
     ${DEPS_DESTDIR}/lib/libboost_program_options.a
@@ -345,8 +445,10 @@ set(Boost_VERSION ${BOOST_VERSION})
 
 
 build_external(sqlite3
+  CONFIGURE_COMMAND ./configure ${cross_host} --disable-shared --prefix=${DEPS_DESTDIR}
+    "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS}" ${cross_extra}
   BUILD_COMMAND true
-  INSTALL_COMMAND make install-includeHEADERS install-libLTLIBRARIES)
+  INSTALL_COMMAND make install-headers install-lib)
 add_static_target( SQLite::SQLite3 sqlite3_external libsqlite3.a)
 
 
@@ -436,7 +538,19 @@ else()
   endif()
   set(hidapi_cmake_toolchain)
   if(CMAKE_TOOLCHAIN_FILE)
-    set(hidapi_cmake_toolchain "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
+    # If the toolchain is passed as a relative path, the toolchain is _relative_
+    # to the original directory that CMake was invoked in. At this step we are
+    # currently deep in the 'static-deps' directory for this dependency.
+    #
+    # The relative path used here from CMAKE_TOOLCHAIN_FILE will not resolve to
+    # the correct path, e.g:
+    #
+    #   cd /ox/build/release/static-deps-sources/src/hidapi_external && mkdir -p build && cd build && cmake .. -DCMAKE_TOOLCHAIN_FILE=../../cmake/64-bit-toolchain.cmake ..
+    #
+    # Resolves to the wrong path, to amend that we take the absolute path. Note
+    # if the path is already absolute, this is a no-op.
+    get_filename_component(cmake_toolchain_file_abs_path "${CMAKE_TOOLCHAIN_FILE}" ABSOLUTE BASE_DIR $ENV{PWD})
+    set(hidapi_cmake_toolchain "-DCMAKE_TOOLCHAIN_FILE=${cmake_toolchain_file_abs_path}")
   endif()
   build_external(hidapi
     DEPENDS ${maybe_eudev} libusb_external
@@ -505,7 +619,6 @@ endif()
 
 build_external(zmq
   DEPENDS sodium_external
-  ${zmq_patch}
   CONFIGURE_COMMAND ./configure ${zmq_cross_host} --prefix=${DEPS_DESTDIR} --enable-static --disable-shared
     --disable-curve-keygen --enable-curve --disable-drafts --disable-libunwind --with-libsodium
     --disable-libbsd --disable-perf
@@ -525,16 +638,104 @@ set_target_properties(libzmq PROPERTIES
     INTERFACE_LINK_LIBRARIES "${libzmq_link_libs}"
     INTERFACE_COMPILE_DEFINITIONS "ZMQ_STATIC")
 
+set(maybe_openssl)
+if(NOT APPLE AND NOT WIN32)
+    set(openssl_configure ./config)
+    set(openssl_system_env "")
+    set(openssl_cc "${deps_cc}")
+    if(CMAKE_CROSSCOMPILING)
+      if(ARCH_TRIPLET STREQUAL x86_64-w64-mingw32)
+        set(openssl_system_env SYSTEM=MINGW64 RC=${CMAKE_RC_COMPILER})
+      elseif(ARCH_TRIPLET STREQUAL i686-w64-mingw32)
+        set(openssl_system_env SYSTEM=MINGW64 RC=${CMAKE_RC_COMPILER})
+      elseif(ANDROID)
+        set(openssl_system_env SYSTEM=Linux MACHINE=${openssl_machine} ${cross_extra})
+        set(openssl_extra_opts no-asm)
+      endif()
+    endif()
+    build_external(openssl
+      CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env CC=${openssl_cc} ${openssl_system_env} ${openssl_configure}
+        --prefix=${DEPS_DESTDIR} --libdir=lib ${openssl_extra_opts}
+        no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
+        no-heartbeats no-md2 no-rc5 no-rdrand no-rfc3779 no-sctp no-ssl-trace no-ssl2 no-ssl3
+        no-static-engine no-tests no-weak-ssl-ciphers no-zlib no-zlib-dynamic "CFLAGS=${deps_CFLAGS}"
+      INSTALL_COMMAND make install_sw
+      BUILD_BYPRODUCTS
+        ${DEPS_DESTDIR}/lib/libssl.a ${DEPS_DESTDIR}/lib/libcrypto.a
+        ${DEPS_DESTDIR}/include/openssl/ssl.h ${DEPS_DESTDIR}/include/openssl/crypto.h
+    )
+    add_static_target(OpenSSL::SSL openssl_external libssl.a)
+    add_static_target(OpenSSL::Crypto openssl_external libcrypto.a)
+    target_link_libraries(OpenSSL::SSL INTERFACE OpenSSL::Crypto)
+    set(OPENSSL_INCLUDE_DIR ${DEPS_DESTDIR}/include CACHE PATH "" FORCE)
+    set(OPENSSL_ROOT_DIR ${DEPS_DESTDIR} CACHE PATH "" FORCE)
+    set(maybe_openssl openssl_external)
+endif()
 
+
+set(libtasn_extra_cflags)
+if(CMAKE_C_COMPILER_ID STREQUAL GNU)
+    # libtasn1 under current GCC produces some incredibly verbose warnings; disable them:
+    set(libtasn_extra_cflags " -Wno-analyzer-null-dereference -Wno-analyzer-use-of-uninitialized-value -Wno-analyzer-out-of-bounds")
+endif()
+
+build_external(libtasn1
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}"
+        "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}${libtasn_extra_cflags}"
+        "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}${libtasn_extra_cflags}"
+        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
+        ${cross_host} ${cross_extra}
+    BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libtasn1.a ${DEPS_DESTDIR}/include/libtasn1.h)
+add_static_target(libtasn1::libtasn1 libtasn1_external libtasn1.a)
+
+build_external(libiconv
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
+        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
+        ${cross_host} ${cross_extra}
+    BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libiconv.a ${DEPS_DESTDIR}/include/iconv.h)
+add_static_target(libiconv::libiconv libiconv_external libiconv.a)
+
+build_external(libunistring
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
+        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
+        ${cross_host} ${cross_extra}
+    DEPENDS libiconv_external
+    BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libunistring.a ${DEPS_DESTDIR}/include/unistr.h)
+add_static_target(libunistring::libunistring libunistring_external libunistring.a libiconv::libiconv)
+
+build_external(libidn2
+    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
+        ${cross_host} ${cross_extra}
+    DEPENDS libunistring_external
+    BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libidn2.a ${DEPS_DESTDIR}/include/idn2.h)
+add_static_target(libidn2::libidn2 libidn2_external libidn2.a libunistring::libunistring)
+
+build_external(gmp
+    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
+        "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
+    DEPENDS libidn2_external libtasn1_external
+)
+add_static_target(gmp::gmp gmp_external libgmp.a libidn2::libidn2 libtasn1::libtasn1)
 
 set(curl_extra)
-if(APPLE)
+set(curl_ssl_backend)
+if(WIN32)
+  set(curl_ssl_opts --with-schannel)
+elseif(APPLE)
   if(IOS)
     # This CPP crap shouldn't be necessary but is because Apple's toolchain is trash
     set(curl_extra "LDFLAGS=-L${DEPS_DESTDIR}/lib -isysroot ${CMAKE_OSX_SYSROOT}" CPP=cpp)
   endif()
+  set(curl_ssl_opts --with-secure-transport)
 else()
+  set(curl_ssl_opts --with-openssl=${DEPS_DESTDIR})
   set(curl_extra "LIBS=-pthread")
+  set(curl_ssl_backend OpenSSL::SSL)
 endif()
 
 set(curl_arches default)
@@ -565,17 +766,15 @@ foreach(curl_arch ${curl_arches})
 
   build_external(curl
     TARGET_SUFFIX ${curl_target_suffix}
-    DEPENDS zlib_external
+    DEPENDS ${maybe_openssl} zlib_external
     CONFIGURE_COMMAND ./configure ${cross_host} ${cross_extra} --prefix=${curl_prefix} --disable-shared
     --enable-static --disable-ares --disable-ftp --disable-ldap --disable-laps --disable-rtsp
     --disable-dict --disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smb
     --disable-smtp --disable-gopher --disable-manual --disable-libcurl-option --enable-http
     --enable-ipv6 --disable-threaded-resolver --disable-pthreads --disable-verbose --disable-sspi
     --enable-crypto-auth --disable-ntlm-wb --disable-tls-srp --disable-unix-sockets --disable-cookies
-    --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --without-libidn2
-    --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR}
-    --without-ssl --without-schannel --without-secure-transport
-    --without-nghttp2 --without-nghttp3 --without-ngtcp2 --without-quiche
+    --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --with-libidn2
+    --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
     --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
     --without-zsh-functions-dir --without-fish-functions-dir --without-zstd --without-libpsl
     --without-nghttp2 --without-nghttp3 --without-ngtcp2 --without-quiche
@@ -603,13 +802,17 @@ if(IOS AND num_arches GREATER 1)
     DEPENDS ${curl_lib_targets})
 endif()
 
-add_static_target(CURL::libcurl curl_external libcurl.a)
-set(libcurl_link_libs zlib)
+add_static_target(CURL::libcurl curl_external libcurl.a )
+set(libcurl_link_libs ${curl_ssl_backend} zlib libidn2::libidn2)
 if(CMAKE_CROSSCOMPILING AND ARCH_TRIPLET MATCHES mingw)
   list(APPEND libcurl_link_libs ws2_32;bcrypt)
 elseif(APPLE)
-  list(APPEND libcurl_link_libs "-framework SystemConfiguration")
+  list(APPEND libcurl_link_libs "-framework SystemConfiguration -framework Security")
 endif()
 set_target_properties(CURL::libcurl PROPERTIES
   INTERFACE_LINK_LIBRARIES "${libcurl_link_libs}"
   INTERFACE_COMPILE_DEFINITIONS "CURL_STATICLIB")
+
+
+list(INSERT CMAKE_MODULE_PATH 0
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/static-build-hacks")
