@@ -162,14 +162,14 @@ bool gen_simple_chain_split_1::generate(std::vector<test_event_entry> &events) c
 bool gen_simple_chain_split_1::check_mempool_2(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry> &events)
 {
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_mempool_2");
-  CHECK_TEST_CONDITION(c.get_pool().get_transactions_count() == 2);
+  CHECK_TEST_CONDITION(c.mempool.get_transactions_count() == 2);
   return true;
 }
 //-----------------------------------------------------------------------------------------------------
 bool gen_simple_chain_split_1::check_mempool_1(cryptonote::core& c, size_t ev_index, const std::vector<test_event_entry> &events)
 {
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_mempool_1");
-  CHECK_TEST_CONDITION(c.get_pool().get_transactions_count() == 3);
+  CHECK_TEST_CONDITION(c.mempool.get_transactions_count() == 3);
   return true;
 }
 //-----------------------------------------------------------------------------------------------------
@@ -177,11 +177,11 @@ bool gen_simple_chain_split_1::check_split_not_switched(cryptonote::core& c, siz
 {
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_split_not_switched");
   //check height
-  CHECK_EQ(c.get_current_blockchain_height(), 29);
+  CHECK_EQ(c.blockchain.get_current_blockchain_height(), 29);
   
-  CHECK_EQ(c.get_blockchain_total_transactions(), 29);
-  CHECK_EQ(c.get_tail_id(), get_block_hash(var::get<cryptonote::block>(events[28])));
-  CHECK_EQ(c.get_alternative_blocks_count(), 2);
+  CHECK_EQ(c.blockchain.get_total_transactions(), 29);
+  CHECK_EQ(c.blockchain.get_tail_id().second, get_block_hash(var::get<cryptonote::block>(events[28])));
+  CHECK_EQ(c.blockchain.get_alternative_blocks_count(), 2);
   return true;
 }
 //-----------------------------------------------------------------------------------------------------
@@ -189,10 +189,10 @@ bool gen_simple_chain_split_1::check_split_not_switched2(cryptonote::core& c, si
 {
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_split_not_switched2");
   //check height
-  CHECK_EQ(c.get_current_blockchain_height(), 29);
-  CHECK_EQ(c.get_blockchain_total_transactions(), 29);
-  CHECK_EQ(c.get_tail_id(), get_block_hash(var::get<cryptonote::block>(events[28])));
-  CHECK_EQ(c.get_alternative_blocks_count(), 3);
+  CHECK_EQ(c.blockchain.get_current_blockchain_height(), 29);
+  CHECK_EQ(c.blockchain.get_total_transactions(), 29);
+  CHECK_EQ(c.blockchain.get_tail_id().second, get_block_hash(var::get<cryptonote::block>(events[28])));
+  CHECK_EQ(c.blockchain.get_alternative_blocks_count(), 3);
   return true;
 }
 //-----------------------------------------------------------------------------------------------------
@@ -201,10 +201,10 @@ bool gen_simple_chain_split_1::check_split_switched(cryptonote::core& c, size_t 
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_split_switched");
 
   //check height
-  CHECK_EQ(c.get_current_blockchain_height(), 30);
-  CHECK_EQ(c.get_blockchain_total_transactions(), 30);
-  CHECK_EQ(c.get_tail_id(), get_block_hash(var::get<cryptonote::block>(events[34])));
-  CHECK_EQ(c.get_alternative_blocks_count(), 3);
+  CHECK_EQ(c.blockchain.get_current_blockchain_height(), 30);
+  CHECK_EQ(c.blockchain.get_total_transactions(), 30);
+  CHECK_EQ(c.blockchain.get_tail_id().second, get_block_hash(var::get<cryptonote::block>(events[34])));
+  CHECK_EQ(c.blockchain.get_alternative_blocks_count(), 3);
   return true;
 }
 //-----------------------------------------------------------------------------------------------------
@@ -212,10 +212,10 @@ bool gen_simple_chain_split_1::check_split_not_switched_back(cryptonote::core& c
 {
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_split_not_switched_back");
   //check height
-  CHECK_EQ(c.get_current_blockchain_height(), 34);
-  CHECK_EQ(c.get_blockchain_total_transactions(), 34);
-  CHECK_EQ(c.get_tail_id(), get_block_hash(var::get<cryptonote::block>(events[39])));
-  CHECK_EQ(c.get_alternative_blocks_count(), 8);
+  CHECK_EQ(c.blockchain.get_current_blockchain_height(), 34);
+  CHECK_EQ(c.blockchain.get_total_transactions(), 34);
+  CHECK_EQ(c.blockchain.get_tail_id().second, get_block_hash(var::get<cryptonote::block>(events[39])));
+  CHECK_EQ(c.blockchain.get_alternative_blocks_count(), 8);
 
   return true;
 }
@@ -225,10 +225,10 @@ bool gen_simple_chain_split_1::check_split_switched_back_1(cryptonote::core& c, 
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_split_switched_back_1");
 
   //check height
-  CHECK_EQ(c.get_current_blockchain_height(), 35);
-  CHECK_EQ(c.get_blockchain_total_transactions(), 35);
-  CHECK_EQ(c.get_tail_id(), get_block_hash(var::get<cryptonote::block>(events[46])));
-  CHECK_EQ(c.get_alternative_blocks_count(), 8);
+  CHECK_EQ(c.blockchain.get_current_blockchain_height(), 35);
+  CHECK_EQ(c.blockchain.get_total_transactions(), 35);
+  CHECK_EQ(c.blockchain.get_tail_id().second, get_block_hash(var::get<cryptonote::block>(events[46])));
+  CHECK_EQ(c.blockchain.get_alternative_blocks_count(), 8);
 
   return true;
 }//-----------------------------------------------------------------------------------------------------
@@ -237,10 +237,10 @@ bool gen_simple_chain_split_1::check_split_switched_back_2(cryptonote::core& c, 
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_split_switched_back_2");
 
   //check height
-  CHECK_EQ(c.get_current_blockchain_height(), 36);
-  CHECK_EQ(c.get_blockchain_total_transactions(), 36);
-  CHECK_EQ(c.get_tail_id(), get_block_hash(var::get<cryptonote::block>(events[48])));
-  CHECK_EQ(c.get_alternative_blocks_count(), 8);
+  CHECK_EQ(c.blockchain.get_current_blockchain_height(), 36);
+  CHECK_EQ(c.blockchain.get_total_transactions(), 36);
+  CHECK_EQ(c.blockchain.get_tail_id().second, get_block_hash(var::get<cryptonote::block>(events[48])));
+  CHECK_EQ(c.blockchain.get_alternative_blocks_count(), 8);
   return true;
 }
 //-----------------------------------------------------------------------------------------------------
@@ -256,7 +256,7 @@ bool gen_simple_chain_split_1::check_orphaned_switched_to_alternative(cryptonote
 {
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_orphaned_switched_to_alternative");
   CHECK_TEST_CONDITION(c.get_orphaned_by_prev_blocks_count() == 0);
-  CHECK_TEST_CONDITION(c.get_current_blockchain_height()== 17);
+  CHECK_TEST_CONDITION(c.blockchain.get_current_blockchain_height()== 17);
   CHECK_TEST_CONDITION(c.get_alternative_blocks_count() == 11);
   return true;
 }
@@ -272,7 +272,7 @@ bool gen_simple_chain_split_1::check_orphaned_switched_to_main(cryptonote::core&
 {
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_orphaned_switched_to_main");
   CHECK_TEST_CONDITION(c.get_orphaned_by_prev_blocks_count() == 0);
-  CHECK_TEST_CONDITION(c.get_current_blockchain_height()== 19);
+  CHECK_TEST_CONDITION(c.blockchain.get_current_blockchain_height()== 19);
   CHECK_TEST_CONDITION(c.get_alternative_blocks_count() == 14);
   return true;
 }
@@ -282,7 +282,7 @@ bool gen_simple_chain_split_1::check_orphaned_chain_38(cryptonote::core& c, size
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_orphaned_chain_38");
   CHECK_TEST_CONDITION(c.get_orphaned_by_prev_blocks_count() == 6);
   CHECK_TEST_CONDITION(c.get_alternative_blocks_count() == 14);
-  CHECK_TEST_CONDITION(c.get_current_blockchain_height()== 19);
+  CHECK_TEST_CONDITION(c.blockchain.get_current_blockchain_height()== 19);
   return true;
 }
 //-----------------------------------------------------------------------------------------------------
@@ -291,7 +291,7 @@ bool gen_simple_chain_split_1::check_orphaned_chain_39(cryptonote::core& c, size
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_orphaned_chain_39");
   CHECK_TEST_CONDITION(c.get_orphaned_by_prev_blocks_count() == 4);
   CHECK_TEST_CONDITION(c.get_alternative_blocks_count() == 17);
-  CHECK_TEST_CONDITION(c.get_current_blockchain_height()== 19);
+  CHECK_TEST_CONDITION(c.blockchain.get_current_blockchain_height()== 19);
   return true;
 }
 //-----------------------------------------------------------------------------------------------------
@@ -300,7 +300,7 @@ bool gen_simple_chain_split_1::check_orphaned_chain_40(cryptonote::core& c, size
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_orphaned_chain_40");
   CHECK_TEST_CONDITION(c.get_orphaned_by_prev_blocks_count() == 5);
   CHECK_TEST_CONDITION(c.get_alternative_blocks_count() == 17);
-  CHECK_TEST_CONDITION(c.get_current_blockchain_height()== 19);
+  CHECK_TEST_CONDITION(c.blockchain.get_current_blockchain_height()== 19);
   return true;
 }
 //-----------------------------------------------------------------------------------------------------
@@ -309,7 +309,7 @@ bool gen_simple_chain_split_1::check_orphaned_chain_41(cryptonote::core& c, size
   DEFINE_TESTS_ERROR_CONTEXT("gen_simple_chain_split_1::check_orphaned_chain_41");
   CHECK_TEST_CONDITION(c.get_orphaned_by_prev_blocks_count() == 0);
   CHECK_TEST_CONDITION(c.get_alternative_blocks_count() == 19);
-  CHECK_TEST_CONDITION(c.get_current_blockchain_height()== 23);
+  CHECK_TEST_CONDITION(c.blockchain.get_current_blockchain_height()== 23);
 
   return true;
 }*/

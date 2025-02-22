@@ -28,20 +28,18 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include "wallet/api/wallet2_api.h"
-#include "wallet/wallet2.h"
-
 #include <string>
 #include <vector>
 
+#include "wallet/api/wallet2_api.h"
+#include "wallet/wallet2.h"
 
 namespace Wallet {
 
 class WalletImpl;
-class UnsignedTransactionImpl : public UnsignedTransaction
-{
-public:
-    UnsignedTransactionImpl(WalletImpl &wallet);
+class UnsignedTransactionImpl : public UnsignedTransaction {
+  public:
+    UnsignedTransactionImpl(WalletImpl& wallet);
     ~UnsignedTransactionImpl();
     bool good() const override { return m_status.first == Status_Ok; }
     std::pair<int, std::string> status() const override { return m_status; }
@@ -53,20 +51,22 @@ public:
     uint64_t txCount() const override;
     // sign txs and save to file
     bool sign(std::string_view signedFileName) override;
-    std::string confirmationMessage() const override {return m_confirmationMessage;}
+    std::string confirmationMessage() const override { return m_confirmationMessage; }
     uint64_t minMixinCount() const override;
 
-private:
+  private:
     // Callback function to check all loaded tx's and generate confirmationMessage
-    bool checkLoadedTx(const std::function<size_t()> get_num_txes, const std::function<const wallet::tx_construction_data&(size_t)> &get_tx, const std::string &extra_message);
-    
+    bool checkLoadedTx(
+            const std::function<size_t()> get_num_txes,
+            const std::function<const wallet::tx_construction_data&(size_t)>& get_tx,
+            const std::string& extra_message);
+
     friend class WalletImpl;
-    WalletImpl &m_wallet;
+    WalletImpl& m_wallet;
 
     std::pair<int, std::string> m_status;
     tools::wallet2::unsigned_tx_set m_unsigned_tx_set;
     std::string m_confirmationMessage;
 };
 
-
-}
+}  // namespace Wallet

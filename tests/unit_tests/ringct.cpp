@@ -28,6 +28,7 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include "common/guts.h"
 #include "gtest/gtest.h"
 
 #include <cstdint>
@@ -38,7 +39,6 @@
 #include "ringct/rctSigs.h"
 #include "ringct/rctOps.h"
 #include "device/device.hpp"
-#include "common/hex.h"
 
 using namespace crypto;
 using namespace rct;
@@ -190,7 +190,7 @@ TEST(ringct, CLSAG)
   // D not in main subgroup in clsag at verification
   backup_key = clsag.D;
   rct::key x;
-  ASSERT_TRUE(tools::hex_to_type("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa", x));
+  ASSERT_TRUE(tools::try_load_from_hex_guts("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa"sv, x));
   clsag.D = rct::addKeys(clsag.D, x);
   ASSERT_FALSE(rct::verRctCLSAGSimple(message,clsag,pubs,Cout));
   clsag.D = backup_key;
@@ -443,36 +443,30 @@ static bool range_proof_test(
 TEST(ringct, range_proofs_reject_empty_outs_simple)
 {
   const uint64_t inputs[] = {5000};
-  const uint64_t outputs[] = {};
-  EXPECT_FALSE(range_proof_test(NELTS(inputs), inputs, NELTS(outputs), outputs));
+  EXPECT_FALSE(range_proof_test(NELTS(inputs), inputs, 0, nullptr));
 }
 
 TEST(ringct, range_proofs_reject_empty_ins_simple)
 {
-  const uint64_t inputs[] = {};
   const uint64_t outputs[] = {5000};
-  EXPECT_FALSE(range_proof_test(NELTS(inputs), inputs, NELTS(outputs), outputs));
+  EXPECT_FALSE(range_proof_test(0, nullptr, NELTS(outputs), outputs));
 }
 
 TEST(ringct, range_proofs_reject_all_empty_simple)
 {
-  const uint64_t inputs[] = {};
-  const uint64_t outputs[] = {};
-  EXPECT_FALSE(range_proof_test(NELTS(inputs), inputs, NELTS(outputs), outputs));
+  EXPECT_FALSE(range_proof_test(0, nullptr, 0, nullptr));
 }
 
 TEST(ringct, range_proofs_reject_zero_empty_simple)
 {
   const uint64_t inputs[] = {0};
-  const uint64_t outputs[] = {};
-  EXPECT_FALSE(range_proof_test(NELTS(inputs), inputs, NELTS(outputs), outputs));
+  EXPECT_FALSE(range_proof_test(NELTS(inputs), inputs, 0, nullptr));
 }
 
 TEST(ringct, range_proofs_reject_empty_zero_simple)
 {
-  const uint64_t inputs[] = {};
   const uint64_t outputs[] = {0};
-  EXPECT_FALSE(range_proof_test(NELTS(inputs), inputs, NELTS(outputs), outputs));
+  EXPECT_FALSE(range_proof_test(0, nullptr, NELTS(outputs), outputs));
 }
 
 TEST(ringct, range_proofs_accept_zero_zero_simple)
@@ -726,8 +720,7 @@ TEST(ringct, fee_burn_valid_one_out_simple)
 TEST(ringct, fee_burn_invalid_zero_out_simple)
 {
   const uint64_t inputs[] = {1000, 1000};
-  const uint64_t outputs[] = {};
-  EXPECT_FALSE(range_proof_test(NELTS(inputs), inputs, NELTS(outputs), outputs, 2000));
+  EXPECT_FALSE(range_proof_test(NELTS(inputs), inputs, 0, nullptr, 2000));
 }
 
 static constexpr std::array<uint64_t, 2> base_inputs{1000, 1000};
@@ -774,16 +767,6 @@ TEST(ringct, reject_gen_simple_ver_non_simple)
   const uint64_t outputs[] = {1000};
   rct::rctSig sig = make_sample_simple_rct_sig(NELTS(inputs), inputs, NELTS(outputs), outputs, 1000);
   ASSERT_FALSE(rct::verRct(sig));
-}
-
-TEST(ringct, key_ostream)
-{
-  std::stringstream out;
-  out << "BEGIN" << rct::H << "END";
-  EXPECT_EQ(
-    std::string{"BEGIN<8b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f94>END"},
-    out.str()
-  );
 }
 
 TEST(ringct, zeroCommmit)

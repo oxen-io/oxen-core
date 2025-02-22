@@ -1,0 +1,46 @@
+from setuptools import setup
+
+# Available at setup time due to pyproject.toml
+from pybind11.setup_helpers import Pybind11Extension, build_ext
+
+__version__ = "0.0.1.dev0"
+
+pywallet3_sources = ['$<TARGET_PROPERTY:pywallet3,SOURCE_DIR>/' + src for src in (
+    '$<JOIN:$<TARGET_PROPERTY:pywallet3,SOURCES>,',
+    '>')]
+pywallet3_include_dirs = [
+    '$<JOIN:$<TARGET_PROPERTY:pywallet3,INCLUDE_DIRECTORIES>,',
+    '>']
+pywallet3_defs = []
+for d in [
+    '$<JOIN:$<TARGET_PROPERTY:pywallet3,COMPILE_DEFINITIONS>,',
+    '>']:
+    parts = d.split("=", 1)
+    pywallet3_defs.append((parts[0], parts[1] if len(parts) == 2 else None))
+
+
+# Note:
+#   Sort input source files if you glob sources to ensure bit-for-bit
+#   reproducible builds (https://github.com/pybind/python_example/pull/53)
+
+ext_modules = [Pybind11Extension(
+        "pywallet3",
+        pywallet3_sources,
+        cxx_std=17,
+        include_dirs=pywallet3_include_dirs,
+        define_macros=pywallet3_defs,
+        extra_objects=['$<TARGET_PROPERTY:wallet3,BINARY_DIR>/libwallet3_merged.a'],
+        ),
+]
+
+setup(
+    name="pywallet3",
+    version=__version__,
+    author="Sean Darcy",
+    author_email="sean@oxen.io",
+    url="https://github.com/oxen-io/oxen-core",
+    description="Python wrapper for oxen wallet3 library",
+    long_description="",
+    ext_modules=ext_modules,
+    zip_safe=False,
+)

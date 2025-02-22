@@ -27,7 +27,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(blockchain_db
+oxen_add_library(blockchain_db
   blockchain_db.cpp
   lmdb/db_lmdb.cpp
   sqlite/db_sqlite.cpp
@@ -40,8 +40,9 @@ target_link_libraries(blockchain_db
     common
     ringct
     lmdb
-    filesystem
     Boost::thread
+    logging
+    ethyl
     extra)
 
 target_compile_definitions(blockchain_db PRIVATE

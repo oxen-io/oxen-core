@@ -40,16 +40,16 @@
 #include "blockchain_db/lmdb/db_lmdb.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "common/fs.h"
-#include "common/hex.h"
+#include "logging/oxen_logger.h"
 
 #include "random_path.h"
 
 using namespace cryptonote;
 
-#define ASSERT_HASH_EQ(a,b) ASSERT_EQ(tools::type_to_hex(a), tools::type_to_hex(b))
+#define ASSERT_HASH_EQ(a,b) ASSERT_EQ(tools::hex_guts(a), tools::hex_guts(b))
 
 namespace {  // anonymous namespace
-
+  
 const std::vector<std::string> t_blocks =
   {
     "0100d5adc49a053b8818b2b6023cd2d532c6774e164a8fcacd603651cb3ea0cb7f9340b28ec016b4bc4ca301aa0101ff6e08acbb2702eab03067870349139bee7eab2ca2e030a6bb73d4f68ab6a3b6ca937214054cdac0843d028bbe23b57ea9bae53f12da93bb57bf8a2e40598d9fccd10c2921576e987d93cd80b4891302468738e391f07c4f2b356f7957160968e0bfef6e907c3cee2d8c23cbf04b089680c6868f01025a0f41f063e195a966051e3a29e17130a9ce97d48f55285b9bb04bdd55a09ae78088aca3cf0202d0f26169290450fe17e08974789c3458910b4db18361cdc564f8f2d0bdd2cf568090cad2c60e02d6f3483ec45505cc3be841046c7a12bf953ac973939bc7b727e54258e1881d4d80e08d84ddcb0102dae6dfb16d3e28aaaf43e00170b90606b36f35f38f8a3dceb5ee18199dd8f17c80c0caf384a30202385d7e57a4daba4cdd9e550a92dcc188838386e7581f13f09de796cbed4716a42101c052492a077abf41996b50c1b2e67fd7288bcd8c55cdc657b4e22d0804371f6901beb76a82ea17400cd6d7f595f70e1667d2018ed8f5a78d1ce07484222618c3cd"
@@ -87,8 +87,8 @@ const std::vector<std::vector<std::string>> t_transactions =
 // from std::string, this might break.
 bool compare_blocks(const block& a, const block& b)
 {
-  auto hash_a = tools::type_to_hex(get_block_hash(a));
-  auto hash_b = tools::type_to_hex(get_block_hash(b));
+  auto hash_a = tools::hex_guts(get_block_hash(a));
+  auto hash_b = tools::hex_guts(get_block_hash(b));
 
   return hash_a == hash_b;
 }
@@ -97,8 +97,8 @@ bool compare_blocks(const block& a, const block& b)
 void print_block(const block& blk, const std::string& prefix = "")
 {
   std::cerr << prefix << ": " << std::endl
-            << "\thash - " << tools::type_to_hex(get_block_hash(blk)) << std::endl
-            << "\tparent - " << tools::type_to_hex(blk.prev_id) << std::endl
+            << "\thash - " << tools::hex_guts(get_block_hash(blk)) << std::endl
+            << "\tparent - " << tools::hex_guts(blk.prev_id) << std::endl
             << "\ttimestamp - " << blk.timestamp << std::endl
   ;
 }
@@ -158,6 +158,7 @@ class BlockchainDBTest : public testing::Test
 protected:
   BlockchainDBTest() : m_db(new T())
   {
+    auto logcat = oxen::log::Cat("db_test");
     for (auto& i : t_blocks)
     {
       block bl;
@@ -204,7 +205,7 @@ protected:
     // remove each file the db created, making sure it starts with fname.
     for (auto& f : m_filenames)
     {
-      if (tools::starts_with(f.u8string(), m_prefix.u8string()))
+      if (f.u8string().starts_with(m_prefix.u8string()))
       {
         fs::remove(f);
       }
@@ -218,9 +219,9 @@ protected:
     fs::remove_all(m_prefix);
   }
 
-  void set_prefix(const std::string& prefix)
+  void set_prefix(std::string_view prefix)
   {
-    m_prefix = fs::u8path(prefix);
+    m_prefix = fs::path(tools::convert_sv<char8_t>(prefix));
   }
 };
 
@@ -259,7 +260,7 @@ TYPED_TEST(BlockchainDBTest, AddBlock)
   ASSERT_NO_THROW(this->m_db->open(dirPath, network_type::FAKECHAIN));
   this->get_filenames();
 
-  db_wtxn_guard guard(this->m_db);
+  db_wtxn_guard guard{*this->m_db};
 
   // adding a block with no parent in the blockchain should throw.
   // note: this shouldn't be possible, but is a good (and cheap) failsafe.
@@ -306,7 +307,7 @@ TYPED_TEST(BlockchainDBTest, RetrieveBlockData)
   ASSERT_NO_THROW(this->m_db->open(dirPath, network_type::FAKECHAIN));
   this->get_filenames();
 
-  db_wtxn_guard guard(this->m_db);
+  db_wtxn_guard guard{*this->m_db};
 
   ASSERT_NO_THROW(this->m_db->add_block(this->m_blocks[0], t_sizes[0], t_sizes[0],  t_diffs[0], t_coins[0], this->m_txs[0]));
 

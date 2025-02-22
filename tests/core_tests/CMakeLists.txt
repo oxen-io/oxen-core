@@ -48,7 +48,7 @@ add_executable(core_tests
 
 target_link_libraries(core_tests
   PRIVATE
-    sqlite3
+    SQLite::SQLite3
     multisig
     cryptonote_core
     p2p
@@ -58,6 +58,7 @@ target_link_libraries(core_tests
     wallet
     Boost::program_options
     SQLiteCpp
+    logging
     extra)
 set_property(TARGET core_tests
   PROPERTY

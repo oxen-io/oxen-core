@@ -33,6 +33,7 @@ target_link_libraries(block_fuzz_tests
     p2p
     epee
     device
+    logging
     extra)
 set_property(TARGET block_fuzz_tests
   PROPERTY
@@ -45,6 +46,7 @@ target_link_libraries(transaction_fuzz_tests
     p2p
     epee
     device
+    logging
     extra)
 set_property(TARGET transaction_fuzz_tests
   PROPERTY
@@ -58,6 +60,7 @@ target_link_libraries(signature_fuzz_tests
     p2p
     epee
     device
+    logging
     extra)
 set_property(TARGET signature_fuzz_tests
   PROPERTY
@@ -71,6 +74,7 @@ target_link_libraries(cold-outputs_fuzz_tests
     p2p
     epee
     device
+    logging
     extra)
 set_property(TARGET cold-outputs_fuzz_tests
   PROPERTY
@@ -84,6 +88,7 @@ target_link_libraries(cold-transaction_fuzz_tests
     p2p
     epee
     device
+    logging
     extra)
 set_property(TARGET cold-transaction_fuzz_tests
   PROPERTY
@@ -95,6 +100,7 @@ target_link_libraries(load-from-binary_fuzz_tests
     common
     epee
     Boost::program_options
+    logging
     extra)
 set_property(TARGET load-from-binary_fuzz_tests
   PROPERTY
@@ -106,6 +112,7 @@ target_link_libraries(load-from-json_fuzz_tests
     common
     epee
     Boost::program_options
+    logging
     extra)
 set_property(TARGET load-from-json_fuzz_tests
   PROPERTY
@@ -117,6 +124,7 @@ target_link_libraries(base58_fuzz_tests
     common
     epee
     Boost::program_options
+    logging
     extra)
 set_property(TARGET base58_fuzz_tests
   PROPERTY
@@ -129,6 +137,7 @@ target_link_libraries(levin_fuzz_tests
     epee
     Boost::thread
     Boost::program_options
+    logging
     extra)
 set_property(TARGET levin_fuzz_tests
   PROPERTY
@@ -141,6 +150,7 @@ target_link_libraries(bulletproof_fuzz_tests
     epee
     Boost::thread
     Boost::program_options
+    logging
     extra)
 set_property(TARGET bulletproof_fuzz_tests
   PROPERTY

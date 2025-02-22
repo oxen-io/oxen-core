@@ -28,6 +28,7 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include <chrono>
 #include <boost/thread/thread.hpp>
 
 #include "gtest/gtest.h"
@@ -178,10 +179,11 @@ namespace
     bool m_send_return;
   };
 
+  using namespace std::chrono_literals;
   class async_protocol_handler_test : public ::testing::Test
   {
   public:
-    const static uint64_t invoke_timeout = 5 * 1000;
+    constexpr static std::chrono::nanoseconds invoke_timeout = 5s;
     const static size_t max_packet_size = 10 * 1024 * 1024;
 
     typedef std::unique_ptr<test_connection> test_connection_ptr;

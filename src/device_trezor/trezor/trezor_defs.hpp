@@ -34,7 +34,7 @@
 // HAVE_TREZOR_READY set by cmake after protobuf messages
 // were generated successfully and all minimal dependencies are met.
 #ifndef DEVICE_TREZOR_READY
-#undef  USE_DEVICE_TREZOR
+#undef USE_DEVICE_TREZOR
 #define USE_DEVICE_TREZOR 0
 #endif
 

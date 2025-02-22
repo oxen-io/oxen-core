@@ -1,22 +1,22 @@
 // Copyright (c) 2018-2020, The Loki Project
 // Copyright (c) 2014-2019, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -28,23 +28,23 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma once
-#include "common/oxen.h"
-#include <string>
 #include <cstdint>
+#include <string>
+
+#include "common/oxen.h"
 #include "epee/serialization/keyvalue_serialization.h"
 
 namespace wallet {
 
 OXEN_RPC_DOC_INTROSPECT
-struct transfer_destination
-{
-  std::string address; // Destination public address.
-  uint64_t amount;     // Amount to send to each destination, in atomic units.
+struct transfer_destination {
+    std::string address;  // Destination public address.
+    uint64_t amount;      // Amount to send to each destination, in atomic units.
 
-  BEGIN_KV_SERIALIZE_MAP()
+    BEGIN_KV_SERIALIZE_MAP()
     KV_SERIALIZE(amount)
     KV_SERIALIZE(address)
-  END_KV_SERIALIZE_MAP()
+    END_KV_SERIALIZE_MAP()
 };
 
-}
+}  // namespace wallet

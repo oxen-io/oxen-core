@@ -27,6 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "common/file.h"
+#include "common/guts.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "serialization/boost_std_variant.h"
@@ -46,9 +47,9 @@ private:
 
 int ColdOutputsFuzzer::init()
 {
-  static const char * const spendkey_hex = "0b4f47697ec99c3de6579304e5f25c68b07afbe55b71d99620bf6cbf4e45a80f";
+  static constexpr auto spendkey_hex = "0b4f47697ec99c3de6579304e5f25c68b07afbe55b71d99620bf6cbf4e45a80f"sv;
   crypto::secret_key spendkey;
-  tools::hex_to_type(spendkey_hex, spendkey);
+  tools::load_from_hex_guts(spendkey_hex, spendkey);
 
   try
   {
@@ -94,9 +95,10 @@ int ColdOutputsFuzzer::run(const std::string &filename)
 
 int main(int argc, const char **argv)
 {
+  auto logcat = oxen::log::Cat("fuzz");
   TRY_ENTRY();
   ColdOutputsFuzzer fuzzer;
   return run_fuzzer(argc, argv, fuzzer);
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }
 

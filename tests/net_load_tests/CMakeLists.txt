@@ -35,6 +35,7 @@ target_link_libraries(net_load_tests_clt
     epee
     gtest
     Boost::thread
+    logging
     extra)
 
 add_executable(net_load_tests_srv
@@ -45,6 +46,7 @@ target_link_libraries(net_load_tests_srv
     cryptonote_core
     epee
     gtest
+    logging
     extra)
 
 set_property(TARGET net_load_tests_clt net_load_tests_srv

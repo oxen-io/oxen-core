@@ -1,0 +1,77 @@
+Template: oxen-service-node/ip-address
+Type: string
+Description: Enter your service node publicly accessible IPv4 address
+ Session service nodes require your public IP address to broadcast to the
+ network so that remote hosts can connect directly to your service node for
+ network services like lokinet routing and the oxen storage server.
+ .
+ This script can attempt to automatically look up your public IPv4 address using
+ an online service (www.ipify.org), or you can enter your address manually.  To
+ perform an automatic lookup, leave this field blank.
+ .
+ To provide an IP address manually enter it now.
+
+Template: oxen-service-node/confirm-ip-lookup
+Type: boolean
+Default: true
+Description: Use this Service Node public IP?
+ The online lookup gave us the following public IPv4 address for this host:
+ .
+ ${IP}
+
+Template: oxen-service-node/ip-lookup-failed
+Type: boolean
+Default: false
+Description: Retry IP address entry/lookup?
+ Automatic IP lookup failed:
+ .
+ ${REASON}
+ .
+ Do you want to go back and enter an IP manually (or try automatic lookup
+ again)?  Note that if you say no here you will have to update the
+ /etc/oxen/stagenet.conf files yourself with the IP before oxend-stagenet
+ will start properly.
+
+Template: oxen-service-node/invalid-ip
+Type: boolean
+Default: false
+Description: Retry IP address entry?
+ Invalid IPv4 address entered.
+ .
+ You entered an invalid IPv4 address.  Choose yes here to return to the IP
+ entry dialog and try again (or to use the automatic lookup service).  If you
+ say no here your oxend will not start until you manually update the
+ /etc/oxen/stagenget.conf file yourself with a valid public IP.
+
+Template: session-stagenet-node/l2-provider
+Type: string
+Description: Enter your Arbitrum Sepolia RPC provider URL
+ Oxen 11+ (as part of a Session stagenet node) requires an Arbitrum Sepolia RPC
+ provider to retrieve Ethereum L2 registration data.
+ .
+ Please enter a provider URL (this typically starts http:// or https://).
+ .
+ If you want to configure additional backup providers see the
+ /etc/oxen/stagenet.conf after installation is finished.
+
+Template: session-stagenet-node/no-l2-provider
+Type: boolean
+Default: false
+Description: Provide an Arbitrum L2 URL?
+ Oxen 11+ (as part of a Session stagenet node) requires an Arbitrum Sepolia RPC
+ provider to retrieve Ethereum L2 registration data.
+ .
+ Are you sure you want to leave this blank?  A Session node will not start until
+ a provider is entered via the `l2-provider=` option in /etc/oxen/stagenet.conf.
+
+Template: session-stagenet-node/bad-l2-provider
+Type: boolean
+Default: false
+Description: Provide another Arbitrum L2 provider URL?
+ The Arbitrum Sepolia L2 provider URL you gave does not appear to be working:
+ .
+ ${ERROR}
+ .
+ Do you want to go back and enter a new provider URL?  Note that if you say no
+ here your Session service node will not function properly until the URL is
+ updated in /etc/oxen/stagenet.conf, or the provider becomes available.

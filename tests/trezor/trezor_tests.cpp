@@ -72,7 +72,7 @@ namespace
   try {                                                                                                         \
     setup_chain(core, trezor_base, chain_path, fix_chain, vm_core);                                             \
   } catch (const std::exception& ex) {                                                                          \
-    MERROR("Chain setup failed for " << NAME);                                                                  \
+    oxen::log::error(logcat, "{}{}", , "Chain setup failed for ", NAME);                                                                  \
     throw;                                                                                                      \
   }                                                                                                             \
 } while(0)
@@ -137,8 +137,8 @@ int main(int argc, char* argv[])
     const uint8_t initial_hf =  (uint8_t)get_env_long("TEST_MIN_HF", 12);
     const uint8_t max_hf = (uint8_t)get_env_long("TEST_MAX_HF", cryptonote::feature::CLSAG);
     auto sync_test = get_env_long("TEST_KI_SYNC", 1);
-    MINFO("Test versions " << LOKI_RELEASE_NAME << "' (v" << LOKI_VERSION_FULL << ")");
-    MINFO("Testing hardforks [" << (int)initial_hf << ", " << (int)max_hf << "], sync-test: " << sync_test);
+    oxen::log::info(logcat, "Test versions {}' (v{})", LOKI_RELEASE_NAME, LOKI_VERSION_FULL);
+    oxen::log::info(logcat, "Testing hardforks [{}, {}], sync-test: {}", (int)initial_hf, (int)max_hf, sync_test);
 
     cryptonote::core core_obj(nullptr);
     cryptonote::core * const core = &core_obj;
@@ -169,7 +169,7 @@ int main(int argc, char* argv[])
         }
       }
 
-      MDEBUG("Transaction tests for HF " << (int)hf);
+      oxen::log::debug(logcat, "Transaction tests for HF {}", (int)hf);
       trezor_base.set_hard_fork(hf);
       TREZOR_SETUP_CHAIN(std::string("HF") + std::to_string((int)hf));
 
@@ -207,21 +207,21 @@ int main(int argc, char* argv[])
 
     core->deinit();
     el::Level level = (failed_tests.empty() ? el::Level::Info : el::Level::Error);
-    MLOG(level, "\nREPORT:");
-    MLOG(level, "  Test run: " << tests_count);
-    MLOG(level, "  Failures: " << failed_tests.size());
-    if (!failed_tests.empty())
+    if (failed_tests.empty())
+      oxen::log::info(logcat, "\nREPORT:\n  Test run: {}\n  Failures: {}", tests_count, failed_tests.size());
+    else
     {
-      MLOG(level, "FAILED TESTS:");
+      oxen::log::error(logcat, "\nREPORT:\n  Test run: {}\n  Failures: {}", tests_count, failed_tests.size());
+      oxen::log::error(logcat, "Failed TESTS:");
       for (auto& test_name : failed_tests)
       {
-        MLOG(level, "  " << test_name);
+        oxen::log::error(logcat, "  {}", test_name)
       }
     }
 
     return failed_tests.empty() ? 0 : 1;
 
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }
 
 static void rollback_chain(cryptonote::core * core, const cryptonote::block & head)
@@ -232,8 +232,8 @@ static void rollback_chain(cryptonote::core * core, const cryptonote::block & he
   std::vector<transaction> popped_txs;
 
   crypto::hash head_hash = get_block_hash(head), cur_hash{};
-  uint64_t height = get_block_height(head), cur_height=0;
-  MDEBUG("Rollbacking to " << height << " to hash " << head_hash);
+  uint64_t height = header.get_height(), cur_height=0;
+  oxen::log::debug(logcat, "Rollbacking to {} to hash {}", height, head_hash);
 
   do {
     core->get_blockchain_top(cur_height, cur_hash);
@@ -242,7 +242,7 @@ static void rollback_chain(cryptonote::core * core, const cryptonote::block & he
       return;
 
     CHECK_AND_ASSERT_THROW_MES(cur_height > height, "Height differs");
-    core->get_blockchain_storage().get_db().pop_block(popped_block, popped_txs);
+    core->get_blockchain_storage().db().pop_block(popped_block, popped_txs);
   } while(true);
 }
 
@@ -264,10 +264,10 @@ static bool unserialize_chain_from_file(std::vector<test_event_entry>& events, g
     }
     catch(...)
     {
-      MWARNING("Chain deserialization failed");
+      oxen::log::warning(logcat, "Chain deserialization failed");
       return false;
     }
-  CATCH_ENTRY_L0("unserialize_chain_from_file", false);
+  CATCH_ENTRY("unserialize_chain_from_file", false);
 }
 
 static bool serialize_chain_to_file(std::vector<test_event_entry>& events, gen_trezor_base &test_base, const std::string& file_path)
@@ -287,11 +287,11 @@ static bool serialize_chain_to_file(std::vector<test_event_entry>& events, gen_t
     }
     catch(...)
     {
-      MWARNING("Chain deserialization failed");
+      oxen::log::warning(logcat, "Chain deserialization failed");
       return false;
     }
     return false;
-  CATCH_ENTRY_L0("serialize_chain_to_file", false);
+  CATCH_ENTRY("serialize_chain_to_file", false);
 }
 
 template<class t_test_class>
@@ -312,11 +312,11 @@ static bool init_core_replay_events(std::vector<test_event_entry>& events, crypt
 
   core->deinit();
   CHECK_AND_ASSERT_THROW_MES(core->init(vm_core, test_options_), "Core init failed");
-  core->get_blockchain_storage().get_db().set_batch_transactions(true);
+  core->get_blockchain_storage().db().set_batch_transactions(true);
 
   // start with a clean pool
   std::vector<crypto::hash> pool_txs;
-  core->get_pool().get_transaction_hashes(pool_txs);
+  core->mempool.get_transaction_hashes(pool_txs);
   core->get_blockchain_storage().flush_txes_from_pool(pool_txs);
 
   t_test_class validator;
@@ -335,7 +335,7 @@ static void setup_chain(cryptonote::core * core, gen_trezor_base & trezor_base, 
   {
     if (!unserialize_chain_from_file(events, trezor_base, chain_path))
     {
-      MERROR("Failed to deserialize data from file: " << chain_path);
+      oxen::log::error(logcat, "{}{}", , "Failed to deserialize data from file: ", chain_path);
       CHECK_AND_ASSERT_THROW_MES(fix_chain, "Chain load error");
     } else
     {
@@ -357,7 +357,7 @@ static void setup_chain(cryptonote::core * core, gen_trezor_base & trezor_base, 
         trezor_base.update_trackers(events);
         if (!serialize_chain_to_file(events, trezor_base, chain_path))
         {
-          MERROR("Failed to serialize data to file: " << chain_path);
+          oxen::log::error(logcat, "{}{}", , "Failed to serialize data to file: ", chain_path);
         }
       }
     }
@@ -367,11 +367,11 @@ static void setup_chain(cryptonote::core * core, gen_trezor_base & trezor_base, 
   trezor_base.fix_hf(events);
   if (generated && init_core_replay_events<gen_trezor_base>(events, core, vm_core))
   {
-    MGINFO_GREEN("#TEST-chain-init# Succeeded ");
+    oxen::log::info(logcat, fmt::format(fg(fmt::terminal_color::green), "#TEST-chain-init# Succeeded ");
   }
   else
   {
-    MERROR("#TEST-chain-init# Failed ");
+    oxen::log::error(logcat, "#TEST-chain-init# Failed ");
     throw std::runtime_error("Chain init error");
   }
 }
@@ -433,7 +433,7 @@ bool get_short_payment_id(crypto::hash8 &payment_id8, const tools::wallet2::pend
     {
       if (ptx.dests.empty())
       {
-        MWARNING("Encrypted payment id found, but no destinations public key, cannot decrypt");
+        oxen::log::warning(logcat, "Encrypted payment id found, but no destinations public key, cannot decrypt");
         return false;
       }
       return hwdev.decrypt_payment_id(payment_id8, ptx.dests[0].addr.m_view_public_key, ptx.tx_key);
@@ -445,7 +445,7 @@ bool get_short_payment_id(crypto::hash8 &payment_id8, const tools::wallet2::pend
 static tools::wallet2::tx_construction_data get_construction_data_with_decrypted_short_payment_id(const tools::wallet2::pending_tx &ptx, hw::device &hwdev)
 {
   tools::wallet2::tx_construction_data construction_data = ptx.construction_data;
-  crypto::hash8 payment_id = crypto::null_hash8;
+  crypto::hash8 payment_id{};
   if (get_short_payment_id(payment_id, ptx, hwdev))
   {
     // Remove encrypted
@@ -455,7 +455,7 @@ static tools::wallet2::tx_construction_data get_construction_data_with_decrypted
     set_encrypted_payment_id_to_tx_extra_nonce(extra_nonce, payment_id);
     THROW_WALLET_EXCEPTION_IF(!add_extra_nonce_to_tx_extra(construction_data.extra, extra_nonce),
                               tools::error::wallet_internal_error, "Failed to add decrypted payment id to tx extra");
-    MDEBUG("Decrypted payment ID: " << payment_id);
+    oxen::log::debug(logcat, "Decrypted payment ID: {}", payment_id);
   }
   return construction_data;
 }
@@ -686,7 +686,7 @@ void gen_trezor_base::init_fields()
   DEFAULT_HARDFORKS(m_hard_forks);
 
   crypto::secret_key master_seed{};
-  CHECK_AND_ASSERT_THROW_MES(tools::hex_to_type(m_master_seed_str, master_seed), "Hexdecode fails");
+  CHECK_AND_ASSERT_THROW_MES(tools::try_load_from_hex_guts(m_master_seed_str, master_seed), "Hexdecode fails");
 
   m_alice_account.generate(master_seed, true);
   m_alice_account.set_createtime(m_wallet_ts);
@@ -747,7 +747,7 @@ bool gen_trezor_base::generate(std::vector<test_event_entry>& events)
   }
 
   events.push_back(blk_0);
-  MDEBUG("Gen+1 block has time: " << blk_0.timestamp << " blid: " << get_block_hash(blk_0));
+  oxen::log::debug(logcat, "Gen+1 block has time: {} blid: {}", blk_0.timestamp, get_block_hash(blk_0));
 
   // Generate some spendable funds on the Miner account
   REWIND_BLOCKS_N(events, blk_3, blk_0, m_miner_account, 40);
@@ -773,7 +773,7 @@ bool gen_trezor_base::generate(std::vector<test_event_entry>& events)
 #error FIXME broken
   ADD_HARDFORK(m_hard_forks, CUR_HF, hardfork_height);
   add_hforks(events, m_hard_forks);
-  MDEBUG("Hardfork height: " << hardfork_height << " at block: " << get_block_hash(blk_4r));
+  oxen::log::debug(logcat, "Hardfork height: {} at block: {}", hardfork_height, get_block_hash(blk_4r));
 
   // RCT transactions, wallets have to be used, wallet init
   m_wl_alice.reset(new tools::wallet2(m_network_type, 1, true));
@@ -847,7 +847,7 @@ bool gen_trezor_base::generate(std::vector<test_event_entry>& events)
   construct_tx_to_key(tx_1, m_wl_alice.get(), m_bob_account, MK_COINS(1), sources, TREZOR_TEST_FEE, true, rct::RangeProofType::PaddedBulletproof, 1);
   events.push_back(tx_1);
   MAKE_NEXT_BLOCK_TX1_HF(events, blk_6, blk_5r, m_miner_account, tx_1, CUR_HF);
-  MDEBUG("Post 1st tsx: " << (num_blocks(events) - 1) << " at block: " << get_block_hash(blk_6));
+  oxen::log::debug(logcat, "Post 1st tsx: {} at block: {}", (num_blocks(events) - 1), get_block_hash(blk_6));
 
   // Simple transaction check
   resx = rct::verRctSemanticsSimple(tx_1.rct_signatures);
@@ -858,8 +858,8 @@ bool gen_trezor_base::generate(std::vector<test_event_entry>& events)
   REWIND_BLOCKS_N_HF(events, blk_6r, blk_6, m_miner_account, 10, CUR_HF);
   wallet_tools::process_transactions(m_wl_alice.get(), events, blk_6, m_bt);
   wallet_tools::process_transactions(m_wl_bob.get(), events, blk_6, m_bt);
-  MDEBUG("Available funds on Alice: " << get_available_funds(m_wl_alice.get()));
-  MDEBUG("Available funds on Bob: " << get_available_funds(m_wl_bob.get()));
+  oxen::log::debug(logcat, "Available funds on Alice: {}", get_available_funds(m_wl_alice.get()));
+  oxen::log::debug(logcat, "Available funds on Bob: {}", get_available_funds(m_wl_bob.get()));
 
   m_head = blk_6r;
   m_events = events;
@@ -920,8 +920,8 @@ void gen_trezor_base::load(std::vector<test_event_entry>& events)
 
   wallet_tools::process_transactions(m_wl_alice.get(), events, m_head, m_bt);
   wallet_tools::process_transactions(m_wl_bob.get(), events, m_head, m_bt);
-  MDEBUG("Available funds on Alice: " << get_available_funds(m_wl_alice.get()));
-  MDEBUG("Available funds on Bob: " << get_available_funds(m_wl_bob.get()));
+  oxen::log::debug(logcat, "Available funds on Alice: {}", get_available_funds(m_wl_alice.get()));
+  oxen::log::debug(logcat, "Available funds on Bob: {}", get_available_funds(m_wl_bob.get()));
 }
 
 void gen_trezor_base::rewind_blocks(std::vector<test_event_entry>& events, size_t rewind_n, uint8_t hf)
@@ -930,7 +930,7 @@ void gen_trezor_base::rewind_blocks(std::vector<test_event_entry>& events, size_
   REWIND_BLOCKS_N_HF(events, blk_new, m_head, m_miner_account, rewind_n, hf);
   m_head = blk_new;
   m_events = events;
-  MDEBUG("Blocks rewound: " << rewind_n << ", #blocks: " << num_blocks(events) << ", #events: " << events.size());
+  oxen::log::debug(logcat, "Blocks rewound: {}, #blocks: {}, #events: {}", rewind_n, num_blocks(events), events.size());
 
   wallet_tools::process_transactions(m_wl_alice.get(), events, m_head, m_bt);
   wallet_tools::process_transactions(m_wl_bob.get(), events, m_head, m_bt);
@@ -951,7 +951,7 @@ void gen_trezor_base::fix_hf(std::vector<test_event_entry>& events)
 #error FIXME broken
     ADD_HARDFORK(m_hard_forks, hf_to_add, hardfork_height);
     add_top_hfork(events, m_hard_forks);
-    MDEBUG("Hardfork added at height: " << hardfork_height << ", from " << (int)current_hf << " to " << (int)hf_to_add);
+    oxen::log::debug(logcat, "Hardfork added at height: {}, from {} to {}", hardfork_height, (int)current_hf, (int)hf_to_add);
     rewind_blocks(events, 10, hf_to_add);
   }
 }
@@ -1001,7 +1001,7 @@ void gen_trezor_base::add_transactions_to_events(
   }
 
   MAKE_NEXT_BLOCK_TX_LIST_HF(events, blk_new, m_head, m_miner_account, tx_list, tx_hf);
-  MDEBUG("New tsx: " << (num_blocks(events) - 1) << " at block: " << get_block_hash(blk_new));
+  oxen::log::debug(logcat, "New tsx: {} at block: {}", (num_blocks(events) - 1), get_block_hash(blk_new));
 
   m_head = blk_new;
 }
@@ -1033,7 +1033,7 @@ void gen_trezor_base::test_trezor_tx(std::vector<test_event_entry>& events, std:
   aux_data.hard_fork = m_top_hard_fork;
   dev_cold->tx_sign(&wallet_shim, txs, exported_txs, aux_data);
 
-  MDEBUG("Signed tx data from hw: " << exported_txs.ptx.size() << " transactions, hf: " << (int)m_top_hard_fork << ", bpv: " << m_rct_config.bp_version);
+  oxen::log::debug(logcat, "Signed tx data from hw: {} transactions, hf: {}, bpv: {}", exported_txs.ptx.size(), (int)m_top_hard_fork, m_rct_config.bp_version);
   CHECK_AND_ASSERT_THROW_MES(exported_txs.ptx.size() == ptxs.size(), "Invalid transaction sizes");
 
   for (size_t i = 0; i < exported_txs.ptx.size(); ++i){
@@ -1042,14 +1042,14 @@ void gen_trezor_base::test_trezor_tx(std::vector<test_event_entry>& events, std:
     expand_tsx(c_ptx.tx);
 
     // Simple TX tests, more complex are performed in the core.
-    MTRACE(cryptonote::obj_to_json_str(c_ptx.tx));
+    oxen::log::trace(cryptonote::obj_to_json_str(c_ptx.tx));
     bool resx = rct::verRctSemanticsSimple(c_ptx.tx.rct_signatures);
     bool resy = rct::verRctNonSemanticsSimple(c_ptx.tx.rct_signatures);
     CHECK_AND_ASSERT_THROW_MES(resx, "Trezor tx_1 semantics failed");
     CHECK_AND_ASSERT_THROW_MES(resy, "Trezor tx_1 Nonsemantics failed");
 
     tx_list.push_back(c_ptx.tx);
-    MDEBUG("Transaction: " << dump_data(c_ptx.tx));
+    oxen::log::debug(logcat, "Transaction: {}", dump_data(c_ptx.tx));
   }
 
   add_transactions_to_events(events, generator, tx_list);
@@ -1190,7 +1190,7 @@ void gen_trezor_base::test_get_tx(
 
   if (!dev_cold->is_get_tx_key_supported())
   {
-    MERROR("Get TX key is not supported by the connected Trezor");
+    oxen::log::error(logcat, "Get TX key is not supported by the connected Trezor");
     return;
   }
 
@@ -1285,7 +1285,7 @@ void gen_trezor_base::set_hard_fork(uint8_t hf)
   test_trezor_tx(events, _dsts, _dsts_info, generator, vct_wallets(m_wl_alice.get(), m_wl_bob.get(), m_wl_eve.get())); \
   return true
 
-#define TREZOR_SKIP_IF_VERSION_LEQ(x) if (m_trezor->get_version() <= x) { MDEBUG("Test skipped"); return true; }
+#define TREZOR_SKIP_IF_VERSION_LEQ(x) if (m_trezor->get_version() <= x) { oxen::log::debug(logcat, "Test skipped"); return true; }
 #define TREZOR_TEST_PAYMENT_ID "\xde\xad\xc0\xde\xde\xad\xc0\xde"
 
 tsx_builder * tsx_builder::sources(std::vector<cryptonote::tx_source_entry> & sources, std::vector<size_t> & selected_transfers)
@@ -1593,7 +1593,7 @@ bool gen_trezor_live_refresh::generate(std::vector<test_event_entry>& events)
   CHECK_AND_ASSERT_THROW_MES(dev_cold, "Device does not implement cold signing interface");
 
   if (!dev_cold->is_live_refresh_supported()){
-    MDEBUG("Trezor does not support live refresh");
+    oxen::log::debug(logcat, "Trezor does not support live refresh");
     return true;
   }
 
@@ -1848,7 +1848,7 @@ wallet_api_tests::~wallet_api_tests()
   }
   catch(...)
   {
-    MERROR("Could not remove wallet directory");
+    oxen::log::error(logcat, "Could not remove wallet directory");
   }
 }
 
@@ -1864,7 +1864,7 @@ bool wallet_api_tests::generate(std::vector<test_event_entry>& events)
   CHECK_AND_ASSERT_THROW_MES(w->init(daemon()->rpc_addr(), 0), "Wallet init fail");
   CHECK_AND_ASSERT_THROW_MES(w->refresh(), "Refresh fail");
   uint64_t balance = w->balance(0);
-  MDEBUG("Balance: " << balance);
+  oxen::log::debug(logcat, "Balance: {}", balance);
   CHECK_AND_ASSERT_THROW_MES(w->status() == Monero::PendingTransaction::Status_Ok, "Status nok, " << w->errorString());
 
   auto addr = get_address(m_eve_account);

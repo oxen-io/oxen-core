@@ -1,6 +1,6 @@
 // Portable implementation as a fallback
 
-static void (*const extra_hashes[4])(const void *, size_t, char *) = {
+static void (*const extra_hashes[4])(const void *, size_t, unsigned char *) = {
   hash_extra_blake, hash_extra_groestl, hash_extra_jh, hash_extra_skein
 };
 
@@ -72,7 +72,7 @@ union cn_turtle_hash_state {
 };
 #pragma pack(pop)
 
-void cn_turtle_hash(const void *data, size_t length, char *hash, int light, int variant, int prehashed, uint32_t scratchpad, uint32_t iterations)
+void cn_turtle_hash(const void *data, size_t length, unsigned char *hash, int light, int variant, int prehashed, uint32_t scratchpad, uint32_t iterations)
 {
   uint32_t init_rounds = (scratchpad / INIT_SIZE_BYTE);
   uint32_t aes_rounds = (iterations / 2);

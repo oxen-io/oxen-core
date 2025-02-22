@@ -33,8 +33,8 @@
 #include <atomic>
 
 #include <boost/asio/io_service.hpp>
-#include <boost/uuid/uuid_io.hpp>
 
+#include "epee/net/net_utils_base.h"
 #include "epee/string_tools.h"
 #include "epee/net/levin_protocol_handler_async.h"
 #include "epee/net/abstract_tcp_server2.h"
@@ -144,15 +144,15 @@ namespace net_load_tests
       , m_connections(open_request_target)
     {
       for (auto& conn_id : m_connections)
-        conn_id = boost::uuids::nil_uuid();
+        conn_id = {};
     }
 
-    bool handle_new_connection(const boost::uuids::uuid& connection_id, bool ignore_close_fails = false)
+    bool handle_new_connection(const epee::connection_id_t& connection_id, bool ignore_close_fails = false)
     {
       size_t idx = m_next_opened_conn_idx.fetch_add(1, std::memory_order_relaxed);
       if (idx >= m_connections.size())
       {
-        LOG_PRINT_L0("ERROR: connections overflow");
+        oxen::log::warning(globallogcat, "ERROR: connections overflow");
         exit(1);
       }
       m_connections[idx] = connection_id;
@@ -176,24 +176,24 @@ namespace net_load_tests
       size_t idx = m_next_closed_conn_idx.fetch_add(1, std::memory_order_relaxed);
       if (m_next_opened_conn_idx.load(std::memory_order_relaxed) <= idx)
       {
-        LOG_PRINT_L0("Not enough opened connections");
+        oxen::log::warning(globallogcat, "Not enough opened connections");
         return false;
       }
       if (m_connections[idx].is_nil())
       {
-        LOG_PRINT_L0("Connection isn't opened");
+        oxen::log::warning(globallogcat, "Connection isn't opened");
         return false;
       }
       if (!m_tcp_server.get_config_object().close(m_connections[idx]))
       {
-        LOG_PRINT_L0("Close connection error: " << m_connections[idx]);
+        oxen::log::warning(globallogcat, "Close connection error: {}", boost::lexical_cast<std::string>(m_connections[idx]));
         if (!ignore_close_fails)
         {
           return false;
         }
       }
 
-      m_connections[idx] = boost::uuids::nil_uuid();
+      m_connections[idx] = {};
       m_opened_connection_count.fetch_sub(1, std::memory_order_relaxed);
       return true;
     }
@@ -206,7 +206,7 @@ namespace net_load_tests
     std::atomic<size_t> m_opened_connection_count;
     std::atomic<size_t> m_next_opened_conn_idx;
     std::atomic<size_t> m_next_closed_conn_idx;
-    std::vector<boost::uuids::uuid> m_connections;
+    std::vector<epee::connection_id_t> m_connections;
   };
 
   const unsigned int min_thread_count = 2;

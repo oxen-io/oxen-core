@@ -1,22 +1,22 @@
 // Copyright (c) 2018-2020, The Loki Project
 // Copyright (c) 2014-2019, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -26,7 +26,7 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
@@ -34,34 +34,35 @@
 #include "common/command_line.h"
 #include "common/password.h"
 #include "core_rpc_server.h"
-#include "http_server_base.h"
-#include "rpc/rpc_args.h"
+#include "rpc/common/http_server_base.h"
+#include "rpc/common/rpc_args.h"
 
 namespace cryptonote::rpc {
 
-  /************************************************************************/
-  /* Core HTTP RPC server                                                 */
-  /************************************************************************/
-  class http_server : public http_server_base
-  {
+/************************************************************************/
+/* Core HTTP RPC server                                                 */
+/************************************************************************/
+class http_server : public http_server_base {
   public:
     static const command_line::arg_descriptor<std::vector<std::string>> arg_rpc_public;
-    static const command_line::arg_descriptor<std::vector<std::string>, false, true, 2> arg_rpc_admin;
+    static const command_line::arg_descriptor<std::vector<std::string>> arg_rpc_admin;
 
     // Deprecated:
     static const command_line::arg_descriptor<uint16_t> arg_rpc_bind_port;
     static const command_line::arg_descriptor<uint16_t> arg_rpc_restricted_bind_port;
-    static const command_line::arg_descriptor<bool> arg_restricted_rpc;
-    static const command_line::arg_descriptor<bool> arg_public_node;
+    static const command_line::arg_flag arg_restricted_rpc;
+    static const command_line::arg_flag arg_public_node;
 
-    static void init_options(boost::program_options::options_description& desc, boost::program_options::options_description& hidden);
+    static void init_options(
+            boost::program_options::options_description& desc,
+            boost::program_options::options_description& hidden);
 
     http_server(
-        core_rpc_server& server,
-        rpc_args rpc_config,
-        bool restricted,
-        std::vector<std::tuple<std::string, uint16_t, bool>> bind // {IP,port,required}
-        );
+            core_rpc_server& server,
+            rpc_args rpc_config,
+            bool restricted,
+            std::vector<std::tuple<std::string, uint16_t, bool>> bind  // {IP,port,required}
+    );
 
     ~http_server() override;
 
@@ -77,16 +78,12 @@ namespace cryptonote::rpc {
     void shutdown(bool join = false);
 
   private:
-
     void create_rpc_endpoints(uWS::App& http) override;
 
     /// Handles a request for a base url, e.g. /foo (but not /json_rpc).  `call` is the callback
     /// we've already mapped the request to; restricted commands have also already been rejected
     /// (unless the RPC is unrestricted).
-    void handle_base_request(
-        HttpResponse& res,
-        HttpRequest& req,
-        const rpc_command& call);
+    void handle_base_request(HttpResponse& res, HttpRequest& req, const rpc_command& call);
 
     /// Handles a POST request to /json_rpc.
     void handle_json_rpc_request(HttpResponse& res, HttpRequest& req);
@@ -104,6 +101,6 @@ namespace cryptonote::rpc {
     bool m_sent_startup{false}, m_sent_shutdown{false};
     // Whether this is restricted, i.e. public.  Unrestricted allows admin commands.
     bool m_restricted;
-  };
+};
 
-} // namespace cryptonote::rpc
+}  // namespace cryptonote::rpc

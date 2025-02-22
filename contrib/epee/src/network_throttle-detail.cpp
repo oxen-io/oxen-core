@@ -133,8 +133,7 @@ void network_throttle::set_name(const std::string &name)
 
 void network_throttle::set_target_speed( network_speed_kbps target ) 
 {
-    m_target_speed = target * 1024;
-	MINFO("Setting LIMIT: " << target << " kbps");
+  m_target_speed = target * 1024;
 }
 
 network_speed_kbps network_throttle::get_target_speed()
@@ -155,7 +154,6 @@ void network_throttle::tick()
 	// TODO optimize when moving few slots at once
 	while ( (!m_any_packet_yet) || (last_sample_time_slot < current_sample_time_slot))
 	{
-		MTRACE("Moving counter buffer by 1 second " << last_sample_time_slot << " < " << current_sample_time_slot << " (last time " << m_last_sample_time<<")");
 		// rotate buffer 
 		m_history.push_front(packet_info());
 		if (! m_any_packet_yet) 
@@ -185,13 +183,6 @@ void network_throttle::_handle_trafic_exact(size_t packet_size, size_t orginal_s
 
 	std::ostringstream oss; oss << "["; 	for (auto sample: m_history) oss << sample.m_size << " ";	 oss << "]" << std::ends;
 	std::string history_str = oss.str();
-
-	MTRACE("Throttle " << m_name << ": packet of ~"<<packet_size<<"b " << " (from "<<orginal_size<<" b)"
-        << " Speed AVG=" << std::setw(4) <<  ((long int)(cts .average/1024)) <<"[w="<<cts .window<<"]"
-        <<           " " << std::setw(4) <<  ((long int)(cts2.average/1024)) <<"[w="<<cts2.window<<"]"
-				<<" / " << " Limit="<< ((long int)(m_target_speed/1024)) <<" KiB/sec "
-				<< " " << history_str
-		);
 }
 
 void network_throttle::handle_trafic_tcp(size_t packet_size)
@@ -214,8 +205,6 @@ void network_throttle::logger_handle_net(const std::string &filename, double tim
         std::fstream file;
         file.open(filename.c_str(), std::ios::app | std::ios::out );
         file.precision(6);
-        if(!file.is_open())
-            MWARNING("Can't open file " << filename);
         file << static_cast<int>(time) << " " << static_cast<double>(size/1024) << "\n";
         file.close();
     }
@@ -269,28 +258,13 @@ void network_throttle::calculate_times(size_t packet_size, calculate_times_struc
 		if (cts.delay>=0) cts.delay = 0; // no traffic in history so we will not wait
 	}
 
-    double Wgood=-1;
     {	// how much data we recommend now to download
-        Wgood = the_window_size + 1;
         cts.recomendetDataSize = M*cts.window - E;
     }
 
 	if (dbg) {
 		std::ostringstream oss; oss << "["; 	for (auto sample: m_history) oss << sample.m_size << " ";	 oss << "]" << std::ends;
 		std::string history_str = oss.str();
-		MTRACE((cts.delay > 0 ? "SLEEP" : "")
-			<< "dbg " << m_name << ": " 
-			<< "speed is A=" << std::setw(8) <<cts.average<<" vs "
-			<< "Max=" << std::setw(8) <<M<<" "
-			<< " so sleep: "
-			<< "D=" << std::setw(8) <<cts.delay<<" sec "
-			<< "E="<< std::setw(8) << E << " (Enow="<<std::setw(8)<<Enow<<") "
-            << "M=" << std::setw(8) << M <<" W="<< std::setw(8) << cts.window << " "
-            << "R=" << std::setw(8) << cts.recomendetDataSize << " Wgood" << std::setw(8) << Wgood << " "
-			<< "History: " << std::setw(8) << history_str << " "
-			<< "m_last_sample_time=" << std::setw(8) << m_last_sample_time
-		);
-
 	}
 }
 
@@ -342,9 +316,8 @@ double network_throttle::get_current_speed() const {
 	return bytes_transferred / ((m_history.size() - 1) * m_slot_size);
 }
 
-void network_throttle::get_stats(uint64_t &total_packets, uint64_t &total_bytes) const {
-	total_packets = m_total_packets;
-	total_bytes = m_total_bytes;
+std::pair<uint64_t, uint64_t> network_throttle::get_stats() const {
+    return {m_total_packets, m_total_bytes};
 }
 
 

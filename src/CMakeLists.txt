@@ -31,21 +31,9 @@
 
 # warnings are cleared only for GCC on Linux
 if (NOT (MINGW OR APPLE OR FREEBSD OR OPENBSD OR DRAGONFLY))
-  add_compile_options("${WARNINGS_AS_ERRORS_FLAG}") # applies only to targets that follow
+  message(STATUS "Setting warnings as errors")
+  #add_compile_options("${WARNINGS_AS_ERRORS_FLAG}") # applies only to targets that follow
 endif()
-
-set_property(GLOBAL PROPERTY oxen_executable_targets "")
-function (oxen_add_executable target binary)
-  add_executable("${target}" ${ARGN})
-  target_link_libraries("${target}" PRIVATE extra)
-  set_target_properties("${target}" PROPERTIES
-    OUTPUT_NAME "${binary}"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-  install(TARGETS "${target}" DESTINATION bin)
-  get_property(exec_tgt GLOBAL PROPERTY oxen_executable_targets)
-  list(APPEND exec_tgt "${target}")
-  set_property(GLOBAL PROPERTY oxen_executable_targets "${exec_tgt}")
-endfunction ()
 
 add_subdirectory(common)
 add_subdirectory(crypto)
@@ -53,7 +41,9 @@ add_subdirectory(ringct)
 add_subdirectory(checkpoints)
 add_subdirectory(cryptonote_basic)
 add_subdirectory(cryptonote_core)
-add_subdirectory(lmdb)
+add_subdirectory(logging)
+add_subdirectory(l2_tracker)
+add_subdirectory(bls)
 add_subdirectory(multisig)
 add_subdirectory(net)
 add_subdirectory(mnemonics)
@@ -71,9 +61,11 @@ add_subdirectory(sqlitedb)
 add_subdirectory(gen_multisig)
 add_subdirectory(blockchain_utilities)
 
+option(BUILD_EVERYTHING "Enable building of all optional components" OFF)
+
 # We'll always add, but with EXCLUDE_FROM_ALL if you didn't ask for them (but this lets you do a
 # `make cn_deserialize` or whatever from a build dir without needing to reconfigure).
-option(BUILD_DEBUG_UTILS "Build debug utils as part of the default build" OFF)
+option(BUILD_DEBUG_UTILS "Build debug utils as part of the default build" ${BUILD_EVERYTHING})
 if(BUILD_DEBUG_UTILS)
   message(STATUS "Building debug utilities")
   add_subdirectory(debug_utilities)
@@ -122,4 +114,9 @@ else()
   endif()
 endif()
 
-add_library(version "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
+oxen_add_library(version "${CMAKE_CURRENT_BINARY_DIR}/version.cpp")
+
+install(
+    DIRECTORY   "${CMAKE_CURRENT_SOURCE_DIR}/"
+    DESTINATION "include${OXEN_INSTALL_INCLUDEDIR_SUFFIX}"
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")

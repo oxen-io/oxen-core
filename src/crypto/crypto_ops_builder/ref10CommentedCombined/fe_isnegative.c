@@ -8,9 +8,8 @@ Preconditions:
    |f| bounded by 1.1*2^26,1.1*2^25,1.1*2^26,1.1*2^25,etc.
 */
 
-int fe_isnegative(const fe f)
-{
-  unsigned char s[32];
-  fe_tobytes(s,f);
-  return s[0] & 1;
+int fe_isnegative(const fe f) {
+    unsigned char s[32];
+    fe_tobytes(s, f);
+    return s[0] & 1;
 }
