@@ -68,7 +68,7 @@ int main(int argc, char** argv)
   set_process_affinity(1);
   set_thread_high_priority();
 
-  mlog_configure(mlog_get_default_log_path("performance_tests.log"), true);
+  oxenlog::init("performance_tests.log", oxenlog::LogLevel::critical)
 
   po::options_description desc_options("Command line options");
   const command_line::arg_descriptor<std::string> arg_filter = { "filter", "Regular expression filter for which tests to run" };
@@ -545,5 +545,5 @@ int main(int argc, char** argv)
   std::cout << "Tests finished. Elapsed time: " << elapsed_str(std::chrono::steady_clock::now() - started) << std::endl;
 
   return 0;
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }

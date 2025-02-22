@@ -34,6 +34,7 @@
 
 #include "common/base58.cpp"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "network_config/mainnet.h"
 #include "serialization/binary_utils.h"
 
 using namespace tools;
@@ -507,7 +508,7 @@ TEST(get_account_address_from_str, fails_on_invalid_address_prefix)
 
 TEST(get_account_address_from_str, fails_on_invalid_address_content)
 {
-  std::string addr_str = base58::encode_addr(cryptonote::config::PUBLIC_ADDRESS_BASE58_PREFIX, test_serialized_keys.substr(1));
+  std::string addr_str = base58::encode_addr(cryptonote::config::mainnet::config.PUBLIC_ADDRESS_BASE58_PREFIX, test_serialized_keys.substr(1));
 
   cryptonote::address_parse_info info;
   ASSERT_FALSE(cryptonote::get_account_address_from_str(info, cryptonote::network_type::MAINNET, addr_str));
@@ -517,7 +518,7 @@ TEST(get_account_address_from_str, fails_on_invalid_address_spend_key)
 {
   std::string serialized_keys_copy = test_serialized_keys;
   serialized_keys_copy[0] = '\0';
-  std::string addr_str = base58::encode_addr(cryptonote::config::PUBLIC_ADDRESS_BASE58_PREFIX, serialized_keys_copy);
+  std::string addr_str = base58::encode_addr(cryptonote::config::mainnet::config.PUBLIC_ADDRESS_BASE58_PREFIX, serialized_keys_copy);
 
   cryptonote::address_parse_info info;
   ASSERT_FALSE(cryptonote::get_account_address_from_str(info, cryptonote::network_type::MAINNET, addr_str));
@@ -527,7 +528,7 @@ TEST(get_account_address_from_str, fails_on_invalid_address_view_key)
 {
   std::string serialized_keys_copy = test_serialized_keys;
   serialized_keys_copy.back() = '\0';
-  std::string addr_str = base58::encode_addr(cryptonote::config::PUBLIC_ADDRESS_BASE58_PREFIX, serialized_keys_copy);
+  std::string addr_str = base58::encode_addr(cryptonote::config::mainnet::config.PUBLIC_ADDRESS_BASE58_PREFIX, serialized_keys_copy);
 
   cryptonote::address_parse_info info;
   ASSERT_FALSE(cryptonote::get_account_address_from_str(info, cryptonote::network_type::MAINNET, addr_str));

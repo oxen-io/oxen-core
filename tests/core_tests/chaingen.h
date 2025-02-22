@@ -40,11 +40,13 @@
 #include <boost/archive/binary_iarchive.hpp>
 #include <boost/program_options.hpp>
 #include <boost/serialization/vector.hpp>
+#include <fmt/color.h>
 
 #include "cryptonote_protocol/quorumnet.h"
 #include "common/boost_serialization_helper.h"
 #include "common/command_line.h"
 #include "common/threadpool.h"
+#include "epee/misc_log_ex.h"
 
 #include "cryptonote_basic/account_boost_serialization.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -74,6 +76,8 @@ namespace service_nodes {
   const std::vector<payout_entry> dummy; // help GCC 5 realize it needs to generate a default constructor
 }
 #endif
+
+static auto logcat = oxen::log::Cat("chaingen");
 
 using cryptonote::hf;
 
@@ -137,9 +141,10 @@ private: // TODO(doyle): Not implemented properly. Just copy pasta. Do we even n
 struct callback_entry
 {
   std::string callback_name;
-  BEGIN_SERIALIZE_OBJECT()
-    FIELD(callback_name)
-  END_SERIALIZE()
+  template <class Archive>
+  void serialize_object(Archive& ar) {
+    field(ar, "callback_name", callback_name);
+  }
 
 private:
   friend class boost::serialization::access;
@@ -162,9 +167,10 @@ struct serialized_object
   }
 
   std::string data;
-  BEGIN_SERIALIZE_OBJECT()
-    FIELD(data)
-    END_SERIALIZE()
+  template <class Archive>
+  void serialize_object(Archive& ar) {
+    field(ar, "data", data);
+  }
 
 private:
   friend class boost::serialization::access;
@@ -338,7 +344,7 @@ public:
   bool construct_block_manually(cryptonote::block& blk, const cryptonote::block& prev_block,
     const cryptonote::account_base& miner_acc, int actual_params = bf_none, hf major_ver = hf::none,
     uint8_t minor_ver = 0, uint64_t timestamp = 0, const crypto::hash& prev_id = crypto::hash(),
-    const cryptonote::difficulty_type& diffic = 1, const cryptonote::transaction& miner_tx = cryptonote::transaction(),
+    const cryptonote::difficulty_type& diffic = 1, const std::optional<cryptonote::transaction>& miner_tx = std::nullopt,
     const std::vector<crypto::hash>& tx_hashes = std::vector<crypto::hash>(), size_t txs_sizes = 0, size_t txn_fee = 0);
   bool construct_block_manually_tx(cryptonote::block& blk, const cryptonote::block& prev_block,
     const cryptonote::account_base& miner_acc, const std::vector<crypto::hash>& tx_hashes, size_t txs_size);
@@ -357,22 +363,12 @@ public:
   }
 };
 
-template<typename T>
-std::string dump_keys(T * buff32)
+// Dumps the 32-byte contents of some pointer as: [0x01,0xf1,0xbb,....,0xff].
+// (I have no idea why this makes any sense, look, squirrel!)
+inline std::string dump_keys(const void* buff32)
 {
-  std::ostringstream ss;
-  char buff[10];
-
-  ss << "[";
-  for(int i = 0; i < 32; i++)
-  {
-    snprintf(buff, 10, "0x%02x", ((uint8_t)buff32[i] & 0xff));
-    ss << buff;
-    if (i < 31)
-      ss << ",";
-  }
-  ss << "]";
-  return ss.str();
+  auto* begin = reinterpret_cast<const unsigned char*>(buff32);
+  return "[{:#04x}]"_format(fmt::join(begin, begin+32, ","));
 }
 
 struct output_index {
@@ -452,7 +448,7 @@ struct output_index {
 
 typedef std::tuple<uint64_t, crypto::public_key, rct::key> get_outs_entry;
 typedef std::pair<crypto::hash, size_t> output_hasher;
-struct output_hasher_hasher { size_t operator()(const output_hasher &h) const { return *reinterpret_cast<const size_t *>(h.first.data) + h.second; } };
+struct output_hasher_hasher { size_t operator()(const output_hasher &h) const { return *reinterpret_cast<const size_t *>(h.first.data()) + h.second; } };
 typedef std::map<uint64_t, std::vector<size_t> > map_output_t;
 typedef std::map<uint64_t, std::vector<output_index> > map_output_idx_t;
 typedef std::unordered_map<crypto::hash, cryptonote::block> map_block_t;
@@ -644,13 +640,16 @@ public:
   {
     log_event("cryptonote::transaction");
     cryptonote::tx_verification_context tvc{};
-    size_t pool_size = m_c.get_pool().get_transactions_count();
+    size_t pool_size = m_c.mempool.get_transactions_count();
     cryptonote::tx_pool_options opts;
     opts.kept_by_block = m_txs_keeped_by_block;
     m_c.handle_incoming_tx(t_serializable_object_to_blob(tx), tvc, opts);
-    bool tx_added = pool_size + 1 == m_c.get_pool().get_transactions_count();
-    bool r = m_validator.check_tx_verification_context(tvc, tx_added, m_ev_index, tx);
-    CHECK_AND_NO_ASSERT_MES(r, false, "tx verification context check failed");
+    bool tx_added = pool_size + 1 == m_c.mempool.get_transactions_count();
+    if (!m_validator.check_tx_verification_context(tvc, tx_added, m_ev_index, tx))
+    {
+      oxen::log::warning(globallogcat, "tx verification context check failed");
+      return false;
+    }
     return true;
   }
 
@@ -660,7 +659,7 @@ public:
     std::vector<std::string> tx_blobs;
     for (const auto &tx: txs)
       tx_blobs.push_back(t_serializable_object_to_blob(tx));
-    size_t pool_size = m_c.get_pool().get_transactions_count();
+    size_t pool_size = m_c.mempool.get_transactions_count();
     cryptonote::tx_pool_options opts;
     opts.kept_by_block = m_txs_keeped_by_block;
     auto parsed = m_c.handle_incoming_txs(tx_blobs, opts);
@@ -668,9 +667,12 @@ public:
     tvcs.reserve(parsed.size());
     for (auto &i : parsed)
         tvcs.push_back(i.tvc);
-    size_t tx_added = m_c.get_pool().get_transactions_count() - pool_size;
-    bool r = m_validator.check_tx_verification_context_array(tvcs, tx_added, m_ev_index, txs);
-    CHECK_AND_NO_ASSERT_MES(r, false, "tx verification context check failed");
+    size_t tx_added = m_c.mempool.get_transactions_count() - pool_size;
+    if (!m_validator.check_tx_verification_context_array(tvcs, tx_added, m_ev_index, txs))
+    {
+      oxen::log::warning(globallogcat, "tx verification context check failed");
+      return false;
+    }
     return true;
   }
 
@@ -687,9 +689,12 @@ public:
     }
     else
       bvc.m_verifivation_failed = true;
-    bool r = m_validator.check_block_verification_context(bvc, m_ev_index, b);
-    CHECK_AND_NO_ASSERT_MES(r, false, "block verification context check failed");
-    return r;
+    if (!m_validator.check_block_verification_context(bvc, m_ev_index, b))
+    {
+      oxen::log::warning(globallogcat, "block verification context check failed");
+      return false;
+    }
+    return true;
   }
 
   // TODO(oxen): Deprecate callback_entry for oxen_callback_entry, why don't you
@@ -729,8 +734,11 @@ public:
     } catch (...) {
       blk = cryptonote::block();
     }
-    bool r = m_validator.check_block_verification_context(bvc, m_ev_index, blk);
-    CHECK_AND_NO_ASSERT_MES(r, false, "block verification context check failed");
+    if (!m_validator.check_block_verification_context(bvc, m_ev_index, blk))
+    {
+      oxen::log::warning(globallogcat, "block verification context check failed");
+      return false;
+    }
     return true;
   }
 
@@ -739,11 +747,11 @@ public:
     log_event("serialized_transaction");
 
     cryptonote::tx_verification_context tvc{};
-    size_t pool_size = m_c.get_pool().get_transactions_count();
+    size_t pool_size = m_c.mempool.get_transactions_count();
     cryptonote::tx_pool_options opts;
     opts.kept_by_block = m_txs_keeped_by_block;
     m_c.handle_incoming_tx(sr_tx.data, tvc, opts);
-    bool tx_added = pool_size + 1 == m_c.get_pool().get_transactions_count();
+    bool tx_added = pool_size + 1 == m_c.mempool.get_transactions_count();
 
     cryptonote::transaction tx;
     serialization::binary_string_unarchiver ba{sr_tx.data};
@@ -753,20 +761,50 @@ public:
       tx = cryptonote::transaction();
     }
 
-    bool r = m_validator.check_tx_verification_context(tvc, tx_added, m_ev_index, tx);
-    CHECK_AND_NO_ASSERT_MES(r, false, "transaction verification context check failed");
+    if (!m_validator.check_tx_verification_context(tvc, tx_added, m_ev_index, tx))
+    {
+      oxen::log::warning(globallogcat, "transaction verification context check failed");
+      return false;
+    }
     return true;
   }
 
   //
   // NOTE: Loki
   //
+  static bool add_to_blockchain_was_valid(std::string_view type, bool can_be_added_to_blockchain, bool added, std::string_view fail_msg)
+  {
+    if (can_be_added_to_blockchain) {
+        if (!added) {
+            oxen::log::warning(
+                    globallogcat,
+                    "Failed to add {} that was marked as being 'valid to add to the "
+                    "blockchain'. Validation rules have failed to permit a valid constructed "
+                    "item. {}",
+                    type,
+                    fail_msg);
+            return false;
+        }
+    } else {
+        if (added) {
+            oxen::log::warning(
+                    globallogcat,
+                    "The {} was added to blockchain but it was marked as 'not being a valid "
+                    "to add to the blockchain'. Validation rules have failed to reject the "
+                    "invalidly constructed item. {}", type, fail_msg);
+            return false;
+        }
+    }
+    return true;
+  }
+
   bool operator()(const oxen_blockchain_addable<cryptonote::checkpoint_t> &entry) const
   {
     log_event("oxen_blockchain_addable<cryptonote::checkpoint_t>");
-    cryptonote::Blockchain &blockchain = m_c.get_blockchain_storage();
+    cryptonote::Blockchain &blockchain = m_c.blockchain;
     bool added = blockchain.update_checkpoint(entry.data);
-    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, (entry.fail_msg.size() ? entry.fail_msg : "Failed to add checkpoint (no reason given)"));
+    if (!add_to_blockchain_was_valid("checkpoint", entry.can_be_added_to_blockchain, added, entry.fail_msg))
+        return false;
     return true;
   }
 
@@ -774,8 +812,9 @@ public:
   {
     log_event("oxen_blockchain_addable<service_nodes::quorum_vote_t>");
     cryptonote::vote_verification_context vvc = {};
-    bool added                                = m_c.add_service_node_vote(entry.data, vvc);
-    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, (entry.fail_msg.size() ? entry.fail_msg : "Failed to add service node vote (no reason given)"));
+    bool added = m_c.add_service_node_vote(entry.data, vvc);
+    if (!add_to_blockchain_was_valid("service node vote", entry.can_be_added_to_blockchain, added, entry.fail_msg))
+        return false;
     return true;
   }
 
@@ -800,7 +839,16 @@ public:
       bvc.m_verifivation_failed = true;
 
     bool added = !bvc.m_verifivation_failed;
-    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, (entry.fail_msg.size() ? entry.fail_msg : "Failed to add block with checkpoint (no reason given)"));
+    if (!add_to_blockchain_was_valid(
+                fmt::format(
+                        "block {} hf{} w/ checkpoint",
+                        block.get_height(),
+                        static_cast<size_t>(block.major_version)),
+                entry.can_be_added_to_blockchain,
+                added,
+                entry.fail_msg)) {
+        return false;
+    }
     return true;
   }
   
@@ -820,7 +868,14 @@ public:
       bvc.m_verifivation_failed = true;
 
     bool added = !bvc.m_verifivation_failed;
-    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, (entry.fail_msg.size() ? entry.fail_msg : "Failed to add block (no reason given)"));
+    if (!add_to_blockchain_was_valid(
+                fmt::format(
+                        "block {} hf{}", block.get_height(), static_cast<size_t>(block.major_version)),
+                entry.can_be_added_to_blockchain,
+                added,
+                entry.fail_msg)) {
+        return false;
+    }
     return true;
   }
 
@@ -839,7 +894,10 @@ public:
       bvc.m_verifivation_failed = true;
 
     bool added = !bvc.m_verifivation_failed;
-    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, (entry.fail_msg.size() ? entry.fail_msg : "Failed to add block (no reason given)"));
+    if (!add_to_blockchain_was_valid(
+                "serialized block", entry.can_be_added_to_blockchain, added, entry.fail_msg)) {
+        return false;
+    }
     return true;
   }
 
@@ -847,15 +905,19 @@ public:
   {
     log_event("oxen_blockchain_addable<oxen_transaction>");
     cryptonote::tx_verification_context tvc = {};
-    size_t pool_size = m_c.get_pool().get_transactions_count();
+    size_t pool_size = m_c.mempool.get_transactions_count();
     cryptonote::tx_pool_options opts;
     opts.kept_by_block = entry.data.kept_by_block;
     m_c.handle_incoming_tx(t_serializable_object_to_blob(entry.data.tx), tvc, opts);
 
-    bool added = (pool_size + 1) == m_c.get_pool().get_transactions_count();
-
-    CHECK_AND_NO_ASSERT_MES(added == entry.can_be_added_to_blockchain, false, (entry.fail_msg.size() ? entry.fail_msg :
-                entry.can_be_added_to_blockchain ? "Failed to add transaction that should have been accepted" : "TX adding should have failed, but didn't"));
+    bool added = (pool_size + 1) == m_c.mempool.get_transactions_count();
+    if (!add_to_blockchain_was_valid(
+                fmt::format("tx {}", entry.data.tx.hash),
+                entry.can_be_added_to_blockchain,
+                added,
+                entry.fail_msg)) {
+        return false;
+    }
     return true;
   }
 
@@ -869,15 +931,15 @@ public:
   bool operator()(const std::string &msg) const
   {
     log_event("event_msgevent_marker");
-    MGINFO_MAGENTA(msg);
+    oxen::log::info(globallogcat, fg(fmt::terminal_color::magenta), "{}", msg);
     return true;
   }
 
 private:
   void log_event(const std::string& event_type) const
   {
-    if (LOG_ENABLED(Info))
-      MGINFO_YELLOW("=== EVENT # " << m_ev_index << ": " << event_type);
+    if (globallogcat->should_log(oxen::log::Level::info))
+      oxen::log::debug(globallogcat, fg(fmt::terminal_color::yellow), "=== EVENT # {}:{}", m_ev_index, event_type);
   }
 };
 //--------------------------------------------------------------------------
@@ -887,14 +949,14 @@ inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::ve
   TRY_ENTRY();
   // start with a clean pool
   std::vector<crypto::hash> pool_txs;
-  cr.get_pool().get_transaction_hashes(pool_txs);
-  cr.get_blockchain_storage().flush_txes_from_pool(pool_txs);
+  cr.mempool.get_transaction_hashes(pool_txs);
+  cr.blockchain.flush_txes_from_pool(pool_txs);
 
   //init core here
   if (reinit) {
     CHECK_AND_ASSERT_MES(std::holds_alternative<cryptonote::block>(events[0]), false,
                          "First event must be genesis block creation");
-    cr.set_genesis_block(var::get<cryptonote::block>(events[0]));
+    cr.blockchain.reset_and_set_genesis_block(var::get<cryptonote::block>(events[0]));
   }
 
   bool r = true;
@@ -907,14 +969,13 @@ inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::ve
 
   return r;
 
-  CATCH_ENTRY_L0("replay_events_through_core", false);
+  CATCH_ENTRY("replay_events_through_core", false);
 }
 //--------------------------------------------------------------------------
 template<typename t_test_class>
 struct get_test_options {
-  const std::vector<cryptonote::hard_fork> hard_forks = {{cryptonote::hf::hf7, 0, 0, 0}};
   const cryptonote::test_options test_options = {
-    hard_forks, 0
+      std::vector<cryptonote::hard_fork>{{cryptonote::hf::hf7, 0, 0, 0}}, 0
   };
 };
 //--------------------------------------------------------------------------
@@ -964,10 +1025,10 @@ inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cry
   cryptonote::test_options const *testing_options = (use_derived_hardforks) ? &derived_test_options : &gto.test_options;
   if (!c.init(vm, testing_options))
   {
-    MERROR("Failed to init core");
+    oxen::log::error(globallogcat, "Failed to init core");
     return false;
   }
-  c.get_blockchain_storage().get_db().set_batch_transactions(true);
+  c.blockchain.db().set_batch_transactions(true);
   bool ret = replay_events_through_core_plain<t_test_class>(c, events, validator, true);
   tools::threadpool::getInstance().recycle();
   return ret;
@@ -979,7 +1040,7 @@ inline bool do_replay_file(const std::string& filename)
   std::vector<test_event_entry> events;
   if (!tools::unserialize_obj_from_file(events, filename))
   {
-    MERROR("Failed to deserialize data from file: ");
+    oxen::log::error(globallogcat, "Failed to deserialize data from file: ");
     return false;
   }
 
@@ -1141,24 +1202,24 @@ inline bool do_replay_file(const std::string& filename)
 #define PLAY(filename, generator_class) \
     if(!do_replay_file<generator_class>(filename)) \
     { \
-      MERROR("Failed to pass test : " << #generator_class); \
+      oxen::log::error(globallogcat, "Failed to pass test : {}", #generator_class); \
       return 1; \
     }
 
 #define CATCH_REPLAY(generator_class)                                                                                  \
-  catch (const std::exception &ex) { MERROR(#generator_class << " generation failed: what=" << ex.what()); }           \
-  catch (...) { MERROR(#generator_class << " generation failed: generic exception"); }
+  catch (const std::exception &ex) { oxen::log::error(globallogcat, "{} generation failed: what={}", #generator_class, ex.what()); }\
+  catch (...) { oxen::log::error(globallogcat, "{} generation failed: generic exception", #generator_class); }
 
 #define REPLAY_CORE(generator_class, generator_class_instance)                                                         \
   {                                                                                                                    \
     cryptonote::core core;                                                                                             \
     if (generated && do_replay_events_get_core<generator_class>(events, &core, generator_class_instance))              \
     {                                                                                                                  \
-      MGINFO_GREEN("#TEST# Succeeded " << #generator_class);                                                           \
+      oxen::log::info(globallogcat, fg(fmt::terminal_color::green) | fmt::emphasis::bold, "#TEST# Succeeded {}", #generator_class);\
     }                                                                                                                  \
     else                                                                                                               \
     {                                                                                                                  \
-      MERROR("#TEST# Failed " << #generator_class);                                                                    \
+      oxen::log::error(globallogcat, fg(fmt::terminal_color::red) | fmt::emphasis::bold, "#TEST# Failed {}", #generator_class);\
       failed_tests.push_back(#generator_class);                                                                        \
     }                                                                                                                  \
     core.deinit();                                                                                                     \
@@ -1169,11 +1230,11 @@ inline bool do_replay_file(const std::string& filename)
     if (generated &&                                                                                                   \
         replay_events_through_core_plain<generator_class>(events, CORE, generator_class_instance, false /*reinit*/))   \
     {                                                                                                                  \
-      MGINFO_GREEN("#TEST# Succeeded " << #generator_class);                                                           \
+      oxen::log::info(globallogcat, fg(fmt::terminal_color::green) | fmt::emphasis::bold, "#TEST# Succeeded {}", #generator_class);\
     }                                                                                                                  \
     else                                                                                                               \
     {                                                                                                                  \
-      MERROR("#TEST# Failed " << #generator_class);                                                                    \
+      oxen::log::error(globallogcat, "{}{}", fg(fmt::terminal_color::red) | fmt::emphasis::bold, "#TEST# Failed ", #generator_class);\
       failed_tests.push_back(#generator_class);                                                                        \
     }                                                                                                                  \
   }
@@ -1217,10 +1278,10 @@ inline bool do_replay_file(const std::string& filename)
 
 #define QUOTEME(x) #x
 #define DEFINE_TESTS_ERROR_CONTEXT(text) const char* perr_context = text;
-#define CHECK_TEST_CONDITION(cond) CHECK_AND_ASSERT_MES(cond, false, "[" << perr_context << "] failed: \"" << QUOTEME(cond) << "\"")
-#define CHECK_TEST_CONDITION_MSG(cond, msg) CHECK_AND_ASSERT_MES(cond, false, "[" << perr_context << "] failed: \"" << QUOTEME(cond) << "\", msg: " << msg)
-#define CHECK_EQ(v1, v2) CHECK_AND_ASSERT_MES(v1 == v2, false, "[" << perr_context << "] failed: \"" << QUOTEME(v1) << " == " << QUOTEME(v2) << "\", " << v1 << " != " << v2)
-#define CHECK_NOT_EQ(v1, v2) CHECK_AND_ASSERT_MES(!(v1 == v2), false, "[" << perr_context << "] failed: \"" << QUOTEME(v1) << " != " << QUOTEME(v2) << "\", " << v1 << " == " << v2)
+#define CHECK_TEST_CONDITION(cond) CHECK_AND_ASSERT_MES(cond, false, "[{}] failed: \"{}\"", perr_context, QUOTEME(cond))
+#define CHECK_TEST_CONDITION_MSG(cond, ...) CHECK_AND_ASSERT_MES(cond, false, "[{}] failed: \"{}\", msg: {}", perr_context, QUOTEME(cond), fmt::format(__VA_ARGS__))
+#define CHECK_EQ(v1, v2) CHECK_AND_ASSERT_MES(v1 == v2, false, "[{}] failed: \"{} == {}\", {} != {}", perr_context, QUOTEME(v1), QUOTEME(v2), v1, v2)
+#define CHECK_NOT_EQ(v1, v2) CHECK_AND_ASSERT_MES(!(v1 == v2), false, "[{}] failed: \"{} != {}\", {} == {}", perr_context, QUOTEME(v1), QUOTEME(v2), v1, v2)
 #define MK_COINS(amount) (UINT64_C(amount) * oxen::COIN)
 
 inline std::string make_junk() {
@@ -1354,7 +1415,9 @@ public:
 
 void fill_nonce_with_oxen_generator(struct oxen_chain_generator const *generator, cryptonote::block& blk, const cryptonote::difficulty_type& diffic, uint64_t height);
 void oxen_register_callback(std::vector<test_event_entry> &events, std::string const &callback_name, oxen_callback callback);
-std::vector<cryptonote::hard_fork> oxen_generate_hard_fork_table(cryptonote::hf hf_version = cryptonote::hf_max, uint64_t pos_delay = 60);
+std::vector<cryptonote::hard_fork> oxen_generate_hard_fork_table(
+        cryptonote::hf hf_version = cryptonote::hf::hf19_reward_batching /* Oxen regs disallowed at HF20+ */,
+        uint64_t pos_delay = 60);
 
 struct oxen_blockchain_entry
 {
@@ -1376,7 +1439,7 @@ struct oxen_chain_generator_db : public cryptonote::BaseTestDB
 
   uint64_t                              get_block_height(crypto::hash const &hash) const override;
   cryptonote::block_header              get_block_header_from_height(uint64_t height) const override;
-  cryptonote::block                     get_block_from_height(uint64_t height) const override;
+  cryptonote::block                     get_block_from_height(uint64_t height, size_t *size = nullptr) const override;
   bool                                  get_tx(const crypto::hash& h, cryptonote::transaction &tx) const override;
   std::vector<cryptonote::checkpoint_t> get_checkpoints_range(uint64_t start, uint64_t end, size_t num_desired_checkpoints) const override;
   std::vector<cryptonote::block>        get_blocks_range(const uint64_t& h1, const uint64_t& h2) const override;
@@ -1420,12 +1483,12 @@ struct oxen_chain_generator
   const std::vector<cryptonote::hard_fork>                           hard_forks_;
   cryptonote::account_base                                           first_miner_;
 
-  oxen_chain_generator(std::vector<test_event_entry>& events, const std::vector<cryptonote::hard_fork>& hard_forks, std::string first_miner_seed = "");
+  oxen_chain_generator(std::vector<test_event_entry>& events, const std::vector<cryptonote::hard_fork>& hard_forks, std::string_view first_miner_seed = "");
   oxen_chain_generator(const oxen_chain_generator &other)
     :tx_table_(other.tx_table_), service_node_keys_(other.service_node_keys_), state_history_(other.state_history_), last_cull_height_(other.last_cull_height_), sqlite_db_(std::make_unique<test::BlockchainSQLiteTest>(*other.sqlite_db_)),
   ons_db_(other.ons_db_ ), db_(other.db_), hf_version_(other.hf_version_), events_(other.events_), hard_forks_(other.hard_forks_), first_miner_(other.first_miner_) {};
 
-  uint64_t                                             height()       const { return cryptonote::get_block_height(db_.blocks.back().block); }
+  uint64_t                                             height()       const { return db_.blocks.back().block.get_height(); }
   uint64_t                                             chain_height() const { return height() + 1; }
   const std::vector<oxen_blockchain_entry>&            blocks()       const { return db_.blocks; }
   size_t                                               event_index()  const { return events_.size() - 1; }
@@ -1470,7 +1533,7 @@ struct oxen_chain_generator
   cryptonote::transaction                              create_tx(const cryptonote::account_base &src, const cryptonote::account_public_address &dest, uint64_t amount, uint64_t fee) const;
   cryptonote::transaction                              create_registration_tx(const cryptonote::account_base& src,
                                                                               const cryptonote::keypair& service_node_keys = cryptonote::keypair{hw::get_device("default")},
-                                                                              uint64_t operator_stake = oxen::STAKING_REQUIREMENT_TESTNET,
+                                                                              uint64_t operator_stake = static_cast<uint64_t>(-1),
                                                                               uint64_t fee = cryptonote::STAKING_FEE_BASIS,
                                                                               const std::vector<service_nodes::contribution>& contributors = {}) const;
   cryptonote::transaction                              create_staking_tx     (const crypto::public_key& pub_key, const cryptonote::account_base &src, uint64_t amount) const;

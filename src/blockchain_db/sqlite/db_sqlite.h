@@ -27,104 +27,189 @@
 
 #pragma once
 
-#include <string>
-#include <filesystem>
-
-#include "epee/misc_log_ex.h"
-#include "cryptonote_basic/cryptonote_format_utils.h"
-#include "cryptonote_core/cryptonote_tx_utils.h"
-#include "sqlitedb/database.hpp"
-#include "common/fs.h"
-
 #include <SQLiteCpp/SQLiteCpp.h>
+#include <cryptonote_basic/cryptonote_basic_impl.h>  // cryptonote::address_parse_info...
+#include <cryptonote_config.h>
+#include <cryptonote_core/service_node_list.h>  // service_node_list::state_t...
 
-namespace cryptonote
-{
+#include <filesystem>
+#include <optional>
+#include <sqlitedb/database.hpp>
+#include <string>
 
-fs::path check_if_copy_filename(std::string_view db_path);
+namespace cryptonote {
 
-class BlockchainSQLite : public db::Database
-{
-public:
-  explicit BlockchainSQLite(cryptonote::network_type nettype, fs::path db_path);
-  BlockchainSQLite(const BlockchainSQLite&) = delete;
+using block_payments = std::
+        unordered_map<std::variant<eth::address, cryptonote::account_public_address>, uint64_t>;
 
-  // Database management functions. Should be called on creation of BlockchainSQLite
-  void create_schema();
-  void upgrade_schema();
-  void reset_database();
+class BlockchainSQLite : public db::Database {
+  public:
+    explicit BlockchainSQLite(cryptonote::network_type nettype, std::filesystem::path db_path);
+    BlockchainSQLite(const BlockchainSQLite&) = delete;
 
-  // The batching database maintains a height variable to know if it gets out of sync with the mainchain. Calling increment and decrement is the primary method of interacting with this height variable
-  void update_height(uint64_t new_height);
-  void increment_height();
-  void decrement_height();
+    ~BlockchainSQLite() { rescan_stop(); }
 
-  void blockchain_detached(uint64_t new_height);
+    // Database management functions. Should be called on creation of BlockchainSQLite
+    void create_schema();
+    void upgrade_schema();
+    void reset_database();
 
-  // add_sn_payments/subtract_sn_payments -> passing an array of addresses and amounts. These will be added or subtracted to the database for each address specified. If the address does not exist it will be created.
-  bool add_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments);
-  bool subtract_sn_rewards(const std::vector<cryptonote::batch_sn_payment>& payments);
+    // Update the height stored in the SQL DB that indicates the last block height that this DB has
+    // synchronised to in.
+    void update_height(
+            uint64_t new_height,
+            const std::optional<service_nodes::rescan_context>& rescan = std::nullopt);
 
-private:
-  bool reward_handler(
-      const cryptonote::block& block,
-      const service_nodes::service_node_list::state_t& service_nodes_state,
-      bool add);
+    enum class PaymentTableType {
+        Nil,      // Table containing current state
+        Archive,  // Table containing state stored periodically at HISTORY_ARCHIVE_INTERVAL
+                  // intervals
+        Recent,   // Table containing state stored from within the last HISTORY_RECENT_KEEP_WINDOW
+    };
 
-  std::unordered_map<account_public_address, std::string> address_str_cache;
-  std::pair<hf, cryptonote::address_parse_info> parsed_governance_addr = {hf::none, {}};
-  const std::string& get_address_str(const account_public_address& addr);
-  std::mutex address_str_cache_mutex;
+    // Rewinds the SQL DB to the specified height. This function is called internally by the SNL on
+    // detach.
+    void blockchain_detached(PaymentTableType type, uint64_t height, uint64_t target_height = 0);
 
-public:
+    // Return the number of rows for the desired batched payments accrued table. The row count will
+    // be for the 'height' specified. 'height' is ignored if type is nil as the default accrued
+    // table only stores state for the current DB's height already. If 'height' is nullopt then the
+    // row count of the entire table will be returned.
+    size_t batch_payments_accrued_row_count(PaymentTableType type, std::optional<uint64_t> height);
 
-  // get_accrued_earnings -> queries the database for the amount that has been accrued to `service_node_address` will return the atomic value in oxen that
-  // the service node is owed.
-  uint64_t get_accrued_earnings(const std::string& address);
-  // get_all_accrued_earnings -> queries the database for all the amount that has been accrued to service nodes will return 
-  // 2 vectors corresponding to the addresses and the atomic value in oxen that the service nodes are owed.
-  std::pair<std::vector<std::string>, std::vector<uint64_t>> get_all_accrued_earnings();
+    // Add payments to the specified addresses to the SQL rewards table. The function throws if
+    // insertion into the DB fails.
+    void add_sn_rewards(const block_payments& payments);
 
-    // get_payments -> passing a block height will return an array of payments that should be created in a coinbase transaction on that block given the current batching DB state.
-  std::vector<cryptonote::batch_sn_payment> get_sn_payments(uint64_t block_height);
+  private:
+    // This function throws if adding the rewards to the SQL tables for 'block'
+    // fails.
+    void reward_handler(
+            const cryptonote::block& block,
+            const service_nodes::service_node_list::state_t& service_nodes_state,
+            const service_nodes::block_add_result& block_add,
+            block_payments payments = {});
 
-  // calculate_rewards -> takes the list of contributors from sn_info with their SN contribution
-  // amounts and will calculate how much of the block rewards should be the allocated to the
-  // contributors. The function will set a list suitable for passing to add_sn_payments into the
-  // vector (any existing values will be cleared).
-  //
-  // Note that distribution_amount here is typically passed as milli-atomic OXEN for extra
-  // precision.
-  void calculate_rewards(hf hf_version, uint64_t distribution_amount, const service_nodes::service_node_info& sn_info, std::vector<cryptonote::batch_sn_payment>& rewards);
+    block_payments get_delayed_payments(uint64_t height);
 
-  // add/pop_block -> takes a block that contains new block rewards to be batched and added to the database
-  // and/or batching payments that need to be subtracted from the database, in addition it takes a reference to
-  // the service node state which it will use to calculate the individual payouts.
-  // The function will then process this block add and subtracting to the batching DB appropriately.
-  // This is the primary entry point for the blockchain to add to the batching database.
-  // Each accepted block should call this passing in the SN list structure.
-  bool add_block(const cryptonote::block& block, const service_nodes::service_node_list::state_t& service_nodes_state);
-  bool pop_block(const cryptonote::block& block, const service_nodes::service_node_list::state_t& service_nodes_state);
+    std::unordered_map<account_public_address, std::string> address_str_cache;
+    std::pair<hf, cryptonote::address_parse_info> parsed_governance_addr = {hf::none, {}};
 
-  // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares the miner_tx_vouts with a list previously extracted payments to make sure that the correct persons are being paid.
-  bool validate_batch_payment(
-      const std::vector<std::tuple<crypto::public_key, uint64_t>>& miner_tx_vouts,
-      const std::vector<cryptonote::batch_sn_payment>& calculated_payments_from_batching_db,
-      uint64_t block_height);
-  
-  // these keep track of payments made to SN operators after then payment has been made. Allows for popping blocks back and knowing who got paid in those blocks.
-  // passing in a list of people to be marked as paid in the paid_amounts vector. Block height will be added to the batched_payments_paid database as height_paid.
-  bool save_payments(uint64_t block_height, const std::vector<batch_sn_payment>& paid_amounts);
-  std::vector<cryptonote::batch_sn_payment> get_block_payments(uint64_t block_height);
-  bool delete_block_payments(uint64_t block_height);
+    // Returns a reference to the underlying string, reference must not be held
+    // onto, only transiently in the same frame as the string is requested.
+    //
+    // This function must be called with the address_str_cache_mutex held!
+    const std::string& get_address_str(const cryptonote::batch_sn_payment& addr);
+    std::pair<int, std::string> get_address_str(
+            const std::variant<eth::address, cryptonote::account_public_address>& addr,
+            uint64_t batching_interval);
+    std::mutex address_str_cache_mutex;
 
-  uint64_t height;
+    bool table_exists(const std::string& name);
+    bool trigger_exists(const std::string& name);
 
-protected:
+    // Long rescans can take quite a while to process.  Batching block inserts into one database
+    // transaction speeds this up considerably.  This is called automatically if a rescan is
+    // larger than 5000 blocks.
+    void rescan_start();
+    void rescan_stop();
 
-  cryptonote::network_type m_nettype;
-  std::string filename;
+    std::optional<SQLite::Transaction> rescan_tx{std::nullopt};
+    size_t rescan_count{0};
+    uint64_t rescan_target{0};
 
+  public:
+    // Retrieves the amount (in atomic SENT) that has been accrued to the Ethereum `address`.
+    // Returns the current height and the atomic lifetime value that the address is owed.  (Note
+    // that, unlike Oxen addresses, these rewards never reset to zero; but rather the rewards
+    // contract keeps track of the current paid and current total and pays out the difference).
+    std::pair<uint64_t, uint64_t> get_accrued_rewards(const eth::address& address);
+
+    // Retrieves the amount (in atomic OXEN) that has been accrued but not yet paid out to the Oxen
+    // wallet `address`.  Returns the current height and the atomic unpaid amount that the address
+    // is owed.
+    std::pair<uint64_t, uint64_t> get_accrued_rewards(const account_public_address& address);
+
+    // Returns the amount (in atomic SENT) that has been accrued to the Ethereum `address` as of the
+    // given recent block height `at_height`.  Returns nullopt if `at_height` is higher than the
+    // current block height, or lower than the oldest stored recent height (see network_config's
+    // STORE_RECENT_REWARDS;, otherwise returns the balance.
+    std::optional<uint64_t> get_accrued_rewards(const eth::address& address, uint64_t at_height);
+
+    // Returns the amount (in atomic OXEN) that has been accrued to the Oxen wallet `address` as of
+    // the given recent block height `at_height`.  Returns nullopt if `at_height` is higher than the
+    // known height, or lower than the stored recent heights (see network_config's
+    // STORE_RECENT_REWARDS); otherwise returns the balance.
+    std::optional<uint64_t> get_accrued_rewards(
+            const account_public_address& address, uint64_t height);
+
+    // get_all_accrued_rewards -> queries the database for all the amount that has been accrued to
+    // service nodes will return 2 vectors corresponding to the addresses and the atomic value in
+    // oxen that the service nodes are owed.
+    std::pair<std::vector<std::string>, std::vector<uint64_t>> get_all_accrued_rewards();
+
+    // get_payments -> passing a block height will return an array of payments that should be
+    // created in a coinbase transaction on that block given the current batching DB state.
+    std::vector<cryptonote::batch_sn_payment> get_sn_payments(uint64_t block_height);
+
+    // Takes the list of contributors from sn_info with their SN contribution amounts and will
+    // calculate how much of the block rewards should be the allocated to the contributors. The
+    // function will *add* the calculated amounts to the value in the given `payments`, creating new
+    // entries (at value 0) as needed and adding to values that are already present.  Existing
+    // values in the map are *not* cleared or replaced.
+    //
+    // Note that distribution_amount here is passed as milli-atomic OXEN for extra precision.
+    void add_rewards(
+            hf hf_version,
+            uint64_t distribution_amount,
+            const service_nodes::service_node_info& sn_info,
+            block_payments& payments) const;
+
+    // add/pop_block -> takes a block that contains new block rewards to be batched and added to the
+    // database and/or batching payments that need to be subtracted from the database, in addition
+    // it takes a reference to the service node state which it will use to calculate the individual
+    // payouts. The function will then process this block add and subtracting to the batching DB
+    // appropriately. This is the primary entry point for the blockchain to add to the batching
+    // database. Each accepted block should call this passing in the SN list structure.
+    bool add_block(
+            const cryptonote::block& block,
+            const service_nodes::service_node_list::state_t& service_nodes_state,
+            const service_nodes::block_add_result& block_add,
+            const std::optional<service_nodes::rescan_context>& rescan = std::nullopt);
+
+    struct exit_stake {
+        eth::address addr;
+        cryptonote::reward_money amount;
+        uint32_t block_height;  // Block that the exit event was mined in
+        uint32_t tx_index;  // Index of transaction in the block that the exit event was mined in
+        uint32_t contributor_index;  // Index of the contributor in the event the exit stake is for
+    };
+
+    // Add a payment to the delayed_payments table. 'at_height' should be greater than or equal to
+    // the height of the table or otherwise the payments may be deleted without taking effect. This
+    // function asserts if 'at_height' does not meet this criteria.
+    bool add_delayed_payments(
+            std::span<const exit_stake> payments, uint64_t at_height, uint64_t delay_blocks);
+
+    // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares
+    // the miner_tx_vouts with a list previously extracted payments to make sure that the correct
+    // persons are being paid.
+    bool validate_batch_payment(
+            const std::vector<std::pair<crypto::public_key, uint64_t>>& miner_tx_vouts,
+            const std::vector<cryptonote::batch_sn_payment>& calculated_payments_from_batching_db,
+            uint64_t block_height,
+            const std::optional<service_nodes::rescan_context>& rescan = std::nullopt);
+
+    // these keep track of payments made to SN operators after then payment has been made. Allows
+    // for popping blocks back and knowing who got paid in those blocks. passing in a list of people
+    // to be marked as paid in the paid_amounts vector. Block height will be added to the
+    // batched_payments_paid database as height_paid.
+    bool save_payments(uint64_t block_height, std::span<const batch_sn_payment> paid_amounts);
+
+    uint64_t height;
+
+  protected:
+    cryptonote::network_type m_nettype;
 };
 
-}
+}  // namespace cryptonote

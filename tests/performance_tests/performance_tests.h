@@ -37,7 +37,7 @@
 #include <chrono>
 
 #include "epee/stats.h"
-#include "common/perf_timer.h"
+#include "spdlog/stopwatch.h"
 #include "timings.h"
 
 struct Params
@@ -57,7 +57,7 @@ public:
   test_runner(const Params &params)
     : m_elapsed(0s)
     , m_params(params)
-    , m_per_call_timers(T::loop_count * params.loop_multiplier, {true})
+    , m_per_call_timers(T::loop_count * params.loop_multiplier)
   {
   }
 
@@ -78,15 +78,14 @@ public:
     start = clock::now();
     for (size_t i = 0; i < T::loop_count * m_params.loop_multiplier; ++i)
     {
-      if (m_params.stats)
-        m_per_call_timers[i].resume();
+      auto call_start = clock::now();
       if (!test.test())
         return false;
       if (m_params.stats)
-        m_per_call_timers[i].pause();
+        m_per_call_timers[i] = clock::now() - call_start;
     }
     m_elapsed = clock::now() - start;
-    m_stats.reset(new Stats<tools::PerformanceTimer, double>(m_per_call_timers));
+    m_stats.reset(new Stats<std::chrono::duration<double>, std::chrono::duration<double>>(m_per_call_timers));
 
     return true;
   }
@@ -100,13 +99,13 @@ public:
     return m_elapsed / (T::loop_count * m_params.loop_multiplier);
   }
 
-  double get_min() const { return m_stats->get_min(); }
-  double get_max() const { return m_stats->get_max(); }
-  double get_mean() const { return m_stats->get_mean(); }
-  double get_median() const { return m_stats->get_median(); }
-  double get_stddev() const { return m_stats->get_standard_deviation(); }
-  double get_non_parametric_skew() const { return m_stats->get_non_parametric_skew(); }
-  std::vector<double> get_quantiles(size_t n) const { return m_stats->get_quantiles(n); }
+  std::chrono::duration<double> get_min() const { return m_stats->get_min(); }
+  std::chrono::duration<double> get_max() const { return m_stats->get_max(); }
+  std::chrono::duration<double> get_mean() const { return m_stats->get_mean(); }
+  std::chrono::duration<double> get_median() const { return m_stats->get_median(); }
+  std::chrono::duration<double> get_stddev() const { return m_stats->get_standard_deviation(); }
+  std::chrono::duration<double> get_non_parametric_skew() const { return m_stats->get_non_parametric_skew(); }
+  std::vector<std::chrono::duration<double>> get_quantiles(size_t n) const { return m_stats->get_quantiles(n); }
 
   bool is_same_distribution(size_t npoints, double mean, double stddev) const
   {
@@ -132,8 +131,8 @@ private:
   volatile uint64_t m_warm_up;  ///<! This field is intended for preclude compiler optimizations
   std::chrono::duration<double> m_elapsed;
   Params m_params;
-  std::vector<tools::PerformanceTimer> m_per_call_timers;
-  std::unique_ptr<Stats<tools::PerformanceTimer, double>> m_stats;
+  std::vector<std::chrono::duration<double>> m_per_call_timers;
+  std::unique_ptr<Stats<std::chrono::duration<double>, std::chrono::duration<double>>> m_stats;
 };
 
 std::string elapsed_str(std::chrono::duration<double> seconds)
@@ -180,12 +179,12 @@ void run_test(const std::string &filter, Params &params, const char* test_name)
       std::cout << test_name << " (" << T::loop_count * params.loop_multiplier << " calls) - OK:";
     }
     const auto quantiles = runner.get_quantiles(10);
-    double min = runner.get_min();
-    double max = runner.get_max();
-    double med = runner.get_median();
-    double mean = runner.get_mean();
-    double stddev = runner.get_stddev();
-    double npskew = runner.get_non_parametric_skew();
+    auto min = runner.get_min();
+    auto max = runner.get_max();
+    auto med = runner.get_median();
+    auto mean = runner.get_mean();
+    auto stddev = runner.get_stddev();
+    auto npskew = runner.get_non_parametric_skew();
 
     std::vector<TimingsDatabase::instance> prev_instances = params.td.get(test_name);
     params.td.add(test_name, {time(NULL), runner.get_size(), min, max, mean, med, stddev, npskew, quantiles});
@@ -199,7 +198,7 @@ void run_test(const std::string &filter, Params &params, const char* test_name)
         const TimingsDatabase::instance &prev_instance = prev_instances.back();
         if (!runner.is_same_distribution(prev_instance.npoints, prev_instance.mean, prev_instance.stddev))
         {
-          double pc = fabs(100. * (prev_instance.mean - runner.get_mean()) / prev_instance.mean);
+          auto pc = fabs(100. * (prev_instance.mean - runner.get_mean()) / prev_instance.mean);
           cmp = ", " + std::to_string(pc) + "% " + (mean > prev_instance.mean ? "slower" : "faster");
         }
         cmp += "  -- " + std::to_string(prev_instance.mean);

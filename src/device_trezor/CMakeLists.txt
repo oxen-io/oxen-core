@@ -30,7 +30,7 @@
 if(DEVICE_TREZOR_READY)
     message(STATUS "Trezor support enabled")
 
-    add_library(device_trezor
+    oxen_add_library(device_trezor
         trezor/messages_map.cpp
         trezor/protocol.cpp
         trezor/transport.cpp

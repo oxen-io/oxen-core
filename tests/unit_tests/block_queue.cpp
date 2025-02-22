@@ -26,21 +26,16 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <boost/uuid/uuid.hpp>
+#include "epee/net/net_utils_base.h"
 #include "gtest/gtest.h"
 #include "crypto/crypto.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "cryptonote_protocol/block_queue.h"
 
-static const boost::uuids::uuid &uuid1()
+template <size_t I>
+static const epee::connection_id_t& uuid()
 {
-  static const boost::uuids::uuid uuid = crypto::rand<boost::uuids::uuid>();
-  return uuid;
-}
-
-static const boost::uuids::uuid &uuid2()
-{
-  static const boost::uuids::uuid uuid = crypto::rand<boost::uuids::uuid>();
+  static const auto uuid = epee::connection_id_t::random();
   return uuid;
 }
 
@@ -53,13 +48,13 @@ TEST(block_queue, empty)
 TEST(block_queue, add_stepwise)
 {
   cryptonote::block_queue bq;
-  bq.add_blocks(0, 200, uuid1(), std::chrono::steady_clock::now());
+  bq.add_blocks(0, 200, uuid<1>(), std::chrono::steady_clock::now());
   ASSERT_EQ(bq.get_max_block_height(), 199);
-  bq.add_blocks(200, 200, uuid1(), std::chrono::steady_clock::now());
+  bq.add_blocks(200, 200, uuid<1>(), std::chrono::steady_clock::now());
   ASSERT_EQ(bq.get_max_block_height(), 399);
-  bq.add_blocks(401, 200, uuid1(), std::chrono::steady_clock::now());
+  bq.add_blocks(401, 200, uuid<1>(), std::chrono::steady_clock::now());
   ASSERT_EQ(bq.get_max_block_height(), 600);
-  bq.add_blocks(400, 10, uuid1(), std::chrono::steady_clock::now());
+  bq.add_blocks(400, 10, uuid<1>(), std::chrono::steady_clock::now());
   ASSERT_EQ(bq.get_max_block_height(), 600);
 }
 
@@ -67,21 +62,21 @@ TEST(block_queue, flush_uuid)
 {
   cryptonote::block_queue bq;
 
-  bq.add_blocks(0, 200, uuid1(), std::chrono::steady_clock::now());
+  bq.add_blocks(0, 200, uuid<1>(), std::chrono::steady_clock::now());
   ASSERT_EQ(bq.get_max_block_height(), 199);
-  bq.add_blocks(200, 200, uuid2(), std::chrono::steady_clock::now());
+  bq.add_blocks(200, 200, uuid<2>(), std::chrono::steady_clock::now());
   ASSERT_EQ(bq.get_max_block_height(), 399);
-  bq.flush_spans(uuid2());
+  bq.flush_spans(uuid<2>());
   ASSERT_EQ(bq.get_max_block_height(), 199);
-  bq.flush_spans(uuid1());
+  bq.flush_spans(uuid<1>());
   ASSERT_EQ(bq.get_max_block_height(), 0);
 
-  bq.add_blocks(0, 200, uuid1(), std::chrono::steady_clock::now());
+  bq.add_blocks(0, 200, uuid<1>(), std::chrono::steady_clock::now());
   ASSERT_EQ(bq.get_max_block_height(), 199);
-  bq.add_blocks(200, 200, uuid2(), std::chrono::steady_clock::now());
+  bq.add_blocks(200, 200, uuid<2>(), std::chrono::steady_clock::now());
   ASSERT_EQ(bq.get_max_block_height(), 399);
-  bq.flush_spans(uuid1());
+  bq.flush_spans(uuid<1>());
   ASSERT_EQ(bq.get_max_block_height(), 399);
-  bq.add_blocks(0, 200, uuid1(), std::chrono::steady_clock::now());
+  bq.add_blocks(0, 200, uuid<1>(), std::chrono::steady_clock::now());
   ASSERT_EQ(bq.get_max_block_height(), 399);
 }

@@ -12,8 +12,8 @@ public:
   {
     time_t t;
     size_t npoints;
-    double min, max, mean, median, stddev, npskew;
-    std::vector<double> deciles;
+    std::chrono::duration<double> min, max, mean, median, stddev, npskew;
+    std::vector<std::chrono::duration<double>> deciles;
   };
 
 public:

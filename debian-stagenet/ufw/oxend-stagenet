@@ -1,0 +1,4 @@
+[oxend-stagenet]
+title=Oxen network daemon
+description=Oxen daemon for running a local stagenet Session node
+ports=11022,11025/tcp

@@ -32,6 +32,7 @@
 #include "ringct/rctOps.h"
 #include "ringct/multiexp.h"
 
+
 namespace {
 
 const rct::key TESTPOW2SCALAR = {{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}};

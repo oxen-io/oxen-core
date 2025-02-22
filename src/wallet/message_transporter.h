@@ -32,38 +32,36 @@
 #error message_storage.h requires -DENABLE_WALLET_MMS
 #endif
 
-#include "epee/serialization/keyvalue_serialization.h"
-#include "cryptonote_basic/cryptonote_basic.h"
-#include "cryptonote_basic/cryptonote_boost_serialization.h"
-#include "cryptonote_basic/account_boost_serialization.h"
-#include "cryptonote_basic/cryptonote_basic.h"
-#include "rpc/http_client.h"
-#include "common/util.h"
-#include "epee/wipeable_string.h"
 #include <vector>
 
-namespace mms
-{
+#include "common/util.h"
+#include "cryptonote_basic/account_boost_serialization.h"
+#include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_basic/cryptonote_boost_serialization.h"
+#include "epee/serialization/keyvalue_serialization.h"
+#include "epee/wipeable_string.h"
+#include "rpc/http_client.h"
 
-struct transport_message
-{
-  cryptonote::account_public_address source_monero_address;
-  std::string source_transport_address;
-  cryptonote::account_public_address destination_monero_address;
-  std::string destination_transport_address;
-  crypto::chacha_iv iv;
-  crypto::public_key encryption_public_key;
-  uint64_t timestamp;
-  uint32_t type;
-  std::string subject;
-  std::string content;
-  crypto::hash hash;
-  crypto::signature signature;
-  uint32_t round;
-  uint32_t signature_count;
-  std::string transport_id;
+namespace mms {
 
-  BEGIN_KV_SERIALIZE_MAP()
+struct transport_message {
+    cryptonote::account_public_address source_monero_address;
+    std::string source_transport_address;
+    cryptonote::account_public_address destination_monero_address;
+    std::string destination_transport_address;
+    crypto::chacha_iv iv;
+    crypto::public_key encryption_public_key;
+    uint64_t timestamp;
+    uint32_t type;
+    std::string subject;
+    std::string content;
+    crypto::hash hash;
+    crypto::signature signature;
+    uint32_t round;
+    uint32_t signature_count;
+    std::string transport_id;
+
+    BEGIN_KV_SERIALIZE_MAP()
     KV_SERIALIZE(source_monero_address)
     KV_SERIALIZE(source_transport_address)
     KV_SERIALIZE(destination_monero_address)
@@ -79,35 +77,36 @@ struct transport_message
     KV_SERIALIZE(round)
     KV_SERIALIZE(signature_count)
     KV_SERIALIZE(transport_id)
-  END_KV_SERIALIZE_MAP()
+    END_KV_SERIALIZE_MAP()
 };
 
-class message_transporter
-{
-public:
-  message_transporter() = default;
-  void set_options(const std::string &bitmessage_address, const epee::wipeable_string &bitmessage_login);
-  void send_message(const transport_message &message);
-  bool receive_messages(const std::vector<std::string> &destination_transport_addresses,
-                        std::vector<transport_message> &messages);
-  void delete_message(const std::string &transport_id);
-  void stop() { m_run.store(false, std::memory_order_relaxed); }
-  std::string derive_transport_address(const std::string &seed);
-  void delete_transport_address(const std::string &transport_address);
+class message_transporter {
+  public:
+    message_transporter() = default;
+    void set_options(
+            const std::string& bitmessage_address, const epee::wipeable_string& bitmessage_login);
+    void send_message(const transport_message& message);
+    bool receive_messages(
+            const std::vector<std::string>& destination_transport_addresses,
+            std::vector<transport_message>& messages);
+    void delete_message(const std::string& transport_id);
+    void stop() { m_run.store(false, std::memory_order_relaxed); }
+    std::string derive_transport_address(const std::string& seed);
+    void delete_transport_address(const std::string& transport_address);
 
-private:
-  cryptonote::rpc::http_client m_http_client;
-  std::atomic<bool> m_run{true};
+  private:
+    cryptonote::rpc::http_client m_http_client;
+    std::atomic<bool> m_run{true};
 
-  void post_request(const std::string &request, std::string &answer);
-  static std::string get_str_between_tags(const std::string &s, const std::string &start_delim, const std::string &stop_delim);
+    void post_request(const std::string& request, std::string& answer);
+    static std::string get_str_between_tags(
+            const std::string& s, const std::string& start_delim, const std::string& stop_delim);
 
-  static void start_xml_rpc_cmd(std::string &xml, const std::string &method_name);
-  static void add_xml_rpc_string_param(std::string &xml, const std::string &param);
-  static void add_xml_rpc_base64_param(std::string &xml, const std::string &param);
-  static void add_xml_rpc_integer_param(std::string &xml, const int32_t &param);
-  static void end_xml_rpc_cmd(std::string &xml);
-
+    static void start_xml_rpc_cmd(std::string& xml, const std::string& method_name);
+    static void add_xml_rpc_string_param(std::string& xml, const std::string& param);
+    static void add_xml_rpc_base64_param(std::string& xml, const std::string& param);
+    static void add_xml_rpc_integer_param(std::string& xml, const int32_t& param);
+    static void end_xml_rpc_cmd(std::string& xml);
 };
 
-}
+}  // namespace mms

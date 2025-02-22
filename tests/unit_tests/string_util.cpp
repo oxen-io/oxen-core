@@ -28,8 +28,8 @@
 
 #include "gtest/gtest.h"
 
+#include "common/guts.h"
 #include "common/string_util.h"
-#include "common/hex.h"
 
 using namespace std::literals;
 
@@ -101,26 +101,6 @@ TEST(common_string_util, parse_int)
   ASSERT_FALSE(tools::parse_int("", i32));
   ASSERT_FALSE(tools::parse_int("+", i32));
   ASSERT_FALSE(tools::parse_int("-", i32));
-}
-
-TEST(common_string_util, starts_with)
-{
-  ASSERT_TRUE(tools::starts_with("xy", "x"));
-  ASSERT_TRUE(tools::starts_with("xy", "xy"));
-  ASSERT_TRUE(tools::starts_with("xyz", "xy"));
-  ASSERT_FALSE(tools::starts_with("xy", "xyz"));
-  ASSERT_FALSE(tools::starts_with("xy", "aaa"));
-  ASSERT_TRUE(tools::starts_with("xy", ""));
-}
-
-TEST(common_string_util, ends_with)
-{
-  ASSERT_TRUE(tools::ends_with("xy", "y"));
-  ASSERT_TRUE(tools::ends_with("xy", "xy"));
-  ASSERT_TRUE(tools::ends_with("xyz", "yz"));
-  ASSERT_FALSE(tools::ends_with("xy", "xyz"));
-  ASSERT_FALSE(tools::ends_with("xy", "aaa"));
-  ASSERT_TRUE(tools::ends_with("xy", ""));
 }
 
 TEST(common_string_util, split)
@@ -196,15 +176,15 @@ TEST(common_string_util, view_guts)
   ASSERT_EQ(tools::copy_guts(y), "12345"s);
 }
 
-TEST(common_string_util, hex_to_type)
+TEST(common_string_util, hex_guts)
 {
   struct Foo { char abcd[4]; };
   Foo f;
-  tools::hex_to_type("61626364", f);
+  tools::load_from_hex_guts("61626364"sv, f);
   ASSERT_EQ(std::string_view(f.abcd, sizeof(f.abcd)), "abcd"sv);
 
-  ASSERT_FALSE(tools::hex_to_type("616263", f)); // hex too short
-  ASSERT_FALSE(tools::hex_to_type("6162636465", f)); // hex too long
-  ASSERT_FALSE(tools::hex_to_type("6162636g", f)); // not hex
-  ASSERT_FALSE(tools::hex_to_type("012345678", f)); // odd number of hex chars
+  ASSERT_FALSE(tools::try_load_from_hex_guts("616263"sv, f)); // hex too short
+  ASSERT_FALSE(tools::try_load_from_hex_guts("6162636465"sv, f)); // hex too long
+  ASSERT_FALSE(tools::try_load_from_hex_guts("6162636g"sv, f)); // not hex
+  ASSERT_FALSE(tools::try_load_from_hex_guts("012345678"sv, f)); // odd number of hex chars
 }

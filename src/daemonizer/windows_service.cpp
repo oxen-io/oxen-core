@@ -1,21 +1,21 @@
 // Copyright (c) 2014-2019, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -29,334 +29,264 @@
 #undef UNICODE
 #undef _UNICODE
 
-#include "common/scoped_message_writer.h"
 #include "daemonizer/windows_service.h"
-#include "epee/string_tools.h"
+
+// clang-format off
+#include <windows.h>
+#include <shellapi.h>
+// clang-format on
+
 #include <chrono>
 #include <iostream>
-#include <utility>
 #include <memory>
-#include <shellapi.h>
 #include <thread>
-#include <windows.h>
+#include <utility>
+
+#include "common/scoped_message_writer.h"
+#include "epee/string_tools.h"
 
 namespace windows {
 
 using namespace std::literals;
 
 namespace {
-  typedef std::unique_ptr<std::remove_pointer<SC_HANDLE>::type, decltype(&::CloseServiceHandle)> service_handle;
+    typedef std::unique_ptr<std::remove_pointer<SC_HANDLE>::type, decltype(&::CloseServiceHandle)>
+            service_handle;
 
-  std::string get_last_error()
-  {
-    LPSTR p_error_text = nullptr;
+    std::string get_last_error() {
+        LPSTR p_error_text = nullptr;
 
-    FormatMessage(
-      FORMAT_MESSAGE_FROM_SYSTEM
-    | FORMAT_MESSAGE_ALLOCATE_BUFFER
-    | FORMAT_MESSAGE_IGNORE_INSERTS
-    , nullptr
-    , GetLastError()
-    , MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT)
-    , reinterpret_cast<LPSTR>(&p_error_text)
-    , 0
-    , nullptr
-    );
+        FormatMessage(
+                FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                        FORMAT_MESSAGE_IGNORE_INSERTS,
+                nullptr,
+                GetLastError(),
+                MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                reinterpret_cast<LPSTR>(&p_error_text),
+                0,
+                nullptr);
 
-    if (nullptr == p_error_text)
-    {
-      return "";
+        if (nullptr == p_error_text) {
+            return "";
+        } else {
+            std::string ret{p_error_text};
+            LocalFree(p_error_text);
+            return ret;
+        }
     }
-    else
-    {
-      std::string ret{p_error_text};
-      LocalFree(p_error_text);
-      return ret;
+
+    bool relaunch_as_admin(std::string const& command, std::string const& arguments) {
+        SHELLEXECUTEINFO info{};
+        info.cbSize = sizeof(info);
+        info.lpVerb = "runas";
+        info.lpFile = command.c_str();
+        info.lpParameters = arguments.c_str();
+        info.hwnd = nullptr;
+        info.nShow = SW_SHOWNORMAL;
+        if (!ShellExecuteEx(&info)) {
+            tools::fail_msg_writer("Admin relaunch failed: {}", get_last_error());
+            return false;
+        } else {
+            return true;
+        }
     }
-  }
 
-  bool relaunch_as_admin(
-      std::string const & command
-    , std::string const & arguments
-    )
-  {
-    SHELLEXECUTEINFO info{};
-    info.cbSize = sizeof(info);
-    info.lpVerb = "runas";
-    info.lpFile = command.c_str();
-    info.lpParameters = arguments.c_str();
-    info.hwnd = nullptr;
-    info.nShow = SW_SHOWNORMAL;
-    if (!ShellExecuteEx(&info))
-    {
-      tools::fail_msg_writer() << "Admin relaunch failed: " << get_last_error();
-      return false;
+    // When we relaunch as admin, Windows opens a new window.  This just pauses
+    // to allow the user to read any output.
+    void pause_to_display_admin_window_messages() {
+        std::this_thread::sleep_for(1500ms);
     }
-    else
-    {
-      return true;
+}  // namespace
+
+bool check_admin(bool& result) {
+    BOOL is_admin = FALSE;
+    PSID p_administrators_group = nullptr;
+
+    SID_IDENTIFIER_AUTHORITY nt_authority = SECURITY_NT_AUTHORITY;
+
+    if (!AllocateAndInitializeSid(
+                &nt_authority,
+                2,
+                SECURITY_BUILTIN_DOMAIN_RID,
+                DOMAIN_ALIAS_RID_ADMINS,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                &p_administrators_group)) {
+        tools::fail_msg_writer("Security Identifier creation failed: {}", get_last_error());
+        return false;
     }
-  }
 
-  // When we relaunch as admin, Windows opens a new window.  This just pauses
-  // to allow the user to read any output.
-  void pause_to_display_admin_window_messages()
-  {
-    std::this_thread::sleep_for(1500ms);
-  }
-}
+    if (!CheckTokenMembership(nullptr, p_administrators_group, &is_admin)) {
+        tools::fail_msg_writer("Permissions check failed: {}", get_last_error());
+        return false;
+    }
 
-bool check_admin(bool & result)
-{
-  BOOL is_admin = FALSE;
-  PSID p_administrators_group = nullptr;
+    result = is_admin ? true : false;
 
-  SID_IDENTIFIER_AUTHORITY nt_authority = SECURITY_NT_AUTHORITY;
-
-  if (!AllocateAndInitializeSid(
-        &nt_authority
-      , 2
-      , SECURITY_BUILTIN_DOMAIN_RID
-      , DOMAIN_ALIAS_RID_ADMINS
-      , 0, 0, 0, 0, 0, 0
-      , &p_administrators_group
-      ))
-  {
-    tools::fail_msg_writer() << "Security Identifier creation failed: " << get_last_error();
-    return false;
-  }
-
-  if (!CheckTokenMembership(
-        nullptr
-      , p_administrators_group
-      , &is_admin
-      ))
-  {
-    tools::fail_msg_writer() << "Permissions check failed: " << get_last_error();
-    return false;
-  }
-
-  result = is_admin ? true : false;
-
-  return true;
-}
-
-bool ensure_admin(
-    std::string const & arguments
-  )
-{
-  bool admin;
-
-  if (!check_admin(admin))
-  {
-    return false;
-  }
-
-  if (admin)
-  {
     return true;
-  }
-  else
-  {
+}
+
+bool ensure_admin(std::string const& arguments) {
+    bool admin;
+
+    if (!check_admin(admin)) {
+        return false;
+    }
+
+    if (admin) {
+        return true;
+    } else {
+        std::string command = epee::string_tools::get_current_module_path();
+        relaunch_as_admin(command, arguments);
+        return false;
+    }
+}
+
+bool install_service(char const* service_name, std::string const& arguments) {
     std::string command = epee::string_tools::get_current_module_path();
-    relaunch_as_admin(command, arguments);
-    return false;
-  }
+    std::string full_command = command + arguments;
+
+    service_handle p_manager{
+            OpenSCManager(nullptr, nullptr, SC_MANAGER_CONNECT | SC_MANAGER_CREATE_SERVICE),
+            &::CloseServiceHandle};
+    if (p_manager == nullptr) {
+        tools::fail_msg_writer("Couldn't connect to service manager: {}", get_last_error());
+        return false;
+    }
+
+    service_handle p_service{
+            CreateService(
+                    p_manager.get(),
+                    service_name,
+                    service_name,
+                    0
+                    //, GENERIC_EXECUTE | GENERIC_READ
+                    ,
+                    SERVICE_WIN32_OWN_PROCESS,
+                    SERVICE_DEMAND_START,
+                    SERVICE_ERROR_NORMAL,
+                    full_command.c_str(),
+                    nullptr,
+                    nullptr,
+                    ""
+                    //, "NT AUTHORITY\\LocalService"
+                    ,
+                    nullptr  // Implies LocalSystem account
+                    ,
+                    nullptr),
+            &::CloseServiceHandle};
+    if (p_service == nullptr) {
+        tools::fail_msg_writer("Couldn't create service: {}", get_last_error());
+        return false;
+    }
+
+    tools::success_msg_writer("Service installed");
+
+    pause_to_display_admin_window_messages();
+
+    return true;
 }
 
-bool install_service(char const *service_name, std::string const &arguments)
-{
-  std::string command = epee::string_tools::get_current_module_path();
-  std::string full_command = command + arguments;
+bool start_service(char const* service_name) {
+    tools::msg_writer("Starting service");
 
-  service_handle p_manager{
-    OpenSCManager(
-        nullptr
-      , nullptr
-      , SC_MANAGER_CONNECT | SC_MANAGER_CREATE_SERVICE
-      )
-  , &::CloseServiceHandle
-  };
-  if (p_manager == nullptr)
-  {
-    tools::fail_msg_writer() << "Couldn't connect to service manager: " << get_last_error();
-    return false;
-  }
+    SERVICE_STATUS_PROCESS service_status = {};
+    DWORD unused = 0;
 
-  service_handle p_service{
-    CreateService(
-        p_manager.get()
-      , service_name
-      , service_name
-      , 0
-      //, GENERIC_EXECUTE | GENERIC_READ
-      , SERVICE_WIN32_OWN_PROCESS
-      , SERVICE_DEMAND_START
-      , SERVICE_ERROR_NORMAL
-      , full_command.c_str()
-      , nullptr
-      , nullptr
-      , ""
-      //, "NT AUTHORITY\\LocalService"
-      , nullptr // Implies LocalSystem account
-      , nullptr
-      )
-  , &::CloseServiceHandle
-  };
-  if (p_service == nullptr)
-  {
-    tools::fail_msg_writer() << "Couldn't create service: " << get_last_error();
-    return false;
-  }
+    service_handle p_manager{
+            OpenSCManager(nullptr, nullptr, SC_MANAGER_CONNECT), &::CloseServiceHandle};
+    if (p_manager == nullptr) {
+        tools::fail_msg_writer("Couldn't connect to service manager: {}", get_last_error());
+        return false;
+    }
 
-  tools::success_msg_writer() << "Service installed";
+    service_handle p_service{
+            OpenService(
+                    p_manager.get(),
+                    service_name
+                    //, SERVICE_START | SERVICE_QUERY_STATUS
+                    ,
+                    SERVICE_START),
+            &::CloseServiceHandle};
+    if (p_service == nullptr) {
+        tools::fail_msg_writer("Couldn't find service: {}", get_last_error());
+        return false;
+    }
 
-  pause_to_display_admin_window_messages();
+    if (!StartService(p_service.get(), 0, nullptr)) {
+        tools::fail_msg_writer("Service start request failed: {}", get_last_error());
+        return false;
+    }
 
-  return true;
+    tools::success_msg_writer("Service started");
+
+    pause_to_display_admin_window_messages();
+
+    return true;
 }
 
-bool start_service(char const *service_name)
-{
-  tools::msg_writer() << "Starting service";
+bool stop_service(char const* service_name) {
+    tools::msg_writer("Stopping service");
 
-  SERVICE_STATUS_PROCESS service_status = {};
-  DWORD unused = 0;
+    service_handle p_manager{
+            OpenSCManager(nullptr, nullptr, SC_MANAGER_CONNECT), &::CloseServiceHandle};
+    if (p_manager == nullptr) {
+        tools::fail_msg_writer("Couldn't connect to service manager: {}", get_last_error());
+        return false;
+    }
 
-  service_handle p_manager{
-    OpenSCManager(
-        nullptr
-      , nullptr
-      , SC_MANAGER_CONNECT
-      )
-  , &::CloseServiceHandle
-  };
-  if (p_manager == nullptr)
-  {
-    tools::fail_msg_writer() << "Couldn't connect to service manager: " << get_last_error();
-    return false;
-  }
+    service_handle p_service{
+            OpenService(p_manager.get(), service_name, SERVICE_STOP | SERVICE_QUERY_STATUS),
+            &::CloseServiceHandle};
+    if (p_service == nullptr) {
+        tools::fail_msg_writer("Couldn't find service: {}", get_last_error());
+        return false;
+    }
 
-  service_handle p_service{
-    OpenService(
-        p_manager.get()
-      , service_name
-      //, SERVICE_START | SERVICE_QUERY_STATUS
-      , SERVICE_START
-      )
-  , &::CloseServiceHandle
-  };
-  if (p_service == nullptr)
-  {
-    tools::fail_msg_writer() << "Couldn't find service: " << get_last_error();
-    return false;
-  }
+    SERVICE_STATUS status = {};
+    if (!ControlService(p_service.get(), SERVICE_CONTROL_STOP, &status)) {
+        tools::fail_msg_writer("Couldn't request service stop: {}", get_last_error());
+        return false;
+    }
 
-  if (!StartService(
-      p_service.get()
-    , 0
-    , nullptr
-    ))
-  {
-    tools::fail_msg_writer() << "Service start request failed: " << get_last_error();
-    return false;
-  }
+    tools::success_msg_writer("Service stopped");
 
-  tools::success_msg_writer() << "Service started";
+    pause_to_display_admin_window_messages();
 
-  pause_to_display_admin_window_messages();
-
-  return true;
+    return true;
 }
 
-bool stop_service(char const *service_name)
-{
-  tools::msg_writer() << "Stopping service";
+bool uninstall_service(char const* service_name) {
+    service_handle p_manager{
+            OpenSCManager(nullptr, nullptr, SC_MANAGER_CONNECT), &::CloseServiceHandle};
+    if (p_manager == nullptr) {
+        tools::fail_msg_writer("Couldn't connect to service manager: {}", get_last_error());
+        return false;
+    }
 
-  service_handle p_manager{
-    OpenSCManager(
-        nullptr
-      , nullptr
-      , SC_MANAGER_CONNECT
-      )
-  , &::CloseServiceHandle
-  };
-  if (p_manager == nullptr)
-  {
-    tools::fail_msg_writer() << "Couldn't connect to service manager: " << get_last_error();
-    return false;
-  }
+    service_handle p_service{
+            OpenService(p_manager.get(), service_name, SERVICE_QUERY_STATUS | DELETE),
+            &::CloseServiceHandle};
+    if (p_service == nullptr) {
+        tools::fail_msg_writer("Couldn't find service: {}", get_last_error());
+        return false;
+    }
 
-  service_handle p_service{
-    OpenService(
-        p_manager.get()
-      , service_name
-      , SERVICE_STOP | SERVICE_QUERY_STATUS
-      )
-  , &::CloseServiceHandle
-  };
-  if (p_service == nullptr)
-  {
-    tools::fail_msg_writer() << "Couldn't find service: " << get_last_error();
-    return false;
-  }
+    SERVICE_STATUS status = {};
+    if (!DeleteService(p_service.get())) {
+        tools::fail_msg_writer("Couldn't uninstall service: {}", get_last_error());
+        return false;
+    }
 
-  SERVICE_STATUS status = {};
-  if (!ControlService(p_service.get(), SERVICE_CONTROL_STOP, &status))
-  {
-    tools::fail_msg_writer() << "Couldn't request service stop: " << get_last_error();
-    return false;
-  }
+    tools::success_msg_writer("Service uninstalled");
 
-  tools::success_msg_writer() << "Service stopped";
+    pause_to_display_admin_window_messages();
 
-  pause_to_display_admin_window_messages();
-
-  return true;
+    return true;
 }
 
-bool uninstall_service(char const *service_name)
-{
-  service_handle p_manager{
-    OpenSCManager(
-        nullptr
-      , nullptr
-      , SC_MANAGER_CONNECT
-      )
-  , &::CloseServiceHandle
-  };
-  if (p_manager == nullptr)
-  {
-    tools::fail_msg_writer() << "Couldn't connect to service manager: " << get_last_error();
-    return false;
-  }
-
-  service_handle p_service{
-    OpenService(
-        p_manager.get()
-      , service_name
-      , SERVICE_QUERY_STATUS | DELETE
-      )
-  , &::CloseServiceHandle
-  };
-  if (p_service == nullptr)
-  {
-    tools::fail_msg_writer() << "Couldn't find service: " << get_last_error();
-    return false;
-  }
-
-  SERVICE_STATUS status = {};
-  if (!DeleteService(p_service.get()))
-  {
-    tools::fail_msg_writer() << "Couldn't uninstall service: " << get_last_error();
-    return false;
-  }
-
-  tools::success_msg_writer() << "Service uninstalled";
-
-  pause_to_display_admin_window_messages();
-
-  return true;
-}
-
-} // namespace windows
+}  // namespace windows

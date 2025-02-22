@@ -29,10 +29,6 @@
 #include "../misc_log_ex.h"
 #include "keyvalue_serialization_overloads.h"
 #include "../storages/portable_storage.h"
-
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "serialization"
-
 namespace epee
 {
   /************************************************************************/
@@ -66,8 +62,7 @@ public: \
   bool Class::load(epee::serialization::portable_storage& st, epee::serialization::section* parent_section) \
   { \
     try { return _load(st, parent_section); } \
-    catch (const std::exception& err) { LOG_ERROR("Deserialization exception: " << err.what()); } \
-    catch (...) { LOG_ERROR("Unknown deserialization exception"); } \
+    catch (...) {} \
     return false; \
   } \
   template <bool is_store> \
@@ -98,7 +93,6 @@ public: \
     catch(const std::exception& err) \
     { \
       (void)(err); \
-      LOG_ERROR("Exception on deserializing: " << err.what());\
       return false; \
     }\
   }\
