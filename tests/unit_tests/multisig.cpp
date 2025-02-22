@@ -26,48 +26,44 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "common/guts.h"
 #include "gtest/gtest.h"
 
 #include <cstdint>
 
 #include "wallet/wallet2.h"
 
-static const struct
+struct addr_spendkey { std::string_view address, spendkey; };
+constexpr std::array test_addresses =
 {
-  const char *address;
-  const char *spendkey;
-} test_addresses[] =
-{
-  {
+  addr_spendkey{
     "T6SkvQ3GyyNRnY5UAw3sMZLTExBSCLvpCAP8sdPuPhJ2BjfsUoBes3eGUJx2fZf7S8Fsa7urJ7LamRTt4uucAtqk1wiLrE6zj",
     "2dd6e34a234c3e8b5d29a371789e4601e96dee4ea6f7ef79224d1a2d91164c01"
   },
-  {
+  addr_spendkey{
     "T6TfbGiuGXA1Fz3USjnSYJcb771AkkNmqgmoAiHAu5713pewPFyAA9wcmemSiYxWtqcvARA3r4L6QUD7VXodxC7n2WQS5M3q1",
     "fac47aecc948ce9d3531aa042abb18235b1df632087c55a361b632ffdd6ede0c"
   },
-  {
+  addr_spendkey{
     "T6SLoeEpwLA6emvHeethY1JkPzMHbAAHjQ4hH3zpo5JZBwZX8UxmjPjQG8tyg5HJaKVK6eWHENbPA4fKPw9eEkG71Jgj85miT",
     "bbd3175ef9fd9f5eefdc43035f882f74ad14c4cf1799d8b6f9001bc197175d02"
   },
-  {
+  addr_spendkey{
     "T6TrTRFMVcKUFcmoSBScYXdhie6sp2b4zaV5VLHFFJv488jRD62zgYcYzzJWeSz2MP1J9g6kDTDNr674CVuWFy1o2JcQW9Zxq",
     "f2efae45bef1917a7430cda8fcffc4ee010e3178761aa41d4628e23b1fe2d501"
   },
-  {
+  addr_spendkey{
     "T6ShAAdn81gb2eeTyHSuiuLdEedYwnGMK3PxqRekb2Nj3RXNzB7mjxKGt5aucMN3BRJHAstbGdqsi1oL6Es5tTju362tAWn3N",
     "a4cef54ed3fd61cd78a2ceb82ecf85a903ad2db9a86fb77ff56c35c56016280a"
   }
 };
 
-static const size_t KEYS_COUNT = 5;
-
 static void make_wallet(unsigned int idx, tools::wallet2 &wallet)
 {
-  ASSERT_TRUE(idx < sizeof(test_addresses) / sizeof(test_addresses[0]));
+  ASSERT_TRUE(idx < test_addresses.size());
 
   crypto::secret_key spendkey;
-  tools::hex_to_type(test_addresses[idx].spendkey, spendkey);
+  tools::load_from_hex_guts(test_addresses[idx].spendkey, spendkey);
 
   try
   {
@@ -76,12 +72,12 @@ static void make_wallet(unsigned int idx, tools::wallet2 &wallet)
     wallet.generate("", "", spendkey, true, false);
     ASSERT_TRUE(test_addresses[idx].address == wallet.get_account().get_public_address_str(cryptonote::network_type::TESTNET));
     wallet.decrypt_keys("");
-    ASSERT_TRUE(test_addresses[idx].spendkey == tools::type_to_hex(wallet.get_account().get_keys().m_spend_secret_key));
+    ASSERT_TRUE(test_addresses[idx].spendkey == tools::hex_guts(wallet.get_account().get_keys().m_spend_secret_key));
     wallet.encrypt_keys("");
   }
   catch (const std::exception &e)
   {
-    MFATAL("Error creating test wallet: " << e.what());
+    oxen::log::error(globallogcat, "Error creating test wallet: {}", e.what());
     ASSERT_TRUE(0);
   }
 }
@@ -98,7 +94,7 @@ static std::vector<std::string> exchange_round(std::vector<tools::wallet2>& wall
 
 static void make_wallets(std::vector<tools::wallet2>& wallets, unsigned int M)
 {
-  ASSERT_TRUE(wallets.size() > 1 && wallets.size() <= KEYS_COUNT);
+  ASSERT_TRUE(wallets.size() > 1 && wallets.size() <= test_addresses.size());
   ASSERT_TRUE(M <= wallets.size());
 
   std::vector<std::string> mis(wallets.size());

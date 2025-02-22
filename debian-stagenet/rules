@@ -1,0 +1,45 @@
+#!/usr/bin/make -f
+
+# See debhelper(7) (uncomment to enable)
+# output every command that modifies files on the build system.
+#export DH_VERBOSE = 1
+
+include /usr/share/dpkg/pkg-info.mk
+include /usr/share/dpkg/architecture.mk
+
+ifeq ($(DEB_TARGET_ARCH),amd64)
+	DEB_CMAKE_ARCH_OPTIONS=-DARCH=x86-64 -DCMAKE_CXX_FLAGS="-mtune=haswell" -DCMAKE_C_FLAGS="-mtune=haswell"
+else ifeq ($(DEB_TARGET_ARCH),i386)
+	DEB_CMAKE_ARCH_OPTIONS=-DARCH=i686 -DARCH_ID=i386
+else ifeq ($(DEB_TARGET_ARCH),arm64)
+	DEB_CMAKE_ARCH_OPTIONS=-DARCH=armv8-a+crc -DARM_ID=arm64 -DNO_AES=ON -DCMAKE_CXX_FLAGS="-mtune=cortex-a72" -DCMAKE_C_FLAGS="-mtune=cortex-a72" -DRANDOMX_ENABLE_JIT=OFF
+else ifeq ($(DEB_TARGET_ARCH),armhf)
+	DEB_CMAKE_ARCH_OPTIONS=-DARCH=armv6 -DARM_ID=armhf -DNO_AES=ON -DCMAKE_CXX_FLAGS="-marm -mtune=cortex-a53 -mfloat-abi=hard -mfpu=vfp" -DCMAKE_C_FLAGS="-marm -mtune=cortex-a53 -mfloat-abi=hard -mfpu=vfp"
+else
+	DEB_CMAKE_ARCH_OPTIONS=
+endif
+
+%:
+	dh $@ --buildsystem=cmake+ninja --with-systemd
+
+override_dh_auto_configure:
+	dh_auto_configure -- -DCMAKE_BUILD_TYPE=Release -DSTATIC=OFF -DUSE_LTO=ON -DBUILD_SHARED_LIBS=ON \
+		$(DEB_CMAKE_ARCH_OPTIONS) \
+		-DBUILD_BLOCKCHAIN_UTILS=ON \
+		-DOXEN_EXECUTABLE_SUFFIX=-snapshot \
+		-DOXEN_INSTALL_LIBDIR_SUFFIX=/$(DEB_HOST_MULTIARCH)/oxen-snapshot \
+		-DOXEN_INSTALL_INCLUDEDIR_SUFFIX=/oxen-snapshot \
+		-DCMAKE_INSTALL_RPATH=/usr/lib/$(DEB_HOST_MULTIARCH)/oxen-snapshot \
+		-DOXEN_LOGGING_FMT_HEADER_ONLY=ON -DOXEN_LOGGING_SPDLOG_HEADER_ONLY=ON \
+		-DOXEN_VERSION_SO=ON \
+		${OXEN_DEB_CMAKE_EXTRA} \
+		-DOXEN_VERSIONTAG=$(call dpkg_late_eval,OXEN_VERSIONTAG,echo '$(DEB_VERSION)' | sed -e 's/.*-//')
+
+override_dh_shlibdeps:
+	dh_shlibdeps -l/usr/lib/$(DEB_HOST_MULTIARCH)/oxen
+
+override_dh_strip:
+	dh_strip --no-ddebs
+
+override_dh_installsystemd:
+	dh_installsystemd --name=oxen-stagenet-node

@@ -1,21 +1,21 @@
 // Copyright (c) 2014-2019, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -25,127 +25,55 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
 
-#include <boost/uuid/uuid.hpp>
-#include <boost/serialization/version.hpp>
-#include "epee/serialization/keyvalue_serialization.h"
-#include "epee/net/net_utils_base.h"
-#include "net/tor_address.h" // needed for serialization
-#include "net/i2p_address.h" // needed for serialization
-#include "epee/string_tools.h"
-#include "epee/time_helper.h"
-#include "cryptonote_config.h"
 #include "crypto/crypto.h"
+#include "cryptonote_config.h"
+#include "cryptonote_protocol/cryptonote_protocol_defs.h"
+#include "epee/net/net_utils_base.h"
+#include "epee/serialization/keyvalue_serialization.h"
+#include "epee/string_tools.h"
+#include "net/i2p_address.h"  // needed for serialization
+#include "net/tor_address.h"  // needed for serialization
 
-namespace nodetool
-{
-  typedef boost::uuids::uuid uuid;
-  typedef uint64_t peerid_type;
+namespace nodetool {
+using peerid_type = uint64_t;
 
-  static inline std::string peerid_to_string(peerid_type peer_id)
-  {
-    std::ostringstream s;
-    s << std::hex << peer_id;
-    return epee::string_tools::pad_string(s.str(), 16, '0', true);
-  }
+#pragma pack(push, 1)
 
-#pragma pack (push, 1)
-  
-  struct network_address_old
-  {
-    uint32_t ip;
-    uint32_t port;
-
-    BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE(ip)
-      KV_SERIALIZE(port)
-    END_KV_SERIALIZE_MAP()
-  };
-
-  template<typename AddressType>
-  struct peerlist_entry_base
-  {
-    AddressType adr;
+struct peerlist_entry {
+    epee::net_utils::network_address adr;
     peerid_type id;
     int64_t last_seen;
     uint32_t pruning_seed;
-    uint16_t rpc_port;
 
-    BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE(adr)
-      KV_SERIALIZE(id)
-      KV_SERIALIZE_OPT(last_seen, (int64_t)0)
-      KV_SERIALIZE_OPT(pruning_seed, (uint32_t)0)
-      KV_SERIALIZE_OPT(rpc_port, (uint16_t)0)
-    END_KV_SERIALIZE_MAP()
-  };
-  typedef peerlist_entry_base<epee::net_utils::network_address> peerlist_entry;
+    KV_MAP_SERIALIZABLE
+};
 
-  template<typename AddressType>
-  struct anchor_peerlist_entry_base
-  {
-    AddressType adr;
+struct anchor_peerlist_entry {
+    epee::net_utils::network_address adr;
     peerid_type id;
     int64_t first_seen;
 
-    BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE(adr)
-      KV_SERIALIZE(id)
-      KV_SERIALIZE(first_seen)
-    END_KV_SERIALIZE_MAP()
-  };
-  typedef anchor_peerlist_entry_base<epee::net_utils::network_address> anchor_peerlist_entry;
+    KV_MAP_SERIALIZABLE
+};
 
-  template<typename AddressType>
-  struct connection_entry_base
-  {
-    AddressType adr;
+struct connection_entry {
+    epee::net_utils::network_address adr;
     peerid_type id;
     bool is_income;
 
-    BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE(adr)
-      KV_SERIALIZE(id)
-      KV_SERIALIZE(is_income)
-    END_KV_SERIALIZE_MAP()
-  };
-  typedef connection_entry_base<epee::net_utils::network_address> connection_entry;
+    KV_MAP_SERIALIZABLE
+};
 
 #pragma pack(pop)
 
-  inline 
-  std::string print_peerlist_to_string(const std::vector<peerlist_entry>& pl)
-  {
-    time_t now_time = 0;
-    time(&now_time);
-    std::stringstream ss;
-    ss << std::setfill ('0') << std::setw (8) << std::hex << std::noshowbase;
-    for(const peerlist_entry& pe: pl)
-    {
-      ss << peerid_to_string(pe.id) << "\t" << pe.adr.str()
-        << " \trpc port " << (pe.rpc_port > 0 ? std::to_string(pe.rpc_port) : "-")
-        << " \tpruning seed " << pe.pruning_seed 
-        << " \tlast_seen: " << (pe.last_seen == 0 ? std::string("never") : epee::misc_utils::get_time_interval_string(now_time - pe.last_seen))
-        << std::endl;
-    }
-    return ss.str();
-  }
+std::string print_peerlist_to_string(const std::vector<peerlist_entry>& pl);
 
-
-  struct network_config
-  {
-    BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE(max_out_connection_count)
-      KV_SERIALIZE(max_in_connection_count)
-      KV_SERIALIZE(handshake_interval)
-      KV_SERIALIZE(packet_max_size)
-      KV_SERIALIZE(config_id)
-    END_KV_SERIALIZE_MAP()
-
+struct network_config {
     uint32_t max_out_connection_count;
     uint32_t max_in_connection_count;
     std::chrono::milliseconds connection_timeout;
@@ -154,145 +82,105 @@ namespace nodetool
     uint32_t packet_max_size;
     uint32_t config_id;
     uint32_t send_peerlist_sz;
-  };
 
-  struct basic_node_data
-  {
-    uuid network_id;                   
+    KV_MAP_SERIALIZABLE
+};
+
+struct basic_node_data {
+    epee::connection_id_t network_id;
     uint32_t my_port;
-    uint16_t rpc_port;
     peerid_type peer_id;
 
-    BEGIN_KV_SERIALIZE_MAP()
-      KV_SERIALIZE_VAL_POD_AS_BLOB(network_id)
-      KV_SERIALIZE(peer_id)
-      KV_SERIALIZE(my_port)
-      KV_SERIALIZE_OPT(rpc_port, (uint16_t)(0))
-    END_KV_SERIALIZE_MAP()
-  };
-  
+    KV_MAP_SERIALIZABLE
+};
 
-  inline constexpr int P2P_COMMANDS_POOL_BASE = 1000;
+inline constexpr int P2P_COMMANDS_POOL_BASE = 1000;
 
-  /************************************************************************/
-  /*                                                                      */
-  /************************************************************************/
-  template<class Payload>
-	struct COMMAND_HANDSHAKE_T
-	{
-		const static int ID = P2P_COMMANDS_POOL_BASE + 1;
+/************************************************************************/
+/*                                                                      */
+/************************************************************************/
+struct COMMAND_HANDSHAKE {
+    const static int ID = P2P_COMMANDS_POOL_BASE + 1;
 
-    struct request
-    {
-      basic_node_data node_data;
-      Payload payload_data;
+    struct request {
+        basic_node_data node_data;
+        cryptonote::CORE_SYNC_DATA payload_data;
 
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(node_data)
-        KV_SERIALIZE(payload_data)
-      END_KV_SERIALIZE_MAP()
+        KV_MAP_SERIALIZABLE
     };
 
-    struct response
-    {
-      basic_node_data node_data;
-      Payload payload_data;
-      std::vector<peerlist_entry> local_peerlist_new;
+    struct response {
+        basic_node_data node_data;
+        cryptonote::CORE_SYNC_DATA payload_data;
+        std::vector<peerlist_entry> local_peerlist_new;
 
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(node_data)
-        KV_SERIALIZE(payload_data)
-        KV_SERIALIZE(local_peerlist_new)
-      END_KV_SERIALIZE_MAP()
+        KV_MAP_SERIALIZABLE
     };
-  };
+};
 
-
-  /************************************************************************/
-  /*                                                                      */
-  /************************************************************************/
-  template<class Payload>
-  struct COMMAND_TIMED_SYNC_T
-  {
+/************************************************************************/
+/*                                                                      */
+/************************************************************************/
+struct COMMAND_TIMED_SYNC {
     const static int ID = P2P_COMMANDS_POOL_BASE + 2;
 
-    struct request
-    {
-      Payload payload_data;
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(payload_data)
-      END_KV_SERIALIZE_MAP()
+    struct request {
+        cryptonote::CORE_SYNC_DATA payload_data;
+
+        KV_MAP_SERIALIZABLE
     };
 
-    struct response
-    {
-      uint64_t local_time;
-      Payload payload_data;
-      std::vector<peerlist_entry> local_peerlist_new;
+    struct response {
+        uint64_t local_time;
+        cryptonote::CORE_SYNC_DATA payload_data;
+        std::vector<peerlist_entry> local_peerlist_new;
 
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(payload_data)
-        KV_SERIALIZE(local_peerlist_new)
-      END_KV_SERIALIZE_MAP()
+        KV_MAP_SERIALIZABLE
     };
-  };
+};
 
-  /************************************************************************/
-  /*                                                                      */
-  /************************************************************************/
+/************************************************************************/
+/*                                                                      */
+/************************************************************************/
 
-  struct COMMAND_PING
-  {
+struct COMMAND_PING {
     /*
-      Used to make "callback" connection, to be sure that opponent node 
+      Used to make "callback" connection, to be sure that opponent node
       have accessible connection point. Only other nodes can add peer to peerlist,
       and ONLY in case when peer has accepted connection and answered to ping.
     */
     const static int ID = P2P_COMMANDS_POOL_BASE + 3;
 
-#define PING_OK_RESPONSE_STATUS_TEXT "OK"
+    static constexpr auto OK_RESPONSE = "OK"sv;
 
-    struct request
-    {
-      /*actually we don't need to send any real data*/
-
-      BEGIN_KV_SERIALIZE_MAP()
-      END_KV_SERIALIZE_MAP()
+    struct request {
+        /*actually we don't need to send any real data*/
+        KV_MAP_SERIALIZABLE
     };
 
-    struct response
-    {
-      std::string status;
-      peerid_type peer_id;
+    struct response {
+        std::string status;
+        peerid_type peer_id;
 
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(status)
-        KV_SERIALIZE(peer_id)
-      END_KV_SERIALIZE_MAP()    
+        KV_MAP_SERIALIZABLE
     };
-  };
+};
 
-  
-  /************************************************************************/
-  /*                                                                      */
-  /************************************************************************/
-  struct COMMAND_REQUEST_SUPPORT_FLAGS
-  {
+/************************************************************************/
+/*                                                                      */
+/************************************************************************/
+// TODO: remove after HF19
+struct COMMAND_REQUEST_SUPPORT_FLAGS {
     const static int ID = P2P_COMMANDS_POOL_BASE + 7;
 
-    struct request
-    {
-      BEGIN_KV_SERIALIZE_MAP()
-      END_KV_SERIALIZE_MAP()    
+    struct request {
+        KV_MAP_SERIALIZABLE
     };
 
-    struct response
-    {
-      uint32_t support_flags;
+    struct response {
+        uint32_t support_flags;
 
-      BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(support_flags)
-      END_KV_SERIALIZE_MAP()    
+        KV_MAP_SERIALIZABLE
     };
-  };
-}
+};
+}  // namespace nodetool

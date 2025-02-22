@@ -1,0 +1,3 @@
+/usr/lib/*/oxen-snapshot/lib[a-ce-vx-zA-Z]*.so.@LIBOXEN_VER@
+/usr/lib/*/oxen-snapshot/libdevice.so.@LIBOXEN_VER@
+/usr/lib/*/oxen-snapshot/libd[a-df-z]*.so.@LIBOXEN_VER@

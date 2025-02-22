@@ -34,6 +34,16 @@ class TransferFailed(RuntimeError):
         self.message = message
         self.json = json
 
+class RPCFailed(RuntimeError):
+    def __init__(self, json):
+        self.message = "RPC request failed"
+        self.json = json
+        super().__init__(self.message)
+
+class AccruedRewards:
+    def __init__(self):
+        self.address = ""
+        self.balance = 0
 
 class RPCDaemon:
     def __init__(self, name):
@@ -63,7 +73,7 @@ class RPCDaemon:
         if self.proc and self.proc.poll() is None:
             raise RuntimeError("Cannot start process that is already running!")
         self.proc = subprocess.Popen(self.arguments(),
-                stdin=subprocess.DEVNULL, stdout=sout, stderr=subprocess.DEVNULL)
+                stdin=subprocess.DEVNULL, stdout=sout, stderr=sys.stderr)
         self.terminated = False
 
 
@@ -95,18 +105,18 @@ class RPCDaemon:
                 }
         if params:
             json["params"] = params
-
+        print("  {}:{} => {}".format(self.listen_ip, self.rpc_port, json))
         return requests.post('http://{}:{}/json_rpc'.format(self.listen_ip, self.rpc_port), json=json, timeout=timeout)
 
 
-    def rpc(self, path, params=None, *, timeout=10):
+    def rpc(self, path, params=None, *, timeout=30):
         """Sends a non-json_rpc rpc request to the rpc port at path `path`, e.g. /get_info.  Returns the response object."""
         if not self.proc:
             raise RuntimeError("Cannot make rpc request before calling start()")
         return requests.post('http://{}:{}{}'.format(self.listen_ip, self.rpc_port, path), json=params, timeout=timeout)
 
 
-    def wait_for_json_rpc(self, method, params=None, *, timeout=10):
+    def wait_for_json_rpc(self, method, params=None, *, timeout=30):
         """Calls `json_rpc', sleeping if it fails for up time `timeout' seconds.  Returns the
         response if it succeeds, raises the last exception if timeout is reached.  If the process
         exit, raises a RuntimeError"""
@@ -129,9 +139,15 @@ class RPCDaemon:
                 if now >= until:
                     raise
 
+class DaemonKeys:
+    def __init__(self):
+        self.pubkey = None
+        self.x25519_pubkey = None
+        self.ed25519_pubkey = None
+        self.bls_pubkey = None
 
 class Daemon(RPCDaemon):
-    base_args = ('--dev-allow-local-ips', '--fixed-difficulty=1', '--devnet', '--non-interactive')
+    base_args = ('--dev-allow-local-ips', '--fixed-difficulty=1', '--localdev', '--non-interactive')
 
     def __init__(self, *,
             oxend='oxend',
@@ -146,22 +162,24 @@ class Daemon(RPCDaemon):
             name = 'oxend@{}'.format(self.rpc_port)
         super().__init__(name)
         self.listen_ip = listen_ip or LISTEN_IP
-        self.p2p_port = p2p_port or next_port()
-        self.zmq_port = zmq_port or next_port()
+        self.p2p_port  = p2p_port or next_port()
+        self.zmq_port  = zmq_port or next_port()
         self.qnet_port = qnet_port or next_port()
-        self.ss_port = ss_port or next_port()
-        self.peers = []
-        self.service_node_key = None
+        self.ss_port   = ss_port or next_port()
+        self.peers     = []
+        self.keys      = None
+        self.datadir   = '{}/oxen-{}'.format(datadir or '.', self.rpc_port)
 
         self.args = [oxend] + list(self.__class__.base_args)
         self.args += (
-                '--data-dir={}/oxen-{}-{}'.format(datadir or '.', self.listen_ip, self.rpc_port),
+                '--data-dir={}'.format(self.datadir),
                 '--log-level={}'.format(log_level),
                 '--log-file=oxen.log'.format(self.listen_ip, self.p2p_port),
                 '--p2p-bind-ip={}'.format(self.listen_ip),
                 '--p2p-bind-port={}'.format(self.p2p_port),
                 '--rpc-admin={}:{}'.format(self.listen_ip, self.rpc_port),
                 '--quorumnet-port={}'.format(self.qnet_port),
+                '--l2-provider={}'.format("http://127.0.0.1:8545"),
                 )
 
         for d in peers:
@@ -215,15 +233,20 @@ class Daemon(RPCDaemon):
     def height(self):
         return self.rpc("/get_height").json()["height"]
 
+    def get_staking_requirement(self):
+        rpc_result = self.json_rpc("get_staking_requirement").json()
+        if rpc_result["result"]["status"] != "OK":
+            raise RPCFailed(rpc_result)
+        result = rpc_result["result"]["staking_requirement"]
+        return result
 
     def txpool_hashes(self):
         return [x['id_hash'] for x in self.rpc("/get_transaction_pool").json()['transactions']]
 
-
     def ping(self, *, storage=True, lokinet=True):
         """Sends fake storage server and lokinet pings to the running oxend"""
         if storage:
-            self.json_rpc("storage_server_ping", { "version_major": 2, "version_minor": 1, "version_patch": 0 })
+            self.json_rpc("storage_server_ping", { "version": [2, 5, 0], "https_port": 0, "omq_port": 0, "pubkey_ed25519": self.get_service_keys().ed25519_pubkey})
         if lokinet:
             self.json_rpc("lokinet_ping", { "version": [9,9,9] })
 
@@ -236,19 +259,54 @@ class Daemon(RPCDaemon):
         """Triggers a p2p resync to happen soon (i.e. at the next p2p idle loop)."""
         self.json_rpc("test_trigger_p2p_resync")
 
-    def sn_key(self):
-        if not self.service_node_key:
-            self.service_node_key = self.json_rpc("get_service_keys").json()["result"]["service_node_pubkey"]
-
-        return self.service_node_key
+    def get_service_keys(self):
+        if not self.keys:
+            json                     = self.json_rpc("get_service_keys").json()["result"]
+            self.keys                = DaemonKeys()
+            self.keys.pubkey         = json["service_node_pubkey"]
+            self.keys.x25519_pubkey  = json["service_node_x25519_pubkey"]
+            self.keys.ed25519_pubkey = json["service_node_ed25519_pubkey"]
+            self.keys.bls_pubkey     = json["service_node_bls_pubkey"]
+        return self.keys
 
     def sn_status(self):
         return self.json_rpc("get_service_node_status").json()["result"]
 
+    def sn_is_payable(self):
+        json   = self.json_rpc("get_service_nodes", {"service_node_pubkeys": [self.get_service_keys().pubkey]}).json()
+        sn_info_array = json['result']['service_node_states']
+        result = False
+        if len(sn_info_array) >= 1:
+            sn_info = sn_info_array[0]
+            result  = 'payable' in sn_info and sn_info['payable']
+        return result
 
+    def get_ethereum_registration_args(self, address):
+        return self.json_rpc("contract_registration", {"operator_address": address}).json()["result"]
+
+    def get_bls_rewards(self, address):
+        return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
+
+    def get_exit_liquidation_request(self, ed25519_pubkey, liquidate=False):
+        return self.json_rpc("bls_exit_liquidation_request", {"pubkey": ed25519_pubkey, "liquidate": liquidate}, timeout=1000).json()
+
+    def get_accrued_rewards(self, addresses) -> list[AccruedRewards]:
+        json                         = self.json_rpc("get_accrued_rewards", {"addresses": addresses}).json()
+        balance_array                = json['result']['balances']
+        result: list[AccruedRewards] = []
+        for address, balance in balance_array.items():
+            item = AccruedRewards()
+            item.address = address
+            item.balance = balance
+            result.append(item)
+        return result
+
+
+    def get_service_nodes(self):
+        return self.json_rpc("get_service_nodes").json()
 
 class Wallet(RPCDaemon):
-    base_args = ('--disable-rpc-login', '--non-interactive', '--password','', '--devnet', '--disable-rpc-long-poll',
+    base_args = ('--disable-rpc-login', '--non-interactive', '--password','', '--localdev', '--disable-rpc-long-poll',
  '--daemon-ssl=disabled')
 
     def __init__(
@@ -260,7 +318,7 @@ class Wallet(RPCDaemon):
             datadir=None,
             listen_ip=None,
             rpc_port=None,
-            log_level=3):
+            log_level=4):
 
         self.listen_ip = listen_ip or LISTEN_IP
         self.rpc_port = rpc_port or next_port()
@@ -269,7 +327,8 @@ class Wallet(RPCDaemon):
         self.name = name or 'wallet@{}'.format(self.rpc_port)
         super().__init__(self.name)
 
-        self.walletdir = '{}/wallet-{}-{}'.format(datadir or '.', self.listen_ip, self.rpc_port)
+        # self.walletdir = '{}/wallet-{}-{}'.format(datadir or '.', self.listen_ip, self.rpc_port)
+        self.walletdir = '{}/wallet-{}'.format(datadir or '.', self.rpc_port)
         self.args = [rpc_wallet] + list(self.__class__.base_args)
         self.args += (
                 '--rpc-bind-ip={}'.format(self.listen_ip),
@@ -361,11 +420,12 @@ class Wallet(RPCDaemon):
         return [find_tx(txid) for txid in txids]
 
 
-    def register_sn(self, sn):
+    def register_sn(self, sn, staking_requirement):
         r = sn.json_rpc("get_service_node_registration_cmd", {
+            "contributor_addresses": [self.address()],
+            "contributor_amounts": [staking_requirement],
             "operator_cut": "100",
-            "contributions": [{"address": self.address(), "amount": 100000000000}],
-            "staking_requirement": 100000000000
+            "staking_requirement": staking_requirement
         }).json()
         if 'error' in r:
             raise RuntimeError("Registration cmd generation failed: {}".format(r['error']['message']))
@@ -374,11 +434,12 @@ class Wallet(RPCDaemon):
         if 'error' in r:
             raise RuntimeError("Failed to submit service node registration tx: {}".format(r['error']['message']))
 
-    def register_sn_for_contributions(self, sn, cut, amount):
+    def register_sn_for_contributions(self, sn, cut, amount, staking_requirement):
         r = sn.json_rpc("get_service_node_registration_cmd", {
+            "contributor_addresses": [self.address()],
+            "contributor_amounts": [amount],
             "operator_cut": str(cut),
-            "contributions": [{"address": self.address(), "amount": amount}],
-            "staking_requirement": 100000000000
+            "staking_requirement": staking_requirement
         }).json()
         if 'error' in r:
             raise RuntimeError("Registration cmd generation failed: {}".format(r['error']['message']))
@@ -391,7 +452,7 @@ class Wallet(RPCDaemon):
         r = self.json_rpc("stake", {
             "destination": self.address(),
             "amount": amount,
-            "service_node_key": sn.sn_key(),
+            "service_node_key": sn.get_service_keys().pubkey,
         }).json()
         if 'error' in r:
             raise RuntimeError("Failed to submit stake tx: {}".format(r['error']['message']))

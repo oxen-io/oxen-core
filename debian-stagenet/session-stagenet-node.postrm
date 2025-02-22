@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = remove -o "$1" = "abort-install" -o "$1" = disappear ]; then
+    ucfr --purge session-stagenet-node /etc/oxen/stagenet.conf
+fi
+
+#DEBHELPER#

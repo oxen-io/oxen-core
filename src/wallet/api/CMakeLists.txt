@@ -47,7 +47,6 @@ target_link_libraries(wallet_api
     mnemonics
     lmdb
     Boost::serialization
-    filesystem
     Boost::thread
   PRIVATE
     extra)
@@ -137,7 +136,6 @@ if (STATIC AND BUILD_STATIC_DEPS)
             CURL::libcurl
             oxenmq::oxenmq
             lmdb
-            easylogging
             randomx
             uSockets
             cpr

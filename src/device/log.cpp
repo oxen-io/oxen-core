@@ -1,22 +1,22 @@
 // Copyright (c) 2017-2019, The Monero Project
 // Copyright (c)      2018, The Loki Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -28,111 +28,138 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-#include <oxenc/hex.h>
-#include "epee/misc_log_ex.h"
 #include "log.hpp"
+
+#include <oxenc/hex.h>
+
+#include "epee/misc_log_ex.h"
 
 namespace hw {
 
-  #undef OXEN_DEFAULT_LOG_CATEGORY
-  #define OXEN_DEFAULT_LOG_CATEGORY "device"
+static auto logcat = log::Cat("device");
 
-  void log_hexbuffer(std::string_view msg, const void* buff, size_t len) {
-    MDEBUG(msg << ": " << oxenc::to_hex(std::string_view{reinterpret_cast<const char*>(buff), len}));
-  }
+void log_hexbuffer(std::string_view msg, const void* buff, size_t len) {
+    log::debug(
+            logcat,
+            "{}: {}",
+            msg,
+            oxenc::to_hex(std::string_view{reinterpret_cast<const char*>(buff), len}));
+}
 
-  void log_message(std::string_view msg, std::string_view info) {
-    MDEBUG(msg << ": " << info);
-  }
+void log_message(std::string_view msg, std::string_view info) {
+    log::debug(logcat, "{}: {}", msg, info);
+}
 
+#ifdef WITH_DEVICE_LEDGER
+namespace ledger {
 
-  #ifdef WITH_DEVICE_LEDGER    
-    namespace ledger {
-    
-    #undef OXEN_DEFAULT_LOG_CATEGORY
-    #define OXEN_DEFAULT_LOG_CATEGORY "device.ledger"
+    static auto logcat = log::Cat("device.ledger");
 
-    
-    #ifdef DEBUG_HWDEVICE
+#ifdef DEBUG_HWDEVICE
 
     void decrypt(char* buf, size_t len) {
-      #if defined(IODUMMYCRYPT_HWDEVICE) || defined(IONOCRYPT_HWDEVICE)
+#if defined(IODUMMYCRYPT_HWDEVICE) || defined(IONOCRYPT_HWDEVICE)
 
-      if (len == 32 && memcmp(dummy_view_key, buf, 32) == 0) {
-        memmove(buf, hw::ledger::dbg_viewkey.data, 32);
-        return;
-      }
-      if (len == 32 && memcmp(dummy_spend_key, buf, 32) == 0) {
-        memmove(buf, hw::ledger::dbg_spendkey.data, 32);
-        return;
-      }
-      #if defined(IODUMMYCRYPT_HWDEVICE)
-      //std decrypt: XOR.55h
-      for (size_t i = 0; i < len; i++)
-        buf[i] ^= 0x55;
-      #endif
-      #endif
+        if (len == 32 && memcmp(dummy_view_key, buf, 32) == 0) {
+            memmove(buf, hw::ledger::dbg_viewkey.data, 32);
+            return;
+        }
+        if (len == 32 && memcmp(dummy_spend_key, buf, 32) == 0) {
+            memmove(buf, hw::ledger::dbg_spendkey.data, 32);
+            return;
+        }
+#if defined(IODUMMYCRYPT_HWDEVICE)
+        // std decrypt: XOR.55h
+        for (size_t i = 0; i < len; i++)
+            buf[i] ^= 0x55;
+#endif
+#endif
     }
 
-    crypto::key_derivation decrypt(const crypto::key_derivation &derivation) {
-       crypto::key_derivation x = derivation;
-       decrypt(x.data, 32);
-       return x;
+    crypto::key_derivation decrypt(const crypto::key_derivation& derivation) {
+        crypto::key_derivation x = derivation;
+        decrypt(x.data, 32);
+        return x;
     }
 
     cryptonote::account_keys decrypt(const cryptonote::account_keys& keys) {
-       cryptonote::account_keys x = keys;
-       decrypt(x.m_view_secret_key.data, 32);
-       decrypt(x.m_spend_secret_key.data, 32);
-       return x;
+        cryptonote::account_keys x = keys;
+        decrypt(x.m_view_secret_key.data, 32);
+        decrypt(x.m_spend_secret_key.data, 32);
+        return x;
     }
 
-
-    crypto::secret_key decrypt(const crypto::secret_key &sec) {
-       crypto::secret_key  x = sec;
-       decrypt(x.data, 32);
-       return x;
+    crypto::secret_key decrypt(const crypto::secret_key& sec) {
+        crypto::secret_key x = sec;
+        decrypt(x.data, 32);
+        return x;
     }
 
-    rct::key  decrypt(const rct::key &sec)  {
-         rct::key  x = sec;
-       decrypt((char*)x.bytes, 32);
-       return x;
+    rct::key decrypt(const rct::key& sec) {
+        rct::key x = sec;
+        decrypt((char*)x.bytes, 32);
+        return x;
     }
 
-    crypto::ec_scalar decrypt(const crypto::ec_scalar &res)  {
-       crypto::ec_scalar  x = res;
-       decrypt((char*)x.data, 32);
-       return x;
+    crypto::ec_scalar decrypt(const crypto::ec_scalar& res) {
+        crypto::ec_scalar x = res;
+        decrypt((char*)x.data, 32);
+        return x;
     }
 
-    static void check(const std::string &msg, const std::string &info, const char *h, const char *d, size_t len, bool crypted) {
-      char dd[32];
-      if (crypted) {
-        CHECK_AND_ASSERT_THROW_MES(len <= 32, "encrypted data greater than 32");
-        decrypt(dd, len);
-        d = dd;
-      }
+    static void check(
+            const std::string& msg,
+            const std::string& info,
+            const char* h,
+            const char* d,
+            size_t len,
+            bool crypted) {
+        char dd[32];
+        if (crypted) {
+            CHECK_AND_ASSERT_THROW_MES(len <= 32, "encrypted data greater than 32");
+            decrypt(dd, len);
+            d = dd;
+        }
 
-      if (memcmp(h, d, len)) {
-          log_message("ASSERT EQ FAIL", msg + ": " + info);
-          log_hexbuffer("    host  ", h, len);
-          log_hexbuffer("    device", d, len);
-      } else {
-        log_message("ASSERT EQ OK",  msg + ": " + info + ": " + oxenc::to_hex(d, d+len));
-      }
+        if (memcmp(h, d, len)) {
+            log_message("ASSERT EQ FAIL", msg + ": " + info);
+            log_hexbuffer("    host  ", h, len);
+            log_hexbuffer("    device", d, len);
+        } else {
+            log_message("ASSERT EQ OK", msg + ": " + info + ": " + oxenc::to_hex(d, d + len));
+        }
     }
 
-    void check32(const std::string &msg, const std::string &info, const void *h, const void *d, bool crypted) {
-      check(msg, info, reinterpret_cast<const char*>(h), reinterpret_cast<const char*>(d), 32, crypted);
+    void check32(
+            const std::string& msg,
+            const std::string& info,
+            const void* h,
+            const void* d,
+            bool crypted) {
+        check(msg,
+              info,
+              reinterpret_cast<const char*>(h),
+              reinterpret_cast<const char*>(d),
+              32,
+              crypted);
     }
 
-    void check8(const std::string &msg, const std::string &info, const void *h, const void *d, bool crypted) {
-      check(msg, info, reinterpret_cast<const char*>(h), reinterpret_cast<const char*>(d), 8, crypted);
+    void check8(
+            const std::string& msg,
+            const std::string& info,
+            const void* h,
+            const void* d,
+            bool crypted) {
+        check(msg,
+              info,
+              reinterpret_cast<const char*>(h),
+              reinterpret_cast<const char*>(d),
+              8,
+              crypted);
     }
-    #endif
+#endif
 
-  }
-  #endif //WITH_DEVICE_LEDGER    
+}  // namespace ledger
+#endif  // WITH_DEVICE_LEDGER
 
-}
+}  // namespace hw

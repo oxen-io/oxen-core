@@ -34,14 +34,9 @@
 
 static crypto::hash make_hash(uint64_t n)
 {
-  union
-  {
-    crypto::hash hash;
-    uint64_t n;
-  } hash;
-  hash.hash = crypto::null_hash;
-  hash.n = n;
-  return hash.hash;
+  crypto::hash hash{};
+  *reinterpret_cast<uint64_t*>(hash.data()) = n;
+  return hash;
 }
 
 TEST(hashchain, empty)

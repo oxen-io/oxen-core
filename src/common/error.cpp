@@ -28,49 +28,36 @@
 
 #include <string>
 
-namespace
-{
-    struct category final : std::error_category
-    {
-        virtual const char* name() const noexcept override final
-        {
-            return "common_category()";
+namespace {
+struct category final : std::error_category {
+    virtual const char* name() const noexcept override final { return "common_category()"; }
+
+    virtual std::string message(int value) const override final {
+        switch (common_error(value)) {
+            case common_error::kInvalidArgument:
+                return std::error_code{static_cast<int>(std::errc::invalid_argument), *this}
+                        .message();
+            case common_error::kInvalidErrorCode:
+                return "expect<T> was given an error value of zero";
+            default: break;
         }
+        return "Unknown basic_category() value";
+    }
 
-        virtual std::string message(int value) const override final
-        {
-            switch (common_error(value))
-            {
-                case common_error::kInvalidArgument:
-                    return std::error_code{static_cast<int>(std::errc::invalid_argument), *this}.message();
-                case common_error::kInvalidErrorCode:
-                    return "expect<T> was given an error value of zero";
-                default:
-                    break;
-            }
-            return "Unknown basic_category() value";
+    virtual std::error_condition default_error_condition(int value) const noexcept override final {
+        // maps specific errors to generic `std::errc` cases.
+        switch (common_error(value)) {
+            case common_error::kInvalidArgument:
+            case common_error::kInvalidErrorCode: return std::errc::invalid_argument;
+            default: break;
         }
+        return std::error_condition{value, *this};
+    }
+};
 
-        virtual std::error_condition default_error_condition(int value) const noexcept override final
-        {
-            // maps specific errors to generic `std::errc` cases.
-            switch (common_error(value))
-            {
-                case common_error::kInvalidArgument:
-                case common_error::kInvalidErrorCode:
-                    return std::errc::invalid_argument;
-                default:
-                    break;
-            }
-            return std::error_condition{value, *this};
-        }
-    };
+const category instance{};
+}  // namespace
 
-    const category instance{};
-}
-
-std::error_category const& common_category() noexcept
-{
+std::error_category const& common_category() noexcept {
     return instance;
 }
-

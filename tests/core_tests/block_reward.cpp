@@ -85,7 +85,7 @@ namespace
     median = std::max(median, static_cast<size_t>(BLOCK_GRANTED_FULL_REWARD_ZONE_V1));
 
     transaction miner_tx;
-    bool r = construct_miner_tx_by_weight(miner_tx, get_block_height(blk_prev) + 1, generator.get_already_generated_coins(blk_prev),
+    bool r = construct_miner_tx_by_weight(miner_tx, blk_prev.get_height() + 1, generator.get_already_generated_coins(blk_prev),
       miner_account.get_keys().m_account_address, block_weights, 2 * median, 2 * median);
     if (!r)
       return false;
@@ -199,7 +199,7 @@ bool gen_block_reward::generate(std::vector<test_event_entry>& events) const
     size_t median = tools::median(block_weights.begin(), block_weights.end());
 
     transaction miner_tx;
-    bool r = construct_miner_tx_by_weight(miner_tx, get_block_height(blk_7) + 1, generator.get_already_generated_coins(blk_7),
+    bool r = construct_miner_tx_by_weight(miner_tx, blk_7.get_height() + 1, generator.get_already_generated_coins(blk_7),
       miner_account.get_keys().m_account_address, block_weights, 2 * median - txs_1_weight, 2 * median, txs_fee);
     if (!r)
       return false;

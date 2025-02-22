@@ -27,7 +27,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(checkpoints
+oxen_add_library(checkpoints
   checkpoints.cpp
   )
 
@@ -35,7 +35,6 @@ target_link_libraries(checkpoints
   PRIVATE
     common
     cryptonote_basic
-    Boost::program_options
     Boost::serialization
-    filesystem
+    logging
     extra)

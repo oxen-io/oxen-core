@@ -55,6 +55,14 @@ else()
             set(VERSIONTAG "${COMMIT}")
         endif()
     endif()
+
+    # Check if we have uncommitted changes (if so, append -dirty)
+    execute_process(COMMAND "${GIT}" diff --quiet HEAD --
+                    RESULT_VARIABLE DIRTY_CHECK)
+    if(DIRTY_CHECK EQUAL 1)
+        set(VERSIONTAG "${VERSIONTAG}-dirty")
+    endif()
+
 endif()
 
 configure_file("${SRC}" "${DEST}" @ONLY)

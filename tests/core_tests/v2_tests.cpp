@@ -54,7 +54,7 @@ bool gen_v2_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
     miner_accounts[n].generate();
     CHECK_AND_ASSERT_MES(generator.construct_block_manually(blocks[n], *prev_block, miner_accounts[n],
         test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp,
-        hf::hf7, 2, prev_block->timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+        hf::hf7, 2, prev_block->timestamp + tools::to_seconds(get_config(cryptonote::network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
           crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
         false, "Failed to generate block");
     events.push_back(blocks[n]);
@@ -70,7 +70,7 @@ bool gen_v2_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
       cryptonote::block blk;
       CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk, blk_last, miner_account,
           test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp,
-          hf::hf7, 2, blk_last.timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+          hf::hf7, 2, blk_last.timestamp + tools::to_seconds(get_config(cryptonote::network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
           crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
           false, "Failed to generate block");
       events.push_back(blk);
@@ -85,11 +85,11 @@ bool gen_v2_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
     sources.resize(sources.size()+1);
     tx_source_entry& src = sources.back();
 
-    src.amount = blocks[0].miner_tx.vout[out_idx[out_idx_idx]].amount;
+    src.amount = blocks[0].miner_tx.value().vout[out_idx[out_idx_idx]].amount;
     for (int m = 0; m <= mixin; ++m) {
-      src.push_output(0, var::get<txout_to_key>(blocks[m].miner_tx.vout[out_idx[out_idx_idx]].target).key, src.amount);
+      src.push_output(0, var::get<txout_to_key>(blocks[m].miner_tx->vout[out_idx[out_idx_idx]].target).key, src.amount);
     }
-    src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[0].miner_tx);
+    src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(*blocks[0].miner_tx);
     src.real_output = 0;
     src.rct = false;
     src.real_output_in_tx_index = out_idx[out_idx_idx];

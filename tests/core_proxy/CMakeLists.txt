@@ -38,6 +38,7 @@ target_link_libraries(core_proxy
     epee
     Boost::program_options
     SQLiteCpp
+    logging
     extra)
 set_property(TARGET core_proxy
   PROPERTY
