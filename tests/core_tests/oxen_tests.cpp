@@ -142,7 +142,7 @@ bool oxen_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtak
 
   gen.add_blocks_until_next_checkpointable_height();
   oxen_chain_generator fork_with_more_checkpoints = gen;
-  gen.add_n_blocks(60); // Add blocks so that this chain has more PoW
+  gen.add_n_blocks(55); // Add blocks so that this chain has more PoW
 
   cryptonote::checkpoint_t checkpoint = fork_with_more_checkpoints.create_service_node_checkpoint(fork_with_more_checkpoints.height(), service_nodes::CHECKPOINT_MIN_VOTES);
   fork_with_more_checkpoints.create_and_add_next_block({}, &checkpoint);

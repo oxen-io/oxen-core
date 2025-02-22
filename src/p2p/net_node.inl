@@ -128,7 +128,7 @@ fs::path node_server<t_payload_net_handler>::get_peerlist_file() const {
     fs::path p2p_filename = cryptonote::P2P_NET_DATA_FILENAME;
     if (m_nettype == cryptonote::network_type::STAGENET)
         // Kludge for stagenet reboot
-        p2p_filename += u8".v3";
+        p2p_filename += u8".v4";
     return m_config_folder / p2p_filename;
 }
 
@@ -584,7 +584,7 @@ std::set<std::string> node_server<t_payload_net_handler>::get_seed_nodes(
     } else if (nettype == cryptonote::network_type::DEVNET) {
         full_addrs.insert("144.76.164.202:38856");
     } else if (nettype == cryptonote::network_type::STAGENET) {
-        full_addrs.insert("104.243.40.38:11019");  // angus.oxen.io
+        full_addrs.insert("104.243.40.38:11020");  // angus.oxen.io
     } else if (nettype == cryptonote::network_type::MAINNET) {
         full_addrs.insert("116.203.196.12:22022");  // Hetzner seed node
         full_addrs.insert("185.150.191.32:22022");  // Jason's seed node
@@ -745,6 +745,16 @@ node_server<t_payload_net_handler>::get_payload_object() {
     return m_payload_handler;
 }
 //-----------------------------------------------------------------------------------
+static void log_detailed_peer_stats(std::unordered_map<peerid_type, peer_stats>& peer_stats_map, std::mutex& peer_stats_map_mutex) {
+    if (log::get_level(logcat) > log::Level::debug)
+      return;
+    std::unique_lock lock{peer_stats_map_mutex};
+    for (const auto& [peer_id, stats] : peer_stats_map) {
+        log::debug(globallogcat, "Peer ID: {}\n\tConnections: {} total, {} failed\n\tLast Connected: {}\n\tTotal Connection Time: {} seconds",
+            peer_id, stats.total_connections, stats.failed_connections, stats.last_connected_timestamp, stats.total_connection_time);
+    }
+}
+//-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::run() {
     // creating thread to log number of connections
@@ -795,16 +805,6 @@ bool node_server<t_payload_net_handler>::run() {
     log::info(logcat, "net_service loop stopped.");
     log_detailed_peer_stats(peer_stats_map, peer_stats_map_mutex);
     return true;
-}
-//-----------------------------------------------------------------------------------
-static void log_detailed_peer_stats(std::unordered_map<peerid_type, peer_stats>& peer_stats_map, std::mutex& peer_stats_map_mutex) {
-    if (log::get_level(logcat) > log::Level::debug)
-      return;
-    std::unique_lock lock{peer_stats_map_mutex};
-    for (const auto& [peer_id, stats] : peer_stats_map) {
-        log::debug(globallogcat, "Peer ID: {}\n\tConnections: {} total, {} failed\n\tLast Connected: {}\n\tTotal Connection Time: {} seconds",
-            peer_id, stats.total_connections, stats.failed_connections, stats.last_connected_timestamp, stats.total_connection_time);
-    }
 }
 //-----------------------------------------------------------------------------------
 static void update_peer_stats(

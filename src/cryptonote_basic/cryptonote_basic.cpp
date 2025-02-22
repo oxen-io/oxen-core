@@ -150,6 +150,8 @@ void block::set_hash_valid(bool v) const {
 // it does this by taking the first 64 bits of the public_view_key and converting to an integer
 // This is used to determine when an address gets paid their batching reward.
 uint64_t account_public_address::modulus(uint64_t interval) const {
+    if (interval == 0)
+        return 0;
     uint64_t address_as_integer = 0;
     std::memcpy(&address_as_integer, m_view_public_key.data(), sizeof(address_as_integer));
     oxenc::host_to_little_inplace(address_as_integer);

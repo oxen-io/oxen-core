@@ -392,8 +392,10 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
                 res.status = "Failed";
                 return res;
             }
-            for (size_t i = 0; i < indices.size(); ++i)
-                out_ind.emplace_back(std::move(indices[i]));
+            for (size_t i = 0; i < indices.size(); ++i) {
+                auto& dest = out_ind.emplace_back();
+                dest.indices = std::move(indices[i]);
+            }
         }
     }
 
@@ -2935,7 +2937,9 @@ void core_rpc_server::fill_sn_response_entry(
     }
 
     auto& netconf = m_core.get_net_config();
-    auto [hf, snode_rev] = get_network_version_revision(nettype(), top_height);
+    std::pair<hf, uint8_t> network_rev = get_network_version_revision(nettype(), top_height);
+    hf hf = network_rev.first;
+    uint8_t snode_rev = network_rev.second;
 
     if (hf >= feature::SN_PK_IS_ED25519) {
         set_if_requested(reqed, binary, "pubkey_ed25519", sn_pubkey);
@@ -2961,6 +2965,8 @@ void core_rpc_server::fill_sn_response_entry(
                     m_core.lokinet_version,
                     "storage_server_version",
                     m_core.ss_version,
+                    "version_tag",
+                    OXEN_VERSION_TAG,
                     "public_ip",
                     epee::string_tools::get_ip_string_from_int32(m_core.sn_public_ip()),
                     "storage_port",
@@ -2988,6 +2994,8 @@ void core_rpc_server::fill_sn_response_entry(
                         proof.proof->lokinet_version,
                         "storage_server_version",
                         proof.proof->storage_server_version,
+                        "version_tag",
+                        proof.proof->version_tag,
                         "public_ip",
                         epee::string_tools::get_ip_string_from_int32(proof.proof->public_ip),
                         "storage_port",

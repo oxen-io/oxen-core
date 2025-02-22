@@ -34,12 +34,11 @@
 
 #include <chrono>
 #include <concepts>
-#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
 
-#include "crypto/hash.h"
+#include "crypto/base.h"
 #include "cryptonote_config.h"
 
 /*! \brief Dumping ground for random functions.  Please think long and hard before you add anything

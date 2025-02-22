@@ -3782,8 +3782,8 @@ int main(int argc, char** argv) {
             desc_params,
             hidden_params,
             po::positional_options_description(),
-            [](const std::string& s) {},
-            "oxen-wallet-rpc.log",
+            [](const std::string& s) { fmt::print("{}", s); },
+            "stdout",
             true);
     if (!vm)
         return 1;

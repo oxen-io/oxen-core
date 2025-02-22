@@ -188,13 +188,17 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
         return {std::move(vm), should_terminate};
 
     std::string log_path;
+    bool log_stdout = false;
     if (!command_line::is_arg_defaulted(vm, arg_log_file))
         log_path = command_line::get_arg(vm, arg_log_file);
     else
-        log_path = epee::string_tools::get_current_module_name() + ".log";
+        log_path = default_log_name;
+    if (log_path == "stdout" || log_path == "-") {
+        log_stdout = true;
+        log_path.clear();
+    }
 
-    oxen::logging::init(
-            log_path, command_line::get_arg(vm, arg_log_level), false /*do not log to stdout.*/);
+    oxen::logging::init(log_path, command_line::get_arg(vm, arg_log_level), log_stdout);
 
     if (notice)
         print("{}\n"_format(notice));
@@ -210,7 +214,8 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
         const char* logs = getenv("OXEN_LOGS");
         log::info(logcat, "Setting log levels = {}", (logs ? logs : "<default>"));
     }
-    print("{}{}"_format(tr("Logging to: "), log_path));
+    if (!log_path.empty())
+        print("{}{}"_format(tr("Logging to: "), log_path));
 
     const ssize_t lockable_memory = tools::get_lockable_memory();
     if (lockable_memory >= 0 &&

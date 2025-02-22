@@ -47,3 +47,6 @@
 [submodule "external/bn256"]
 	path = external/bn256
 	url = https://github.com/oxen-io/bn256.git
+[submodule "external/tracy"]
+	path = external/tracy
+	url = https://github.com/wolfpld/tracy

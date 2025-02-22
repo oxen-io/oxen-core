@@ -339,7 +339,7 @@ endfunction()
 
 
 build_external(zlib
-  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS} -fPIC" ${cross_extra} ./configure --prefix=${DEPS_DESTDIR} --static
+  CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS} -fPIC" ${cross_extra} env ./configure --prefix=${DEPS_DESTDIR} --static
   BUILD_BYPRODUCTS
     ${DEPS_DESTDIR}/lib/libz.a
     ${DEPS_DESTDIR}/include/zlib.h
@@ -348,17 +348,21 @@ add_static_target(zlib zlib_external libz.a)
 
 
 
-set(boost_threadapi "pthread")
+if(ARCH_TRIPLET MATCHES mingw)
+  set(boost_threadapi "win32")
+else()
+  set(boost_threadapi "pthread")
+endif()
 set(boost_bootstrap_cxx "--cxx=${deps_cxx}")
 set(boost_toolset "")
 set(boost_extra "")
 if(USE_LTO)
   list(APPEND boost_extra "lto=on")
 endif()
+
 if(CMAKE_CROSSCOMPILING)
   set(boost_bootstrap_cxx "") # need to use our native compiler to bootstrap
   if(ARCH_TRIPLET MATCHES mingw)
-    set(boost_threadapi win32)
     list(APPEND boost_extra "target-os=windows")
     if(ARCH_TRIPLET MATCHES x86_64)
       list(APPEND boost_extra "address-model=64")
@@ -418,7 +422,7 @@ build_external(boost
       threading=multi threadapi=${boost_threadapi} ${boost_buildflags} cxxstd=17 visibility=global
       --disable-icu --user-config=${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam
       --prefix=${DEPS_DESTDIR} --exec-prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib --includedir=${DEPS_DESTDIR}/include
-      --with-program_options --with-system --with-thread --with-serialization
+      --with-program_options --with-system --with-thread --with-serialization --layout=system
       install
   BUILD_BYPRODUCTS
     ${DEPS_DESTDIR}/lib/libboost_program_options.a
@@ -532,7 +536,19 @@ else()
   endif()
   set(hidapi_cmake_toolchain)
   if(CMAKE_TOOLCHAIN_FILE)
-    set(hidapi_cmake_toolchain "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
+    # If the toolchain is passed as a relative path, the toolchain is _relative_
+    # to the original directory that CMake was invoked in. At this step we are
+    # currently deep in the 'static-deps' directory for this dependency.
+    #
+    # The relative path used here from CMAKE_TOOLCHAIN_FILE will not resolve to
+    # the correct path, e.g:
+    #
+    #   cd /ox/build/release/static-deps-sources/src/hidapi_external && mkdir -p build && cd build && cmake .. -DCMAKE_TOOLCHAIN_FILE=../../cmake/64-bit-toolchain.cmake ..
+    #
+    # Resolves to the wrong path, to amend that we take the absolute path. Note
+    # if the path is already absolute, this is a no-op.
+    get_filename_component(cmake_toolchain_file_abs_path "${CMAKE_TOOLCHAIN_FILE}" ABSOLUTE BASE_DIR $ENV{PWD})
+    set(hidapi_cmake_toolchain "-DCMAKE_TOOLCHAIN_FILE=${cmake_toolchain_file_abs_path}")
   endif()
   build_external(hidapi
     DEPENDS ${maybe_eudev} libusb_external

@@ -1180,9 +1180,9 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
 void oxen_chain_generator::block_end(oxen_blockchain_entry &entry, oxen_create_block_params const &params) const
 {
   entry.service_node_state = params.prev.service_node_state;
-  entry.service_node_state.update_from_block(db_, cryptonote::network_type::FAKECHAIN, state_history_, {} /*state_archive*/, {} /*alt_states*/, entry.block, entry.txs, nullptr);
+  auto block_add = entry.service_node_state.update_from_block(db_, cryptonote::network_type::FAKECHAIN, state_history_, {} /*state_archive*/, {} /*alt_states*/, entry.block, entry.txs, nullptr, nullptr);
 
-  sqlite_db_->add_block(entry.block, entry.service_node_state);
+  sqlite_db_->add_block(entry.block, entry.service_node_state, block_add);
 }
 
 bool oxen_chain_generator::process_registration_tx(cryptonote::transaction& tx, uint64_t block_height, hf hf_version)

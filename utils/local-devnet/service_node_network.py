@@ -92,6 +92,7 @@ class SNNetwork:
 
         # Setup Ethereum ###########################################################################
         # Setup Anvil, a private Ethereum blockchain (if specified)
+        self.anvil = None
         if anvil_path is not None:
             if os.path.exists(anvil_path):
                 self.anvil = subprocess.Popen(anvil_path,
@@ -116,14 +117,14 @@ class SNNetwork:
                 break
 
         # Deploy smart contracts from eth-sn-contracts (if specified)
-        if eth_sn_contracts_dir is not None:
-            eth_sn_contracts_makefile_path = eth_sn_contracts_dir / 'Makefile'
-            if os.path.exists(eth_sn_contracts_makefile_path):
-                subprocess.run(['make', 'deploy-local-devnet'],
-                               cwd=eth_sn_contracts_dir,
-                               check=True)
-            else:
-                raise RuntimeError('eth-sn-contracts expected file to exist \'{}\' but does not. Exiting'.format(anvil_path))
+        if eth_sn_contracts_dir is None:
+            raise RuntimeError('eth-sn-contracts directory required')
+
+        eth_sn_contracts_makefile_path = eth_sn_contracts_dir / 'Makefile'
+        if os.path.exists(eth_sn_contracts_makefile_path):
+            subprocess.run(['make', 'deploy-local'],
+                           cwd=eth_sn_contracts_dir,
+                           check=True)
 
         sn_rewards_json:         dict = {}
         sn_contrib_factory_json: dict = {}
@@ -277,6 +278,8 @@ class SNNetwork:
         with open(configfile, 'w') as filetowrite:
             filetowrite.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
 
+        # Give the nodes some time to get started up before mining
+        time.sleep(10)
         # Start blockchain setup ###################################################################
         # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
         # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
@@ -678,6 +681,7 @@ class SNNetwork:
                 # Invoke contract
                 assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == staker_eth_addr
                 contract_sn_count_before = self.sn_contract.totalNodes()
+                ethereum.evm_increaseTime(60 * 60 * 3)
                 self.sn_contract.exitBLSPublicKeyWithSignature(key=key,
                                                                  timestamp=exit_request["result"]["timestamp"],
                                                                  sig=sig,
@@ -934,8 +938,10 @@ class SNNetwork:
             height = node.height()
             vprint("Mined {}/{}".format(height, end_height))
             time.sleep(0.05 if height >= end_height else 0.25)
+
         height = node.height()
         vprint("Mined {}/{}".format(height, end_height))
+        assert node.height() == end_height, "Was not able to mine enough blocks because node returned mining_status not active early"
 
         if sync:
             self.sync_nodes(height)

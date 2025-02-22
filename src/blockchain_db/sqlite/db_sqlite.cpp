@@ -49,26 +49,23 @@ BlockchainSQLite::BlockchainSQLite(
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
     height = 0;
 
-    if (!db.tableExists("batched_payments_accrued") || !db.tableExists("batched_payments_raw") ||
-        !db.tableExists("batch_db_info")) {
+    if (!table_exists("batched_payments_accrued"))
         create_schema();
-    }
-
     upgrade_schema();
 
     height = prepared_get<int64_t>("SELECT height FROM batch_db_info");
 
     uint64_t row_count =
-            batch_payments_accrued_row_count(PaymentTableType::Nil, /*height*/ nullptr);
+            batch_payments_accrued_row_count(PaymentTableType::Nil, /*height*/ std::nullopt);
     uint64_t recent_count =
-            batch_payments_accrued_row_count(PaymentTableType::Recent, /*height*/ nullptr);
+            batch_payments_accrued_row_count(PaymentTableType::Recent, /*height*/ std::nullopt);
     uint64_t recent_min_height =
             prepared_get<int>("SELECT MIN(height) FROM batched_payments_accrued_recent");
     uint64_t recent_max_height =
             prepared_get<int>("SELECT MAX(height) FROM batched_payments_accrued_recent");
 
     uint64_t archive_count =
-            batch_payments_accrued_row_count(PaymentTableType::Archive, /*height*/ nullptr);
+            batch_payments_accrued_row_count(PaymentTableType::Archive, /*height*/ std::nullopt);
     uint64_t archive_min_height =
             prepared_get<int>("SELECT MIN(height) FROM batched_payments_accrued_archive");
     uint64_t archive_max_height =
@@ -92,61 +89,31 @@ void BlockchainSQLite::create_schema() {
 
     auto& netconf = cryptonote::get_config(m_nettype);
 
-    db.exec(fmt::format(
-            R"(
-      CREATE TABLE batched_payments_accrued(
-        address VARCHAR NOT NULL,
-        amount BIGINT NOT NULL,
-        payout_offset INTEGER NOT NULL,
-        PRIMARY KEY(address),
-        CHECK(amount >= 0)
-      );
+    db.exec(R"(CREATE TABLE IF NOT EXISTS batched_payments_accrued(
+                 address VARCHAR NOT NULL,
+                 amount BIGINT NOT NULL,
+                 payout_offset INTEGER NOT NULL,
+                 PRIMARY KEY(address),
+                 CHECK(amount >= 0)
+               );
 
-      CREATE INDEX batched_payments_accrued_payout_offset_idx ON batched_payments_accrued(payout_offset);
+               CREATE INDEX IF NOT EXISTS batched_payments_accrued_payout_offset_idx ON batched_payments_accrued(payout_offset);
 
-      CREATE TRIGGER batch_payments_delete_empty AFTER UPDATE ON batched_payments_accrued
-      FOR EACH ROW WHEN NEW.amount = 0 BEGIN
-          DELETE FROM batched_payments_accrued WHERE address = NEW.address;
-      END;
+               -- For pre-ETH hardfork. Oxen SN's were paid and the amount paid was subtracted
+               -- from the accumulated amount in the DB. After the ETH hardfork the DB tracks
+               -- the lifetime rewards and instead the smart contract tracks how much has been paid
+               -- out. The delta in how much the DB has allocated and how much the smart contract
+               -- has paid is the amount owed.
+               --
+               -- In other words after hardforking, rewards amounts are strictly accumulative which
+               -- means this condition will never trigger.
+               CREATE TRIGGER IF NOT EXISTS batch_payments_delete_empty AFTER UPDATE ON batched_payments_accrued
+               FOR EACH ROW WHEN NEW.amount = 0 BEGIN
+                   DELETE FROM batched_payments_accrued WHERE address = NEW.address;
+               END;
 
-      CREATE TABLE batched_payments_raw(
-        address VARCHAR NOT NULL,
-        amount BIGINT NOT NULL,
-        height_paid BIGINT NOT NULL,
-        PRIMARY KEY(address, height_paid),
-        CHECK(amount >= 0)
-      );
-
-      CREATE INDEX batched_payments_raw_height_idx ON batched_payments_raw(height_paid);
-
-      CREATE TABLE batch_db_info(
-        height BIGINT NOT NULL
-      );
-
-      INSERT INTO batch_db_info(height) VALUES(0);
-
-      CREATE TRIGGER batch_payments_prune AFTER UPDATE ON batch_db_info
-      FOR EACH ROW BEGIN
-          DELETE FROM batched_payments_raw WHERE height_paid < (NEW.height - 10000);
-      END;
-
-      CREATE VIEW batched_payments_paid AS SELECT * FROM batched_payments_raw;
-
-      CREATE TRIGGER make_payment INSTEAD OF INSERT ON batched_payments_paid
-      FOR EACH ROW BEGIN
-          UPDATE batched_payments_accrued SET amount = (amount - NEW.amount) WHERE address = NEW.address;
-          SELECT RAISE(ABORT, 'Address not found') WHERE changes() = 0;
-          INSERT INTO batched_payments_raw(address, amount, height_paid) VALUES(NEW.address, NEW.amount, NEW.height_paid);
-      END;
-
-      CREATE TRIGGER rollback_payment INSTEAD OF DELETE ON batched_payments_paid
-      FOR EACH ROW BEGIN
-          DELETE FROM batched_payments_raw WHERE address = OLD.address AND height_paid = OLD.height_paid;
-          INSERT INTO batched_payments_accrued(address, payout_offset, amount) VALUES(OLD.address, OLD.height_paid % {}, OLD.amount)
-              ON CONFLICT(address) DO UPDATE SET amount = (amount + excluded.amount);
-      END;
-    )",
-            netconf.BATCHING_INTERVAL));
+               CREATE TABLE IF NOT EXISTS batch_db_info(height BIGINT NOT NULL);
+               INSERT INTO  batch_db_info(height) VALUES(0);)");
 
     log::debug(logcat, "Database setup complete");
 }
@@ -171,7 +138,10 @@ void BlockchainSQLite::upgrade_schema() {
             have_offset = true;
     }
 
-    SQLite::Transaction transaction{db, SQLite::TransactionBehavior::DEFERRED};
+    std::optional<SQLite::Transaction> transaction{std::nullopt};
+    if (!rescan_tx) {
+        transaction.emplace(db, SQLite::TransactionBehavior::DEFERRED);
+    }
     // NOTE: Rename 'batched_payments_accrued_archive' 'archive_height' column to 'height'. This
     // unifies the height label across the batch payment, recent and archive table making querying
     // from them require less code.
@@ -196,21 +166,8 @@ void BlockchainSQLite::upgrade_schema() {
         log::debug(logcat, "Adding payout_offset to batching db");
         auto& netconf = get_config(m_nettype);
 
-        db.exec(fmt::format(
-                R"(
-        ALTER TABLE batched_payments_accrued ADD COLUMN payout_offset INTEGER NOT NULL DEFAULT -1;
-
-        CREATE INDEX batched_payments_accrued_payout_offset_idx ON batched_payments_accrued(payout_offset);
-
-        DROP TRIGGER IF EXISTS rollback_payment;
-        CREATE TRIGGER rollback_payment INSTEAD OF DELETE ON batched_payments_paid
-        FOR EACH ROW BEGIN
-            DELETE FROM batched_payments_raw WHERE address = OLD.address AND height_paid = OLD.height_paid;
-            INSERT INTO batched_payments_accrued(address, payout_offset, amount) VALUES(OLD.address, OLD.height_paid % {}, OLD.amount)
-                ON CONFLICT(address) DO UPDATE SET amount = (amount + excluded.amount);
-        END;
-        )",
-                netconf.BATCHING_INTERVAL));
+        db.exec(R"(ALTER TABLE batched_payments_accrued ADD COLUMN payout_offset INTEGER NOT NULL DEFAULT -1;
+                   CREATE INDEX batched_payments_accrued_payout_offset_idx ON batched_payments_accrued(payout_offset);)");
 
         auto st = prepared_st(
                 "UPDATE batched_payments_accrued SET payout_offset = ? WHERE address = ?");
@@ -434,7 +391,13 @@ void BlockchainSQLite::upgrade_schema() {
                   netconf.HISTORY_ARCHIVE_KEEP_WINDOW));
     }
 
-    transaction.commit();
+    // NOTE: Remove deprecated tables, this can be removed post HF21 as everyone
+    // will have upgraded.
+    db.exec(R"(DROP TABLE IF EXISTS batched_payments_accrued_raw;
+               DROP VIEW  IF EXISTS batched_payments_accrued_paid;)");
+
+    if (transaction)
+        transaction->commit();
 }
 
 void BlockchainSQLite::reset_database() {
@@ -442,16 +405,12 @@ void BlockchainSQLite::reset_database() {
 
     db.exec(R"(
       DROP TABLE IF EXISTS delayed_payments;
+      DROP TABLE IF EXISTS delayed_payments_archive;
+      DROP TABLE IF EXISTS delayed_payments_recent;
 
       DROP TABLE IF EXISTS batched_payments_accrued;
-
       DROP TABLE IF EXISTS batched_payments_accrued_archive;
-
       DROP TABLE IF EXISTS batched_payments_accrued_recent;
-
-      DROP VIEW IF EXISTS batched_payments_paid;
-
-      DROP TABLE IF EXISTS batched_payments_raw;
 
       DROP TABLE IF EXISTS batch_db_info;
     )");
@@ -462,7 +421,9 @@ void BlockchainSQLite::reset_database() {
     log::debug(logcat, "Database reset complete");
 }
 
-void BlockchainSQLite::update_height(uint64_t new_height) {
+void BlockchainSQLite::update_height(
+        uint64_t new_height, const std::optional<service_nodes::rescan_context>& rescan) {
+    ZoneScoped;
     log::trace(
             logcat,
             "BlockchainDB_SQLITE::{} Changing to height: {}, prev: {}",
@@ -470,16 +431,28 @@ void BlockchainSQLite::update_height(uint64_t new_height) {
             new_height,
             height);
     height = new_height;
-    prepared_exec("UPDATE batch_db_info SET height = ?", static_cast<int64_t>(height));
+
+    bool commit = true;
+    if (rescan) {
+        const auto& netconf = get_config(m_nettype);
+        uint64_t block_count = rescan->top_block_height + 1;
+        uint64_t commit_from_height = block_count - netconf.HISTORY_RECENT_KEEP_WINDOW;
+        bool is_archive_height = height % netconf.HISTORY_ARCHIVE_INTERVAL == 0;
+        commit = is_archive_height || height >= commit_from_height;
+    }
+
+    if (commit)
+        prepared_exec("UPDATE batch_db_info SET height = ?", static_cast<int64_t>(height));
 }
 
-void BlockchainSQLite::blockchain_detached(PaymentTableType history, uint64_t new_height) {
+void BlockchainSQLite::blockchain_detached(
+        PaymentTableType history, uint64_t new_height, uint64_t target_height) {
     const auto& netconf = get_config(m_nettype);
 
     // NOTE: Execute detach
     std::string detach_label = "";
     int rows_restored = 0;
-    int rows_removed = batch_payments_accrued_row_count(PaymentTableType::Nil, nullptr);
+    int rows_removed = batch_payments_accrued_row_count(PaymentTableType::Nil, std::nullopt);
     switch (history) {
         case PaymentTableType::Nil: {
             reset_database();
@@ -489,10 +462,9 @@ void BlockchainSQLite::blockchain_detached(PaymentTableType history, uint64_t ne
         default: {
             std::string batched_payments_history_table = "batched_payments_accrued_{}"_format(
                     history == PaymentTableType::Archive ? "archive" : "recent");
-            rows_restored = batch_payments_accrued_row_count(history, &new_height);
+            rows_restored = batch_payments_accrued_row_count(history, new_height);
 
-            db.exec(R"(DELETE FROM batched_payments_raw WHERE height_paid > {0};
-                       DELETE FROM batched_payments_accrued;
+            db.exec(R"(DELETE FROM batched_payments_accrued;
                        INSERT INTO batched_payments_accrued
                        SELECT address, amount, payout_offset
                        FROM {1} WHERE height = {0};
@@ -517,21 +489,29 @@ void BlockchainSQLite::blockchain_detached(PaymentTableType history, uint64_t ne
             detach_label,
             rows_removed,
             rows_restored);
+
+    if (height + 5000 < target_height) {
+        log::debug(logcat, "large rescan starting");
+        rescan_target = target_height;
+        rescan_start();
+    } else
+        log::debug(
+                logcat, "not large rescan, height = {}, target_height = {}", height, target_height);
 }
 
-// Must be called with the address_str_cache_mutex held!
-std::string BlockchainSQLite::get_address_str(const cryptonote::batch_sn_payment& addr) {
-    if (addr.eth_address)
-        return "0x{:x}"_format(addr.eth_address);
+const std::string& BlockchainSQLite::get_address_str(const cryptonote::batch_sn_payment& addr) {
+    ZoneScoped;
     auto& address_str = address_str_cache[addr.address_info.address];
     if (address_str.empty())
         address_str =
                 cryptonote::get_account_address_as_str(m_nettype, 0, addr.address_info.address);
     return address_str;
 }
+
 std::pair<int, std::string> BlockchainSQLite::get_address_str(
         const std::variant<eth::address, cryptonote::account_public_address>& addr,
         uint64_t batching_interval) {
+    ZoneScoped;
     std::pair<int, std::string> result;
     auto& [offset, address_str] = result;
     if (auto* eth_addr = std::get_if<eth::address>(&addr)) {
@@ -540,8 +520,7 @@ std::pair<int, std::string> BlockchainSQLite::get_address_str(
     } else {
         auto* oxen_addr = std::get_if<cryptonote::account_public_address>(&addr);
         assert(oxen_addr);
-        offset = batching_interval == 0 ? 0
-                                        : static_cast<int>(oxen_addr->modulus(batching_interval));
+        offset = static_cast<int>(oxen_addr->modulus(batching_interval));
         auto& cached = address_str_cache[*oxen_addr];
         if (cached.empty())
             cached = cryptonote::get_account_address_as_str(m_nettype, 0, *oxen_addr);
@@ -551,6 +530,7 @@ std::pair<int, std::string> BlockchainSQLite::get_address_str(
 }
 
 void BlockchainSQLite::add_sn_rewards(const block_payments& payments) {
+    ZoneScoped;
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
     auto insert_payment = prepared_st(
             "INSERT INTO batched_payments_accrued (address, payout_offset, amount) VALUES (?, ?, ?)"
@@ -572,7 +552,7 @@ void BlockchainSQLite::add_sn_rewards(const block_payments& payments) {
 }
 
 size_t BlockchainSQLite::batch_payments_accrued_row_count(
-        PaymentTableType type, const uint64_t* height) {
+        PaymentTableType type, std::optional<uint64_t> height) {
     size_t result = 0;
     switch (type) {
         case PaymentTableType::Nil:
@@ -603,7 +583,23 @@ size_t BlockchainSQLite::batch_payments_accrued_row_count(
     return result;
 }
 
+void BlockchainSQLite::rescan_start() {
+    assert(!rescan_tx);
+    log::debug(logcat, "(re)-starting rescan tx");
+    rescan_tx.emplace(db, SQLite::TransactionBehavior::IMMEDIATE);
+}
+
+void BlockchainSQLite::rescan_stop() {
+    if (rescan_tx) {
+        log::debug(logcat, "committing rescan tx at height {}", height);
+        rescan_tx->commit();
+        rescan_tx = std::nullopt;
+        rescan_count = 0;
+    }
+}
+
 std::vector<cryptonote::batch_sn_payment> BlockchainSQLite::get_sn_payments(uint64_t block_height) {
+    ZoneScoped;
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
 
     // <= here because we might have crap in the db that we don't clear until we actually add the HF
@@ -707,6 +703,7 @@ std::optional<uint64_t> BlockchainSQLite::get_accrued_rewards(
 
 std::pair<std::vector<std::string>, std::vector<uint64_t>>
 BlockchainSQLite::get_all_accrued_rewards() {
+    ZoneScoped;
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
 
     std::pair<std::vector<std::string>, std::vector<uint64_t>> result;
@@ -729,6 +726,7 @@ void BlockchainSQLite::add_rewards(
         uint64_t distribution_amount,
         const service_nodes::service_node_info& sn_info,
         block_payments& payments) const {
+    ZoneScoped;
     // Find out how much is due for the operator: fee_portions/PORTIONS * reward
     assert(sn_info.portions_for_operator <= old::STAKING_PORTIONS);
     uint64_t operator_fee =
@@ -782,8 +780,10 @@ void BlockchainSQLite::add_rewards(
 
 void BlockchainSQLite::reward_handler(
         const cryptonote::block& block,
-        const service_nodes::service_node_list::state_t& service_nodes_state,
+        const service_nodes::service_node_list::state_t& sn_state,
+        const service_nodes::block_add_result& block_add,
         block_payments payments) {
+    ZoneScoped;
     assert(block.major_version >= hf::hf19_reward_batching);
 
     // From here on we calculate everything in milli-atomic OXEN/SENT (i.e. thousanths of an atomic
@@ -796,58 +796,62 @@ void BlockchainSQLite::reward_handler(
     std::lock_guard a_s_lock{address_str_cache_mutex};
 
     if (block.major_version < feature::ETH_BLS) {
-        // Step 1 (pre-ETH only): Pay out the block producer their tx fees (note that, unlike the
+        // Step 1: Pay out the block producer their tx fees (note that, unlike the
         // below, this applies even if the SN isn't currently payable).
         constexpr uint64_t base_sn_reward = oxen::SN_REWARD_HF15 * BATCH_REWARD_FACTOR;
         if (block_reward < base_sn_reward)
             throw oxen::traced<std::logic_error>{"Invalid payment: block reward is too small"};
         if (uint64_t tx_fees = block_reward - base_sn_reward; tx_fees > 0 && block.has_pulse()) {
-            auto pulse_leader = service_nodes_state.get_block_producer();
-            if (!pulse_leader && !service_nodes_state.sn_list)
+            auto pulse_leader = sn_state.get_block_producer();
+            if (!pulse_leader && !sn_state.sn_list)
                 // No sn_list means we're in the test suite, so to make this work, we'll use the
                 // block_leader.  (NOTE: this will break if some new core_tests tries expects to
                 // award batched backup pulse quorum tx fees as they'll go to the first round
                 // leader, rather than the actual producer, but it isn't worth adding to every
                 // single state_t to avoid that).
-                pulse_leader = service_nodes_state.block_leader;
+                pulse_leader = sn_state.block_leader;
 
             if (pulse_leader)
                 add_rewards(
                         block.major_version,
                         tx_fees,
-                        *service_nodes_state.service_nodes_infos.at(pulse_leader),
+                        *sn_state.service_nodes_infos.at(pulse_leader),
                         payments);
         }
         block_reward = base_sn_reward;
-    }
 
-    // Step 2: Iterate over the payable (active for >=24h) N service nodes and pay each node 1/N
-    // fraction of the total block reward.
-    const auto payable_service_nodes =
-            service_nodes_state.payable_service_nodes_infos(block.get_height(), m_nettype);
-    const uint64_t N = payable_service_nodes.size();
-    for (const auto& [node_pubkey, node_info] : payable_service_nodes)
-        add_rewards(block.major_version, block_reward / N, *node_info, payments);
+        // Step 2: Add Governance reward to the list
+        if (m_nettype != cryptonote::network_type::FAKECHAIN) {
+            if (parsed_governance_addr.first != block.major_version) {
+                cryptonote::get_account_address_from_str(
+                        parsed_governance_addr.second,
+                        m_nettype,
+                        cryptonote::get_config(m_nettype).governance_wallet_address(
+                                block.major_version));
+                parsed_governance_addr.first = block.major_version;
+            }
 
-    // Step 3: Add Governance reward to the list
-    if (m_nettype != cryptonote::network_type::FAKECHAIN &&
-        block.major_version < feature::ETH_BLS) {
-        if (parsed_governance_addr.first != block.major_version) {
-            cryptonote::get_account_address_from_str(
-                    parsed_governance_addr.second,
-                    m_nettype,
-                    cryptonote::get_config(m_nettype).governance_wallet_address(
-                            block.major_version));
-            parsed_governance_addr.first = block.major_version;
+            uint64_t foundation_reward =
+                    cryptonote::governance_reward_formula(block.major_version) *
+                    BATCH_REWARD_FACTOR;
+            payments[parsed_governance_addr.second.address] += foundation_reward;
         }
-        uint64_t foundation_reward =
-                cryptonote::governance_reward_formula(block.major_version) * BATCH_REWARD_FACTOR;
-        payments[parsed_governance_addr.second.address] += foundation_reward;
     }
+
+    // Step 3: Iterate over the payable (active for >=24h) N service nodes and pay each node 1/N
+    // fraction of the total block reward.
+    const uint64_t N = block_add.payable_nodes_hf19_onwards.size();
+    for (const crypto::public_key& node_pubkey : block_add.payable_nodes_hf19_onwards) {
+        std::shared_ptr<const service_nodes::service_node_info> node_info =
+                sn_state.service_nodes_infos.at(node_pubkey);
+        add_rewards(block.major_version, block_reward / N, *node_info, payments);
+    }
+
     add_sn_rewards(payments);
 }
 
 block_payments BlockchainSQLite::get_delayed_payments(uint64_t height) {
+    ZoneScoped;
     block_payments payments;
     auto delayed_payments_st = prepared_results<std::string_view, int64_t>(
             "SELECT eth_address, amount FROM delayed_payments WHERE payout_height = ?",
@@ -859,13 +863,16 @@ block_payments BlockchainSQLite::get_delayed_payments(uint64_t height) {
 
 bool BlockchainSQLite::add_block(
         const cryptonote::block& block,
-        const service_nodes::service_node_list::state_t& service_nodes_state) {
+        const service_nodes::service_node_list::state_t& service_nodes_state,
+        const service_nodes::block_add_result& block_add,
+        const std::optional<service_nodes::rescan_context>& rescan) {
+    ZoneScoped;
     auto block_height = block.get_height();
     log::trace(logcat, "BlockchainDB_SQLITE::{} called on height: {}", __func__, block_height);
 
     auto hf_version = block.major_version;
     if (hf_version < hf::hf19_reward_batching) {
-        update_height(block_height);
+        update_height(block_height, rescan);
         return true;
     }
 
@@ -873,7 +880,7 @@ bool BlockchainSQLite::add_block(
         cryptonote::hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(0)) {
         log::debug(logcat, "Batching of Service Node Rewards Begins");
         reset_database();
-        update_height(block_height - 1);
+        update_height(block_height - 1, rescan);
     }
 
     if (block_height != height + 1) {
@@ -903,14 +910,25 @@ bool BlockchainSQLite::add_block(
             miner_tx_vouts.emplace_back(var::get<txout_to_key>(vout.target).key, vout.amount);
 
     try {
-        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
+        std::optional<SQLite::Transaction> transaction{std::nullopt};
+        if (!rescan_tx) {
+            transaction.emplace(db, SQLite::TransactionBehavior::IMMEDIATE);
+        }
         // Goes through the miner transactions vouts checks they are right and marks them as paid in
         // the database
-        if (!validate_batch_payment(miner_tx_vouts, calculated_rewards, block_height))
+        if (!validate_batch_payment(miner_tx_vouts, calculated_rewards, block_height, rescan))
             return false;
-        reward_handler(block, service_nodes_state, get_delayed_payments(block_height));
-        update_height(height + 1);
-        transaction.commit();
+        reward_handler(block, service_nodes_state, block_add, get_delayed_payments(block_height));
+        update_height(height + 1, rescan);
+        if (transaction)
+            transaction->commit();
+        else {  // rescanning
+            if (++rescan_count >= 100 || height >= rescan_target) {
+                rescan_stop();
+                if (height < rescan_target)
+                    rescan_start();
+            }
+        }
     } catch (std::exception& e) {
         log::error(logcat, "Error adding reward payments: {}", e.what());
         return false;
@@ -920,9 +938,13 @@ bool BlockchainSQLite::add_block(
 
 bool BlockchainSQLite::add_delayed_payments(
         std::span<const exit_stake> payments, uint64_t at_height, uint64_t delay_blocks) {
+    ZoneScoped;
     log::trace(logcat, "BlockchainSQLite::{} called", __func__);
     try {
-        SQLite::Transaction transaction{db, SQLite::TransactionBehavior::IMMEDIATE};
+        std::optional<SQLite::Transaction> transaction{std::nullopt};
+        if (!rescan_tx) {
+            transaction.emplace(db, SQLite::TransactionBehavior::IMMEDIATE);
+        }
 
         // Basic checks can be done here
         // if (amount > max_staked_amount)
@@ -960,7 +982,8 @@ bool BlockchainSQLite::add_delayed_payments(
             insert_payment->reset();
         }
 
-        transaction.commit();
+        if (transaction)
+            transaction->commit();
     } catch (std::exception& e) {
         log::error(logcat, "Error returning stakes: {}", e.what());
         return false;
@@ -971,80 +994,85 @@ bool BlockchainSQLite::add_delayed_payments(
 bool BlockchainSQLite::validate_batch_payment(
         const std::vector<std::pair<crypto::public_key, uint64_t>>& miner_tx_vouts,
         const std::vector<cryptonote::batch_sn_payment>& calculated_payments_from_batching_db,
-        uint64_t block_height) {
+        uint64_t block_height,
+        const std::optional<service_nodes::rescan_context>& rescan) {
+    ZoneScoped;
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
 
-    if (miner_tx_vouts.size() != calculated_payments_from_batching_db.size()) {
-        log::error(
-                logcat,
-                "Length of batch payments ({}) does not match block vouts ({})",
-                calculated_payments_from_batching_db.size(),
-                miner_tx_vouts.size());
-        return false;
-    }
-
-    uint64_t total_oxen_payout_in_our_db = std::accumulate(
-            calculated_payments_from_batching_db.begin(),
-            calculated_payments_from_batching_db.end(),
-            uint64_t(0),
-            [](auto&& a, auto&& b) { return a + b.coin_amount(); });
-    uint64_t total_oxen_payout_in_vouts = 0;
-    std::vector<batch_sn_payment> finalised_payments;
-    cryptonote::keypair const deterministic_keypair =
-            cryptonote::get_deterministic_keypair_from_height(block_height);
-    for (size_t vout_index = 0; vout_index < miner_tx_vouts.size(); vout_index++) {
-        const auto& [pubkey, amt] = miner_tx_vouts[vout_index];
-        auto amount = reward_money::coin_amount(amt);
-        const auto& from_db = calculated_payments_from_batching_db[vout_index];
-        if (amount.to_db() != from_db.amount.to_db()) {
+    std::span<const cryptonote::batch_sn_payment> payments = calculated_payments_from_batching_db;
+    if (!rescan || !rescan->skip_verify) {
+        if (miner_tx_vouts.size() != calculated_payments_from_batching_db.size()) {
             log::error(
                     logcat,
-                    "Batched payout amount incorrect. Should be {}, not {}",
-                    from_db.amount.to_db(),
-                    amount.to_db());
+                    "Length of batch payments ({}) does not match block vouts ({})",
+                    calculated_payments_from_batching_db.size(),
+                    miner_tx_vouts.size());
             return false;
         }
-        crypto::public_key out_eph_public_key{};
-        if (!cryptonote::get_deterministic_output_key(
-                    from_db.address_info.address,
-                    deterministic_keypair,
-                    vout_index,
-                    out_eph_public_key)) {
-            log::error(logcat, "Failed to generate output one-time public key");
+
+        uint64_t total_oxen_payout_in_our_db = std::accumulate(
+                calculated_payments_from_batching_db.begin(),
+                calculated_payments_from_batching_db.end(),
+                uint64_t(0),
+                [](auto&& a, auto&& b) { return a + b.coin_amount(); });
+        uint64_t total_oxen_payout_in_vouts = 0;
+        std::vector<batch_sn_payment> finalised_payments;
+        cryptonote::keypair const deterministic_keypair =
+                cryptonote::get_deterministic_keypair_from_height(block_height);
+        for (size_t vout_index = 0; vout_index < miner_tx_vouts.size(); vout_index++) {
+            const auto& [pubkey, amt] = miner_tx_vouts[vout_index];
+            auto amount = reward_money::coin_amount(amt);
+            const auto& from_db = calculated_payments_from_batching_db[vout_index];
+            if (amount.to_db() != from_db.amount.to_db()) {
+                log::error(
+                        logcat,
+                        "Batched payout amount incorrect. Should be {}, not {}",
+                        from_db.amount.to_db(),
+                        amount.to_db());
+                return false;
+            }
+            crypto::public_key out_eph_public_key{};
+            if (!cryptonote::get_deterministic_output_key(
+                        from_db.address_info.address,
+                        deterministic_keypair,
+                        vout_index,
+                        out_eph_public_key)) {
+                log::error(logcat, "Failed to generate output one-time public key");
+                return false;
+            }
+            if (tools::view_guts(pubkey) != tools::view_guts(out_eph_public_key)) {
+                log::error(logcat, "Output ephemeral public key does not match");
+                return false;
+            }
+            total_oxen_payout_in_vouts += amount.to_coin();
+            finalised_payments.emplace_back(from_db.address_info, amount);
+        }
+        if (total_oxen_payout_in_vouts != total_oxen_payout_in_our_db) {
+            log::error(
+                    logcat,
+                    "Total batched payout amount incorrect. Should be {}, not {}",
+                    total_oxen_payout_in_our_db,
+                    total_oxen_payout_in_vouts);
             return false;
         }
-        if (tools::view_guts(pubkey) != tools::view_guts(out_eph_public_key)) {
-            log::error(logcat, "Output ephemeral public key does not match");
-            return false;
-        }
-        total_oxen_payout_in_vouts += amount.to_coin();
-        finalised_payments.emplace_back(from_db.address_info, amount);
-    }
-    if (total_oxen_payout_in_vouts != total_oxen_payout_in_our_db) {
-        log::error(
-                logcat,
-                "Total batched payout amount incorrect. Should be {}, not {}",
-                total_oxen_payout_in_our_db,
-                total_oxen_payout_in_vouts);
-        return false;
     }
 
-    return save_payments(block_height, finalised_payments);
+    return save_payments(block_height, payments);
 }
 
 bool BlockchainSQLite::save_payments(
-        uint64_t block_height, const std::vector<batch_sn_payment>& paid_amounts) {
+        uint64_t block_height, std::span<const batch_sn_payment> paid_amounts) {
+    ZoneScoped;
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
 
-    auto select_sum = prepared_st("SELECT amount from batched_payments_accrued WHERE address = ?");
-
+    auto select_sum = prepared_st("SELECT amount FROM batched_payments_accrued WHERE address = ?");
     auto update_paid = prepared_st(
-            "INSERT INTO batched_payments_paid (address, amount, height_paid) VALUES (?,?,?)");
+            "UPDATE batched_payments_accrued SET amount = (amount - ?) WHERE address = ?");
 
-    std::lock_guard a_s_lock{address_str_cache_mutex};
-
+    std::lock_guard lock{address_str_cache_mutex};
     for (const auto& payment : paid_amounts) {
         const auto address_str = get_address_str(payment);
+
         if (auto maybe_amount = db::exec_and_maybe_get<int64_t>(select_sum, address_str)) {
             // Truncate the thousanths amount to an atomic OXEN:
             auto amount = static_cast<uint64_t>(*maybe_amount) / BATCH_REWARD_FACTOR *
@@ -1062,11 +1090,7 @@ bool BlockchainSQLite::save_payments(
                 return false;
             }
 
-            db::exec_query(
-                    update_paid,
-                    address_str,
-                    static_cast<int64_t>(amount),
-                    static_cast<int64_t>(block_height));
+            db::exec_query(update_paid, static_cast<int64_t>(payment.amount.to_db()), address_str);
             update_paid->reset();
         } else {
             // This shouldn't occur: we validate payout addresses much earlier in the block
@@ -1078,18 +1102,8 @@ bool BlockchainSQLite::save_payments(
                     address_str);
             return false;
         }
-
         select_sum->reset();
     }
     return true;
 }
-
-bool BlockchainSQLite::delete_block_payments(uint64_t block_height) {
-    log::trace(logcat, "BlockchainDB_SQLITE::{} Called with height: {}", __func__, block_height);
-    prepared_exec(
-            "DELETE FROM batched_payments_paid WHERE height_paid >= ?",
-            static_cast<int64_t>(block_height));
-    return true;
-}
-
 }  // namespace cryptonote

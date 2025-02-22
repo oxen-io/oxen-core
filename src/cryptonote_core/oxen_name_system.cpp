@@ -2551,9 +2551,11 @@ bool name_system_db::add_block(
 
     last_processed_height = height;
     last_processed_hash = cryptonote::get_block_hash(block);
-    if (ons_parsed_from_block) {
+
+    bool do_commit = (height % 16384 == 0) || ons_parsed_from_block;
+    if (do_commit) {
         save_settings(last_processed_height, last_processed_hash, static_cast<int>(DB_VERSION));
-        db_transaction.commit = ons_parsed_from_block;
+        db_transaction.commit = true;
     }
     return true;
 }
@@ -2648,14 +2650,13 @@ bool name_system_db::prune_db(uint64_t height) {
 
         log::debug(
                 logcat,
-                "Detach request for ONS @ {} (is {}), {} to {}",
-                height,
-                this->last_processed_height,
-                result ? "detached to" : "failed to detach",
-                height - 1);
+                "Detach request for ONS (last processed is {}), {} to {}",
+                last_processed_height,
+                result ? "detached" : "failed to detach",
+                height);
 
-        if (result)
-            this->last_processed_height = (height - 1);
+        if (result && height <= last_processed_height)
+            last_processed_height = height - 1;
     }
     return result;
 }

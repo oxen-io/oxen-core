@@ -99,13 +99,13 @@ if(IPO_ENABLED AND (CMAKE_BUILD_TYPE STREQUAL Release OR CMAKE_BUILD_TYPE STREQU
 endif()
 
 
-if (ARCH STREQUAL "armv8-a" AND (CMAKE_CXX_COMPILER_ID MATCHES Clang OR CMAKE_CXX_COMPILER_ID STREQUAL GNU))
+if (ARCH MATCHES "^armv8-a" AND (CMAKE_CXX_COMPILER_ID MATCHES Clang OR CMAKE_CXX_COMPILER_ID STREQUAL GNU))
   # Similarly use +crypto extensions for the arm hash code (it also has a run-time check before
   # enabling).
   include(CheckCXXCompilerFlag)
   check_cxx_compiler_flag(-march=armv8-a+crypto COMPILER_SUPPORTS_PLUS_CRYPTO)
   if (COMPILER_SUPPORTS_PLUS_CRYPTO)
-    set_source_files_properties(cn_heavy_hash_hard_arm.cpp PROPERTIES COMPILE_FLAGS "-march=armv8-a+crypto")
+    set_source_files_properties(cn_heavy_hash_hard_arm.cpp PROPERTIES COMPILE_FLAGS "-march=${ARCH}+crypto")
   endif()
 endif()
 

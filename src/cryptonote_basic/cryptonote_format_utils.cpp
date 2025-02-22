@@ -41,6 +41,7 @@
 #include <limits>
 #include <variant>
 
+#include "common/tracy_shim.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/verification_context.h"
@@ -619,6 +620,7 @@ uint64_t get_tx_miner_fee(const transaction& tx, bool burning_enabled) {
 //---------------------------------------------------------------
 [[nodiscard]] bool parse_tx_extra(
         const std::vector<uint8_t>& tx_extra, std::vector<tx_extra_field>& tx_extra_fields) {
+    ZoneScoped;
     tx_extra_fields.clear();
 
     if (tx_extra.empty())
@@ -764,6 +766,7 @@ void add_service_node_pubkey_to_tx_extra(
 //---------------------------------------------------------------
 bool get_service_node_pubkey_from_tx_extra(
         const std::vector<uint8_t>& tx_extra, crypto::public_key& pubkey) {
+    ZoneScoped;
     tx_extra_service_node_pubkey pk;
     if (!get_field_from_tx_extra(tx_extra, pk))
         return false;
@@ -778,6 +781,7 @@ void add_service_node_contributor_to_tx_extra(
 //---------------------------------------------------------------
 bool get_tx_secret_key_from_tx_extra(
         const std::vector<uint8_t>& tx_extra, crypto::secret_key& key) {
+    ZoneScoped;
     tx_extra_tx_secret_key seckey;
     if (!get_field_from_tx_extra(tx_extra, seckey))
         return false;
@@ -812,6 +816,7 @@ bool add_tx_key_image_unlock_to_tx_extra(
 //---------------------------------------------------------------
 bool get_service_node_contributor_from_tx_extra(
         const std::vector<uint8_t>& tx_extra, cryptonote::account_public_address& address) {
+    ZoneScoped;
     tx_extra_service_node_contributor contributor;
     if (!get_field_from_tx_extra(tx_extra, contributor))
         return false;

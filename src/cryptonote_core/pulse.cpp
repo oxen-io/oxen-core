@@ -1,16 +1,13 @@
 #include <array>
 #include <chrono>
-#include <mutex>
-#include <variant>
 
 #include "common/random.h"
+#include "common/tracy_shim.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_core.h"
 #include "epee/memwipe.h"
-#include "epee/misc_log_ex.h"
 #include "epee/wipeable_string.h"
 #include "ethereum_transactions.h"
-#include "oxen/log/level.hpp"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
 #include "service_node_rules.h"
@@ -98,7 +95,7 @@ namespace {
     // need to wait until we arrive at the same stage such that we have received all
     // the necessary information to do so on Quorumnet.
     struct message_queue {
-        quorum_array<std::pair<pulse::message, queueing_state>> buffer;
+        quorum_array<std::pair<message, queueing_state>> buffer;
         size_t count;
     };
 
@@ -106,8 +103,8 @@ namespace {
         message_queue
                 queue;  // For messages from later stages that arrived before we reached that stage
         uint16_t bitset;  // Bitset of validators that we received a message from for this stage
-        uint16_t msgs_received;      // Number of unique messages received in the stage
-        pulse::time_point end_time;  // Time at which the stage ends
+        uint16_t msgs_received;  // Number of unique messages received in the stage
+        time_point end_time;     // Time at which the stage ends
     };
 
     template <typename T>
@@ -141,8 +138,8 @@ namespace {
             uint64_t height;  // Current blockchain height that Pulse wants to generate a block for
             crypto::hash top_hash;  // Latest block hash included in signatures for rejecting out of
                                     // date nodes
-            pulse::time_point round_0_start_time;  // When round 0 should start and subsequent round
-                                                   // timings are derived from.
+            time_point round_0_start_time;  // When round 0 should start and subsequent round
+                                            // timings are derived from.
         } wait_for_next_block;
 
         struct {
@@ -156,7 +153,7 @@ namespace {
                                         // PULSE_QUORUM_NUM_VALIDATORS) if a validator
             std::string node_name;  // Short-hand string for describing the node in logs, i.e. V[0]
                                     // for validator 0 or W[0] for the producer.
-            pulse::time_point start_time;  // When the round starts
+            time_point start_time;  // When the round starts
         } prepare_for_round;
 
         struct {
@@ -247,8 +244,8 @@ namespace {
     //
     // NOTE: pulse::message Utiliities
     //
-    pulse::message msg_init_from_context(round_context const& context) {
-        pulse::message result = {};
+    message msg_init_from_context(round_context const& context) {
+        message result = {};
         result.quorum_position = context.prepare_for_round.my_quorum_position;
         result.round = context.prepare_for_round.round;
         return result;
@@ -257,17 +254,17 @@ namespace {
     // Generate the hash necessary for signing a message. All fields of the 'msg'
     // must have been set for the type of the message except the signature for the
     // hash to be generated correctly.
-    crypto::hash msg_signature_hash(crypto::hash const& top_block_hash, pulse::message const& msg) {
+    crypto::hash msg_signature_hash(crypto::hash const& top_block_hash, message const& msg) {
         crypto::hash result = {};
         switch (msg.type) {
-            case pulse::message_type::invalid: assert("Invalid Code Path" == nullptr); break;
+            case message_type::invalid: assert("Invalid Code Path" == nullptr); break;
 
-            case pulse::message_type::handshake: {
+            case message_type::handshake: {
                 auto buf = tools::memcpy_le(top_block_hash, msg.quorum_position, msg.round);
                 result = blake2b_hash(buf.data(), buf.size());
             } break;
 
-            case pulse::message_type::handshake_bitset: {
+            case message_type::handshake_bitset: {
                 auto buf = tools::memcpy_le(
                         msg.handshakes.validator_bitset,
                         top_block_hash,
@@ -276,20 +273,20 @@ namespace {
                 result = blake2b_hash(buf.data(), buf.size());
             } break;
 
-            case pulse::message_type::block_template: {
+            case message_type::block_template: {
                 crypto::hash block_hash = blake2b_hash(
                         msg.block_template.blob.data(), msg.block_template.blob.size());
                 auto buf = tools::memcpy_le(msg.round, block_hash);
                 result = blake2b_hash(buf.data(), buf.size());
             } break;
 
-            case pulse::message_type::random_value_hash: {
+            case message_type::random_value_hash: {
                 auto buf = tools::memcpy_le(
                         top_block_hash, msg.quorum_position, msg.round, msg.random_value_hash.hash);
                 result = blake2b_hash(buf.data(), buf.size());
             } break;
 
-            case pulse::message_type::random_value: {
+            case message_type::random_value: {
                 auto buf = tools::memcpy_le(
                         top_block_hash,
                         msg.quorum_position,
@@ -298,7 +295,7 @@ namespace {
                 result = blake2b_hash(buf.data(), buf.size());
             } break;
 
-            case pulse::message_type::signed_block: {
+            case message_type::signed_block: {
                 crypto::signature const& final_signature =
                         msg.signed_block.signature_of_final_block_hash;
                 auto buf = tools::memcpy_le(
@@ -315,7 +312,7 @@ namespace {
     // 6:f9337ffc8bc30baf3fca92a13fa5a3a7ab7c93e69acb7136906e7feae9d3e769
     //   or
     // <Message Type> at round <Round> from <Validator Index>:<Validator Public Key>
-    std::string msg_source_string(round_context const& context, pulse::message const& msg) {
+    std::string msg_source_string(round_context const& context, message const& msg) {
         if (msg.quorum_position >= context.prepare_for_round.quorum.validators.size())
             return "XX";
 
@@ -332,14 +329,14 @@ namespace {
     }
 
     bool msg_signature_check(
-            pulse::message const& msg,
+            message const& msg,
             crypto::hash const& top_block_hash,
             service_nodes::quorum const& quorum,
             std::string* error) {
         // Get Service Node Key
         crypto::public_key const* key = nullptr;
         switch (msg.type) {
-            case pulse::message_type::invalid: {
+            case message_type::invalid: {
                 assert("Invalid Code Path" == nullptr);
                 if (error)
                     *error = "{}Unhandled message type '{}' can not verify signature."_format(
@@ -347,11 +344,11 @@ namespace {
                 return false;
             } break;
 
-            case pulse::message_type::handshake: [[fallthrough]];
-            case pulse::message_type::handshake_bitset: [[fallthrough]];
-            case pulse::message_type::random_value_hash: [[fallthrough]];
-            case pulse::message_type::random_value: [[fallthrough]];
-            case pulse::message_type::signed_block: {
+            case message_type::handshake: [[fallthrough]];
+            case message_type::handshake_bitset: [[fallthrough]];
+            case message_type::random_value_hash: [[fallthrough]];
+            case message_type::random_value: [[fallthrough]];
+            case message_type::signed_block: {
                 if (msg.quorum_position >= static_cast<int>(quorum.validators.size())) {
                     if (error)
                         *error = "{}Quorum position {} in Pulse message indexes oob"_format(
@@ -362,7 +359,7 @@ namespace {
                 key = &quorum.validators[msg.quorum_position];
             } break;
 
-            case pulse::message_type::block_template: {
+            case message_type::block_template: {
                 if (msg.quorum_position != 0) {
                     if (error)
                         *error = "{}Quorum position {} in Pulse message indexes oob"_format(
@@ -399,9 +396,9 @@ namespace {
         assert(context.prepare_for_round.participant == sn_type::validator);
 
         // Message
-        pulse::message msg = msg_init_from_context(context);
+        message msg = msg_init_from_context(context);
         if (sending_bitset) {
-            msg.type = pulse::message_type::handshake_bitset;
+            msg.type = message_type::handshake_bitset;
 
             // Generate the bitset from our received handshakes.
             auto const& quorum = context.transient.send_and_wait_for_handshakes.data;
@@ -409,7 +406,7 @@ namespace {
                 if (bool received = quorum[quorum_index]; received)
                     msg.handshakes.validator_bitset |= (1 << quorum_index);
         } else {
-            msg.type = pulse::message_type::handshake;
+            msg.type = message_type::handshake;
         }
         crypto::generate_signature(
                 msg_signature_hash(context.wait_for_next_block.top_hash, msg),
@@ -429,7 +426,7 @@ namespace {
 
         for (auto& [msg, queued] : stage.queue.buffer) {
             if (queued == queueing_state::received) {
-                pulse::handle_message(quorumnet_state, msg);
+                handle_message(quorumnet_state, msg);
                 queued = queueing_state::processed;
             }
         }
@@ -476,7 +473,7 @@ namespace {
 
 }  // anonymous namespace
 
-void handle_message(void* quorumnet_state, pulse::message const& msg) {
+void handle_message(void* quorumnet_state, message const& msg) {
     if (context.state < round_state::wait_for_round) {
         // TODO(doyle): Handle this better.
         // We are not ready for any messages because we haven't prepared for a round
@@ -537,51 +534,47 @@ void handle_message(void* quorumnet_state, pulse::message const& msg) {
 
     pulse_wait_stage* stage = nullptr;
     switch (msg.type) {
-        case pulse::message_type::invalid: {
+        case message_type::invalid: {
             log::trace(logcat, "{}Received invalid message type, dropped", log_prefix(context));
             return;
         }
 
-        case pulse::message_type::handshake:
+        case message_type::handshake:
             stage = &context.transient.send_and_wait_for_handshakes.stage;
             break;
-        case pulse::message_type::handshake_bitset:
+        case message_type::handshake_bitset:
             stage = &context.transient.wait_for_handshake_bitsets.stage;
             break;
-        case pulse::message_type::block_template:
+        case message_type::block_template:
             stage = &context.transient.wait_for_block_template.stage;
             break;
-        case pulse::message_type::random_value_hash:
+        case message_type::random_value_hash:
             stage = &context.transient.random_value_hashes.wait.stage;
             break;
-        case pulse::message_type::random_value:
-            stage = &context.transient.random_value.wait.stage;
-            break;
-        case pulse::message_type::signed_block:
-            stage = &context.transient.signed_block.wait.stage;
-            break;
+        case message_type::random_value: stage = &context.transient.random_value.wait.stage; break;
+        case message_type::signed_block: stage = &context.transient.signed_block.wait.stage; break;
     }
 
     bool msg_received_early = false;
     switch (msg.type) {
-        case pulse::message_type::invalid: assert("Invalid Code Path" != nullptr); return;
-        case pulse::message_type::handshake:
+        case message_type::invalid: assert("Invalid Code Path" != nullptr); return;
+        case message_type::handshake:
             msg_received_early = (context.state < round_state::send_and_wait_for_handshakes);
             break;
-        case pulse::message_type::handshake_bitset:
+        case message_type::handshake_bitset:
             msg_received_early = (context.state < round_state::wait_for_handshake_bitsets);
             break;
-        case pulse::message_type::block_template:
+        case message_type::block_template:
             msg_received_early = (context.state < round_state::wait_for_block_template);
             break;
-        case pulse::message_type::random_value_hash:
+        case message_type::random_value_hash:
             msg_received_early =
                     (context.state < round_state::send_and_wait_for_random_value_hashes);
             break;
-        case pulse::message_type::random_value:
+        case message_type::random_value:
             msg_received_early = (context.state < round_state::send_and_wait_for_random_value);
             break;
-        case pulse::message_type::signed_block:
+        case message_type::signed_block:
             msg_received_early = (context.state < round_state::send_and_wait_for_signed_blocks);
             break;
     }
@@ -605,7 +598,7 @@ void handle_message(void* quorumnet_state, pulse::message const& msg) {
 
     uint16_t const validator_bit = (1 << msg.quorum_position);
     if (context.state > round_state::wait_for_handshake_bitsets &&
-        msg.type > pulse::message_type::handshake_bitset) {
+        msg.type > message_type::handshake_bitset) {
         // After the validator bitset has been set, the participating validators are
         // locked in. Any stray messages from other validators are rejected.
         if ((validator_bit & context.transient.wait_for_handshake_bitsets.best_bitset) == 0) {
@@ -635,9 +628,9 @@ void handle_message(void* quorumnet_state, pulse::message const& msg) {
     // Add Message Data to Pulse Stage
     //
     switch (msg.type) {
-        case pulse::message_type::invalid: assert("Invalid Code Path" != nullptr); return;
+        case message_type::invalid: assert("Invalid Code Path" != nullptr); return;
 
-        case pulse::message_type::handshake: {
+        case message_type::handshake: {
             auto& quorum = context.transient.send_and_wait_for_handshakes.data;
             if (quorum[msg.quorum_position])
                 return;
@@ -651,7 +644,7 @@ void handle_message(void* quorumnet_state, pulse::message const& msg) {
                     bitset_view16(stage->bitset).to_string());
         } break;
 
-        case pulse::message_type::handshake_bitset: {
+        case message_type::handshake_bitset: {
             auto& quorum = context.transient.wait_for_handshake_bitsets.data;
             auto& bitset = quorum[msg.quorum_position];
             if (bitset)
@@ -659,7 +652,7 @@ void handle_message(void* quorumnet_state, pulse::message const& msg) {
             bitset = msg.handshakes.validator_bitset;
         } break;
 
-        case pulse::message_type::block_template: {
+        case message_type::block_template: {
             if (stage->msgs_received == 1)
                 return;
 
@@ -701,7 +694,7 @@ void handle_message(void* quorumnet_state, pulse::message const& msg) {
             context.transient.wait_for_block_template.block = std::move(block);
         } break;
 
-        case pulse::message_type::random_value_hash: {
+        case message_type::random_value_hash: {
             auto& quorum = context.transient.random_value_hashes.wait.data;
             auto& value = quorum[msg.quorum_position];
             if (value)
@@ -709,7 +702,7 @@ void handle_message(void* quorumnet_state, pulse::message const& msg) {
             value = msg.random_value_hash.hash;
         } break;
 
-        case pulse::message_type::random_value: {
+        case message_type::random_value: {
             auto& quorum = context.transient.random_value.wait.data;
             auto& value = quorum[msg.quorum_position];
             if (value)
@@ -736,7 +729,7 @@ void handle_message(void* quorumnet_state, pulse::message const& msg) {
             value = msg.random_value.value;
         } break;
 
-        case pulse::message_type::signed_block: {
+        case message_type::signed_block: {
             // NOTE: The block template with the final random value inserted but no
             // Service Node signatures. (Service Node signatures are added in one shot
             // after this stage has timed out and all signatures are collected).
@@ -785,8 +778,8 @@ void handle_message(void* quorumnet_state, pulse::message const& msg) {
 // check it on testnet.
 bool convert_time_to_round(
         cryptonote::network_type nettype,
-        pulse::time_point const& time,
-        pulse::time_point const& r0_timestamp,
+        time_point const& time,
+        time_point const& r0_timestamp,
         uint8_t* round) {
     const auto time_since_round_started = time <= r0_timestamp ? 0s : (time - r0_timestamp);
     size_t result_usize = time_since_round_started / get_config(nettype).PULSE_ROUND_TIMEOUT;
@@ -799,7 +792,7 @@ bool get_round_timings(
         cryptonote::Blockchain const& blockchain,
         uint64_t block_height,
         uint64_t prev_timestamp,
-        pulse::timings& times) {
+        timings& times) {
     times = {};
     auto& conf = get_config(blockchain.nettype());
     auto hf16 = hard_fork_begins(conf.NETWORK_TYPE, cryptonote::hf::hf16_pulse);
@@ -811,11 +804,11 @@ bool get_round_timings(
         return false;
 
     uint64_t const delta_height = block_height - genesis_block.get_height();
-    times.genesis_timestamp = pulse::time_point(std::chrono::seconds(genesis_block.timestamp));
+    times.genesis_timestamp = time_point(std::chrono::seconds(genesis_block.timestamp));
 
-    times.prev_timestamp = pulse::time_point(std::chrono::seconds(prev_timestamp));
+    times.prev_timestamp = time_point(std::chrono::seconds(prev_timestamp));
     times.ideal_timestamp =
-            pulse::time_point(times.genesis_timestamp + conf.TARGET_BLOCK_TIME * delta_height);
+            time_point(times.genesis_timestamp + conf.TARGET_BLOCK_TIME * delta_height);
 
     times.r0_timestamp = std::clamp(
             times.ideal_timestamp,
@@ -1110,6 +1103,7 @@ namespace {
 
     round_state wait_for_next_block(
             round_context& context, cryptonote::Blockchain const& blockchain) {
+        ZoneScoped;
         //
         // NOTE: If the top hash stored in the pulse context is the same as the top block's hash
         // then we've already attempted Pulse with the current state of the blockchain and
@@ -1130,7 +1124,7 @@ namespace {
             return round_state::wait_for_next_block;
         }
 
-        pulse::timings times = {};
+        timings times = {};
         if (!get_round_timings(blockchain, chain_height, top_block.timestamp, times)) {
             for (static crypto::hash last_hash = {}; last_hash != top_hash; last_hash = top_hash)
                 log::error(
@@ -1192,7 +1186,7 @@ namespace {
         // NOTE: Check Current Round
         //
         {
-            auto now = pulse::clock::now();
+            auto now = clock::now();
             auto const time_since_block =
                     now <= context.wait_for_next_block.round_0_start_time
                             ? std::chrono::seconds(0)
@@ -1315,7 +1309,7 @@ namespace {
         }
 
         auto start_time = context.prepare_for_round.start_time;
-        if (auto now = pulse::clock::now(); now < start_time) {
+        if (auto now = clock::now(); now < start_time) {
             for (static uint64_t last_height = 0; last_height != context.wait_for_next_block.height;
                  last_height = context.wait_for_next_block.height)
                 log::info(
@@ -1381,6 +1375,7 @@ namespace {
             round_context& context,
             void* quorumnet_state,
             service_nodes::service_node_keys const& key) {
+        ZoneScoped;
         //
         // NOTE: Send
         //
@@ -1409,7 +1404,7 @@ namespace {
         pulse_wait_stage const& stage = context.transient.send_and_wait_for_handshakes.stage;
 
         auto const& quorum = context.transient.send_and_wait_for_handshakes.data;
-        bool const timed_out = pulse::clock::now() >= stage.end_time;
+        bool const timed_out = clock::now() >= stage.end_time;
         bool const all_handshakes = stage.msgs_received == quorum.size();
 
         assert(context.prepare_for_round.participant == sn_type::validator);
@@ -1451,12 +1446,13 @@ namespace {
     }
 
     round_state wait_for_handshake_bitsets(round_context& context, void* quorumnet_state) {
+        ZoneScoped;
         handle_messages_received_early_for(
                 context.transient.wait_for_handshake_bitsets.stage, quorumnet_state);
         pulse_wait_stage const& stage = context.transient.wait_for_handshake_bitsets.stage;
 
         auto const& quorum = context.transient.wait_for_handshake_bitsets.data;
-        bool const timed_out = pulse::clock::now() >= stage.end_time;
+        bool const timed_out = clock::now() >= stage.end_time;
         bool const all_bitsets = stage.msgs_received == quorum.size();
 
         if (timed_out || all_bitsets) {
@@ -1549,6 +1545,7 @@ namespace {
             void* quorumnet_state,
             service_nodes::service_node_keys const& key,
             cryptonote::Blockchain& blockchain) {
+        ZoneScoped;
         assert(context.prepare_for_round.participant == sn_type::producer);
         std::vector<service_nodes::service_node_pubkey_info> list_state =
                 blockchain.service_node_list.get_service_node_list_state({key.pub});
@@ -1603,8 +1600,8 @@ namespace {
         }
 
         // Message
-        pulse::message msg = msg_init_from_context(context);
-        msg.type = pulse::message_type::block_template;
+        message msg = msg_init_from_context(context);
+        msg.type = message_type::block_template;
         msg.block_template.blob = cryptonote::t_serializable_object_to_blob(block);
         crypto::generate_signature(
                 msg_signature_hash(context.wait_for_next_block.top_hash, msg),
@@ -1628,12 +1625,13 @@ namespace {
             round_context& context,
             service_nodes::service_node_list& node_list,
             void* quorumnet_state) {
+        ZoneScoped;
         handle_messages_received_early_for(
                 context.transient.wait_for_block_template.stage, quorumnet_state);
         pulse_wait_stage const& stage = context.transient.wait_for_block_template.stage;
 
         assert(context.prepare_for_round.participant == sn_type::validator);
-        bool timed_out = pulse::clock::now() >= stage.end_time;
+        bool timed_out = clock::now() >= stage.end_time;
         bool received = stage.msgs_received == 1;
         if (timed_out || received) {
             const auto prefix = log_prefix(context);
@@ -1744,6 +1742,7 @@ namespace {
             service_nodes::service_node_list& node_list,
             void* quorumnet_state,
             service_nodes::service_node_keys const& key) {
+        ZoneScoped;
         assert(context.prepare_for_round.participant == sn_type::validator);
 
         //
@@ -1751,8 +1750,8 @@ namespace {
         //
         if (context.transient.random_value_hashes.send.one_time_only()) {
             // Message
-            pulse::message msg = msg_init_from_context(context);
-            msg.type = pulse::message_type::random_value_hash;
+            message msg = msg_init_from_context(context);
+            msg.type = message_type::random_value_hash;
             msg.random_value_hash.hash = context.transient.random_value_hashes.send.data;
             crypto::generate_signature(
                     msg_signature_hash(context.wait_for_next_block.top_hash, msg),
@@ -1770,7 +1769,7 @@ namespace {
                 context.transient.random_value_hashes.wait.stage, quorumnet_state);
         pulse_wait_stage const& stage = context.transient.random_value_hashes.wait.stage;
 
-        bool const timed_out = pulse::clock::now() >= stage.end_time;
+        bool const timed_out = clock::now() >= stage.end_time;
         bool const all_hashes =
                 stage.bitset == context.transient.wait_for_handshake_bitsets.best_bitset;
 
@@ -1797,14 +1796,15 @@ namespace {
             service_nodes::service_node_list& node_list,
             void* quorumnet_state,
             service_nodes::service_node_keys const& key) {
+        ZoneScoped;
         //
         // NOTE: Send
         //
         assert(context.prepare_for_round.participant == sn_type::validator);
         if (context.transient.random_value.send.one_time_only()) {
             // Message
-            pulse::message msg = msg_init_from_context(context);
-            msg.type = pulse::message_type::random_value;
+            message msg = msg_init_from_context(context);
+            msg.type = message_type::random_value;
             msg.random_value.value = context.transient.random_value.send.data;
             crypto::generate_signature(
                     msg_signature_hash(context.wait_for_next_block.top_hash, msg),
@@ -1823,7 +1823,7 @@ namespace {
         pulse_wait_stage const& stage = context.transient.random_value.wait.stage;
 
         auto const& quorum = context.transient.random_value.wait.data;
-        bool const timed_out = pulse::clock::now() >= stage.end_time;
+        bool const timed_out = clock::now() >= stage.end_time;
         bool const all_values =
                 stage.bitset == context.transient.wait_for_handshake_bitsets.best_bitset;
 
@@ -1901,6 +1901,7 @@ namespace {
             void* quorumnet_state,
             service_nodes::service_node_keys const& key,
             cryptonote::core& core) {
+        ZoneScoped;
         assert(context.prepare_for_round.participant == sn_type::validator);
 
         //
@@ -1908,8 +1909,8 @@ namespace {
         //
         if (context.transient.signed_block.send.one_time_only()) {
             // Message
-            pulse::message msg = msg_init_from_context(context);
-            msg.type = pulse::message_type::signed_block;
+            message msg = msg_init_from_context(context);
+            msg.type = message_type::signed_block;
             msg.signed_block.signature_of_final_block_hash =
                     context.transient.signed_block.send.data;
             crypto::generate_signature(
@@ -1929,7 +1930,7 @@ namespace {
         pulse_wait_stage const& stage = context.transient.signed_block.wait.stage;
 
         auto const& quorum = context.transient.signed_block.wait.data;
-        bool const timed_out = pulse::clock::now() >= stage.end_time;
+        bool const timed_out = clock::now() >= stage.end_time;
         bool const enough =
                 stage.bitset >= context.transient.wait_for_handshake_bitsets.best_bitset;
 
@@ -2021,8 +2022,8 @@ void main(void* quorumnet_state, cryptonote::core& core) {
     auto& node_list = core.service_node_list;
     for (auto last_state = round_state::null_state;
          last_state != context.state || last_state == round_state::null_state;) {
+        ZoneScoped;
         last_state = context.state;
-
         switch (context.state) {
             case round_state::null_state: context.state = round_state::wait_for_next_block; break;
 

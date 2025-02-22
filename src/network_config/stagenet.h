@@ -6,7 +6,7 @@
 namespace cryptonote::config::stagenet {
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::STAGENET,
-        .DEFAULT_CONFIG_SUBDIR = "stagenet3"sv,
+        .DEFAULT_CONFIG_SUBDIR = "stagenet4"sv,
         .HEIGHT_ESTIMATE_HEIGHT = 0,
         .HEIGHT_ESTIMATE_TIMESTAMP = 1720140000,
         .PUBLIC_ADDRESS_BASE58_PREFIX = 4888,             // ~ ST2 .. ST4
@@ -16,7 +16,7 @@ inline constexpr network_config config{
         .RPC_DEFAULT_PORT = 11023,
         .QNET_DEFAULT_PORT = 11025,
         .NETWORK_ID =
-                {{0x42,
+                {{0x43,
                   0x6c,
                   0x6c,
                   0x79,
@@ -69,9 +69,10 @@ inline constexpr network_config config{
         .HISTORY_RECENT_KEEP_WINDOW = mainnet::config.HISTORY_RECENT_KEEP_WINDOW,
         // Much shorter than mainnet so that you can test this more easily.
         .ETH_EXIT_BUFFER = 2h / mainnet::config.TARGET_BLOCK_TIME,
+        .ETH_DEREG_BUFFER = 2h / mainnet::config.TARGET_BLOCK_TIME,
         .ETHEREUM_CHAIN_ID = 421614,
-        .ETHEREUM_REWARDS_CONTRACT = "0x4abfFB7f922767f22c7aa6524823d93FDDaB54b1"sv,
-        .ETHEREUM_POOL_CONTRACT = "0x38cD8D3F93d591C18cf26B3Be4CB2c872aC37953"sv,
+        .ETHEREUM_REWARDS_CONTRACT = "0x9d8aB00880CBBdc2Dcd29C179779469A82E7be35"sv,
+        .ETHEREUM_POOL_CONTRACT = "0xaAD853fE7091728dac0DAa7b69990ee68abFC636"sv,
         .L2_REWARD_POOL_UPDATE_BLOCKS = testnet::config.L2_REWARD_POOL_UPDATE_BLOCKS,
         .L2_TRACKER_SAFE_BLOCKS = mainnet::config.L2_TRACKER_SAFE_BLOCKS,
         .L2_NODE_LIST_PURGE_BLOCKS = testnet::config.L2_NODE_LIST_PURGE_BLOCKS,

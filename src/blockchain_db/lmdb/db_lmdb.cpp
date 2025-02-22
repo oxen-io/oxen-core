@@ -710,10 +710,13 @@ bool BlockchainLMDB::need_resize(uint64_t threshold_size) const {
     // additional size needed.
     uint64_t size_used = mst.ms_psize * mei.me_last_pgno;
 
-    log::debug(logcat, "DB map size:     {}", mei.me_mapsize);
-    log::debug(logcat, "Space used:      {}", size_used);
-    log::debug(logcat, "Space remaining: {}", mei.me_mapsize - size_used);
-    log::debug(logcat, "Size threshold:  {}", threshold_size);
+    log::debug(logcat, "DB map size:     {}", tools::get_human_readable_bytes(mei.me_mapsize));
+    log::debug(logcat, "Space used:      {}", tools::get_human_readable_bytes(size_used));
+    log::debug(
+            logcat,
+            "Space remaining: {}",
+            tools::get_human_readable_bytes(mei.me_mapsize - size_used));
+    log::debug(logcat, "Size threshold:  {}", tools::get_human_readable_bytes(threshold_size));
     float resize_percent = RESIZE_PERCENT;
     log::debug(
             logcat,
@@ -1498,7 +1501,7 @@ void BlockchainLMDB::open(
             throw0(DB_ERROR("Failed to set max memory map size: {}"_format(mdb_strerror(result))));
         mdb_env_info(m_env, &mei);
         cur_mapsize = (uint64_t)mei.me_mapsize;
-        log::info(logcat, "LMDB memory map size: {}", cur_mapsize);
+        log::info(logcat, "LMDB memory map size: {}", tools::get_human_readable_bytes(cur_mapsize));
     }
 
     if (need_resize()) {
@@ -6467,6 +6470,7 @@ bool BlockchainLMDB::get_service_node_data(std::string& data, bool long_term) co
         }
     }
 
+    data.clear();
     data.assign(reinterpret_cast<const char*>(v.mv_data), v.mv_size);
     return true;
 }

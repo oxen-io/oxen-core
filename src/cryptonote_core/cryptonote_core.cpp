@@ -60,6 +60,7 @@ extern "C" {
 #include "common/notify.h"
 #include "common/sha256sum.h"
 #include "common/threadpool.h"
+#include "common/tracy_shim.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
@@ -527,6 +528,7 @@ bool core::init(
         const cryptonote::test_options* test_options,
         const GetCheckpointsCallback& get_checkpoints /* = nullptr */,
         const std::atomic<bool>* abort) {
+    ZoneScoped;
     start_time = std::time(nullptr);
 
     if (test_options != NULL)
@@ -577,7 +579,8 @@ bool core::init(
         auto block1_hash = get_block_hash(db->get_block_from_height(1));
         constexpr std::array STAGENET_OLD_BLOCK1_HASHES = {
                 "13633f8335998fe174f12752ea86d25636c9f777f441e9fa205ae4b8868e1f03"sv,
-                "11597c2be5719701d8d1000cfccf46ef7b52a3d80573300d38aa5bf283b43b6a"sv};
+                "11597c2be5719701d8d1000cfccf46ef7b52a3d80573300d38aa5bf283b43b6a"sv,
+                "efd64cb09bd3cadb127731d2919769314100d85e6d09fdcd022327e65d43e9f2"sv};
         if (std::find(
                     STAGENET_OLD_BLOCK1_HASHES.begin(),
                     STAGENET_OLD_BLOCK1_HASHES.end(),
@@ -1436,6 +1439,7 @@ bool core::handle_parsed_txs(
         std::vector<tx_verification_batch_info>& parsed_txs,
         const tx_pool_options& opts,
         uint64_t* blink_rollback_height) {
+    ZoneScoped;
     // Caller needs to do this around both this *and* parse_incoming_txs
     // auto lock = incoming_tx_lock();
     auto version = blockchain.get_network_version();
@@ -1711,6 +1715,7 @@ std::future<std::pair<blink_result, std::string>> core::handle_blink_tx(
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const {
+    ZoneScoped;
     if (tx.is_transfer()) {
         if (tx.vin.empty()) {
             log::error(
@@ -2148,6 +2153,7 @@ bool core::submit_uptime_proof() {
 //-----------------------------------------------------------------------------------------------
 bool core::handle_uptime_proof(
         const NOTIFY_BTENCODED_UPTIME_PROOF::request& req, bool& my_uptime_proof_confirmation) {
+    ZoneScoped;
     std::unique_ptr<uptime_proof::Proof> proof;
     try {
         proof = std::make_unique<uptime_proof::Proof>(
@@ -2239,6 +2245,7 @@ block_complete_entry get_block_complete_entry(block& b, tx_memory_pool& pool) {
 }
 //-----------------------------------------------------------------------------------------------
 bool core::handle_block_found(block& b, block_verification_context& bvc) {
+    ZoneScoped;
     bvc = {};
     std::vector<block_complete_entry> blocks;
     miner.pause();
@@ -2347,6 +2354,7 @@ bool core::handle_incoming_block(
         block_verification_context& bvc,
         checkpoint_t* checkpoint,
         bool update_miner_blocktemplate) {
+    ZoneScoped;
     TRY_ENTRY();
     bvc = {};
 
@@ -2545,6 +2553,7 @@ void core::do_uptime_proof_call() {
 }
 //-----------------------------------------------------------------------------------------------
 bool core::on_idle() {
+    ZoneScoped;
     if (!m_starter_message_showed) {
         std::string main_message;
         if (m_offline)

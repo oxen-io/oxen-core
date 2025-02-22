@@ -202,11 +202,27 @@ class Blockchain {
      */
     bool deinit();
 
+    /// Loads `count` blocks (optionally including transaction data within those blocks), starting
+    /// at height `start_offset`.  The total amount of block data consumed (not including
+    /// transactions) will be set in `blocks_size`, if provided.
     bool get_blocks(
             uint64_t start_offset,
             size_t count,
             std::vector<block>& blocks,
-            std::vector<std::string>* txs = nullptr) const;
+            std::vector<std::string>* txs = nullptr,
+            size_t* blocks_size = nullptr) const;
+
+  private:
+    /// Private implementation used by the above public get_blocks; this does *not* take a lock and
+    /// must only be used where the lock is already held or safety against LMDB changes is otherwise
+    /// guaranteed.
+    bool _get_blocks(
+            uint64_t start_offset,
+            size_t count,
+            std::vector<block>& blocks,
+            size_t* blocks_size) const;
+
+  public:
     /**
      * @brief get blocks and transactions from blocks based on start height and count
      *
@@ -869,8 +885,18 @@ class Blockchain {
     bool get_transactions(
             const std::vector<crypto::hash>& txs_ids,
             std::vector<transaction>& txs,
-            std::unordered_set<crypto::hash>* missed_txs = nullptr) const;
+            std::unordered_set<crypto::hash>* missed_txs = nullptr,
+            size_t* total_size = nullptr) const;
 
+  private:
+    // Private, non-lock-obtaining implementing code of get_transactions()
+    bool _get_transactions(
+            std::span<const crypto::hash> txs_ids,
+            std::vector<transaction>& txs,
+            std::unordered_set<crypto::hash>* missed_txs,
+            size_t* total_size) const;
+
+  public:
     /**
      * @brief looks up transactions based on a list of transaction hashes and returns the block
      * height in which they were mined, or 0 if not found on the blockchain.
@@ -1236,7 +1262,8 @@ class Blockchain {
 
     tx_memory_pool& tx_pool;
 
-    bool load_missing_blocks_into_oxen_subsystems(const std::atomic<bool>* abort = nullptr);
+    bool load_missing_blocks_into_oxen_subsystems(
+            const std::atomic<bool>* abort = nullptr, bool use_threaded_load = false);
 
 #ifndef IN_UNIT_TESTS
   private:

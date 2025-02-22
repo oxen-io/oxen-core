@@ -116,7 +116,6 @@ struct reward_money {
 
 struct batch_sn_payment {
     cryptonote::address_parse_info address_info{};
-    eth::address eth_address{};
     reward_money amount;
 
     batch_sn_payment() = default;
@@ -124,8 +123,6 @@ struct batch_sn_payment {
             address_info{addr_info}, amount{amt} {}
     batch_sn_payment(const cryptonote::account_public_address& addr, reward_money amt) :
             address_info{addr, 0}, amount{amt} {}
-    batch_sn_payment(const eth::address& addr, reward_money amt) : eth_address{addr}, amount{amt} {}
-
     uint64_t coin_amount() const { return amount.to_coin(); }
 };
 

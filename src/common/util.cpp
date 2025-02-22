@@ -35,15 +35,10 @@
 #include <fmt/color.h>
 
 #include <chrono>
-#include <iomanip>
 #include <string>
 #include <thread>
 
-#include "crypto/crypto.h"
-#include "epee/misc_log_ex.h"
-#include "epee/readline_buffer.h"
 #include "epee/string_tools.h"
-#include "epee/wipeable_string.h"
 #include "i18n.h"
 #include "logging/oxen_logger.h"
 #include "string_util.h"
@@ -199,32 +194,29 @@ std::string get_human_readable_timestamp(std::time_t t) {
 std::string get_human_readable_timespan(std::chrono::seconds seconds) {
     uint64_t ts = seconds.count();
     if (ts < 60)
-        return std::to_string(ts) + tr(" seconds");
+        return "{}{}"_format(ts, tr(" seconds"));
     if (ts < 3600)
-        return std::to_string((uint64_t)(ts / 60)) + tr(" minutes");
+        return "{:.1f}{}"_format(ts / 60.0, tr(" minutes"));
     if (ts < 3600 * 24)
-        return std::to_string((uint64_t)(ts / 3600)) + tr(" hours");
+        return "{:.1f}{}"_format(ts / 3600.0, tr(" hours"));
     if (ts < 3600 * 24 * 30.5)
-        return std::to_string((uint64_t)(ts / (3600 * 24))) + tr(" days");
-    if (ts < 3600 * 24 * 365.25)
-        return std::to_string((uint64_t)(ts / (3600 * 24 * 30.5))) + tr(" months");
-    return tr("a long time");
+        return "{:.1f}{}"_format(ts / (24 * 3600.0), tr(" days"));
+    if (ts < 3600 * 24 * 365.2425)
+        return "{:.1f}{}"_format(ts / (3600 * 24 * 30.5), tr(" months"));
+    return "{:.1f}{}"_format(ts / (3600 * 24 * 365.2425), tr(" years"));
 }
 
 std::string get_human_readable_bytes(uint64_t bytes) {
     if (bytes < 1000)
-        return std::to_string(bytes) + " B";
-    constexpr std::array units{" kB", " MB", " GB", " TB"};
+        return "{} B"_format(bytes);
+    constexpr std::array prefixes{'k', 'M', 'G', 'T'};
     double b = bytes;
-    for (const auto& suffix : units) {
+    for (const auto& prefix : prefixes) {
         b /= 1000.;
-        if (b < 1000.) {
-            std::ostringstream o;
-            o << std::fixed << std::setprecision(2) << b;
-            return o.str() + suffix;
-        }
+        if (b < 1000.)
+            return "{:.2f} {}B"_format(b, prefix);
     }
-    return std::to_string(std::lround(b)) + units.back();
+    return "{:.0f} {}B"_format(b, prefixes.back());
 }
 
 // Calculate a "sync weight" over ranges of blocks in the blockchain, suitable for

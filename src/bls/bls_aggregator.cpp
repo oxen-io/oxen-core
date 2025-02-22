@@ -5,6 +5,7 @@
 #include <common/exception.h>
 #include <common/guts.h>
 #include <common/string_util.h>
+#include <common/tracy_shim.h>
 #include <crypto/crypto.h>
 #include <cryptonote_core/cryptonote_core.h>
 #include <l2_tracker/contracts.h>
@@ -13,7 +14,6 @@
 #include <oxenmq/oxenmq.h>
 
 #include <chrono>
-#include <ethyl/utils.hpp>
 #include <memory>
 
 #include "bls_crypto.h"
@@ -523,6 +523,7 @@ namespace {
                 std::string_view endpoint,
                 std::string_view message,
                 std::chrono::milliseconds timeout) {
+            ZoneScoped;
             ++active_requests;  // Dummy "request" to avoid potential races with responses arriving
                                 // before we're done sending requests.
 
@@ -711,8 +712,9 @@ namespace {
                 T&&... args) {
             if (agg_log_lister) {
                 std::lock_guard lock{agg_log_lister->mutex};
-                agg_log_lister->success.emplace_back(
-                        addr, fmt::format(format, std::forward<T>(args)...));
+                agg_log& log = agg_log_lister->success.emplace_back();
+                log.addr = addr;
+                log.msg = fmt::format(format, std::forward<T>(args)...);
             }
         }
         template <typename... T>
@@ -722,8 +724,9 @@ namespace {
                 T&&... args) {
             if (agg_log_lister) {
                 std::lock_guard lock{agg_log_lister->mutex};
-                agg_log_lister->error.emplace_back(
-                        addr, fmt::format(format, std::forward<T>(args)...));
+                agg_log& log = agg_log_lister->error.emplace_back();
+                log.addr = addr;
+                log.msg = fmt::format(format, std::forward<T>(args)...);
             }
         }
     };
@@ -808,7 +811,7 @@ void bls_aggregator::rewards_request(
         const address& addr,
         uint64_t height,
         std::function<void(std::shared_ptr<const bls_rewards_response>)> callback) {
-
+    ZoneScoped;
     auto maybe_amount = core.blockchain.sqlite_db().get_accrued_rewards(addr, height);
     auto amount = maybe_amount.value_or(0);
 
@@ -1044,7 +1047,7 @@ void bls_aggregator::exit_liquidation_request(
         const std::variant<crypto::public_key, eth::bls_public_key>& pubkey,
         bls_exit_type type,
         std::function<void(std::shared_ptr<const bls_exit_liquidation_response>)> callback) {
-
+    ZoneScoped;
     const auto* sn_pubkey = std::get_if<crypto::public_key>(&pubkey);
     const auto* bls_pubkey = std::get_if<eth::bls_public_key>(&pubkey);
 

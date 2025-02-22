@@ -1,25 +1,17 @@
 #pragma once
 
-#include <atomic>
-#include <condition_variable>
 #include <cstdint>
 #include <string_view>
 
 #include "common/formattable.h"
-#include "crypto/crypto.h"
-#include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "crypto/crypto.h"                      // crypto::hash ...
+#include "cryptonote_basic/cryptonote_basic.h"  // pulse_random_value
+#include "cryptonote_config.h"                  // cryptonote::network_type ...
 
 namespace cryptonote {
 class core;
-class transaction;
 class Blockchain;
-struct block;
-struct checkpoint_t;
 };  // namespace cryptonote
-
-namespace service_nodes {
-struct service_node_keys;
-};
 
 namespace pulse {
 using clock = std::chrono::system_clock;
@@ -36,6 +28,7 @@ enum struct message_type : uint8_t {
 };
 
 constexpr std::string_view to_string(message_type type) {
+    using namespace std::literals;
     switch (type) {
         case message_type::invalid: return "Invalid"sv;
         case message_type::handshake: return "Handshake"sv;
@@ -76,17 +69,17 @@ struct message {
     } signed_block;
 };
 
-void main(void* quorumnet_state, cryptonote::core& core);
-void handle_message(void* quorumnet_state, pulse::message const& msg);
-
 struct timings {
-    pulse::time_point genesis_timestamp;
-    pulse::time_point prev_timestamp;
+    time_point genesis_timestamp;
+    time_point prev_timestamp;
 
-    pulse::time_point ideal_timestamp;
-    pulse::time_point r0_timestamp;
-    pulse::time_point miner_fallback_timestamp;
+    time_point ideal_timestamp;
+    time_point r0_timestamp;
+    time_point miner_fallback_timestamp;
 };
+
+void main(void* quorumnet_state, cryptonote::core& core);
+void handle_message(void* quorumnet_state, message const& msg);
 
 // Calculate the current Pulse round active depending on the 'time' elapsed since round 0 started
 // for a block. r0_timestamp: The timestamp that round 0 starts at for the desired block (this
@@ -96,14 +89,14 @@ struct timings {
 // generate.
 bool convert_time_to_round(
         cryptonote::network_type nettype,
-        pulse::time_point const& time,
-        pulse::time_point const& r0_timestamp,
+        const time_point& time,
+        const time_point& r0_timestamp,
         uint8_t* round);
 bool get_round_timings(
-        cryptonote::Blockchain const& blockchain,
+        const cryptonote::Blockchain& blockchain,
         uint64_t height,
         uint64_t prev_timestamp,
-        pulse::timings& times);
+        timings& times);
 
 }  // namespace pulse
 

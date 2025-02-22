@@ -537,10 +537,6 @@ class node_server
     cryptonote::network_type m_nettype;
 };
 
-static void log_detailed_peer_stats(
-        std::unordered_map<peerid_type, peer_stats>& peer_stats_map,
-        std::mutex& peer_stats_map_mutex);
-
 extern const command_line::arg_descriptor<std::string> arg_p2p_bind_ip;
 extern const command_line::arg_descriptor<std::string> arg_p2p_bind_ipv6_address;
 extern const command_line::arg_descriptor<uint16_t> arg_p2p_bind_port;

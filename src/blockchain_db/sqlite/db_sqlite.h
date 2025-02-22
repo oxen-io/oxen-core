@@ -33,6 +33,7 @@
 #include <cryptonote_core/service_node_list.h>  // service_node_list::state_t...
 
 #include <filesystem>
+#include <optional>
 #include <sqlitedb/database.hpp>
 #include <string>
 
@@ -46,6 +47,8 @@ class BlockchainSQLite : public db::Database {
     explicit BlockchainSQLite(cryptonote::network_type nettype, std::filesystem::path db_path);
     BlockchainSQLite(const BlockchainSQLite&) = delete;
 
+    ~BlockchainSQLite() { rescan_stop(); }
+
     // Database management functions. Should be called on creation of BlockchainSQLite
     void create_schema();
     void upgrade_schema();
@@ -53,7 +56,9 @@ class BlockchainSQLite : public db::Database {
 
     // Update the height stored in the SQL DB that indicates the last block height that this DB has
     // synchronised to in.
-    void update_height(uint64_t new_height);
+    void update_height(
+            uint64_t new_height,
+            const std::optional<service_nodes::rescan_context>& rescan = std::nullopt);
 
     enum class PaymentTableType {
         Nil,      // Table containing current state
@@ -64,13 +69,13 @@ class BlockchainSQLite : public db::Database {
 
     // Rewinds the SQL DB to the specified height. This function is called internally by the SNL on
     // detach.
-    void blockchain_detached(PaymentTableType type, uint64_t height);
+    void blockchain_detached(PaymentTableType type, uint64_t height, uint64_t target_height = 0);
 
     // Return the number of rows for the desired batched payments accrued table. The row count will
     // be for the 'height' specified. 'height' is ignored if type is nil as the default accrued
-    // table only stores state for the current DB's height already. If 'height' is null then the row
-    // count of the entire table will be returned.
-    size_t batch_payments_accrued_row_count(PaymentTableType type, const uint64_t* height);
+    // table only stores state for the current DB's height already. If 'height' is nullopt then the
+    // row count of the entire table will be returned.
+    size_t batch_payments_accrued_row_count(PaymentTableType type, std::optional<uint64_t> height);
 
     // Add payments to the specified addresses to the SQL rewards table. The function throws if
     // insertion into the DB fails.
@@ -82,13 +87,19 @@ class BlockchainSQLite : public db::Database {
     void reward_handler(
             const cryptonote::block& block,
             const service_nodes::service_node_list::state_t& service_nodes_state,
+            const service_nodes::block_add_result& block_add,
             block_payments payments = {});
 
     block_payments get_delayed_payments(uint64_t height);
 
     std::unordered_map<account_public_address, std::string> address_str_cache;
     std::pair<hf, cryptonote::address_parse_info> parsed_governance_addr = {hf::none, {}};
-    std::string get_address_str(const cryptonote::batch_sn_payment& addr);
+
+    // Returns a reference to the underlying string, reference must not be held
+    // onto, only transiently in the same frame as the string is requested.
+    //
+    // This function must be called with the address_str_cache_mutex held!
+    const std::string& get_address_str(const cryptonote::batch_sn_payment& addr);
     std::pair<int, std::string> get_address_str(
             const std::variant<eth::address, cryptonote::account_public_address>& addr,
             uint64_t batching_interval);
@@ -96,6 +107,16 @@ class BlockchainSQLite : public db::Database {
 
     bool table_exists(const std::string& name);
     bool trigger_exists(const std::string& name);
+
+    // Long rescans can take quite a while to process.  Batching block inserts into one database
+    // transaction speeds this up considerably.  This is called automatically if a rescan is
+    // larger than 5000 blocks.
+    void rescan_start();
+    void rescan_stop();
+
+    std::optional<SQLite::Transaction> rescan_tx{std::nullopt};
+    size_t rescan_count{0};
+    uint64_t rescan_target{0};
 
   public:
     // Retrieves the amount (in atomic SENT) that has been accrued to the Ethereum `address`.
@@ -152,7 +173,9 @@ class BlockchainSQLite : public db::Database {
     // database. Each accepted block should call this passing in the SN list structure.
     bool add_block(
             const cryptonote::block& block,
-            const service_nodes::service_node_list::state_t& service_nodes_state);
+            const service_nodes::service_node_list::state_t& service_nodes_state,
+            const service_nodes::block_add_result& block_add,
+            const std::optional<service_nodes::rescan_context>& rescan = std::nullopt);
 
     struct exit_stake {
         eth::address addr;
@@ -174,14 +197,14 @@ class BlockchainSQLite : public db::Database {
     bool validate_batch_payment(
             const std::vector<std::pair<crypto::public_key, uint64_t>>& miner_tx_vouts,
             const std::vector<cryptonote::batch_sn_payment>& calculated_payments_from_batching_db,
-            uint64_t block_height);
+            uint64_t block_height,
+            const std::optional<service_nodes::rescan_context>& rescan = std::nullopt);
 
     // these keep track of payments made to SN operators after then payment has been made. Allows
     // for popping blocks back and knowing who got paid in those blocks. passing in a list of people
     // to be marked as paid in the paid_amounts vector. Block height will be added to the
     // batched_payments_paid database as height_paid.
-    bool save_payments(uint64_t block_height, const std::vector<batch_sn_payment>& paid_amounts);
-    bool delete_block_payments(uint64_t block_height);
+    bool save_payments(uint64_t block_height, std::span<const batch_sn_payment> paid_amounts);
 
     uint64_t height;
 
