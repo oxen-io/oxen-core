@@ -35,6 +35,7 @@ target_link_libraries(cn_deserialize
   PRIVATE
     Boost::program_options
     p2p
+    logging
     extra)
 
 oxen_add_executable(object_sizes "oxen-utils-object-sizes"
@@ -46,5 +47,6 @@ target_link_libraries(object_sizes
     lmdb
     p2p
     cpr::cpr
+    logging
     extra
     )

@@ -27,146 +27,128 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "bootstrap_file.h"
-#include "blocksdat_file.h"
-#include "common/command_line.h"
-#include "cryptonote_core/cryptonote_core.h"
-#include "blockchain_objects.h"
-#include "version.h"
-#include "cryptonote_core/uptime_proof.h"
+#include <common/command_line.h>
+#include <common/exception.h>
+#include <fmt/std.h>
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "bcutil"
+#include "blockchain_objects.h"
+#include "blocksdat_file.h"
+#include "bootstrap_file.h"
+#include "cryptonote_core/cryptonote_core.h"
+#include "version.h"
 
 namespace po = boost::program_options;
+using namespace blockchain_utils;
 
-int main(int argc, char* argv[])
-{
-  TRY_ENTRY();
+int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
+    using namespace oxen;
+    auto logcat = log::Cat("bcutil");
 
-  epee::string_tools::set_module_name_and_folder(argv[0]);
+    TRY_ENTRY();
 
-  uint32_t log_level = 0;
-  uint64_t block_stop = 0;
-  bool blocks_dat = false;
+    epee::string_tools::set_module_name_and_folder(argv[0]);
+    uint64_t block_stop = 0;
+    tools::on_startup();
+    auto opt_size = command_line::boost_option_sizes();
 
-  tools::on_startup();
+    po::options_description desc_cmd_only("Command line options", opt_size.first, opt_size.second);
+    po::options_description desc_cmd_sett(
+            "Command line options and settings options", opt_size.first, opt_size.second);
+    const command_line::arg_descriptor<std::string> arg_output_file = {
+            "output-file", "Specify output file"};
+    const command_line::arg_descriptor<std::string> arg_log_level = {
+            "log-level", "0-4 or categories", ""};
+    const command_line::arg_descriptor<uint64_t> arg_block_stop = {
+            "block-stop", "Stop at block number", block_stop};
+    const command_line::arg_flag arg_blocks_dat = {"blocksdat", "Output in blocks.dat format"};
 
-  auto opt_size = command_line::boost_option_sizes();
+    command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
+    command_line::add_arg(desc_cmd_sett, arg_output_file);
+    command_line::add_network_args(desc_cmd_sett);
+    command_line::add_arg(desc_cmd_sett, arg_log_level);
+    command_line::add_arg(desc_cmd_sett, arg_block_stop);
+    command_line::add_arg(desc_cmd_sett, arg_blocks_dat);
 
-  po::options_description desc_cmd_only("Command line options", opt_size.first, opt_size.second);
-  po::options_description desc_cmd_sett("Command line options and settings options", opt_size.first, opt_size.second);
-  const command_line::arg_descriptor<std::string> arg_output_file = {"output-file", "Specify output file", "", true};
-  const command_line::arg_descriptor<std::string> arg_log_level  = {"log-level",  "0-4 or categories", ""};
-  const command_line::arg_descriptor<uint64_t> arg_block_stop = {"block-stop", "Stop at block number", block_stop};
-  const command_line::arg_descriptor<bool> arg_blocks_dat = {"blocksdat", "Output in blocks.dat format", blocks_dat};
+    command_line::add_arg(desc_cmd_only, command_line::arg_help);
 
+    po::options_description desc_options("Allowed options");
+    desc_options.add(desc_cmd_only).add(desc_cmd_sett);
 
-  command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
-  command_line::add_arg(desc_cmd_sett, arg_output_file);
-  command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-  command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
-  command_line::add_arg(desc_cmd_sett, arg_log_level);
-  command_line::add_arg(desc_cmd_sett, arg_block_stop);
-  command_line::add_arg(desc_cmd_sett, arg_blocks_dat);
+    po::variables_map vm;
+    bool r = command_line::handle_error_helper(desc_options, [&]() {
+        po::store(po::parse_command_line(argc, argv, desc_options), vm);
+        po::notify(vm);
+        return true;
+    });
+    if (!r)
+        return 1;
 
-  command_line::add_arg(desc_cmd_only, command_line::arg_help);
+    if (command_line::get_arg(vm, command_line::arg_help)) {
+        std::cout << "Oxen '" << OXEN_RELEASE_NAME << "' (v" << OXEN_VERSION_FULL << ")\n\n";
+        std::cout << desc_options << std::endl;
+        return 1;
+    }
 
-  po::options_description desc_options("Allowed options");
-  desc_options.add(desc_cmd_only).add(desc_cmd_sett);
+    block_stop = command_line::get_arg(vm, arg_block_stop);
 
-  po::variables_map vm;
-  bool r = command_line::handle_error_helper(desc_options, [&]()
-  {
-    po::store(po::parse_command_line(argc, argv, desc_options), vm);
-    po::notify(vm);
-    return true;
-  });
-  if (! r)
-    return 1;
+    auto m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
+    auto log_file_path = m_config_folder + "oxen-blockchain-export.log";
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
+    log::warning(logcat, "Starting...");
 
-  if (command_line::get_arg(vm, command_line::arg_help))
-  {
-    std::cout << "Oxen '" << OXEN_RELEASE_NAME << "' (v" << OXEN_VERSION_FULL << ")\n\n";
-    std::cout << desc_options << std::endl;
-    return 1;
-  }
+    auto nettype = command_line::get_network(vm);
+    bool opt_blocks_dat = command_line::get_arg(vm, arg_blocks_dat);
 
-  mlog_configure(mlog_get_default_log_path("oxen-blockchain-export.log"), true);
-  if (!command_line::is_arg_defaulted(vm, arg_log_level))
-    mlog_set_log(command_line::get_arg(vm, arg_log_level).c_str());
-  else
-    mlog_set_log(std::string(std::to_string(log_level) + ",bcutil:INFO").c_str());
-  block_stop = command_line::get_arg(vm, arg_block_stop);
+    auto config_folder = tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir));
 
-  LOG_PRINT_L0("Starting...");
+    fs::path output_file_path;
+    if (!command_line::is_arg_defaulted(vm, arg_output_file))
+        output_file_path = tools::utf8_path(command_line::get_arg(vm, arg_output_file));
+    else
+        output_file_path = config_folder / "export" / BLOCKCHAIN_RAW;
+    log::warning(logcat, "Export output file: {}", output_file_path.string());
 
-  bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-  bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-  if (opt_testnet && opt_devnet)
-  {
-    std::cerr << "Can't specify more than one of --testnet and --devnet" << std::endl;
-    return 1;
-  }
-  bool opt_blocks_dat = command_line::get_arg(vm, arg_blocks_dat);
+    log::warning(logcat, "Initializing source blockchain (BlockchainDB)");
+    blockchain_objects_t blockchain_objects = {};
+    Blockchain* core_storage = &blockchain_objects.m_blockchain;
+    auto db = new_db();
+    if (!db) {
+        log::error(logcat, "Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
+    }
+    log::warning(logcat, "database: LMDB");
 
-  auto config_folder = fs::u8path(command_line::get_arg(vm, cryptonote::arg_data_dir));
+    auto filename = config_folder / db->get_db_name();
 
-  fs::path output_file_path;
-  if (command_line::has_arg(vm, arg_output_file))
-    output_file_path = fs::u8path(command_line::get_arg(vm, arg_output_file));
-  else
-    output_file_path = config_folder / "export" / BLOCKCHAIN_RAW;
-  LOG_PRINT_L0("Export output file: " << output_file_path.string());
+    log::warning(logcat, "Loading blockchain from folder {} ...", filename);
+    try {
+        db->open(filename, core_storage->nettype(), DBF_RDONLY);
+    } catch (const std::exception& e) {
+        log::warning(logcat, "Error opening database: {}", e.what());
+        return 1;
+    }
+    r = core_storage->init(std::move(db), nettype);
 
-  LOG_PRINT_L0("Initializing source blockchain (BlockchainDB)");
-  blockchain_objects_t blockchain_objects = {};
-  Blockchain *core_storage = &blockchain_objects.m_blockchain;
-  BlockchainDB *db = new_db();
-  if (db == NULL)
-  {
-    LOG_ERROR("Failed to initialize a database");
-    throw std::runtime_error("Failed to initialize a database");
-  }
-  LOG_PRINT_L0("database: LMDB");
+    if (core_storage->get_blockchain_pruning_seed() && !opt_blocks_dat) {
+        log::warning(logcat, "Blockchain is pruned, cannot export");
+        return 1;
+    }
 
-  auto filename = config_folder / db->get_db_name();
+    CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
+    log::warning(logcat, "Source blockchain storage initialized OK");
+    log::warning(logcat, "Exporting blockchain raw data...");
 
-  LOG_PRINT_L0("Loading blockchain from folder " << filename << " ...");
-  try
-  {
-    db->open(filename, core_storage->nettype(), DBF_RDONLY);
-  }
-  catch (const std::exception& e)
-  {
-    LOG_PRINT_L0("Error opening database: " << e.what());
-    return 1;
-  }
-  r = core_storage->init(db, nullptr, nullptr, opt_testnet ? cryptonote::network_type::TESTNET : opt_devnet ? cryptonote::network_type::DEVNET : cryptonote::network_type::MAINNET);
+    if (opt_blocks_dat) {
+        BlocksdatFile blocksdat;
+        r = blocksdat.store_blockchain_raw(core_storage, NULL, output_file_path, block_stop);
+    } else {
+        BootstrapFile bootstrap;
+        r = bootstrap.store_blockchain_raw(core_storage, NULL, output_file_path, block_stop);
+    }
+    CHECK_AND_ASSERT_MES(r, 1, "Failed to export blockchain raw data");
+    log::warning(logcat, "Blockchain raw data exported OK");
+    return 0;
 
-  if (core_storage->get_blockchain_pruning_seed() && !opt_blocks_dat)
-  {
-    LOG_PRINT_L0("Blockchain is pruned, cannot export");
-    return 1;
-  }
-
-  CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
-  LOG_PRINT_L0("Source blockchain storage initialized OK");
-  LOG_PRINT_L0("Exporting blockchain raw data...");
-
-  if (opt_blocks_dat)
-  {
-    BlocksdatFile blocksdat;
-    r = blocksdat.store_blockchain_raw(core_storage, NULL, output_file_path, block_stop);
-  }
-  else
-  {
-    BootstrapFile bootstrap;
-    r = bootstrap.store_blockchain_raw(core_storage, NULL, output_file_path, block_stop);
-  }
-  CHECK_AND_ASSERT_MES(r, 1, "Failed to export blockchain raw data");
-  LOG_PRINT_L0("Blockchain raw data exported OK");
-  return 0;
-
-  CATCH_ENTRY("Export error", 1);
+    CATCH_ENTRY("Export error", 1);
 }

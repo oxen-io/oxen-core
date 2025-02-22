@@ -5,15 +5,14 @@
 // interchangeable).
 //
 
+#include <boost/archive/basic_archive.hpp>
+#include <boost/serialization/item_version_type.hpp>
+#include <boost/serialization/nvp.hpp>
+#include <boost/serialization/serialization.hpp>
+#include <boost/serialization/split_free.hpp>
+#include <boost/serialization/version.hpp>
 #include <optional>
 #include <type_traits>
-
-#include <boost/archive/basic_archive.hpp>
-#include <boost/serialization/split_free.hpp>
-#include <boost/serialization/serialization.hpp>
-#include <boost/serialization/nvp.hpp>
-#include <boost/serialization/item_version_type.hpp>
-#include <boost/serialization/version.hpp>
 
 namespace boost::serialization {
 
@@ -28,7 +27,7 @@ void save(Archive& ar, std::optional<T> const& v, unsigned int /*version*/) {
 }
 
 template <class Archive, typename T>
-void load(Archive & ar, std::optional<T>& v, const unsigned int version) {
+void load(Archive& ar, std::optional<T>& v, const unsigned int version) {
     bool have;
     ar >> boost::serialization::make_nvp("initialized", have);
     if (!have) {
@@ -49,7 +48,7 @@ void load(Archive & ar, std::optional<T>& v, const unsigned int version) {
 
 template <class Archive, typename T>
 inline void serialize(Archive& ar, std::optional<T>& v, const unsigned int file_version) {
-    split_free(ar,v,file_version);
+    split_free(ar, v, file_version);
 }
 
-} // namespace boost::serialization
+}  // namespace boost::serialization

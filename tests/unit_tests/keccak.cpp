@@ -51,7 +51,7 @@ extern "C" {
     offset += chunks[i]; \
   } \
   ASSERT_TRUE(offset == data.size()); \
-  keccak_finish(&ctx, md1); \
+  keccak_finish(&ctx, md1, 32); \
   ASSERT_EQ(memcmp(md0, md1, 32), 0);
 
 TEST(keccak, 0_and_0)

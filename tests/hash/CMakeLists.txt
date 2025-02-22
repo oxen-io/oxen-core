@@ -32,6 +32,7 @@ target_link_libraries(hash-tests
   PRIVATE
     cryptonote_core
     common
+    logging
     extra)
 set_property(TARGET hash-tests
   PROPERTY

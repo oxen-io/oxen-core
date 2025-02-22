@@ -28,62 +28,67 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <vector>
-#include <algorithm>
-#include <stdexcept>
+#include <exception>
 
-#include "epee/misc_log_ex.h"
-#include "common/util.h"
+#include <oxen/log.hpp>
 #include "cryptonote_config.h"
 #include "cryptonote_basic/difficulty.h"
+#include "networks.h"
 
-#define DIFFICULTY_LAG                        15
+#define DIFFICULTY_LAG 15
 
-int main(int argc, char *argv[]) {
-    TRY_ENTRY();
-
+int main(int argc, char* argv[]) {
+    auto logcat = oxen::log::Cat("difficulty");
     if (argc < 2) {
         std::cerr << "Wrong arguments\n";
         return 1;
     }
-    std::vector<uint64_t> timestamps, cumulative_difficulties;
-    std::fstream data(argv[1], std::fstream::in);
-    data.exceptions(std::fstream::badbit);
-    data.clear(data.rdstate());
-    uint64_t timestamp, difficulty, cumulative_difficulty = 0;
-    size_t n = 0;
-    while (data >> timestamp >> difficulty) {
-        size_t begin, end;
-        if (n < (cryptonote::old::DIFFICULTY_WINDOW + 1) + DIFFICULTY_LAG) {
-            begin = 0;
-            end = std::min(n, (size_t) (cryptonote::old::DIFFICULTY_WINDOW + 1));
-        } else {
-            end = n - DIFFICULTY_LAG;
-            begin = end - (cryptonote::old::DIFFICULTY_WINDOW + 1);
+    try {
+        std::vector<uint64_t> timestamps, cumulative_difficulties;
+        std::fstream data(argv[1], std::fstream::in);
+        data.exceptions(std::fstream::badbit);
+        data.clear(data.rdstate());
+        uint64_t timestamp, difficulty, cumulative_difficulty = 0;
+        size_t n = 0;
+        uint64_t target_block_time_s =
+                std::chrono::duration_cast<std::chrono::seconds>(
+                        cryptonote::get_config(cryptonote::network_type::MAINNET).TARGET_BLOCK_TIME)
+                        .count();
+        while (data >> timestamp >> difficulty) {
+            size_t begin, end;
+            if (n < (cryptonote::old::DIFFICULTY_WINDOW + 1) + DIFFICULTY_LAG) {
+                begin = 0;
+                end = std::min(n, (size_t)(cryptonote::old::DIFFICULTY_WINDOW + 1));
+            } else {
+                end = n - DIFFICULTY_LAG;
+                begin = end - (cryptonote::old::DIFFICULTY_WINDOW + 1);
+            }
+            uint64_t res = cryptonote::next_difficulty_v2(
+                    std::vector<uint64_t>(timestamps.begin() + begin, timestamps.begin() + end),
+                    std::vector<uint64_t>(
+                            cumulative_difficulties.begin() + begin,
+                            cumulative_difficulties.begin() + end),
+                    target_block_time_s,
+                    cryptonote::difficulty_calc_mode::normal);
+            if (res != difficulty) {
+                std::cerr << "Wrong difficulty for block " << n << "\nExpected: " << difficulty
+                          << "\nFound: " << res << "\n";
+                return 1;
+            }
+            timestamps.push_back(timestamp);
+            cumulative_difficulties.push_back(cumulative_difficulty += difficulty);
+            ++n;
         }
-        uint64_t res = cryptonote::next_difficulty_v2(
-            std::vector<uint64_t>(timestamps.begin() + begin, timestamps.begin() + end),
-            std::vector<uint64_t>(cumulative_difficulties.begin() + begin, cumulative_difficulties.begin() + end),
-            tools::to_seconds(cryptonote::TARGET_BLOCK_TIME),
-            cryptonote::difficulty_calc_mode::normal);
-        if (res != difficulty) {
-            std::cerr << "Wrong difficulty for block " << n
-                << "\nExpected: " << difficulty
-                << "\nFound: " << res << "\n";
-            return 1;
+        if (!data.eof()) {
+            data.clear(std::fstream::badbit);
         }
-        timestamps.push_back(timestamp);
-        cumulative_difficulties.push_back(cumulative_difficulty += difficulty);
-        ++n;
-    }
-    if (!data.eof()) {
-        data.clear(std::fstream::badbit);
+    } catch (const std::exception& ex) {
+        oxen::log::error(logcat, "Exception at [{}]: {}", "main", ex.what());
+        return 1;
     }
     return 0;
-
-    CATCH_ENTRY_L0("main", 1);
 }

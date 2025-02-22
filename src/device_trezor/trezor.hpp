@@ -33,12 +33,12 @@
 #include "trezor/trezor_defs.hpp"
 
 #ifdef WITH_DEVICE_TREZOR
-#include "trezor/transport.hpp"
-#include "trezor/messages/messages.pb.h"
 #include "trezor/messages/messages-common.pb.h"
 #include "trezor/messages/messages-management.pb.h"
 #include "trezor/messages/messages-monero.pb.h"
+#include "trezor/messages/messages.pb.h"
 #include "trezor/protocol.hpp"
+#include "trezor/transport.hpp"
 #endif
 
-#endif //MONERO_TREZOR_HPP
+#endif  // MONERO_TREZOR_HPP

@@ -27,17 +27,21 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-oxen_add_executable(gen_multisig "oxen-gen-trusted-multisig"
-  gen_multisig.cpp
-  )
+option(BUILD_GEN_MULTISIG "Build trusted-multisig wallet generation tool" ${BUILD_EVERYTHING})
+if(BUILD_GEN_MULTISIG)
 
-target_link_libraries(gen_multisig
-  PRIVATE
-    wallet
-    rpc_commands
-    cryptonote_core
-    epee
-    Boost::program_options
-    filesystem
-    version
-    extra)
+    oxen_add_executable(gen_multisig "oxen-gen-trusted-multisig"
+      gen_multisig.cpp
+      )
+
+    target_link_libraries(gen_multisig
+      PRIVATE
+        wallet
+        rpc_commands
+        cryptonote_core
+        epee
+        version
+        logging
+        extra)
+
+endif()
