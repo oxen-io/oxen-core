@@ -108,11 +108,11 @@ bool wallet_tools::fill_tx_sources(tools::wallet2 * wallet, std::vector<cryptono
     if (td.m_block_height + MINED_MONEY_UNLOCK_WINDOW > cur_height)
       continue;
     if (selected_idx.find((size_t)i) != selected_idx.end()){
-      MERROR("Should not happen (selected_idx not found): " << i);
+      oxen::log::error(globallogcat, "Should not happen (selected_idx not found): {}", i);
       continue;
     }
     if (selected_kis.find(td.m_key_image) != selected_kis.end()){
-      MERROR("Should not happen (selected KI): " << i << "ki: " << dump_keys(td.m_key_image.data));
+      oxen::log::error(globallogcat, "Should not happen (selected KI): {} ki: {}", i, dump_keys(td.m_key_image.data()));
       continue;
     }
 
@@ -131,11 +131,7 @@ bool wallet_tools::fill_tx_sources(tools::wallet2 * wallet, std::vector<cryptono
         }
       }
 
-      MDEBUG("Selected " << i << " from tx: " << dump_keys(td.m_txid.data)
-                        << " ki: " << dump_keys(td.m_key_image.data)
-                        << " amnt: " << td.amount()
-                        << " rct: " << td.is_rct()
-                        << " glob: " << td.m_global_output_index);
+      oxen::log::debug(globallogcat, "Selected {} from tx: {} ki: {} amnt: {} rct: {} glob: {}", i, dump_keys(td.m_txid.data()), dump_keys(td.m_key_image.data()), td.amount(), td.is_rct(), td.m_global_output_index);
 
       sum += td.amount();
       cur_utxo += 1;
@@ -146,9 +142,7 @@ bool wallet_tools::fill_tx_sources(tools::wallet2 * wallet, std::vector<cryptono
       selected_kis.insert(td.m_key_image);
 
     } catch(const std::exception &e){
-      MTRACE("Output " << i << ", from: " <<  dump_keys(td.m_txid.data)
-                       << ", amnt: " << td.amount() << ", rct: " << td.is_rct()
-                       << ", glob: " << td.m_global_output_index << " is not applicable: " << e.what());
+      oxen::log::trace(globallogcat, "Output {}, from: {} amnt: {}, rct: {}, glob: {} is not applicable: {}", i, dump_keys(td.m_txid.data()), td.amount(), td.is_rct(), td.m_global_output_index, e.what());
     }
   }
 
@@ -202,12 +196,12 @@ void wallet_tools::gen_tx_src(size_t mixin, uint64_t cur_height, const tools::wa
 void wallet_tools::gen_block_data(block_tracker &bt, const cryptonote::block *bl, const map_hash2tx_t &mtx, cryptonote::block_complete_entry &bche, tools::wallet2::parsed_block &parsed_block, uint64_t &height)
 {
   std::vector<const transaction*> vtx;
-  vtx.push_back(&(bl->miner_tx));
-  height = var::get<txin_gen>(*bl->miner_tx.vin.begin()).height;
+  vtx.push_back(&bl->miner_tx.value());
+  height = bl->get_height();
 
   for (const auto &h : bl->tx_hashes) {
     const map_hash2tx_t::const_iterator cit = mtx.find(h);
-    CHECK_AND_ASSERT_THROW_MES(mtx.end() != cit, "block contains an unknown tx hash @ " << height << ", " << h);
+    CHECK_AND_ASSERT_THROW_MES(mtx.end() != cit, "block contains an unknown tx hash @ {}, {}", height, h);
     vtx.push_back(cit->second);
   }
 
@@ -219,15 +213,15 @@ void wallet_tools::gen_block_data(block_tracker &bt, const cryptonote::block *bl
   parsed_block.block = *bl;
   parsed_block.txes.reserve(bl->tx_hashes.size());
 
-  auto & o_indices = parsed_block.o_indices.indices;
-  o_indices.reserve(bl->tx_hashes.size() + 1);
+  auto& o_indices = parsed_block.o_indices["indices"];
 
   size_t cur = 0;
   for (const transaction *tx : vtx){
     cur += 1;
     o_indices.emplace_back();
     bt.process(bl, tx, cur - 1);
-    bt.global_indices(tx, o_indices.back().indices);
+    std::vector<uint64_t> indices = o_indices.back()["indices"];
+    bt.global_indices(tx, indices);
 
     if (cur > 1)  // miner not included
       parsed_block.txes.push_back(*tx);

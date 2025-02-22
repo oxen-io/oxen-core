@@ -1,15 +1,10 @@
-#include "wallet/api/wallet2_api.h"
-#include "wallet/wallet2.h"
-
-#include <string>
-
+#include "wallet/api/wallet.h"
 
 namespace Wallet {
 
 class WalletImpl;
-class StakeUnlockResultImpl : public StakeUnlockResult
-{
-public:
+class StakeUnlockResultImpl : public StakeUnlockResult {
+  public:
     StakeUnlockResultImpl(WalletImpl& w, tools::wallet2::request_stake_unlock_result res);
     StakeUnlockResultImpl();
     ~StakeUnlockResultImpl() override;
@@ -18,10 +13,9 @@ public:
     std::string msg() override;
     PendingTransaction* ptx() override;
 
-private:
+  private:
     WalletImpl& wallet;
     tools::wallet2::request_stake_unlock_result result;
 };
 
-
-}
+}  // namespace Wallet

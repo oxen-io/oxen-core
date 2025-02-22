@@ -101,7 +101,7 @@ bool gen_double_spend_base<concrete_test>::check_double_spend(cryptonote::core& 
   CHECK_TEST_CONDITION(r);
   CHECK_TEST_CONDITION(m_last_valid_block == blocks.back());
 
-  CHECK_EQ(concrete_test::expected_pool_txs_count, c.get_pool().get_transactions_count());
+  CHECK_EQ(concrete_test::expected_pool_txs_count, c.mempool.get_transactions_count());
 
   cryptonote::account_base bob_account = var::get<cryptonote::account_base>(events[1]);
   cryptonote::account_base alice_account = var::get<cryptonote::account_base>(events[2]);

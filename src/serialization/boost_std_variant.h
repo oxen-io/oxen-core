@@ -1,21 +1,24 @@
 #pragma once
 
-#include <boost/version.hpp>
-
-#if BOOST_VERSION < 108400
-
 // Adapts boost::serialization to support std::variant, serializing just as a boost::variant would
 // be serialized (so that the serialized boost::variant<T...> and std::variant<T...> values are
 // interchangeable).
 //
 
+#include <boost/version.hpp>
+
+#if BOOST_VERSION >= 108400
+
+#include <boost/serialization/variant.hpp>
+
+#else
+
 #include <oxenc/variant.h>
 
 #include <boost/archive/archive_exception.hpp>
-
-#include <boost/serialization/split_free.hpp>
-#include <boost/serialization/serialization.hpp>
 #include <boost/serialization/nvp.hpp>
+#include <boost/serialization/serialization.hpp>
+#include <boost/serialization/split_free.hpp>
 
 namespace boost::serialization {
 
@@ -33,26 +36,26 @@ void load_variant_impl(Archive& ar, int index, Variant& v) {
         ar >> boost::serialization::make_nvp("value", value);
         v = value;
         ar.reset_object_address(&var::get<T>(v), &value);
-    }
-    else if constexpr (sizeof...(More) > 0) {
+    } else if constexpr (sizeof...(More) > 0) {
         return load_variant_impl<Archive, Variant, More...>(ar, index - 1, v);
     }
 }
 
 template <class Archive, typename... T>
-void load(Archive & ar, std::variant<T...>& v, const unsigned int version) {
+void load(Archive& ar, std::variant<T...>& v, const unsigned int version) {
     int index;
     ar >> boost::serialization::make_nvp("which", index);
-    if (index < 0 || index >= (int) sizeof...(T))
-        throw boost::archive::archive_exception{boost::archive::archive_exception::unsupported_version};
+    if (index < 0 || index >= (int)sizeof...(T))
+        throw boost::archive::archive_exception{
+                boost::archive::archive_exception::unsupported_version};
     load_variant_impl<Archive, std::variant<T...>, T...>(ar, index, v);
 }
 
 template <class Archive, typename... T>
 inline void serialize(Archive& ar, std::variant<T...>& v, const unsigned int file_version) {
-    split_free(ar,v,file_version);
+    split_free(ar, v, file_version);
 }
 
-} // namespace boost::serialization
+}  // namespace boost::serialization
 
 #endif

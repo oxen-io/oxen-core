@@ -7,9 +7,6 @@
 [submodule "external/randomx"]
 	path = external/randomx
 	url = https://github.com/oxen-io/loki-randomXL
-[submodule "external/loki-mq"]
-	path = external/oxen-mq
-	url = https://github.com/oxen-io/loki-mq.git
 [submodule "external/googletest"]
 	path = external/googletest
 	url = https://github.com/google/googletest.git
@@ -19,18 +16,37 @@
 [submodule "external/libuv"]
 	path = external/libuv
 	url = https://github.com/libuv/libuv.git
-[submodule "external/cpr"]
-	path = external/cpr
-	url = https://github.com/whoshuu/cpr.git
-[submodule "external/ghc-filesystem"]
-	path = external/ghc-filesystem
-	url = https://github.com/gulrak/filesystem.git
-[submodule "external/fmt"]
-	path = external/fmt
-	url = https://github.com/fmtlib/fmt.git
+[submodule "external/Catch2"]
+	path = external/Catch2
+	url = https://github.com/catchorg/Catch2
 [submodule "external/SQLiteCpp"]
 	path = external/SQLiteCpp
 	url = https://github.com/SRombauts/SQLiteCpp
+[submodule "external/date"]
+	path = external/date
+	url = https://github.com/HowardHinnant/date.git
+[submodule "external/oxen-logging"]
+	path = external/oxen-logging
+	url = https://github.com/oxen-io/oxen-logging
+[submodule "external/oxen-mq"]
+	path = external/oxen-mq
+	url = https://github.com/oxen-io/oxen-mq.git
+[submodule "external/pybind11"]
+	path = external/pybind11
+	url = https://github.com/pybind/pybind11
+	branch = stable
+[submodule "external/ethyl"]
+	path = external/ethyl
+	url = https://github.com/oxen-io/ethyl.git
 [submodule "external/oxen-encoding"]
 	path = external/oxen-encoding
-	url = https://github.com/oxen-io/oxen-encoding.git
+	url = https://github.com/session-foundation/oxen-encoding.git
+[submodule "external/cpptrace"]
+	path = external/cpptrace
+	url = https://github.com/jeremy-rifkin/cpptrace
+[submodule "external/bn256"]
+	path = external/bn256
+	url = https://github.com/oxen-io/bn256.git
+[submodule "external/tracy"]
+	path = external/tracy
+	url = https://github.com/wolfpld/tracy

@@ -87,7 +87,7 @@ namespace epee
     }
     //-----------------------------------------------------------------------------------------------------------
     template<class t_struct>
-    bool store_t_to_binary(t_struct& str_in, std::string& binary_buff, size_t indent = 0)
+    bool store_t_to_binary(t_struct& str_in, std::string& binary_buff, [[maybe_unused]]size_t indent = 0)
     {
       portable_storage ps;
       str_in.store(ps);

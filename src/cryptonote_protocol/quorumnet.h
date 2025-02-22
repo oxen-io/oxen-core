@@ -33,7 +33,7 @@
 #include <vector>
 
 namespace service_nodes {
-    struct quorum_vote_t;
+struct quorum_vote_t;
 };
 
 namespace quorumnet {
@@ -44,4 +44,4 @@ void init_core_callbacks();
 
 /// Everything else is in a hidden namespace with internal linkage.
 
-}
+}  // namespace quorumnet

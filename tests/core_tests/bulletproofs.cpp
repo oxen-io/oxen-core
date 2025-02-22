@@ -28,6 +28,7 @@
 // 
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include "common/guts.h"
 #include "ringct/rctSigs.h"
 #include "ringct/bulletproofs.h"
 #include "chaingen.h"
@@ -53,13 +54,11 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   MAKE_GENESIS_BLOCK(events, blk_0, miner_account, ts_start);
 
   if (target_hf == hf::none)
-    target_hf = cryptonote::hf_max;
+    // FIXME: core_tests currently doesn't properly create HF21+ blocks, so cap this at HF20 for
+    // now.  (see also TODO-HF21-plus-reward-generation in chaingen.cpp)
+    target_hf = cryptonote::hf::hf20_eth_transition;
+
   // NOTE: Monero tests use multiple null terminated entries in their arrays
-  {
-    int amounts_paid_len = 0;
-    for (int i = 0; amounts_paid[i] != (uint64_t)-1; ++i)
-      ++amounts_paid_len;
-  }
 
   std::vector<cryptonote::hard_fork> hard_forks = {
     {hf::hf7,0,0}, {hf::hf8,0,1}, {target_hf, 0, NUM_UNLOCKED_BLOCKS + MINED_MONEY_UNLOCK_WINDOW + 1},
@@ -89,7 +88,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
                                            test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
                                            first_hf,
                                            static_cast<uint8_t>(first_hf),
-                                           prev_block->timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+                                           prev_block->timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
                                            crypto::hash(),
                                            0,
                                            transaction(),
@@ -114,7 +113,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
                                              test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
                                              first_hf,
                                              static_cast<uint8_t>(first_hf),
-                                             blk_last.timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+                                             blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
                                              crypto::hash(),
                                              0,
                                              transaction(),
@@ -143,7 +142,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
                                            test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
                                            generator.m_hf_version,
                                            static_cast<uint8_t>(generator.m_hf_version),
-                                           blk_last.timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+                                           blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
                                            crypto::hash(),
                                            0,
                                            transaction(),
@@ -207,7 +206,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
 
     if (pre_tx && !pre_tx(sources, destinations, n))
     {
-      MDEBUG("pre_tx returned failure");
+      oxen::log::debug(globallogcat, "pre_tx returned failure");
       return false;
     }
 
@@ -228,14 +227,14 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
         nullptr, /*multisig_out*/
         tx_params))
     {
-      MDEBUG("construct_tx_and_get_tx_key failure");
+      oxen::log::debug(globallogcat, "construct_tx_and_get_tx_key failure");
       return false;
     }
 
     rct_txes.push_back(tx);
     if (post_tx && !post_tx(rct_txes.back(), n))
     {
-      MDEBUG("post_tx returned failure");
+      oxen::log::debug(globallogcat, "post_tx returned failure");
       return false;
     }
 
@@ -251,14 +250,11 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
       // that it looks obviously fake, then fill the rest with randomness (so that it is still
       // unique).
       for (size_t i = 0; i < 8; i++)
-        tx_hash.data[i] = 0x01 + (0x22 * i);
-      static std::mt19937_64 rng{std::random_device{}()};
-      std::uniform_int_distribution<char> unif{std::numeric_limits<char>::min()};
-      for (size_t i = 8; i < sizeof(tx_hash.data); i++)
-        tx_hash.data[i] = unif(rng);
+        tx_hash[i] = 0x01 + (0x22 * i);
+      crypto::rand(24, tx_hash.data() + 8);
     }
     starting_rct_tx_hashes.push_back(tx_hash);
-    LOG_PRINT_L0("Test tx: " << obj_to_json_str(rct_txes.back()));
+    oxen::log::warning(globallogcat, "Test tx: {}", obj_to_json_str(rct_txes.back()));
 
     uint64_t total_amount_encoded = 0;
     for (int o = 0; amounts_paid[o] != (uint64_t)-1; ++o)
@@ -296,7 +292,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
 
   CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk_txes, blk_last, miner_account,
       test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_tx_hashes | test_generator::bf_hf_version,
-      generator.m_hf_version, static_cast<uint8_t>(generator.m_hf_version), blk_last.timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+      generator.m_hf_version, static_cast<uint8_t>(generator.m_hf_version), blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
       crypto::hash(), 0, transaction(), starting_rct_tx_hashes, 0, txn_fee),
       false, "Failed to generate block");
   if (!valid)
@@ -428,7 +424,7 @@ bool gen_rct2_tx_clsag_malleability::generate(std::vector<test_event_entry>& eve
     CHECK_TEST_CONDITION(tx.rct_signatures.type == rct::RCTType::CLSAG);
     CHECK_TEST_CONDITION(!tx.rct_signatures.p.CLSAGs.empty());
     rct::key x;
-    CHECK_TEST_CONDITION(tools::hex_to_type("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa", x));
+    CHECK_TEST_CONDITION(tools::try_load_from_hex_guts("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa"sv, x));
     tx.rct_signatures.p.CLSAGs[0].D = rct::addKeys(tx.rct_signatures.p.CLSAGs[0].D, x);
     return true;
   });

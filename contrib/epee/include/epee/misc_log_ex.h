@@ -1,3 +1,5 @@
+#pragma once
+
 // Copyright (c) 2006-2013, Andrey N. Sabelnikov, www.sabelnikov.net
 // All rights reserved.
 //
@@ -25,175 +27,50 @@
 //
 
 
-#ifndef _MISC_LOG_EX_H_
-#define _MISC_LOG_EX_H_
+#ifndef __cplusplus
+#error "this header is c++ only"
+#endif
 
-#ifdef __cplusplus
-
+#include <cassert>
 #include <string>
-
-#include "easylogging++.h"
+#include <sstream>
+#include <iostream>
+#include <oxen/log.hpp>
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "default"
 
-#define MAX_LOG_FILE_SIZE 104850000 // 100 MB - 7600 bytes
-#define MAX_LOG_FILES 50
-
-#define CLOG_ENABLED(level, cat) ELPP->vRegistry()->allowed(el::Level::level, cat)
-#define LOG_ENABLED(level) CLOG_ENABLED(level, OXEN_DEFAULT_LOG_CATEGORY)
-
-#define MCLOG_TYPE(level, cat, type, x) do { \
-    if (ELPP->vRegistry()->allowed(level, cat)) { \
-      el::base::Writer(level, __FILE__, __LINE__, ELPP_FUNC, type).construct(cat) << x; \
-    } \
-  } while (0)
-
-#define MCLOG(level, cat, x) MCLOG_TYPE(level, cat, el::base::DispatchAction::NormalLog, x)
-#define MCLOG_FILE(level, cat, x) MCLOG_TYPE(level, cat, el::base::DispatchAction::FileOnlyLog, x)
-
-#define MCFATAL(cat,x) MCLOG(el::Level::Fatal,cat, x)
-#define MCERROR(cat,x) MCLOG(el::Level::Error,cat, x)
-#define MCWARNING(cat,x) MCLOG(el::Level::Warning,cat, x)
-#define MCINFO(cat,x) MCLOG(el::Level::Info,cat, x)
-#define MCDEBUG(cat,x) MCLOG(el::Level::Debug,cat, x)
-#define MCTRACE(cat,x) MCLOG(el::Level::Trace,cat, x)
-
-#define MCLOG_COLOR(level,cat,color,x) MCLOG(level,cat,"\033[1;" color "m" << x << "\033[0m")
-#define MCLOG_RED(level,cat,x) MCLOG_COLOR(level,cat,"31",x)
-#define MCLOG_GREEN(level,cat,x) MCLOG_COLOR(level,cat,"32",x)
-#define MCLOG_YELLOW(level,cat,x) MCLOG_COLOR(level,cat,"33",x)
-#define MCLOG_BLUE(level,cat,x) MCLOG_COLOR(level,cat,"34",x)
-#define MCLOG_MAGENTA(level,cat,x) MCLOG_COLOR(level,cat,"35",x)
-#define MCLOG_CYAN(level,cat,x) MCLOG_COLOR(level,cat,"36",x)
-
-#define MLOG_RED(level,x) MCLOG_RED(level,OXEN_DEFAULT_LOG_CATEGORY,x)
-#define MLOG_GREEN(level,x) MCLOG_GREEN(level,OXEN_DEFAULT_LOG_CATEGORY,x)
-#define MLOG_YELLOW(level,x) MCLOG_YELLOW(level,OXEN_DEFAULT_LOG_CATEGORY,x)
-#define MLOG_BLUE(level,x) MCLOG_BLUE(level,OXEN_DEFAULT_LOG_CATEGORY,x)
-#define MLOG_MAGENTA(level,x) MCLOG_MAGENTA(level,OXEN_DEFAULT_LOG_CATEGORY,x)
-#define MLOG_CYAN(level,x) MCLOG_CYAN(level,OXEN_DEFAULT_LOG_CATEGORY,x)
-
-#define MFATAL(x) MCFATAL(OXEN_DEFAULT_LOG_CATEGORY,x)
-#define MERROR(x) MCERROR(OXEN_DEFAULT_LOG_CATEGORY,x)
-#define MWARNING(x) MCWARNING(OXEN_DEFAULT_LOG_CATEGORY,x)
-#define MINFO(x) MCINFO(OXEN_DEFAULT_LOG_CATEGORY,x)
-#define MDEBUG(x) MCDEBUG(OXEN_DEFAULT_LOG_CATEGORY,x)
-#define MTRACE(x) MCTRACE(OXEN_DEFAULT_LOG_CATEGORY,x)
-#define MLOG(level,x) MCLOG(level,OXEN_DEFAULT_LOG_CATEGORY,x)
-
-#define MGINFO(x) MCINFO("global",x)
-#define MGINFO_RED(x) MCLOG_RED(el::Level::Info, "global",x)
-#define MGINFO_GREEN(x) MCLOG_GREEN(el::Level::Info, "global",x)
-#define MGINFO_YELLOW(x) MCLOG_YELLOW(el::Level::Info, "global",x)
-#define MGINFO_BLUE(x) MCLOG_BLUE(el::Level::Info, "global",x)
-#define MGINFO_MAGENTA(x) MCLOG_MAGENTA(el::Level::Info, "global",x)
-#define MGINFO_CYAN(x) MCLOG_CYAN(el::Level::Info, "global",x)
-
-#define IFLOG(level, cat, type, init, x) \
-  do { \
-    if (ELPP->vRegistry()->allowed(level, cat)) { \
-      init; \
-      el::base::Writer(level, __FILE__, __LINE__, ELPP_FUNC, type).construct(cat) << x; \
-    } \
-  } while(0)
-#define MIDEBUG(init, x) IFLOG(el::Level::Debug, OXEN_DEFAULT_LOG_CATEGORY, el::base::DispatchAction::NormalLog, init, x)
-
-
-#define LOG_ERROR(x) MERROR(x)
-#define LOG_PRINT_L0(x) MWARNING(x)
-#define LOG_PRINT_L1(x) MINFO(x)
-#define LOG_PRINT_L2(x) MDEBUG(x)
-#define LOG_PRINT_L3(x) MTRACE(x)
-#define LOG_PRINT_L4(x) MTRACE(x)
-
-#define MLOG_SET_THREAD_NAME(x) el::Helpers::setThreadName(x)
-
-#ifndef LOCAL_ASSERT
-#include <assert.h>
-#if (defined _MSC_VER)
-#define LOCAL_ASSERT(expr) {if(epee::debug::get_set_enable_assert()){_ASSERTE(expr);}}
-#else
-#define LOCAL_ASSERT(expr)
-#endif
-
-#endif
-
-std::string mlog_get_default_log_path(const char *default_filename);
-void mlog_configure(const std::string &filename_base, bool console, const std::size_t max_log_file_size = MAX_LOG_FILE_SIZE, const std::size_t max_log_files = MAX_LOG_FILES);
-void mlog_set_categories(const char *categories);
-std::string mlog_get_categories();
-void mlog_set_log_level(int level);
-void mlog_set_log(const char *log);
-
 namespace epee
 {
-namespace debug
-{
-  inline bool get_set_enable_assert(bool set = false, bool v = false)
-  {
-    static bool e = true;
-    if(set)
-      e = v;
-    return e;
-  }
-}
+namespace log = oxen::log;
 
+inline auto logcat = oxen::log::Cat("epee");
 
-
-#define TRY_ENTRY()   try {
+#define TRY_ENTRY() try {
 #define CATCH_ENTRY(location, return_val) } \
   catch(const std::exception& ex) \
 { \
-  (void)(ex); \
-  LOG_ERROR("Exception at [" << location << "], what=" << ex.what()); \
+    oxen::log::error(logcat, "Exception at [{}]: {}", location, ex.what()); \
   return return_val; \
 }\
   catch(...)\
 {\
-  LOG_ERROR("Exception at [" << location << "], generic exception \"...\"");\
+    oxen::log::error(logcat, "Unknown exception at [{}]", location); \
   return return_val; \
 }
 
-#define CATCH_ENTRY_L0(lacation, return_val) CATCH_ENTRY(lacation, return_val)
-#define CATCH_ENTRY_L1(lacation, return_val) CATCH_ENTRY(lacation, return_val)
-#define CATCH_ENTRY_L2(lacation, return_val) CATCH_ENTRY(lacation, return_val)
-#define CATCH_ENTRY_L3(lacation, return_val) CATCH_ENTRY(lacation, return_val)
-#define CATCH_ENTRY_L4(lacation, return_val) CATCH_ENTRY(lacation, return_val)
-
-
-#define ASSERT_MES_AND_THROW(message) {LOG_ERROR(message); std::stringstream ss; ss << message; throw std::runtime_error(ss.str());}
-#define CHECK_AND_ASSERT_THROW_MES(expr, message) do {if(!(expr)) ASSERT_MES_AND_THROW(message);} while(0)
-
+#define ASSERT_MES_AND_THROW(...) do { \
+    auto msg = fmt::format(__VA_ARGS__); \
+    oxen::log::error(logcat, "{}", msg); \
+    throw std::runtime_error{msg}; } while(0)
+#define CHECK_AND_ASSERT_THROW_MES(expr, ...) do {if(!(expr)) ASSERT_MES_AND_THROW(__VA_ARGS__);} while(0)
 
 #ifndef CHECK_AND_ASSERT
-#define CHECK_AND_ASSERT(expr, fail_ret_val)   do{if(!(expr)){LOCAL_ASSERT(expr); return fail_ret_val;};}while(0)
+#define CHECK_AND_ASSERT(expr, fail_ret_val)   do{if(!(expr)){return fail_ret_val;};}while(0)
 #endif
 
 #ifndef CHECK_AND_ASSERT_MES
-#define CHECK_AND_ASSERT_MES(expr, fail_ret_val, message)   do{if(!(expr)) {LOG_ERROR(message); return fail_ret_val;};}while(0)
-#endif
-
-#ifndef CHECK_AND_NO_ASSERT_MES_L
-#define CHECK_AND_NO_ASSERT_MES_L(expr, fail_ret_val, l, message)   do{if(!(expr)) {LOG_PRINT_L##l(message); /*LOCAL_ASSERT(expr);*/ return fail_ret_val;};}while(0)
-#endif
-
-#ifndef CHECK_AND_NO_ASSERT_MES
-#define CHECK_AND_NO_ASSERT_MES(expr, fail_ret_val, message) CHECK_AND_NO_ASSERT_MES_L(expr, fail_ret_val, 0, message)
-#endif
-
-#ifndef CHECK_AND_NO_ASSERT_MES_L1
-#define CHECK_AND_NO_ASSERT_MES_L1(expr, fail_ret_val, message) CHECK_AND_NO_ASSERT_MES_L(expr, fail_ret_val, 1, message)
-#endif
-
-
-#ifndef CHECK_AND_ASSERT_MES_NO_RET
-#define CHECK_AND_ASSERT_MES_NO_RET(expr, message)   do{if(!(expr)) {LOG_ERROR(message); return;};}while(0)
-#endif
-
-
-#ifndef CHECK_AND_ASSERT_MES2
-#define CHECK_AND_ASSERT_MES2(expr, message)   do{if(!(expr)) {LOG_ERROR(message); };}while(0)
+#define CHECK_AND_ASSERT_MES(expr, fail_ret_val, ...)   do{if(!(expr)) {oxen::log::error(logcat, __VA_ARGS__); return fail_ret_val;};}while(0)
 #endif
 
 enum console_colors
@@ -209,32 +86,4 @@ enum console_colors
 };
 
 bool is_stdout_a_tty();
-void set_console_color(int color, bool bright);
-void reset_console_color();
-
 }
-
-extern "C"
-{
-
-#endif
-
-#ifdef __GNUC__
-#define ATTRIBUTE_PRINTF __attribute__((format(printf, 2, 3)))
-#else
-#define ATTRIBUTE_PRINTF
-#endif
-
-bool merror(const char *category, const char *format, ...) ATTRIBUTE_PRINTF;
-bool mwarning(const char *category, const char *format, ...) ATTRIBUTE_PRINTF;
-bool minfo(const char *category, const char *format, ...) ATTRIBUTE_PRINTF;
-bool mdebug(const char *category, const char *format, ...) ATTRIBUTE_PRINTF;
-bool mtrace(const char *category, const char *format, ...) ATTRIBUTE_PRINTF;
-
-#ifdef __cplusplus
-
-}
-
-#endif
-
-#endif //_MISC_LOG_EX_H_

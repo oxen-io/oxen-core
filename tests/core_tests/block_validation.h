@@ -53,8 +53,8 @@ public:
     DEFINE_TESTS_ERROR_CONTEXT("gen_block_verification_base::check_block_purged");
 
     CHECK_TEST_CONDITION(invalid_block_idx < ev_index);
-    CHECK_EQ(0, c.get_pool().get_transactions_count());
-    CHECK_EQ(invalid_block_idx, c.get_current_blockchain_height());
+    CHECK_EQ(0, c.mempool.get_transactions_count());
+    CHECK_EQ(invalid_block_idx, c.blockchain.get_current_blockchain_height());
 
     return true;
   }
@@ -72,8 +72,8 @@ struct gen_block_accepted_base : public test_chain_unit_base
   {
     DEFINE_TESTS_ERROR_CONTEXT("gen_block_accepted_base::check_block_accepted");
 
-    CHECK_EQ(0, c.get_pool().get_transactions_count());
-    CHECK_EQ(expected_blockchain_height, c.get_current_blockchain_height());
+    CHECK_EQ(0, c.mempool.get_transactions_count());
+    CHECK_EQ(expected_blockchain_height, c.blockchain.get_current_blockchain_height());
 
     return true;
   }

@@ -28,12 +28,13 @@
 
 #pragma once
 
-#include "../cryptonote_basic/cryptonote_basic.h"
-#include "../common/util.h"
-#include "service_node_rules.h"
 #include <iostream>
 #include <shared_mutex>
 #include <variant>
+
+#include "../common/util.h"
+#include "../cryptonote_basic/cryptonote_basic.h"
+#include "service_node_rules.h"
 
 namespace service_nodes {
 class service_node_list;
@@ -44,7 +45,7 @@ namespace cryptonote {
 // FIXME TODO XXX - rename this file to blink_tx.h
 
 class blink_tx {
-public:
+  public:
     enum class subquorum : uint8_t { base, future, _count };
 
     enum class signature_status : uint8_t { none, rejected, approved };
@@ -54,9 +55,9 @@ public:
     const uint64_t height;
 
     class tx_hash_visitor {
-    public:
-        crypto::hash operator()(const crypto::hash &h) const { return h; }
-        crypto::hash operator()(const transaction &tx) const;
+      public:
+        crypto::hash operator()(const crypto::hash& h) const { return h; }
+        crypto::hash operator()(const transaction& tx) const;
     };
 
     /// The blink transaction *or* hash.  The transaction is present when building a blink tx for
@@ -75,24 +76,26 @@ public:
     blink_tx() = delete;
 
     /// Construct a new blink_tx from just a height; constructs a default transaction.
-    explicit blink_tx(uint64_t height) : height{height} {
-        initialize();
-    }
+    explicit blink_tx(uint64_t height) : height{height} { initialize(); }
 
     /// Construct a new blink_tx from a height and a hash
-    explicit blink_tx(uint64_t height, const crypto::hash &txhash) : height{height}, tx{txhash} {
+    explicit blink_tx(uint64_t height, const crypto::hash& txhash) : height{height}, tx{txhash} {
         initialize();
     }
 
     /// Obtains a unique lock on this blink tx; required for any signature-mutating method unless
     /// otherwise noted
     template <typename... Args>
-    auto unique_lock(Args &&...args) { return std::unique_lock{mutex_, std::forward<Args>(args)...}; }
+    auto unique_lock(Args&&... args) {
+        return std::unique_lock{mutex_, std::forward<Args>(args)...};
+    }
 
     /// Obtains a shared lock on this blink tx; required for any signature-dependent method unless
     /// otherwise noted
     template <typename... Args>
-    auto shared_lock(Args &&...args) { return std::shared_lock{mutex_, std::forward<Args>(args)...}; }
+    auto shared_lock(Args&&... args) {
+        return std::shared_lock{mutex_, std::forward<Args>(args)...};
+    }
 
     /**
      * Sets the maximum number of signatures for the given subquorum type, if the given size is less
@@ -113,21 +116,32 @@ public:
      * signature was already present for the given quorum and position.  Throws a
      * `blink_tx::signature_verification_error` if the signature fails validation.
      */
-    bool add_signature(subquorum q, int position, bool approved, const crypto::signature &sig, const crypto::public_key &pubkey);
+    bool add_signature(
+            subquorum q,
+            int position,
+            bool approved,
+            const crypto::signature& sig,
+            const crypto::public_key& pubkey);
 
     /**
      * Adds a signature for the given quorum and position.  Returns false if a signature was already
      * present; true if the signature was accepted and stored; and throws a
      * `blink_tx::signature_verification_error` if the signature fails validation.
      */
-    bool add_signature(subquorum q, int position, bool approved, const crypto::signature &sig, const service_nodes::service_node_list &snl);
+    bool add_signature(
+            subquorum q,
+            int position,
+            bool approved,
+            const crypto::signature& sig,
+            const service_nodes::service_node_list& snl);
 
     /**
      * Adds a signature for the given quorum and position without checking it for validity (i.e.
      * because it has already been checked with crypto::check_signature).  Returns true if added,
      * false if a signature was already present.
      */
-    bool add_prechecked_signature(subquorum q, int position, bool approved, const crypto::signature &sig);
+    bool add_prechecked_signature(
+            subquorum q, int position, bool approved, const crypto::signature& sig);
 
     /**
      * Returns the signature status for the given subquorum and position.
@@ -151,8 +165,9 @@ public:
     /// Returns the quorum height for the given height and quorum (base or future); returns 0 at the
     /// beginning of the chain (before there are enough blocks for a blink quorum).
     static uint64_t quorum_height(uint64_t h, subquorum q) {
-        uint64_t bh = h - (h % service_nodes::BLINK_QUORUM_INTERVAL) - service_nodes::BLINK_QUORUM_LAG
-            + static_cast<uint8_t>(q) * service_nodes::BLINK_QUORUM_INTERVAL;
+        uint64_t bh = h - (h % service_nodes::BLINK_QUORUM_INTERVAL) -
+                      service_nodes::BLINK_QUORUM_LAG +
+                      static_cast<uint8_t>(q) * service_nodes::BLINK_QUORUM_INTERVAL;
         return bh > h /*overflow*/ ? 0 : bh;
     }
 
@@ -162,7 +177,8 @@ public:
     uint64_t quorum_height(subquorum q) const { return quorum_height(height, q); }
 
     /// Returns the pubkey of the referenced service node, or null if there is no such service node.
-    crypto::public_key get_sn_pubkey(subquorum q, int position, const service_nodes::service_node_list &snl) const;
+    crypto::public_key get_sn_pubkey(
+            subquorum q, int position, const service_nodes::service_node_list& snl) const;
 
     /// Returns the hashed signing value for this blink TX for a tx with status `approved`.  The
     /// result is a fast hash of the height + tx hash + approval value.  Lock not required.
@@ -180,22 +196,33 @@ public:
      *
      * A shared lock should be held by the caller.
      */
-    void fill_serialization_data(crypto::hash &tx_hash, uint64_t &height, std::vector<uint8_t> &quorum, std::vector<uint8_t> &position, std::vector<crypto::signature> &signature) const;
+    void fill_serialization_data(
+            crypto::hash& tx_hash,
+            uint64_t& height,
+            std::vector<uint8_t>& quorum,
+            std::vector<uint8_t>& position,
+            std::vector<crypto::signature>& signature) const;
 
     /// Wrapper around the above that can be called with a serializable_blink_metadata
     template <typename T>
-    void fill_serialization_data(T &data) const { fill_serialization_data(data.tx_hash, data.height, data.quorum, data.position, data.signature); }
+    void fill_serialization_data(T& data) const {
+        fill_serialization_data(
+                data.tx_hash, data.height, data.quorum, data.position, data.signature);
+    }
 
-private:
+  private:
     void initialize() {
         assert(quorum_height(subquorum::base) > 0);
-        for (auto &q : signatures_)
-            for (auto &s : q)
+        for (auto& q : signatures_)
+            for (auto& s : q)
                 s.status = signature_status::none;
     }
 
-    std::array<std::array<quorum_signature, service_nodes::BLINK_SUBQUORUM_SIZE>, tools::enum_count<subquorum>> signatures_;
+    std::array<
+            std::array<quorum_signature, service_nodes::BLINK_SUBQUORUM_SIZE>,
+            tools::enum_count<subquorum>>
+            signatures_;
     std::shared_mutex mutex_;
 };
 
-}
+}  // namespace cryptonote

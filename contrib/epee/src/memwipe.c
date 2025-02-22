@@ -38,6 +38,11 @@
 #endif
 #include "epee/memwipe.h"
 
+#ifndef __clang__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
+
 #if defined(_MSC_VER)
 #define SCARECROW \
     __asm;
@@ -111,5 +116,9 @@ void *memwipe(void *ptr, size_t n)
   SCARECROW
   return ptr;
 }
+
+#ifndef __clang__
+#pragma GCC diagnostic pop
+#endif
 
 #endif

@@ -121,11 +121,11 @@ connection_basic::connection_basic(boost::asio::ip::tcp::socket&& sock, std::sha
 	:
 	m_state(std::move(state)),
 	mI( new connection_basic_pimpl("peer") ),
-	strand_(GET_IO_SERVICE(sock)),
-	socket_(GET_IO_SERVICE(sock)),
 	m_want_close_connection(false),
 	m_was_shutdown(false),
-	m_is_multithreaded(false)
+	m_is_multithreaded(false),
+	strand_(GET_IO_SERVICE(sock)),
+	socket_(GET_IO_SERVICE(sock))
 {
 	// add nullptr checks if removed
 	assert(m_state != nullptr); // release runtime check in get_context
@@ -137,19 +137,17 @@ connection_basic::connection_basic(boost::asio::ip::tcp::socket&& sock, std::sha
 
 	std::string remote_addr_str = "?";
 	try { boost::system::error_code e; remote_addr_str = socket_.remote_endpoint(e).address().to_string(); } catch(...){} ;
-
-	MDEBUG("Spawned connection #"<<mI->m_peer_number<<" to " << remote_addr_str << " currently we have sockets count:" << m_state->sock_count);
 }
 
 connection_basic::connection_basic(boost::asio::io_service &io_service, std::shared_ptr<connection_basic_shared_state> state)
 	:
 	m_state(std::move(state)),
 	mI( new connection_basic_pimpl("peer") ),
-	strand_(io_service),
-	socket_(io_service),
 	m_want_close_connection(false),
 	m_was_shutdown(false),
-	m_is_multithreaded(false)
+	m_is_multithreaded(false),
+	strand_(io_service),
+	socket_(io_service)
 {
 	// add nullptr checks if removed
 	assert(m_state != nullptr); // release runtime check in get_context
@@ -159,8 +157,6 @@ connection_basic::connection_basic(boost::asio::io_service &io_service, std::sha
 
 	std::string remote_addr_str = "?";
 	try { boost::system::error_code e; remote_addr_str = socket().remote_endpoint(e).address().to_string(); } catch(...){} ;
-
-	MDEBUG("Spawned connection #"<<mI->m_peer_number<<" to " << remote_addr_str << " currently we have sockets count:" << m_state->sock_count);
 }
 
 connection_basic::~connection_basic() noexcept(false) {
@@ -168,7 +164,6 @@ connection_basic::~connection_basic() noexcept(false) {
 
 	std::string remote_addr_str = "?";
 	try { boost::system::error_code e; remote_addr_str = socket().remote_endpoint(e).address().to_string(); } catch(...){} ;
-	MDEBUG("Destructing connection #"<<mI->m_peer_number << " to " << remote_addr_str);
 }
 
 void connection_basic::set_rate_up_limit(uint64_t limit) {
@@ -176,7 +171,6 @@ void connection_basic::set_rate_up_limit(uint64_t limit) {
 		std::lock_guard lock{network_throttle_manager::m_lock_get_global_throttle_out};
 		network_throttle_manager::get_global_throttle_out().set_target_speed(limit);
 	}
-	save_limit_to_file(limit);
 }
 
 void connection_basic::set_rate_down_limit(uint64_t limit) {
@@ -189,7 +183,6 @@ void connection_basic::set_rate_down_limit(uint64_t limit) {
 	  std::lock_guard lock{network_throttle_manager::m_lock_get_global_throttle_inreq};
 		network_throttle_manager::get_global_throttle_inreq().set_target_speed(limit);
 	}
-    save_limit_to_file(limit);
 }
 
 uint64_t connection_basic::get_rate_up_limit() {
@@ -210,9 +203,6 @@ uint64_t connection_basic::get_rate_down_limit() {
     return limit;
 }
 
-void connection_basic::save_limit_to_file(int limit) {
-}
- 
 void connection_basic::set_tos_flag(int tos) {
 	connection_basic_pimpl::m_default_tos = tos;
 }
@@ -226,7 +216,6 @@ void connection_basic::sleep_before_packet(size_t packet_size, int phase,  int q
 	do
 	{ // rate limiting
 		if (m_was_shutdown) { 
-			MDEBUG("m_was_shutdown - so abort sleep");
 			return;
 		}
 
@@ -237,8 +226,7 @@ void connection_basic::sleep_before_packet(size_t packet_size, int phase,  int q
 
 		delay *= 0.50;
 		if (delay > 0) {
-            long int ms = (long int)(delay * 1000);
-			MTRACE("Sleeping in " << __FUNCTION__ << " for " << ms << " ms before packet_size="<<packet_size); // debug sleep
+      long int ms = (long int)(delay * 1000);
 			std::this_thread::sleep_for(std::chrono::milliseconds{ms});
 		}
 	} while(delay > 0);
@@ -252,13 +240,11 @@ void connection_basic::sleep_before_packet(size_t packet_size, int phase,  int q
 }
 
 void connection_basic::do_send_handler_write(const void* ptr , size_t cb ) {
-        // No sleeping here; sleeping is done once and for all in connection<t_protocol_handler>::handle_write
-	MTRACE("handler_write (direct) - before ASIO write, for packet="<<cb<<" B (after sleep)");
+  // No sleeping here; sleeping is done once and for all in connection<t_protocol_handler>::handle_write
 }
 
 void connection_basic::do_send_handler_write_from_queue( const boost::system::error_code& e, size_t cb, int q_len ) {
-        // No sleeping here; sleeping is done once and for all in connection<t_protocol_handler>::handle_write
-	MTRACE("handler_write (after write, from queue="<<q_len<<") - before ASIO write, for packet="<<cb<<" B (after sleep)");
+  // No sleeping here; sleeping is done once and for all in connection<t_protocol_handler>::handle_write
 }
 
 void connection_basic::logger_handle_net_read(size_t size) { // network data read

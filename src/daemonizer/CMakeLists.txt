@@ -28,16 +28,15 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 if(MSVC OR MINGW)
-  add_library(daemonizer
+  oxen_add_library(daemonizer
     windows_service.cpp
   )
 
   target_link_libraries(daemonizer
     PUBLIC
       common
-      filesystem
-      Boost::program_options
     PRIVATE
+      logging
       extra)
 else()
   # Do-nothing library target

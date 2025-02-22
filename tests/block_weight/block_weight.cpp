@@ -88,13 +88,13 @@ public:
     return ret;
   }
   virtual crypto::hash get_block_hash_from_height(const uint64_t &height) const override {
-    crypto::hash hash = crypto::null_hash;
-    *(uint64_t*)&hash = height;
+    crypto::hash hash{};
+    *reinterpret_cast<uint64_t*>(hash.data()) = height;
     return hash;
   }
   virtual crypto::hash top_block_hash(uint64_t *block_height = NULL) const override {
     uint64_t h = height();
-    crypto::hash top = crypto::null_hash;
+    crypto::hash top{};
     if (h)
       *(uint64_t*)&top = h - 1;
     if (block_height)
@@ -129,7 +129,7 @@ static void test(test_t t, uint64_t blocks)
   const cryptonote::test_options test_options{hard_forks, 5000};
 
   auto& bc = bc_objects.m_blockchain;
-  if (!bc.init(new TestDB(), nullptr /*ons_db*/, nullptr /*sqlite_db*/, cryptonote::network_type::FAKECHAIN, true, &test_options, 0, NULL)) {
+  if (!bc.init(std::make_unique<TestDB>(), test_options)) {
     fprintf(stderr, "Failed to init blockchain\n");
     exit(1);
   };
@@ -138,9 +138,10 @@ static void test(test_t t, uint64_t blocks)
   for (uint64_t h = 0; h < LONG_TERM_BLOCK_WEIGHT_WINDOW; ++h)
   {
     cryptonote::block b;
+    b.miner_tx.emplace();
     b.major_version = cryptonote::hf::hf7;
     b.minor_version = static_cast<uint8_t>(cryptonote::hf::hf7);
-    bc.get_db().add_block(std::make_pair(b, ""), 300000, 300000, bc.get_db().height(), bc.get_db().height(), {});
+    bc.db().add_block(std::make_pair(b, ""), 300000, 300000, bc.db().height(), bc.db().height(), {});
     if (!bc.update_next_cumulative_weight_limit())
     {
       fprintf(stderr, "Failed to update cumulative weight limit 1\n");
@@ -172,9 +173,10 @@ static void test(test_t t, uint64_t blocks)
     }
     uint64_t ltw = bc.get_next_long_term_block_weight(w);
     cryptonote::block b;
+    b.miner_tx.emplace();
     b.major_version = cryptonote::feature::LONG_TERM_BLOCK_WEIGHT;
     b.minor_version = static_cast<uint8_t>(b.major_version);
-    bc.get_db().add_block(std::make_pair(std::move(b), ""), w, ltw, bc.get_db().height(), bc.get_db().height(), {});
+    bc.db().add_block(std::make_pair(std::move(b), ""), w, ltw, bc.db().height(), bc.db().height(), {});
 
     if (!bc.update_next_cumulative_weight_limit())
     {
@@ -187,10 +189,13 @@ static void test(test_t t, uint64_t blocks)
 
 int main()
 {
-  TRY_ENTRY();
-  test(test_max, 2 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
-  test(test_lcg, 9 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
-  test(test_min, 1 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
-  return 0;
-  CATCH_ENTRY_L0("main", 1);
+  auto logcat = oxen::log::Cat("block_weight");
+  try {
+      test(test_max, 2 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
+      test(test_lcg, 9 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
+      test(test_min, 1 * LONG_TERM_BLOCK_WEIGHT_WINDOW);
+  } catch (const std::exception& e) {
+      std::cerr << "caught exception: " << e.what() << "\n";
+      return 1;
+  }
 }

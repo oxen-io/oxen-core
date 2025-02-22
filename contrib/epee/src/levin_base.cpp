@@ -31,6 +31,8 @@
 
 #include "epee/int-util.h"
 
+using namespace std::literals;
+
 namespace epee
 {
 namespace levin

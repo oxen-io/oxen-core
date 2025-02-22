@@ -35,15 +35,19 @@
 #include <boost/thread/thread.hpp>
 #include <vector>
 
+#include "epee/net/net_utils_base.h"
 #include "gtest/gtest.h"
 
 #include "epee/misc_log_ex.h"
 #include "epee/storages/levin_abstract_invoke2.h"
+#include "logging/oxen_logger.h"
 #include "common/util.h"
 
 #include "net_load_tests.h"
 
 using namespace net_load_tests;
+
+using epee::connection_id_t;
 
 namespace
 {
@@ -75,7 +79,7 @@ namespace
       , m_connections(open_request_target)
     {
       for (auto& conn_id : m_connections)
-        conn_id = boost::uuids::nil_uuid();
+        conn_id = {};
     }
 
     bool open()
@@ -84,7 +88,7 @@ namespace
       if (m_open_request_target <= id)
         return false;
 
-      bool r = m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [=](const test_connection_context& context, const boost::system::error_code& ec) {
+      bool r = m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [=, this](const test_connection_context& context, const boost::system::error_code& ec) {
         if (!ec)
         {
           m_connections[id] = context.m_connection_id;
@@ -123,7 +127,7 @@ namespace
     size_t m_open_request_target;
     std::atomic<size_t> m_next_id;
     std::atomic<size_t> m_error_count;
-    std::vector<boost::uuids::uuid> m_connections;
+    std::vector<connection_id_t> m_connections;
   };
 
   class t_connection_opener_2
@@ -144,7 +148,7 @@ namespace
       if (m_open_request_target <= req_count)
         return false;
 
-      bool r = m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [=](const test_connection_context& context, const boost::system::error_code& ec) {
+      bool r = m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [=, this](const test_connection_context& context, const boost::system::error_code& ec) {
         if (!ec)
         {
           m_open_close_test_helper.handle_new_connection(context.m_connection_id);
@@ -192,14 +196,14 @@ namespace
       m_thread_count = (std::max)(min_thread_count, boost::thread::hardware_concurrency() / 2);
 
       m_tcp_server.get_config_object().set_handler(&m_commands_handler);
-      m_tcp_server.get_config_object().m_invoke_timeout = CONNECTION_TIMEOUT;
+      m_tcp_server.get_config_object().m_invoke_timeout = 1ms * CONNECTION_TIMEOUT;
 
       ASSERT_TRUE(m_tcp_server.init_server(clt_port, "127.0.0.1"));
       ASSERT_TRUE(m_tcp_server.run_server(m_thread_count, false));
 
       // Connect to server
       std::atomic<int> conn_status(0);
-      m_cmd_conn_id = boost::uuids::nil_uuid();
+      m_cmd_conn_id = {};
       ASSERT_TRUE(m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [&](const test_connection_context& context, const boost::system::error_code& ec) {
         if (!ec)
         {
@@ -207,7 +211,7 @@ namespace
         }
         else
         {
-          LOG_ERROR("Connection error: " << ec.message());
+          oxen::log::error(globallogcat, "Connection error: {}", ec.message());
         }
         conn_status.store(1, std::memory_order_seq_cst);
       }));
@@ -240,14 +244,14 @@ namespace
       test_levin_commands_handler &commands_handler = *commands_handler_ptr;
       test_tcp_server tcp_server(epee::net_utils::e_connection_type_RPC);
       tcp_server.get_config_object().set_handler(commands_handler_ptr, [](epee::levin::levin_commands_handler<test_connection_context> *handler)->void { delete handler; });
-      tcp_server.get_config_object().m_invoke_timeout = CONNECTION_TIMEOUT;
+      tcp_server.get_config_object().m_invoke_timeout = 1ms * CONNECTION_TIMEOUT;
 
       if (!tcp_server.init_server(clt_port, "127.0.0.1")) return;
       if (!tcp_server.run_server(2, false)) return;
 
       // Connect to server and invoke shutdown command
       std::atomic<int> conn_status(0);
-      boost::uuids::uuid cmd_conn_id = boost::uuids::nil_uuid();
+      connection_id_t cmd_conn_id = {};
       tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [&](const test_connection_context& context, const boost::system::error_code& ec) {
         cmd_conn_id = context.m_connection_id;
         conn_status.store(!ec ? 1 : -1, std::memory_order_seq_cst);
@@ -304,7 +308,7 @@ namespace
           }
           else
           {
-            LOG_ERROR("Get server statistics error: " << code);
+            oxen::log::error(globallogcat, "Get server statistics error: {}", code);
           }
           req_status.store(0 < code ? 1 : -1, std::memory_order_seq_cst);
       }));
@@ -341,7 +345,7 @@ namespace
     test_tcp_server m_tcp_server;
     test_levin_commands_handler m_commands_handler;
     size_t m_thread_count;
-    boost::uuids::uuid m_cmd_conn_id;
+    connection_id_t m_cmd_conn_id;
   };
 }
 
@@ -355,8 +359,7 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
 
   // Wait for all open requests to complete
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&]{ return CONNECTION_COUNT + RESERVED_CONN_CNT <= m_commands_handler.new_connection_counter() + connection_opener.error_count(); }));
-  LOG_PRINT_L0("number of opened connections / fails (total): " << m_commands_handler.new_connection_counter() <<
-    " / " << connection_opener.error_count() << " (" << (m_commands_handler.new_connection_counter() + connection_opener.error_count()) << ")");
+  oxen::log::warning(globallogcat, "number of opened connections / fails (total): {} / {} ({})", m_commands_handler.new_connection_counter(), connection_opener.error_count(), (m_commands_handler.new_connection_counter() + connection_opener.error_count()));
 
   // Check
   ASSERT_GT(m_commands_handler.new_connection_counter(), RESERVED_CONN_CNT);
@@ -373,8 +376,7 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
 
   // Wait for all opened connections to close
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&]{ return m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT <= m_commands_handler.close_connection_counter(); }));
-  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_config_object().get_connections_count() <<
-    " / " << m_commands_handler.close_connection_counter());
+  oxen::log::warning(globallogcat, "number of opened / closed connections: {} / {}", m_tcp_server.get_config_object().get_connections_count(), m_commands_handler.close_connection_counter());
 
   // Check all connections are closed
   ASSERT_EQ(m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT, m_commands_handler.close_connection_counter());
@@ -383,7 +385,7 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
   // Wait for server to handle all open and close requests
   CMD_GET_STATISTICS::response srv_stat;
   busy_wait_for_server_statistics(srv_stat, [](const CMD_GET_STATISTICS::response& stat) { return stat.new_connection_counter - RESERVED_CONN_CNT <= stat.close_connection_counter; });
-  LOG_PRINT_L0("server statistics: " << srv_stat.to_string());
+  oxen::log::warning(globallogcat, "server statistics: {}", srv_stat.to_string());
 
   // Check server status
   // It's OK, if server didn't close all opened connections, because of it could receive not all FIN packets
@@ -395,7 +397,7 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
 
   // Wait for server to close rest connections
   busy_wait_for_server_statistics(srv_stat, [](const CMD_GET_STATISTICS::response& stat) { return stat.new_connection_counter - RESERVED_CONN_CNT <= stat.close_connection_counter; });
-  LOG_PRINT_L0("server statistics: " << srv_stat.to_string());
+  oxen::log::warning(globallogcat, "server statistics: {}", srv_stat.to_string());
 
   // Check server status. All connections should be closed
   ASSERT_EQ(srv_stat.close_connection_counter, srv_stat.new_connection_counter - RESERVED_CONN_CNT);
@@ -412,8 +414,7 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
 
   // Wait for all open requests to complete
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return CONNECTION_COUNT + RESERVED_CONN_CNT <= m_commands_handler.new_connection_counter() + connection_opener.error_count(); }));
-  LOG_PRINT_L0("number of opened connections / fails (total): " << m_commands_handler.new_connection_counter() <<
-    " / " << connection_opener.error_count() << " (" << (m_commands_handler.new_connection_counter() + connection_opener.error_count()) << ")");
+  oxen::log::warning(globallogcat, "number of opened connections / fails (total): {} / {} ({})", m_commands_handler.new_connection_counter(), connection_opener.error_count(), (m_commands_handler.new_connection_counter() + connection_opener.error_count()));
 
   // Check
   ASSERT_GT(m_commands_handler.new_connection_counter(), RESERVED_CONN_CNT);
@@ -434,8 +435,7 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
 
   // Wait for all opened connections to close
   busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT <= m_commands_handler.close_connection_counter(); });
-  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_config_object().get_connections_count() <<
-    " / " << m_commands_handler.close_connection_counter());
+  oxen::log::warning(globallogcat, "number of opened / closed connections: {} / {}", m_tcp_server.get_config_object().get_connections_count(), m_commands_handler.close_connection_counter());
 
   // It's OK, if server didn't close all connections, because it could accept not all our connections
   ASSERT_LE(m_commands_handler.close_connection_counter(), m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT);
@@ -443,7 +443,7 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
 
   // Wait for server to handle all open and close requests
   busy_wait_for_server_statistics(srv_stat, [](const CMD_GET_STATISTICS::response& stat) { return stat.new_connection_counter - RESERVED_CONN_CNT <= stat.close_connection_counter; });
-  LOG_PRINT_L0("server statistics: " << srv_stat.to_string());
+  oxen::log::warning(globallogcat, "server statistics: {}", srv_stat.to_string());
 
   // Check server status
   ASSERT_EQ(srv_stat.close_connection_counter, srv_stat.new_connection_counter - RESERVED_CONN_CNT);
@@ -458,19 +458,18 @@ TEST_F(net_load_test_clt, a_lot_of_client_connections_and_connections_closed_by_
         m_tcp_server.get_config_object(), [=](int code, const CMD_DATA_REQUEST::response& rsp, const test_connection_context&) {
           if (code <= 0)
           {
-            LOG_PRINT_L0("Failed to invoke CMD_DATA_REQUEST. code = " << code);
+            oxen::log::warning(globallogcat, "Failed to invoke CMD_DATA_REQUEST. code = {}", code);
           }
       });
       if (!r)
-        LOG_PRINT_L0("Failed to invoke CMD_DATA_REQUEST");
+        oxen::log::warning(globallogcat, "Failed to invoke CMD_DATA_REQUEST");
     }
     return true;
   });
 
   // Wait for all opened connections to close
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT <= m_commands_handler.close_connection_counter(); }));
-  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_config_object().get_connections_count() <<
-    " / " << m_commands_handler.close_connection_counter());
+  oxen::log::warning(globallogcat, "number of opened / closed connections: {} / {}", m_tcp_server.get_config_object().get_connections_count(), m_commands_handler.close_connection_counter());
 
   // Check
   ASSERT_EQ(m_commands_handler.close_connection_counter(), m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT);
@@ -489,8 +488,7 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_cli
 
   // Wait for all open requests to complete
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return CONNECTION_COUNT + RESERVED_CONN_CNT <= m_commands_handler.new_connection_counter() + connection_opener.error_count(); }));
-  LOG_PRINT_L0("number of opened connections / fails (total): " << m_commands_handler.new_connection_counter() <<
-    " / " << connection_opener.error_count() << " (" << (m_commands_handler.new_connection_counter() + connection_opener.error_count()) << ")");
+  oxen::log::warning(globallogcat, "number of opened connections / fails (total): {} / {} ({})", m_commands_handler.new_connection_counter(), connection_opener.error_count(), (m_commands_handler.new_connection_counter() + connection_opener.error_count()));
 
   // Check
   ASSERT_GT(m_commands_handler.new_connection_counter(), RESERVED_CONN_CNT);
@@ -498,7 +496,7 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_cli
 
   // Wait for all close requests to complete
   EXPECT_TRUE(busy_wait_for(4 * DEFAULT_OPERATION_TIMEOUT, [&](){ return connection_opener.opened_connection_count() <= MAX_OPENED_CONN_COUNT; }));
-  LOG_PRINT_L0("actual number of opened connections: " << connection_opener.opened_connection_count());
+  oxen::log::warning(globallogcat, "actual number of opened connections: {}", connection_opener.opened_connection_count());
 
   // Check
   ASSERT_EQ(MAX_OPENED_CONN_COUNT, connection_opener.opened_connection_count());
@@ -507,7 +505,7 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_cli
 
   // Wait for all close requests to complete
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return m_commands_handler.new_connection_counter() <= m_commands_handler.close_connection_counter() + RESERVED_CONN_CNT; }));
-  LOG_PRINT_L0("actual number of opened connections: " << connection_opener.opened_connection_count());
+  oxen::log::warning(globallogcat, "actual number of opened connections: {}", connection_opener.opened_connection_count());
 
   ASSERT_EQ(m_commands_handler.new_connection_counter(), m_commands_handler.close_connection_counter() + RESERVED_CONN_CNT);
   ASSERT_EQ(0, connection_opener.opened_connection_count());
@@ -516,7 +514,7 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_cli
   // Wait for server to handle all open and close requests
   CMD_GET_STATISTICS::response srv_stat;
   busy_wait_for_server_statistics(srv_stat, [](const CMD_GET_STATISTICS::response& stat) { return stat.new_connection_counter - RESERVED_CONN_CNT <= stat.close_connection_counter; });
-  LOG_PRINT_L0("server statistics: " << srv_stat.to_string());
+  oxen::log::warning(globallogcat, "server statistics: {}", srv_stat.to_string());
 
   // Check server status
   // It's OK, if server didn't close all opened connections, because of it could receive not all FIN packets
@@ -528,7 +526,7 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_cli
 
   // Wait for server to close rest connections
   busy_wait_for_server_statistics(srv_stat, [](const CMD_GET_STATISTICS::response& stat) { return stat.new_connection_counter - RESERVED_CONN_CNT <= stat.close_connection_counter; });
-  LOG_PRINT_L0("server statistics: " << srv_stat.to_string());
+  oxen::log::warning(globallogcat, "server statistics: {}", srv_stat.to_string());
 
   // Check server status. All connections should be closed
   ASSERT_EQ(srv_stat.close_connection_counter, srv_stat.new_connection_counter - RESERVED_CONN_CNT);
@@ -561,9 +559,8 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_ser
 
   // Wait for all open requests to complete
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return CONNECTION_COUNT + RESERVED_CONN_CNT <= m_commands_handler.new_connection_counter() + connection_opener.error_count(); }));
-  LOG_PRINT_L0("number of opened connections / fails (total): " << m_commands_handler.new_connection_counter() <<
-    " / " << connection_opener.error_count() << " (" << (m_commands_handler.new_connection_counter() + connection_opener.error_count()) << ")");
-  LOG_PRINT_L0("actual number of opened connections: " << m_tcp_server.get_config_object().get_connections_count());
+  oxen::log::warning(globallogcat, "number of opened connections / fails (total): {} / {} ({})", m_commands_handler.new_connection_counter(), connection_opener.error_count(), (m_commands_handler.new_connection_counter() + connection_opener.error_count()));
+  oxen::log::warning(globallogcat, "actual number of opened connections: {}", m_tcp_server.get_config_object().get_connections_count());
 
   ASSERT_GT(m_commands_handler.new_connection_counter(), RESERVED_CONN_CNT);
   ASSERT_EQ(m_commands_handler.new_connection_counter() + connection_opener.error_count(), CONNECTION_COUNT + RESERVED_CONN_CNT);
@@ -589,7 +586,7 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_ser
 
   // Wait for server to handle all open and close requests
   busy_wait_for_server_statistics(srv_stat, [](const CMD_GET_STATISTICS::response& stat) { return stat.new_connection_counter - RESERVED_CONN_CNT <= stat.close_connection_counter; });
-  LOG_PRINT_L0("server statistics: " << srv_stat.to_string());
+  oxen::log::warning(globallogcat, "server statistics: {}", srv_stat.to_string());
 
   // Check server status
   ASSERT_EQ(srv_stat.close_connection_counter, srv_stat.new_connection_counter - RESERVED_CONN_CNT);
@@ -604,19 +601,18 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_ser
         m_tcp_server.get_config_object(), [=](int code, const CMD_DATA_REQUEST::response& rsp, const test_connection_context&) {
           if (code <= 0)
           {
-            LOG_PRINT_L0("Failed to invoke CMD_DATA_REQUEST. code = " << code);
+            oxen::log::warning(globallogcat, "Failed to invoke CMD_DATA_REQUEST. code = {}", code);
           }
       });
       if (!r)
-        LOG_PRINT_L0("Failed to invoke CMD_DATA_REQUEST");
+        oxen::log::warning(globallogcat, "Failed to invoke CMD_DATA_REQUEST");
     }
     return true;
   });
 
   // Wait for all opened connections to close
   EXPECT_TRUE(busy_wait_for(DEFAULT_OPERATION_TIMEOUT, [&](){ return m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT <= m_commands_handler.close_connection_counter(); }));
-  LOG_PRINT_L0("number of opened / closed connections: " << m_tcp_server.get_config_object().get_connections_count() <<
-    " / " << m_commands_handler.close_connection_counter());
+  oxen::log::warning(globallogcat, "number of opened / closed connections: {} / {}", m_tcp_server.get_config_object().get_connections_count(), m_commands_handler.close_connection_counter());
 
   // Check
   ASSERT_EQ(m_commands_handler.close_connection_counter(), m_commands_handler.new_connection_counter() - RESERVED_CONN_CNT);
@@ -625,13 +621,13 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_ser
 
 int main(int argc, char** argv)
 {
+  auto logcat = oxen::log::Cat("net_load_tests");
   TRY_ENTRY();
   tools::on_startup();
-  epee::debug::get_set_enable_assert(true, false);
   //set up logging options
-  mlog_configure(mlog_get_default_log_path("net_load_tests_clt.log"), true);
+  oxen::logging::init("net_load_tests_clt.log", "*=debug");
 
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
-  CATCH_ENTRY_L0("main", 1);
+  CATCH_ENTRY("main", 1);
 }

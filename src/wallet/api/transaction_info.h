@@ -28,21 +28,17 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include "wallet/api/wallet2_api.h"
-#include <string>
 #include <ctime>
+#include <string>
+
+#include "wallet/api/wallet2_api.h"
 
 namespace Wallet {
 
-enum class reward_type {
-    unspecified,
-    service_node,
-    miner
-};
+enum class reward_type { unspecified, service_node, miner };
 
-class TransactionInfoImpl : public TransactionInfo
-{
-public:
+class TransactionInfoImpl : public TransactionInfo {
+  public:
     TransactionInfoImpl();
     ~TransactionInfoImpl();
     //! in/out
@@ -61,34 +57,34 @@ public:
     virtual std::string hash() const override;
     virtual std::time_t timestamp() const override;
     virtual std::string paymentId() const override;
-    virtual const std::vector<Transfer> &transfers() const override;
+    virtual const std::vector<Transfer>& transfers() const override;
     virtual uint64_t confirmations() const override;
     virtual uint64_t unlockTime() const override;
     bool isServiceNodeReward() const override;
     bool isMinerReward() const override;
     bool isStake() const override;
 
-private:
-    int         m_direction;
-    bool        m_pending;
-    bool        m_failed;
-    reward_type m_reward_type;                 // may have a value rather than `unspecified` after hf 10
-    bool        m_is_stake;
-    uint64_t    m_amount;
-    uint64_t    m_fee;
-    uint64_t    m_blockheight;
-    std::set<uint32_t> m_subaddrIndex;        // always unique index for incoming transfers; can be multiple indices for outgoing transfers
+  private:
+    int m_direction;
+    bool m_pending;
+    bool m_failed;
+    reward_type m_reward_type;  // may have a value rather than `unspecified` after hf 10
+    bool m_is_stake;
+    uint64_t m_amount;
+    uint64_t m_fee;
+    uint64_t m_blockheight;
+    std::set<uint32_t> m_subaddrIndex;  // always unique index for incoming transfers; can be
+                                        // multiple indices for outgoing transfers
     uint32_t m_subaddrAccount;
     std::string m_label;
     std::string m_hash;
     std::time_t m_timestamp;
     std::string m_paymentid;
     std::vector<Transfer> m_transfers;
-    uint64_t    m_confirmations;
-    uint64_t    m_unlock_time;
+    uint64_t m_confirmations;
+    uint64_t m_unlock_time;
 
     friend class TransactionHistoryImpl;
-
 };
 
-} // namespace
+}  // namespace Wallet
