@@ -429,10 +429,20 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
         }
 
         if (command_line::get_arg(vm, arg_l2_provider).empty()) {
-            log::error(
-                    logcat,
-                    "At least one ethereum L2 provider must be specified for a service node");
-            args_okay = false;
+            auto latest_hf_known = get_latest_hard_fork(m_nettype);
+            if (latest_hf_known.version < hf::hf20_eth_transition) {
+                // If HF20 is not yet scheduled on this chain then only warn but don't error.
+                log::warning(globallogcat, "No L2 provider URL was given.");
+                log::warning(
+                        globallogcat,
+                        "At least one L2 provider URL will be REQUIRED starting with the "
+                        "HF20/Anchor release");
+            } else {
+                log::error(
+                        logcat,
+                        "At least one ethereum L2 provider must be specified for a service node");
+                args_okay = false;
+            }
         }
 
         if (!args_okay) {
