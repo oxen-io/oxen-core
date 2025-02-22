@@ -33,24 +33,23 @@ namespace Wallet {
 
 class WalletImpl;
 
-class SubaddressAccountImpl : public SubaddressAccount
-{
-public:
-    SubaddressAccountImpl(WalletImpl * wallet);
+class SubaddressAccountImpl : public SubaddressAccount {
+  public:
+    SubaddressAccountImpl(WalletImpl* wallet);
     ~SubaddressAccountImpl();
-    
+
     // Fetches addresses from Wallet2
     void refresh();
     std::vector<SubaddressAccountRow*> getAll() const;
-    void addRow(const std::string &label);
-    void setLabel(uint32_t accountIndex, const std::string &label);
+    void addRow(const std::string& label);
+    void setLabel(uint32_t accountIndex, const std::string& label);
 
-private:
+  private:
     void clearRows();
-    
-private:
-    WalletImpl *m_wallet;
+
+  private:
+    WalletImpl* m_wallet;
     std::vector<SubaddressAccountRow*> m_rows;
 };
 
-}
+}  // namespace Wallet

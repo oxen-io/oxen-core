@@ -72,7 +72,6 @@ namespace levin
 #pragma pack(pop)
 
 
-#define LEVIN_DEFAULT_TIMEOUT_PRECONFIGURED 0
 #define LEVIN_DEFAULT_MAX_PACKET_SIZE 100000000      //100MB by default
 
 #define LEVIN_PACKET_REQUEST			0x00000001

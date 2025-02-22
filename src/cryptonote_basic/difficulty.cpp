@@ -29,13 +29,14 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
+#include "difficulty.h"
+
 #include <algorithm>
 
 #include "common/oxen.h"
+#include "crypto/hash.h"
 #include "cryptonote_config.h"
 #include "epee/int-util.h"
-#include "crypto/hash.h"
-#include "difficulty.h"
 #include "hardfork.h"
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
@@ -43,42 +44,42 @@
 
 namespace cryptonote {
 
-  using std::size_t;
-  using std::uint64_t;
-  using std::vector;
+using std::size_t;
+using std::uint64_t;
+using std::vector;
 
-  static inline bool cadd(uint64_t a, uint64_t b) {
+static inline bool cadd(uint64_t a, uint64_t b) {
     return a + b < a;
-  }
+}
 
-  static inline bool cadc(uint64_t a, uint64_t b, bool c) {
-    return a + b < a || (c && a + b == (uint64_t) -1);
-  }
+static inline bool cadc(uint64_t a, uint64_t b, bool c) {
+    return a + b < a || (c && a + b == (uint64_t)-1);
+}
 
-  bool check_hash(const crypto::hash &hash, difficulty_type difficulty) {
+bool check_hash(const crypto::hash& hash, difficulty_type difficulty) {
     uint64_t low, high, top, cur;
     // First check the highest word, this will most likely fail for a random hash.
-    top = mul128(SWAP64LE(((const uint64_t *) &hash)[3]), difficulty, &high);
+    top = mul128(SWAP64LE(((const uint64_t*)&hash)[3]), difficulty, &high);
     if (high != 0) {
-      return false;
+        return false;
     }
-    low = mul128(SWAP64LE(((const uint64_t *) &hash)[0]), difficulty, &cur);
-    low = mul128(SWAP64LE(((const uint64_t *) &hash)[1]), difficulty, &high);
+    low = mul128(SWAP64LE(((const uint64_t*)&hash)[0]), difficulty, &cur);
+    low = mul128(SWAP64LE(((const uint64_t*)&hash)[1]), difficulty, &high);
     bool carry = cadd(cur, low);
     cur = high;
-    low = mul128(SWAP64LE(((const uint64_t *) &hash)[2]), difficulty, &high);
+    low = mul128(SWAP64LE(((const uint64_t*)&hash)[2]), difficulty, &high);
     carry = cadc(cur, low, carry);
     carry = cadc(high, top, carry);
     return !carry;
-  }
+}
 
-  void add_timestamp_and_difficulty(cryptonote::network_type nettype,
-                                    uint64_t chain_height,
-                                    std::vector<uint64_t> &timestamps,
-                                    std::vector<difficulty_type> &difficulties,
-                                    uint64_t timestamp,
-                                    uint64_t cumulative_difficulty)
-  {
+void add_timestamp_and_difficulty(
+        cryptonote::network_type nettype,
+        uint64_t chain_height,
+        std::vector<uint64_t>& timestamps,
+        std::vector<difficulty_type>& difficulties,
+        uint64_t timestamp,
+        uint64_t cumulative_difficulty) {
     timestamps.push_back(timestamp);
     difficulties.push_back(cumulative_difficulty);
 
@@ -86,76 +87,80 @@ namespace cryptonote {
 
     // Trim down arrays
     while (timestamps.size() > old::DIFFICULTY_BLOCKS_COUNT(before_hf16))
-      timestamps.erase(timestamps.begin());
+        timestamps.erase(timestamps.begin());
 
     while (difficulties.size() > old::DIFFICULTY_BLOCKS_COUNT(before_hf16))
-      difficulties.erase(difficulties.begin());
-  }
+        difficulties.erase(difficulties.begin());
+}
 
-  //---------------------------------------------------------------
+//---------------------------------------------------------------
 
-  // LWMA difficulty algorithm
-  // Background:  https://github.com/zawy12/difficulty-algorithms/issues/3
-  // Copyright (c) 2017-2018 Zawy (pseudocode)
-  // MIT license http://www.opensource.org/licenses/mit-license.php
-  // Copyright (c) 2018 Wownero Inc., a Monero Enterprise Alliance partner company
-  // Copyright (c) 2018 The Karbowanec developers (initial code)
-  // Copyright (c) 2018 Haven Protocol (refinements)
-  // Degnr8, Karbowanec, Masari, Bitcoin Gold, Bitcoin Candy, and Haven have contributed.
+// LWMA difficulty algorithm
+// Background:  https://github.com/zawy12/difficulty-algorithms/issues/3
+// Copyright (c) 2017-2018 Zawy (pseudocode)
+// MIT license http://www.opensource.org/licenses/mit-license.php
+// Copyright (c) 2018 Wownero Inc., a Monero Enterprise Alliance partner company
+// Copyright (c) 2018 The Karbowanec developers (initial code)
+// Copyright (c) 2018 Haven Protocol (refinements)
+// Degnr8, Karbowanec, Masari, Bitcoin Gold, Bitcoin Candy, and Haven have contributed.
 
-  // This algorithm is: next_difficulty = harmonic_mean(Difficulties) * T / LWMA(Solvetimes)
-  // The harmonic_mean(Difficulties) = 1/average(Targets) so it is also:
-  // next_target = avg(Targets) * LWMA(Solvetimes) / T.
-  // This is "the best algorithm" because it has lowest root-mean-square error between 
-  // needed & actual difficulty during hash attacks while having the lowest standard 
-  // deviation during stable hashrate. That is, it's the fastest for a given stability and vice versa.
-  // Do not use "if solvetime < 1 then solvetime = 1" which allows a catastrophic exploit.
-  // Do not sort timestamps.  "Solvetimes" and "LWMA" variables must allow negatives.
-  // Do not use MTP as most recent block.  Do not use (POW)Limits, filtering, or tempering.
-  // Do not forget to set N (aka DIFFICULTY_WINDOW in Cryptonote) to recommendation below.
-  // The nodes' future time limit (FTL) aka CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT needs to
-  // be reduced from 60*60*2 to 500 seconds to prevent timestamp manipulation from miner's with 
-  //  > 50% hash power.  If this is too small, it can be increased to 1000 at a cost in protection.
+// This algorithm is: next_difficulty = harmonic_mean(Difficulties) * T / LWMA(Solvetimes)
+// The harmonic_mean(Difficulties) = 1/average(Targets) so it is also:
+// next_target = avg(Targets) * LWMA(Solvetimes) / T.
+// This is "the best algorithm" because it has lowest root-mean-square error between
+// needed & actual difficulty during hash attacks while having the lowest standard
+// deviation during stable hashrate. That is, it's the fastest for a given stability and vice versa.
+// Do not use "if solvetime < 1 then solvetime = 1" which allows a catastrophic exploit.
+// Do not sort timestamps.  "Solvetimes" and "LWMA" variables must allow negatives.
+// Do not use MTP as most recent block.  Do not use (POW)Limits, filtering, or tempering.
+// Do not forget to set N (aka DIFFICULTY_WINDOW in Cryptonote) to recommendation below.
+// The nodes' future time limit (FTL) aka CRYPTONOTE_BLOCK_FUTURE_TIME_LIMIT needs to
+// be reduced from 60*60*2 to 500 seconds to prevent timestamp manipulation from miner's with
+//  > 50% hash power.  If this is too small, it can be increased to 1000 at a cost in protection.
 
-  difficulty_calc_mode difficulty_mode(cryptonote::network_type nettype, uint64_t height)
-  {
+difficulty_calc_mode difficulty_mode(cryptonote::network_type nettype, uint64_t height) {
     auto result = difficulty_calc_mode::normal;
 
-    if (!is_hard_fork_at_least(nettype, hf::hf10_bulletproofs, height))
-      result = difficulty_calc_mode::use_old_lwma;
-    // HF12 switches to RandomX with a likely drastically reduced hashrate versus Turtle, so override
-    // difficulty for the first difficulty window blocks:
-    else if (auto randomx_start_height = get_hard_fork_heights(nettype, hf::hf12_checkpointing).first;
-        randomx_start_height && height >= *randomx_start_height && height <= *randomx_start_height + old::DIFFICULTY_WINDOW)
-      result = difficulty_calc_mode::hf12_override;
+    if (nettype == network_type::DEVNET || nettype == network_type::LOCALDEV ||
+        nettype == network_type::STAGENET)
+        result = difficulty_calc_mode::devnet;
+    else if (!is_hard_fork_at_least(nettype, hf::hf10_bulletproofs, height))
+        result = difficulty_calc_mode::use_old_lwma;
+    // HF12 switches to RandomX with a likely drastically reduced hashrate versus Turtle, so
+    // override difficulty for the first difficulty window blocks:
+    else if (auto randomx_start_height =
+                     get_hard_fork_heights(nettype, hf::hf12_checkpointing).first;
+             randomx_start_height && height >= *randomx_start_height &&
+             height <= *randomx_start_height + old::DIFFICULTY_WINDOW)
+        result = difficulty_calc_mode::hf12_override;
     else if (auto pulse_start_height = get_hard_fork_heights(nettype, hf::hf16_pulse).first;
-        nettype == network_type::MAINNET && pulse_start_height && height >= *pulse_start_height && height <= *pulse_start_height + old::DIFFICULTY_WINDOW)
-      result = difficulty_calc_mode::hf16_override;
+             nettype == network_type::MAINNET && pulse_start_height &&
+             height >= *pulse_start_height &&
+             height <= *pulse_start_height + old::DIFFICULTY_WINDOW)
+        result = difficulty_calc_mode::hf16_override;
 
     return result;
-  }
+}
 
-  difficulty_type next_difficulty_v2(std::vector<std::uint64_t> timestamps,
-                                     std::vector<difficulty_type> cumulative_difficulties,
-                                     size_t target_seconds,
-                                     difficulty_calc_mode mode)
-  {
+difficulty_type next_difficulty_v2(
+        std::vector<std::uint64_t> timestamps,
+        std::vector<difficulty_type> cumulative_difficulties,
+        size_t target_seconds,
+        difficulty_calc_mode mode) {
     const int64_t T = static_cast<int64_t>(target_seconds);
     size_t N = old::DIFFICULTY_WINDOW;
 
     // Return a difficulty of 1 for first 4 blocks if it's the start of the chain.
     if (timestamps.size() < 4) {
-      return 1;
+        return 1;
     }
     // Otherwise, use a smaller N if the start of the chain is less than N+1.
-    else if ( timestamps.size()-1 < N ) {
-      N = timestamps.size() - 1;
-    }
-    else
-    {
-      // Otherwise make sure timestamps and cumulative_difficulties are correct size.
-      timestamps.resize(N+1);
-      cumulative_difficulties.resize(N+1);
+    else if (timestamps.size() - 1 < N) {
+        N = timestamps.size() - 1;
+    } else {
+        // Otherwise make sure timestamps and cumulative_difficulties are correct size.
+        timestamps.resize(N + 1);
+        cumulative_difficulties.resize(N + 1);
     }
 
     // To get an average solvetime to within +/- ~0.1%, use an adjustment factor.
@@ -170,21 +175,22 @@ namespace cryptonote {
 
     // Loop through N most recent blocks. N is most recently solved block.
     for (int64_t i = 1; i <= (int64_t)N; i++) {
-      solveTime = static_cast<int64_t>(timestamps[i]) - static_cast<int64_t>(timestamps[i - 1]);
+        solveTime = static_cast<int64_t>(timestamps[i]) - static_cast<int64_t>(timestamps[i - 1]);
 
-      if (mode == difficulty_calc_mode::use_old_lwma) solveTime = std::max<int64_t>(solveTime, (-7 * T));
-      solveTime = std::min<int64_t>(solveTime, (T * 7));
+        if (mode == difficulty_calc_mode::use_old_lwma)
+            solveTime = std::max<int64_t>(solveTime, (-7 * T));
+        solveTime = std::min<int64_t>(solveTime, (T * 7));
 
-      difficulty = cumulative_difficulties[i] - cumulative_difficulties[i - 1];
-      LWMA += (solveTime * i) / k;
-      sum_inverse_D += 1 / static_cast<double>(difficulty);
+        difficulty = cumulative_difficulties[i] - cumulative_difficulties[i - 1];
+        LWMA += (solveTime * i) / k;
+        sum_inverse_D += 1 / static_cast<double>(difficulty);
     }
 
     harmonic_mean_D = N / sum_inverse_D;
 
     // Keep LWMA sane in case something unforeseen occurs.
     if (static_cast<int64_t>(oxen::round(LWMA)) < T / 20)
-      LWMA = static_cast<double>(T / 20);
+        LWMA = static_cast<double>(T / 20);
 
     nextDifficulty = harmonic_mean_D * T / LWMA * adjust;
 
@@ -195,14 +201,17 @@ namespace cryptonote {
     if (next_difficulty == 0)
         next_difficulty = 1;
 
+    if (mode == difficulty_calc_mode::devnet)
+        return std::min(next_difficulty, DEVNET_DIFF_CAP);
+
     // Rough estimate based on comparable coins, pre-merge-mining hashrate, and hashrate changes is
     // that 30MH/s seems more or less right, so we cap it there for the first WINDOW blocks to
     // prevent too-long blocks right after the fork.
     if (mode == difficulty_calc_mode::hf12_override)
-      return std::min(next_difficulty, 30'000'000 * uint64_t(target_seconds));
-    else if (mode == difficulty_calc_mode::hf16_override)
-      return std::min(next_difficulty, PULSE_FIXED_DIFFICULTY);
+        return std::min(next_difficulty, 30'000'000 * uint64_t(target_seconds));
+    if (mode == difficulty_calc_mode::hf16_override)
+        return std::min(next_difficulty, PULSE_FIXED_DIFFICULTY);
 
     return next_difficulty;
-  }
 }
+}  // namespace cryptonote

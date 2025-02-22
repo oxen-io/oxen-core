@@ -29,63 +29,56 @@
 #pragma once
 
 #include <boost/asio/io_service.hpp>
-#include <boost/uuid/uuid.hpp>
 #include <memory>
 #include <vector>
 
-#include "epee/shared_sv.h"
 #include "epee/net/enums.h"
+#include "epee/net/net_utils_base.h"
+#include "epee/shared_sv.h"
 #include "epee/span.h"
 
-namespace epee
-{
-namespace levin
-{
-    template<typename> class async_protocol_handler_config;
-}
-}
+namespace epee::levin {
+template <typename>
+class async_protocol_handler_config;
+}  // namespace epee::levin
 
-namespace nodetool
-{
-  template<typename> struct p2p_connection_context_t;
+namespace nodetool {
+template <typename>
+struct p2p_connection_context_t;
 }
 
-namespace cryptonote
-{
-  struct cryptonote_connection_context;
+namespace cryptonote {
+struct cryptonote_connection_context;
 }
 
-namespace cryptonote
-{
-namespace levin
-{
-  namespace detail
-  {
-    using p2p_context = nodetool::p2p_connection_context_t<cryptonote::cryptonote_connection_context>;
-    struct zone; //!< Internal data needed for zone notifications
-  } // detail
+namespace cryptonote::levin {
+namespace detail {
+    using p2p_context =
+            nodetool::p2p_connection_context_t<cryptonote::cryptonote_connection_context>;
+    struct zone;  //!< Internal data needed for zone notifications
+}  // namespace detail
 
-  using connections = epee::levin::async_protocol_handler_config<detail::p2p_context>;
+using connections = epee::levin::async_protocol_handler_config<detail::p2p_context>;
 
-  //! Provides tx notification privacy
-  class notify
-  {
+//! Provides tx notification privacy
+class notify {
     std::shared_ptr<detail::zone> zone_;
 
   public:
-    struct status
-    {
-      bool has_noise;
-      bool connections_filled;
+    struct status {
+        bool has_noise;
+        bool connections_filled;
     };
 
     //! Construct an instance that cannot notify.
-    notify() noexcept
-      : zone_(nullptr)
-    {}
+    notify() noexcept : zone_(nullptr) {}
 
     //! Construct an instance with available notification `zones`.
-    explicit notify(boost::asio::io_service& service, std::shared_ptr<connections> p2p, epee::shared_sv noise, bool is_public);
+    explicit notify(
+            boost::asio::io_service& service,
+            std::shared_ptr<connections> p2p,
+            epee::shared_sv noise,
+            bool is_public);
 
     notify(const notify&) = delete;
     notify(notify&&) = default;
@@ -125,7 +118,6 @@ namespace levin
           construction.
 
       \return True iff the notification is queued for sending. */
-    bool send_txs(std::vector<std::string> txs, const boost::uuids::uuid& source, bool pad_txs);
-  };
-} // levin
-} // net
+    bool send_txs(std::vector<std::string> txs, const epee::connection_id_t& source, bool pad_txs);
+};
+}  // namespace cryptonote::levin

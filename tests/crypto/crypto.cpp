@@ -33,17 +33,17 @@
 #include "crypto-tests.h"
 
 bool check_scalar(const crypto::ec_scalar &scalar) {
-  return crypto::sc_check(crypto::operator &(scalar)) == 0;
+  return sc_check(scalar.data()) == 0;
 }
 
 void hash_to_point(const crypto::hash &h, crypto::ec_point &res) {
-  crypto::ge_p2 point;
-  crypto::ge_fromfe_frombytes_vartime(&point, reinterpret_cast<const unsigned char *>(&h));
-  crypto::ge_tobytes(crypto::operator &(res), &point);
+  ge_p2 point;
+  ge_fromfe_frombytes_vartime(&point, reinterpret_cast<const unsigned char *>(&h));
+  ge_tobytes(res.data(), &point);
 }
 
 void hash_to_ec(const crypto::public_key &key, crypto::ec_point &res) {
-  crypto::ge_p3 tmp;
+  ge_p3 tmp;
   crypto::hash_to_ec(key, tmp);
-  crypto::ge_p3_tobytes(crypto::operator &(res), &tmp);
+  ge_p3_tobytes(res.data(), &tmp);
 }

@@ -28,3 +28,9 @@
 
 add_subdirectory(src)
 target_include_directories(epee PUBLIC include)
+
+install(
+    DIRECTORY include/
+    DESTINATION include${OXEN_INSTALL_INCLUDEDIR_SUFFIX}
+    COMPONENT development
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.inl")

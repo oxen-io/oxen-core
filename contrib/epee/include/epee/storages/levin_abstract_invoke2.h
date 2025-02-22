@@ -30,9 +30,6 @@
 #include "../span.h"
 #include "../net/levin_base.h"
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "net"
-
 namespace epee
 {
   namespace net_utils
@@ -51,13 +48,11 @@ namespace epee
       int res = transport.invoke(command, buff_to_send, buff_to_recv);
       if( res <=0 )
       {
-        MERROR("Failed to invoke command " << command << " return code " << res);
         return false;
       }
       serialization::portable_storage stg_ret;
       if(!stg_ret.load_from_binary(buff_to_recv))
       {
-        LOG_ERROR("Failed to load_from_binary on command " << command);
         return false;
       }
       return result_struct.load(stg_ret);
@@ -77,14 +72,13 @@ namespace epee
       int res = transport.notify(command, buff_to_send);
       if(res <=0 )
       {
-        LOG_ERROR("Failed to notify command " << command << " return code " << res);
         return false;
       }
       return true;
     }
 
     template<class t_arg, class t_result, class t_transport>
-    bool invoke_remote_command2(boost::uuids::uuid conn_id, int command, const t_arg& out_struct, t_result& result_struct, t_transport& transport)
+    bool invoke_remote_command2(connection_id_t conn_id, int command, const t_arg& out_struct, t_result& result_struct, t_transport& transport)
     {
 
       typename serialization::portable_storage stg;
@@ -95,44 +89,39 @@ namespace epee
       int res = transport.invoke(command, buff_to_send, buff_to_recv, conn_id);
       if( res <=0 )
       {
-        LOG_PRINT_L1("Failed to invoke command " << command << " return code " << res);
         return false;
       }
       typename serialization::portable_storage stg_ret;
       if(!stg_ret.load_from_binary(buff_to_recv))
       {
-        LOG_ERROR("Failed to load_from_binary on command " << command);
         return false;
       }
       return result_struct.load(stg_ret);
     }
 
     template<class t_result, class t_arg, class callback_t, class t_transport>
-    bool async_invoke_remote_command2(boost::uuids::uuid conn_id, int command, const t_arg& out_struct, t_transport& transport, const callback_t &cb, size_t inv_timeout = LEVIN_DEFAULT_TIMEOUT_PRECONFIGURED)
+    bool async_invoke_remote_command2(connection_id_t conn_id, int command, const t_arg& out_struct, t_transport& transport, const callback_t &cb, std::chrono::nanoseconds inv_timeout = 0ns)
     {
       typename serialization::portable_storage stg;
       const_cast<t_arg&>(out_struct).store(stg);//TODO: add true const support to searilzation
       std::string buff_to_send;
       stg.store_to_binary(buff_to_send);
-      int res = transport.invoke_async(command, epee::strspan<uint8_t>(buff_to_send), conn_id, [cb, command](int code, const epee::span<const uint8_t> buff, typename t_transport::connection_context& context)->bool 
+      int res = transport.invoke_async(command, epee::strspan<uint8_t>(buff_to_send), conn_id, [cb](int code, const epee::span<const uint8_t> buff, typename t_transport::connection_context& context)
       {
         t_result result_struct{};
         if( code <=0 )
         {
-          LOG_PRINT_L1("Failed to invoke command " << command << " return code " << code);
           cb(code, std::move(result_struct), context);
           return false;
         }
         serialization::portable_storage stg_ret;
         if(!stg_ret.load_from_binary(buff))
         {
-          LOG_ERROR("Failed to load_from_binary on command " << command);
           cb(LEVIN_ERROR_FORMAT, std::move(result_struct), context);
           return false;
         }
         if (!result_struct.load(stg_ret))
         {
-          LOG_ERROR("Failed to load result struct on command " << command);
           cb(LEVIN_ERROR_FORMAT, std::move(result_struct), context);
           return false;
         }
@@ -141,14 +130,13 @@ namespace epee
       }, inv_timeout);
       if( res <=0 )
       {
-        LOG_PRINT_L1("Failed to invoke command " << command << " return code " << res);
         return false;
       }
       return true;
     }
 
     template<class t_arg, class t_transport>
-    bool notify_remote_command2(boost::uuids::uuid conn_id, int command, const t_arg& out_struct, t_transport& transport)
+    bool notify_remote_command2(connection_id_t conn_id, int command, const t_arg& out_struct, t_transport& transport)
     {
 
       serialization::portable_storage stg;
@@ -159,7 +147,6 @@ namespace epee
       int res = transport.notify(command, epee::strspan<uint8_t>(buff_to_send), conn_id);
       if(res <=0 )
       {
-        MERROR("Failed to notify command " << command << " return code " << res);
         return false;
       }
       return true;
@@ -172,7 +159,6 @@ namespace epee
       serialization::portable_storage strg;
       if(!strg.load_from_binary(in_buff))
       {
-        LOG_ERROR("Failed to load_from_binary in command " << command);
         return -1;
       }
       t_in_type in_struct{};
@@ -180,7 +166,6 @@ namespace epee
 
       if (!in_struct.load(strg))
       {
-        LOG_ERROR("Failed to load in_struct in command " << command);
         return -1;
       }
       int res = cb(command, in_struct, out_struct, context);
@@ -189,7 +174,6 @@ namespace epee
 
       if(!strg_out.store_to_binary(buff_out))
       {
-        LOG_ERROR("Failed to store_to_binary in command" << command);
         return -1;
       }
 
@@ -202,13 +186,11 @@ namespace epee
       serialization::portable_storage strg;
       if(!strg.load_from_binary(in_buff))
       {
-        LOG_ERROR("Failed to load_from_binary in notify " << command);
         return -1;
       }
       t_in_type in_struct{};
       if (!in_struct.load(strg))
       {
-        LOG_ERROR("Failed to load in_struct in notify " << command);
         return -1;
       }
       return cb(command, in_struct, context);
@@ -294,7 +276,6 @@ namespace epee
 
 
 #define END_INVOKE_MAP2() \
-  LOG_ERROR("Unknown command:" << command); \
   return LEVIN_ERROR_CONNECTION_HANDLER_NOT_DEFINED; \
   }
   }

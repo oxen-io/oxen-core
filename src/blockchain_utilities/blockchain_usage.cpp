@@ -27,217 +27,204 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "common/command_line.h"
-#include "common/varint.h"
-#include "cryptonote_core/cryptonote_core.h"
-#include "blockchain_objects.h"
-#include "blockchain_db/blockchain_db.h"
-#include "cryptonote_core/uptime_proof.h"
-#include "version.h"
+#include <common/command_line.h>
+#include <common/exception.h>
+#include <fmt/std.h>
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "bcutil"
+#include "blockchain_db/blockchain_db.h"
+#include "blockchain_objects.h"
+#include "cryptonote_core/cryptonote_core.h"
+#include "version.h"
 
 namespace po = boost::program_options;
 using namespace cryptonote;
 
-struct output_data
-{
-  uint64_t amount;
-  uint64_t index;
-  mutable bool coinbase;
-  mutable uint64_t height;
-  output_data(uint64_t a, uint64_t i, bool cb, uint64_t h): amount(a), index(i), coinbase(cb), height(h) {}
-  bool operator==(const output_data &other) const { return other.amount == amount && other.index == index; }
-  void info(bool c, uint64_t h) const { coinbase = c; height =h; }
+static auto logcat = log::Cat("quorum_cop");
+
+struct output_data {
+    uint64_t amount;
+    uint64_t index;
+    mutable bool coinbase;
+    mutable uint64_t height;
+    output_data(uint64_t a, uint64_t i, bool cb, uint64_t h) :
+            amount(a), index(i), coinbase(cb), height(h) {}
+    bool operator==(const output_data& other) const {
+        return other.amount == amount && other.index == index;
+    }
+    void info(bool c, uint64_t h) const {
+        coinbase = c;
+        height = h;
+    }
 };
-namespace std
-{
-  template<> struct hash<output_data>
-  {
-    size_t operator()(const output_data &od) const
-    {
-      const uint64_t data[2] = {od.amount, od.index};
-      crypto::hash h;
-      crypto::cn_fast_hash(data, 2 * sizeof(uint64_t), h);
-      return reinterpret_cast<const std::size_t &>(h);
+namespace std {
+template <>
+struct hash<output_data> {
+    size_t operator()(const output_data& od) const {
+        const uint64_t data[2] = {od.amount, od.index};
+        crypto::hash h;
+        crypto::cn_fast_hash(data, 2 * sizeof(uint64_t), h);
+        return reinterpret_cast<const std::size_t&>(h);
     }
-  };
-}
+};
+}  // namespace std
 
-struct reference
-{
-  uint64_t height;
-  uint64_t ring_size;
-  uint64_t position;
-  reference(uint64_t h, uint64_t rs, uint64_t p): height(h), ring_size(rs), position(p) {}
+struct reference {
+    uint64_t height;
+    uint64_t ring_size;
+    uint64_t position;
+    reference(uint64_t h, uint64_t rs, uint64_t p) : height(h), ring_size(rs), position(p) {}
 };
 
-int main(int argc, char* argv[])
-{
-  TRY_ENTRY();
+int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
+    TRY_ENTRY();
 
-  epee::string_tools::set_module_name_and_folder(argv[0]);
+    epee::string_tools::set_module_name_and_folder(argv[0]);
+    tools::on_startup();
+    auto opt_size = command_line::boost_option_sizes();
 
-  uint32_t log_level = 0;
+    po::options_description desc_cmd_only("Command line options", opt_size.first, opt_size.second);
+    po::options_description desc_cmd_sett(
+            "Command line options and settings options", opt_size.first, opt_size.second);
+    const command_line::arg_descriptor<std::string> arg_log_level = {
+            "log-level", "0-4 or categories", ""};
+    const command_line::arg_flag arg_rct_only{"rct-only", "Only work on ringCT outputs"};
+    const command_line::arg_descriptor<std::string> arg_input = {"input", ""};
 
-  tools::on_startup();
+    command_line::add_network_args(desc_cmd_sett);
+    command_line::add_arg(desc_cmd_sett, arg_log_level);
+    command_line::add_arg(desc_cmd_sett, arg_rct_only);
+    command_line::add_arg(desc_cmd_sett, arg_input);
+    command_line::add_arg(desc_cmd_only, command_line::arg_help);
 
-  auto opt_size = command_line::boost_option_sizes();
+    po::options_description desc_options("Allowed options");
+    desc_options.add(desc_cmd_only).add(desc_cmd_sett);
 
-  po::options_description desc_cmd_only("Command line options", opt_size.first, opt_size.second);
-  po::options_description desc_cmd_sett("Command line options and settings options", opt_size.first, opt_size.second);
-  const command_line::arg_descriptor<std::string> arg_log_level  = {"log-level",  "0-4 or categories", ""};
-  const command_line::arg_descriptor<bool> arg_rct_only  = {"rct-only", "Only work on ringCT outputs", false};
-  const command_line::arg_descriptor<std::string> arg_input = {"input", ""};
+    po::positional_options_description positional_options;
+    positional_options.add(arg_input.name.c_str(), -1);
 
-  command_line::add_arg(desc_cmd_sett, cryptonote::arg_testnet_on);
-  command_line::add_arg(desc_cmd_sett, cryptonote::arg_devnet_on);
-  command_line::add_arg(desc_cmd_sett, arg_log_level);
-  command_line::add_arg(desc_cmd_sett, arg_rct_only);
-  command_line::add_arg(desc_cmd_sett, arg_input);
-  command_line::add_arg(desc_cmd_only, command_line::arg_help);
+    po::variables_map vm;
+    bool r = command_line::handle_error_helper(desc_options, [&]() {
+        auto parser = po::command_line_parser(argc, argv)
+                              .options(desc_options)
+                              .positional(positional_options);
+        po::store(parser.run(), vm);
+        po::notify(vm);
+        return true;
+    });
+    if (!r)
+        return 1;
 
-  po::options_description desc_options("Allowed options");
-  desc_options.add(desc_cmd_only).add(desc_cmd_sett);
-
-  po::positional_options_description positional_options;
-  positional_options.add(arg_input.name, -1);
-
-  po::variables_map vm;
-  bool r = command_line::handle_error_helper(desc_options, [&]()
-  {
-    auto parser = po::command_line_parser(argc, argv).options(desc_options).positional(positional_options);
-    po::store(parser.run(), vm);
-    po::notify(vm);
-    return true;
-  });
-  if (! r)
-    return 1;
-
-  if (command_line::get_arg(vm, command_line::arg_help))
-  {
-    std::cout << "Oxen '" << OXEN_RELEASE_NAME << "' (v" << OXEN_VERSION_FULL << ")\n\n";
-    std::cout << desc_options << std::endl;
-    return 1;
-  }
-
-  mlog_configure(mlog_get_default_log_path("oxen-blockchain-usage.log"), true);
-  if (!command_line::is_arg_defaulted(vm, arg_log_level))
-    mlog_set_log(command_line::get_arg(vm, arg_log_level).c_str());
-  else
-    mlog_set_log(std::string(std::to_string(log_level) + ",bcutil:INFO").c_str());
-
-  LOG_PRINT_L0("Starting...");
-
-  bool opt_testnet = command_line::get_arg(vm, cryptonote::arg_testnet_on);
-  bool opt_devnet = command_line::get_arg(vm, cryptonote::arg_devnet_on);
-  network_type net_type = opt_testnet ? network_type::TESTNET : opt_devnet ? network_type::DEVNET : network_type::MAINNET;
-  bool opt_rct_only = command_line::get_arg(vm, arg_rct_only);
-
-  // If we wanted to use the memory pool, we would set up a fake_core.
-
-  // Use Blockchain instead of lower-level BlockchainDB for two reasons:
-  // 1. Blockchain has the init() method for easy setup
-  // 2. exporter needs to use get_current_blockchain_height(), get_block_id_by_height(), get_block_by_hash()
-  //
-  // cannot match blockchain_storage setup above with just one line,
-  // e.g.
-  //   Blockchain* core_storage = new Blockchain(NULL);
-  // because unlike blockchain_storage constructor, which takes a pointer to
-  // tx_memory_pool, Blockchain's constructor takes tx_memory_pool object.
-  LOG_PRINT_L0("Initializing source blockchain (BlockchainDB)");
-  const std::string input = command_line::get_arg(vm, arg_input);
-  blockchain_objects_t blockchain_objects = {};
-  Blockchain *core_storage = &blockchain_objects.m_blockchain;
-  tx_memory_pool& m_mempool = blockchain_objects.m_mempool;
-  BlockchainDB *db = new_db();
-  if (db == NULL)
-  {
-    LOG_ERROR("Failed to initialize a database");
-    throw std::runtime_error("Failed to initialize a database");
-  }
-  LOG_PRINT_L0("database: LMDB");
-
-  const fs::path filename = fs::u8path(input);
-  LOG_PRINT_L0("Loading blockchain from folder " << filename << " ...");
-
-  try
-  {
-    db->open(filename, core_storage->nettype(), DBF_RDONLY);
-  }
-  catch (const std::exception& e)
-  {
-    LOG_PRINT_L0("Error opening database: " << e.what());
-    return 1;
-  }
-
-  r = core_storage->init(db, nullptr /*ons_db*/, nullptr, net_type);
-
-  CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
-  LOG_PRINT_L0("Source blockchain storage initialized OK");
-
-  LOG_PRINT_L0("Building usage patterns...");
-
-  size_t done = 0;
-  std::unordered_map<output_data, std::list<reference>> outputs;
-  std::unordered_map<uint64_t,uint64_t> indices;
-
-  LOG_PRINT_L0("Reading blockchain from " << input);
-  core_storage->for_all_transactions([&](const crypto::hash &hash, const cryptonote::transaction &tx)->bool
-  {
-    const bool coinbase = tx.vin.size() == 1 && std::holds_alternative<txin_gen>(tx.vin[0]);
-    const uint64_t height = core_storage->get_db().get_tx_block_height(hash);
-
-    // create new outputs
-    for (const auto &out: tx.vout)
-    {
-      if (opt_rct_only && out.amount)
-        continue;
-      uint64_t index = indices[out.amount]++;
-      output_data od(out.amount, indices[out.amount], coinbase, height);
-      auto itb = outputs.emplace(od, std::list<reference>());
-      itb.first->first.info(coinbase, height);
+    if (command_line::get_arg(vm, command_line::arg_help)) {
+        std::cout << "Oxen '" << OXEN_RELEASE_NAME << "' (v" << OXEN_VERSION_FULL << ")\n\n";
+        std::cout << desc_options << std::endl;
+        return 1;
     }
 
-    for (const auto &in: tx.vin)
-    {
-      const auto* txin = std::get_if<txin_to_key>(&in);
-      if (!txin || (opt_rct_only && txin->amount != 0))
-        continue;
+    auto m_config_folder = command_line::get_arg(vm, cryptonote::arg_data_dir);
+    auto log_file_path = m_config_folder + "oxen-blockchain-usage.log";
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
+    log::warning(logcat, "Starting...");
 
-      const std::vector<uint64_t> absolute = cryptonote::relative_output_offsets_to_absolute(txin->key_offsets);
-      for (size_t n = 0; n < txin->key_offsets.size(); ++n)
-      {
-        output_data od(txin->amount, absolute[n], coinbase, height);
-        outputs[od].push_back(reference(height, txin->key_offsets.size(), n));
-      }
+    bool opt_rct_only = command_line::get_arg(vm, arg_rct_only);
+
+    // If we wanted to use the memory pool, we would set up a fake_core.
+
+    // Use Blockchain instead of lower-level BlockchainDB for two reasons:
+    // 1. Blockchain has the init() method for easy setup
+    // 2. exporter needs to use get_current_blockchain_height(), get_block_id_by_height(),
+    // get_block_by_hash()
+    //
+    // cannot match blockchain_storage setup above with just one line,
+    // e.g.
+    //   Blockchain* core_storage = new Blockchain(NULL);
+    // because unlike blockchain_storage constructor, which takes a pointer to
+    // tx_memory_pool, Blockchain's constructor takes tx_memory_pool object.
+    log::warning(logcat, "Initializing source blockchain (BlockchainDB)");
+    const std::string input = command_line::get_arg(vm, arg_input);
+    blockchain_objects_t blockchain_objects = {};
+    Blockchain* core_storage = &blockchain_objects.m_blockchain;
+    auto db = new_db();
+    if (!db) {
+        log::error(logcat, "Failed to initialize a database");
+        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
     }
-    return true;
-  }, true);
+    log::warning(logcat, "database: LMDB");
 
-  std::unordered_map<uint64_t, uint64_t> counts;
-  size_t total = 0;
-  for (const auto &out: outputs)
-  {
-    counts[out.second.size()]++;
-    total++;
-  }
-  if (total > 0)
-  {
-    for (const auto &c: counts)
-    {
-      float percent = 100.f * c.second / total;
-      MINFO(std::to_string(c.second) << " outputs used " << c.first << " times (" << percent << "%)");
+    const fs::path filename = tools::utf8_path(input);
+    log::warning(logcat, "Loading blockchain from folder {} ...", filename);
+
+    try {
+        db->open(filename, core_storage->nettype(), DBF_RDONLY);
+    } catch (const std::exception& e) {
+        log::warning(logcat, "Error opening database: {}", e.what());
+        return 1;
     }
-  }
-  else
-  {
-    MINFO("No outputs to process");
-  }
 
-  LOG_PRINT_L0("Blockchain usage exported OK");
-  return 0;
+    r = core_storage->init(std::move(db), command_line::get_network(vm));
 
-  CATCH_ENTRY("Export error", 1);
+    CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
+    log::warning(logcat, "Source blockchain storage initialized OK");
+
+    log::warning(logcat, "Building usage patterns...");
+
+    std::unordered_map<output_data, std::list<reference>> outputs;
+    std::unordered_map<uint64_t, uint64_t> indices;
+
+    log::warning(logcat, "Reading blockchain from {}", input);
+    core_storage->for_all_transactions(
+            [&](const crypto::hash& hash, const cryptonote::transaction& tx) -> bool {
+                const bool coinbase = tx.is_miner_tx();
+                const uint64_t height = core_storage->db().get_tx_block_height(hash);
+
+                // create new outputs
+                for (const auto& out : tx.vout) {
+                    if (opt_rct_only && out.amount)
+                        continue;
+                    uint64_t index = ++indices[out.amount];
+                    output_data od(out.amount, index, coinbase, height);
+                    auto itb = outputs.emplace(od, std::list<reference>());
+                    itb.first->first.info(coinbase, height);
+                }
+
+                for (const auto& in : tx.vin) {
+                    const auto* txin = std::get_if<txin_to_key>(&in);
+                    if (!txin || (opt_rct_only && txin->amount != 0))
+                        continue;
+
+                    const std::vector<uint64_t> absolute =
+                            cryptonote::relative_output_offsets_to_absolute(txin->key_offsets);
+                    for (size_t n = 0; n < txin->key_offsets.size(); ++n) {
+                        output_data od(txin->amount, absolute[n], coinbase, height);
+                        outputs[od].push_back(reference(height, txin->key_offsets.size(), n));
+                    }
+                }
+                return true;
+            },
+            true);
+
+    std::unordered_map<uint64_t, uint64_t> counts;
+    size_t total = 0;
+    for (const auto& out : outputs) {
+        counts[out.second.size()]++;
+        total++;
+    }
+    if (total > 0) {
+        for (const auto& c : counts) {
+            float percent = 100.f * c.second / total;
+            log::info(
+                    logcat,
+                    "{} outputs used {} times ({}%)",
+                    std::to_string(c.second),
+                    c.first,
+                    percent);
+        }
+    } else {
+        log::info(logcat, "No outputs to process");
+    }
+
+    log::warning(logcat, "Blockchain usage exported OK");
+    return 0;
+
+    CATCH_ENTRY("Export error", 1);
 }

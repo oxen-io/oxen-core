@@ -28,60 +28,79 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-
-#include "wallet2_api.h"
-#include "rpc/http_client.h"
 #include <string>
+
+#include "rpc/http_client.h"
+#include "wallet2_api.h"
 
 namespace Wallet {
 
-class WalletManagerImpl : public WalletManagerBase
-{
-public:
-    Wallet* createWallet(std::string_view path, const std::string &password,
-                          const std::string &language, NetworkType nettype, uint64_t kdf_rounds = 1) override;
-    Wallet* openWallet(std::string_view path, const std::string &password, NetworkType nettype, uint64_t kdf_rounds = 1, WalletListener * listener = nullptr) override;
-    Wallet * recoveryWallet(std::string_view path,
-                                       const std::string &password,
-                                       const std::string &mnemonic,
-                                       NetworkType nettype,
-                                       uint64_t restoreHeight,
-                                       uint64_t kdf_rounds = 1,
-                                       const std::string &seed_offset = {}) override;
-    Wallet * createWalletFromKeys(std::string_view path,
-                                             const std::string &password,
-                                             const std::string &language,
-                                             NetworkType nettype,
-                                             uint64_t restoreHeight,
-                                             const std::string &addressString,
-                                             const std::string &viewKeyString,
-                                             const std::string &spendKeyString = "",
-                                             uint64_t kdf_rounds = 1) override;
-    Wallet * createWalletFromDevice(std::string_view path,
-                                            const std::string &password,
-                                            NetworkType nettype,
-                                            const std::string &deviceName,
-                                            uint64_t restoreHeight = 0,
-                                            const std::string &subaddressLookahead = "",
-                                            uint64_t kdf_rounds = 1,
-                                            WalletListener * listener = nullptr) override;
-    bool closeWallet(Wallet *wallet, bool store = true) override;
+class WalletManagerImpl : public WalletManagerBase {
+  public:
+    Wallet* createWallet(
+            std::string_view path,
+            const std::string& password,
+            const std::string& language,
+            NetworkType nettype,
+            uint64_t kdf_rounds = 1) override;
+    Wallet* openWallet(
+            std::string_view path,
+            const std::string& password,
+            NetworkType nettype,
+            uint64_t kdf_rounds = 1,
+            WalletListener* listener = nullptr) override;
+    Wallet* recoveryWallet(
+            std::string_view path,
+            const std::string& password,
+            const std::string& mnemonic,
+            NetworkType nettype,
+            uint64_t restoreHeight,
+            uint64_t kdf_rounds = 1,
+            const std::string& seed_offset = {}) override;
+    Wallet* createWalletFromKeys(
+            std::string_view path,
+            const std::string& password,
+            const std::string& language,
+            NetworkType nettype,
+            uint64_t restoreHeight,
+            const std::string& addressString,
+            const std::string& viewKeyString,
+            const std::string& spendKeyString = "",
+            uint64_t kdf_rounds = 1) override;
+    Wallet* createWalletFromDevice(
+            std::string_view path,
+            const std::string& password,
+            NetworkType nettype,
+            const std::string& deviceName,
+            uint64_t restoreHeight = 0,
+            const std::string& subaddressLookahead = "",
+            uint64_t kdf_rounds = 1,
+            WalletListener* listener = nullptr) override;
+    bool closeWallet(Wallet* wallet, bool store = true) override;
     bool walletExists(std::string_view path) override;
-    bool verifyWalletPassword(std::string_view keys_file_name, const std::string &password, bool no_spend_key, uint64_t kdf_rounds = 1) const override;
-    bool queryWalletDevice(Wallet::Device& device_type, std::string_view keys_file_name, const std::string &password, uint64_t kdf_rounds = 1) const override;
+    bool verifyWalletPassword(
+            std::string_view keys_file_name,
+            const std::string& password,
+            bool no_spend_key,
+            uint64_t kdf_rounds = 1) const override;
+    bool queryWalletDevice(
+            Wallet::Device& device_type,
+            std::string_view keys_file_name,
+            const std::string& password,
+            uint64_t kdf_rounds = 1) const override;
     std::vector<std::string> findWallets(std::string_view path) override;
     std::string errorString() const override;
     void setDaemonAddress(std::string address) override;
-    bool connected(uint32_t *version = NULL) override;
+    bool connected(uint32_t* version = NULL) override;
     uint64_t blockchainHeight() override;
     uint64_t blockchainTargetHeight() override;
     uint64_t blockTarget() override;
 
-private:
+  private:
     WalletManagerImpl() {}
     friend struct WalletManagerFactory;
     cryptonote::rpc::http_client m_http_client;
     std::string m_errorString;
 };
 
-} // namespace
+}  // namespace Wallet

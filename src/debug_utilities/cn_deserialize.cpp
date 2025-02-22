@@ -27,235 +27,260 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <oxenc/hex.h>
+
+#include "common/command_line.h"
+#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_core/blockchain.h"
-#include "common/command_line.h"
+#include "l2_tracker/events.h"
 #include "oxen_economy.h"
-#include "common/hex.h"
 #include "version.h"
-#include <oxenc/hex.h>
-
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "debugtools.deserialize"
 
 namespace po = boost::program_options;
 
 using namespace cryptonote;
 
-static std::string extra_nonce_to_string(const cryptonote::tx_extra_nonce &extra_nonce)
-{
-  if (extra_nonce.nonce.size() == 9 && extra_nonce.nonce[0] == TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID)
-    return "encrypted payment ID: " + oxenc::to_hex(extra_nonce.nonce.begin() + 1, extra_nonce.nonce.end());
-  if (extra_nonce.nonce.size() == 33 && extra_nonce.nonce[0] == TX_EXTRA_NONCE_PAYMENT_ID)
-    return "plaintext payment ID: " + oxenc::to_hex(extra_nonce.nonce.begin() + 1, extra_nonce.nonce.end());
-  return oxenc::to_hex(extra_nonce.nonce);
+static auto logcat = log::Cat("debugtools.deserialize");
+
+static std::string extra_nonce_to_string(const cryptonote::tx_extra_nonce& extra_nonce) {
+    if (extra_nonce.nonce.size() == 9 &&
+        extra_nonce.nonce[0] == TX_EXTRA_NONCE_ENCRYPTED_PAYMENT_ID)
+        return "encrypted payment ID: " +
+               oxenc::to_hex(extra_nonce.nonce.begin() + 1, extra_nonce.nonce.end());
+    if (extra_nonce.nonce.size() == 33 && extra_nonce.nonce[0] == TX_EXTRA_NONCE_PAYMENT_ID)
+        return "plaintext payment ID: " +
+               oxenc::to_hex(extra_nonce.nonce.begin() + 1, extra_nonce.nonce.end());
+    return oxenc::to_hex(extra_nonce.nonce);
 }
 
 struct extra_printer {
-  void operator()(const tx_extra_padding& x) { std::cout << "padding: " << x.size << " bytes"; }
-  void operator()(const tx_extra_pub_key& x) { std::cout << "pub key: " << x.pub_key; }
-  void operator()(const tx_extra_nonce& x) { std::cout << "nonce: " << extra_nonce_to_string(x); }
-  void operator()(const tx_extra_merge_mining_tag& x) { std::cout << "merge mining tag: depth " << x.depth << ", merkle root " << x.merkle_root; }
-  void operator()(const tx_extra_additional_pub_keys& x) {
-    std::cout << "additional tx pubkeys: ";
-    bool first = true;
-    for (auto& pk : x.data) {
-      if (first) first = false;
-      else std::cout << ", ";
-      std::cout << pk;
+    std::string operator()(const tx_extra_padding& x) { return "padding: {} bytes"_format(x.size); }
+    std::string operator()(const tx_extra_pub_key& x) { return "pub key: {}"_format(x.pub_key); }
+    std::string operator()(const tx_extra_nonce& x) {
+        return "nonce: {}"_format(extra_nonce_to_string(x));
     }
-  }
-  void operator()(const tx_extra_mysterious_minergate& x) { std::cout << "minergate custom: " << oxenc::to_hex(x.data); }
-  void operator()(const tx_extra_service_node_winner& x) { std::cout << "SN reward winner: " << x.m_service_node_key; }
-  void operator()(const tx_extra_service_node_register& x) { std::cout << "SN registration data"; } // TODO: could parse this further
-  void operator()(const tx_extra_service_node_pubkey& x) { std::cout << "SN pubkey: " << x.m_service_node_key; }
-  void operator()(const tx_extra_service_node_contributor& x) { std::cout << "SN contribution"; } // Can't actually print the address without knowing the network type
-  void operator()(const tx_extra_service_node_deregister_old& x) { std::cout << "SN deregistration (pre-HF12)"; }
-  void operator()(const tx_extra_tx_secret_key& x) { std::cout << "TX secret key: " << tools::type_to_hex(x.key); }
-  void operator()(const tx_extra_tx_key_image_proofs& x) { std::cout << "TX key image proofs (" << x.proofs.size() << ")"; }
-  void operator()(const tx_extra_tx_key_image_unlock& x) { std::cout << "TX key image unlock: " << x.key_image; }
-  void operator()(const tx_extra_burn& x) { std::cout << "Transaction burned fee/payment: " << print_money(x.amount); }
-  void operator()(const tx_extra_oxen_name_system& x) {
-    std::cout << "ONS " << (x.is_buying() ? "registration" : x.is_updating() ? "update" : "(unknown)");
-    switch (x.type)
-    {
-      case ons::mapping_type::lokinet: std::cout << " - Lokinet (1y)"; break;
-      case ons::mapping_type::lokinet_2years: std::cout << " - Lokinet (2y)"; break;
-      case ons::mapping_type::lokinet_5years: std::cout << " - Lokinet (5y)"; break;
-      case ons::mapping_type::lokinet_10years: std::cout << " - Lokinet (10y)"; break;
-      case ons::mapping_type::session: std::cout << " - Session address"; break;
-      case ons::mapping_type::wallet: std::cout << " - Wallet address"; break;
-      case ons::mapping_type::update_record_internal:
-      case ons::mapping_type::_count:
-          break;
+    std::string operator()(const tx_extra_merge_mining_tag& x) {
+        return "merge mining tag: depth {}, markle root {}"_format(x.depth, x.merkle_root);
     }
-  }
-  void operator()(const tx_extra_service_node_state_change& x) {
-    std::cout << "SN state change: ";
-    switch (x.state)
-    {
-      case service_nodes::new_state::decommission: std::cout << "decommission"; break;
-      case service_nodes::new_state::recommission: std::cout << "recommission"; break;
-      case service_nodes::new_state::deregister: std::cout << "deregister"; break;
-      case service_nodes::new_state::ip_change_penalty: std::cout << "ip change penalty"; break;
-      case service_nodes::new_state::_count: std::cout << "(unknown)"; break;
+    std::string operator()(const tx_extra_additional_pub_keys& x) {
+        return "additional tx pubkeys: {}"_format(fmt::join(x.data, ", "));
     }
-    std::cout << " for block height " << x.block_height << ", SN index " << x.service_node_index;
-  }
-  template <typename T> void operator()(const T&) { std::cout << "unknown"; }
+    std::string operator()(const tx_extra_mysterious_minergate& x) {
+        return "minergate custom: {}"_format(oxenc::to_hex(x.data));
+    }
+    std::string operator()(const tx_extra_service_node_winner& x) {
+        return "SN reward winner: {}"_format(x.m_service_node_key);
+    }
+    std::string operator()(const tx_extra_service_node_register& x) {
+        return "SN registration data";
+    }  // TODO: could parse this further
+    std::string operator()(const tx_extra_service_node_pubkey& x) {
+        return "SN pubkey: {}"_format(x.m_service_node_key);
+    }
+    std::string operator()(const tx_extra_service_node_contributor& x) {
+        return "SN contribution";
+    }  // Can't actually print the address without knowing the network type
+    std::string operator()(const tx_extra_service_node_deregister_old& x) {
+        return "SN deregistration (pre-HF12)";
+    }
+    std::string operator()(const tx_extra_tx_secret_key& x) {
+        return "TX secret key: {}" + tools::hex_guts(x.key);
+    }
+    std::string operator()(const tx_extra_tx_key_image_proofs& x) {
+        return "TX key image proofs ({})"_format(x.proofs.size());
+    }
+    std::string operator()(const tx_extra_tx_key_image_unlock& x) {
+        return "TX key image unlock: {}"_format(x.key_image);
+    }
+    std::string operator()(const tx_extra_burn& x) {
+        return "Transaction burned fee/payment: {}"_format(print_money(x.amount));
+    }
+    std::string operator()(const tx_extra_oxen_name_system& x) {
+        std::string val = "ONS {}"_format(
+                x.is_buying()     ? "registration"
+                : x.is_updating() ? "update"
+                                  : "(unknown)");
+        switch (x.type) {
+            case ons::mapping_type::lokinet: val += " - Lokinet (1y)"; break;
+            case ons::mapping_type::lokinet_2years: val += " - Lokinet (2y)"; break;
+            case ons::mapping_type::lokinet_5years: val += " - Lokinet (5y)"; break;
+            case ons::mapping_type::lokinet_10years: val += " - Lokinet (10y)"; break;
+            case ons::mapping_type::session: val += " - Session address"; break;
+            case ons::mapping_type::wallet: val += " - Wallet address"; break;
+            case ons::mapping_type::update_record_internal:
+            case ons::mapping_type::_count: break;
+        }
+        return val;
+    }
+    std::string operator()(const tx_extra_service_node_state_change& x) {
+        std::string_view type;
+        switch (x.state) {
+            case service_nodes::new_state::decommission: type = "decommission"; break;
+            case service_nodes::new_state::recommission: type = "recommission"; break;
+            case service_nodes::new_state::deregister: type = "deregister"; break;
+            case service_nodes::new_state::ip_change_penalty: type = "ip change penalty"; break;
+            case service_nodes::new_state::_count: type = "(unknown)"; break;
+        }
+        return "SN state change: {} for block height {}, SN index {}"_format(
+                type, x.block_height, x.service_node_index);
+    }
+    std::string operator()(const eth::event::NewServiceNodeV2& x) {
+
+        std::vector<std::string> contributors;
+        for (const auto& contributor : x.contributors)
+            contributors.push_back("{{address: {}, beneficiary: {}, amount: {}}}"_format(
+                    contributor.address, contributor.beneficiary, print_money(contributor.amount)));
+        return "New Ethereum Service Node v2: L2 0x{:x}@{}, SN: {}, BLS pub: {}, fee: {}, contributors: [{}], signature: {}"_format(
+                x.chain_id,
+                x.l2_height,
+                x.sn_pubkey,
+                x.bls_pubkey,
+                x.fee,
+                fmt::join(contributors, ", "),
+                x.ed_signature);
+    }
+    std::string operator()(const eth::event::ServiceNodeExitRequest& x) {
+        return "Ethereum Service Node Exit Request: L2 0x{:x}@{}, BLS pub: {}"_format(
+                x.chain_id, x.l2_height, x.bls_pubkey);
+    }
+    std::string operator()(const eth::event::ServiceNodeExit& x) {
+        return "Ethereum Service Node Exit: L2 0x{:x}@{}, BLS pub: {}, returned: {}"_format(
+                x.chain_id, x.l2_height, x.bls_pubkey, print_money(x.returned_amount));
+    }
+    std::string operator()(const eth::event::StakingRequirementUpdated& x) {
+        return "Ethereum Staking Requirement Update: L2 0x{:x}@{}, new staking requirement: {}"_format(
+                x.chain_id, x.l2_height, print_money(x.staking_requirement));
+    }
+    std::string operator()(const eth::event::ServiceNodePurge& x) {
+        return "Ethereum Service Node Purge: L2 0x{:x}@{}, BLS pub: {}"_format(
+                x.chain_id, x.l2_height, x.bls_pubkey);
+    }
 };
 
-
-static void print_extra_fields(const std::vector<cryptonote::tx_extra_field> &fields)
-{
-  std::cout << "tx_extra has " << fields.size() << " field(s)\n";
-  for (size_t n = 0; n < fields.size(); ++n)
-  {
-    std::cout << "- " << n << ": ";
-    var::visit(extra_printer{}, fields[n]);
-    std::cout << "\n";
-  }
+static void print_extra_fields(const std::vector<cryptonote::tx_extra_field>& fields) {
+    std::cout << "tx_extra has " << fields.size() << " field(s)\n";
+    for (size_t n = 0; n < fields.size(); ++n) {
+        std::cout << "- " << n << ": ";
+        std::cout << var::visit(extra_printer{}, fields[n]);
+        std::cout << "\n";
+    }
 }
 
-constexpr static std::string_view network_type_str(network_type nettype)
-{
-  switch(nettype)
-  {
-    case network_type::MAINNET: return "Mainnet"sv;
-    case network_type::TESTNET: return "Testnet"sv;
-    case network_type::DEVNET: return "Devnet"sv;
-    case network_type::FAKECHAIN: return "Fakenet"sv;
-    case network_type::UNDEFINED: return "Undefined Net"sv;
-  }
-  return "Unhandled Net"sv;
-}
+int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
+    std::string input;
 
+    tools::on_startup();
 
+    po::options_description desc_cmd_only("Command line options");
+    po::options_description desc_cmd_sett("Command line options and settings options");
+    const command_line::arg_descriptor<std::string> arg_log_level{"log-level", "", "warning"};
+    const command_line::arg_descriptor<std::string> arg_input = {
+            "input",
+            "Specify a wallet address or hex string of a Cryptonote type for decoding, supporting\n"
+            " - TX Extra\n"
+            " - Block\n"
+            " - Transaction\n",
+            ""};
 
-int main(int argc, char* argv[])
-{
-  uint32_t log_level = 0;
-  std::string input;
+    command_line::add_arg(desc_cmd_sett, arg_log_level);
+    command_line::add_arg(desc_cmd_sett, arg_input);
 
-  tools::on_startup();
+    command_line::add_arg(desc_cmd_only, command_line::arg_help);
 
-  po::options_description desc_cmd_only("Command line options");
-  po::options_description desc_cmd_sett("Command line options and settings options");
-  const command_line::arg_descriptor<uint32_t> arg_log_level = {"log-level", "", log_level};
-  const command_line::arg_descriptor<std::string> arg_input  = {
-      "input", "Specify a wallet address or hex string of a Cryptonote type for decoding, supporting\n"
-               " - TX Extra\n"
-               " - Block\n"
-               " - Transaction\n"
-              ,""};
+    po::options_description desc_options("Allowed options");
+    desc_options.add(desc_cmd_only).add(desc_cmd_sett);
 
-  command_line::add_arg(desc_cmd_sett, arg_log_level);
-  command_line::add_arg(desc_cmd_sett, arg_input);
+    po::variables_map vm;
+    bool r = command_line::handle_error_helper(desc_options, [&]() {
+        po::store(po::parse_command_line(argc, argv, desc_options), vm);
+        po::notify(vm);
+        return true;
+    });
+    if (!r)
+        return 1;
 
-  command_line::add_arg(desc_cmd_only, command_line::arg_help);
-
-  po::options_description desc_options("Allowed options");
-  desc_options.add(desc_cmd_only).add(desc_cmd_sett);
-
-  po::variables_map vm;
-  bool r = command_line::handle_error_helper(desc_options, [&]()
-  {
-    po::store(po::parse_command_line(argc, argv, desc_options), vm);
-    po::notify(vm);
-    return true;
-  });
-  if (! r)
-    return 1;
-
-  if (command_line::get_arg(vm, command_line::arg_help))
-  {
-    std::cout << "Oxen '" << OXEN_RELEASE_NAME << "' (v" << OXEN_VERSION_FULL << ")\n\n";
-    std::cout << desc_options << std::endl;
-    return 1;
-  }
-
-  log_level    = command_line::get_arg(vm, arg_log_level);
-  input        = command_line::get_arg(vm, arg_input);
-  if (input.empty())
-  {
-    std::cerr << "Usage: --input <hex|wallet address>" << std::endl;
-    return 1;
-  }
-
-  mlog_configure("", true);
-
-  if (oxenc::is_hex(input))
-  {
-    auto blob = oxenc::from_hex(input);
-    bool full;
-    cryptonote::block block;
-    cryptonote::transaction tx;
-    std::vector<cryptonote::tx_extra_field> fields;
-    if (cryptonote::parse_and_validate_block_from_blob(blob, block))
-    {
-      std::cout << "Parsed block:" << std::endl;
-      std::cout << cryptonote::obj_to_json_str(block) << std::endl;
-    }
-    else if (cryptonote::parse_and_validate_tx_from_blob(blob, tx) || cryptonote::parse_and_validate_tx_base_from_blob(blob, tx))
-    {
-      if (tx.pruned)
-        std::cout << "Parsed pruned transaction:" << std::endl;
-      else
-        std::cout << "Parsed transaction:" << std::endl;
-      std::cout << cryptonote::obj_to_json_str(tx) << std::endl;
-
-      bool parsed = cryptonote::parse_tx_extra(tx.extra, fields);
-      if (!parsed)
-        std::cout << "Failed to parse tx_extra" << std::endl;
-
-      if (!fields.empty())
-      {
-        print_extra_fields(fields);
-      }
-      else
-      {
-        std::cout << "No fields were found in tx_extra" << std::endl;
-      }
-    }
-    else if (((full = cryptonote::parse_tx_extra(std::vector<uint8_t>(blob.begin(), blob.end()), fields)) || true) && !fields.empty())
-    {
-      std::cout << "Parsed" << (full ? "" : " partial") << " tx_extra:" << std::endl;
-      print_extra_fields(fields);
-    }
-    else
-    {
-      std::cerr << "Not a recognized CN type" << std::endl;
-      return 1;
-    }
-  }
-  else
-  {
-    bool addr_decoded = false;
-    for (auto nettype : {network_type::MAINNET, network_type::TESTNET, network_type::DEVNET})
-    {
-      cryptonote::address_parse_info addr_info = {};
-      if (cryptonote::get_account_address_from_str(addr_info, static_cast<cryptonote::network_type>(nettype), input))
-      {
-        addr_decoded = true;
-        cryptonote::account_public_address const &address = addr_info.address;
-        std::cout << "Network Type: " << network_type_str(static_cast<cryptonote::network_type>(nettype)) << "\n";
-        std::cout << "Address: " << input << "\n";
-        std::cout << "Subaddress: " << (addr_info.is_subaddress ? "Yes" : "No") << "\n";
-        std::cout << "Payment ID: " << (addr_info.has_payment_id ? tools::type_to_hex(addr_info.payment_id) : "(none)") << "\n";
-        std::cout << "Spend Public Key: " << address.m_spend_public_key << "\n";
-        std::cout << "View Public Key: " << address.m_view_public_key << "\n";
-      }
+    if (command_line::get_arg(vm, command_line::arg_help)) {
+        std::cout << "Oxen '" << OXEN_RELEASE_NAME << "' (v" << OXEN_VERSION_FULL << ")\n\n";
+        std::cout << desc_options << std::endl;
+        return 1;
     }
 
-    if (!addr_decoded)
-    {
-      std::cerr << "Not a recognized CN type" << std::endl;
-      return 1;
+    input = command_line::get_arg(vm, arg_input);
+    if (input.empty()) {
+        std::cerr << "Usage: --input <hex|wallet address>" << std::endl;
+        return 1;
     }
-  }
 
+    auto log_file_path = "cn_deserialize.log";
+    oxen::logging::init(log_file_path, command_line::get_arg(vm, arg_log_level));
+    log::warning(logcat, "Starting...");
 
+    if (oxenc::is_hex(input)) {
+        auto blob = oxenc::from_hex(input);
+        bool full;
+        cryptonote::block block;
+        cryptonote::transaction tx;
+        std::vector<cryptonote::tx_extra_field> fields;
+        if (cryptonote::parse_and_validate_block_from_blob(blob, block)) {
+            std::cout << "Parsed block:" << std::endl;
+            std::cout << cryptonote::obj_to_json_str(block) << std::endl;
+        } else if (
+                cryptonote::parse_and_validate_tx_from_blob(blob, tx) ||
+                cryptonote::parse_and_validate_tx_base_from_blob(blob, tx)) {
+            if (tx.pruned)
+                std::cout << "Parsed pruned transaction:" << std::endl;
+            else
+                std::cout << "Parsed transaction:" << std::endl;
+            std::cout << cryptonote::obj_to_json_str(tx) << std::endl;
 
-  return 0;
+            bool parsed = cryptonote::parse_tx_extra(tx.extra, fields);
+            if (!parsed)
+                std::cout << "Failed to parse tx_extra" << std::endl;
+
+            if (!fields.empty()) {
+                print_extra_fields(fields);
+            } else {
+                std::cout << "No fields were found in tx_extra" << std::endl;
+            }
+        } else if (
+                ((full = cryptonote::parse_tx_extra(
+                          std::vector<uint8_t>(blob.begin(), blob.end()), fields)) ||
+                 true) &&
+                !fields.empty()) {
+            std::cout << "Parsed" << (full ? "" : " partial") << " tx_extra:" << std::endl;
+            print_extra_fields(fields);
+        } else {
+            std::cerr << "Not a recognized CN type" << std::endl;
+            return 1;
+        }
+    } else {
+        bool addr_decoded = false;
+        for (auto nettype : ALL_NETWORKS) {
+            cryptonote::address_parse_info addr_info = {};
+            if (cryptonote::get_account_address_from_str(
+                        addr_info, static_cast<cryptonote::network_type>(nettype), input)) {
+                addr_decoded = true;
+                cryptonote::account_public_address const& address = addr_info.address;
+                fmt::print("Network Type: {}\n", network_type_to_string(nettype));
+                fmt::print("Address: {}\n", input);
+                fmt::print("Subaddress: {}\n", addr_info.is_subaddress ? "Yes" : "No");
+                if (addr_info.has_payment_id)
+                    fmt::print("Payment ID: {}\n", addr_info.payment_id);
+                else
+                    fmt::print("Payment ID: (none)\n");
+                fmt::print("Spend Public Key: {}\n", address.m_spend_public_key);
+                fmt::print("View Public Key: {}\n", address.m_view_public_key);
+            }
+        }
+
+        if (!addr_decoded) {
+            std::cerr << "Not a recognized CN type" << std::endl;
+            return 1;
+        }
+    }
+
+    return 0;
 }

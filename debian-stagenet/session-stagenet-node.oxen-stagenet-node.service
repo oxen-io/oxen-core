@@ -1,0 +1,19 @@
+[Unit]
+Description=Session node - Oxen blockchain node
+After=network-online.target
+PartOf=session-stagenet-node.target
+
+[Service]
+User=_loki
+Type=notify
+TimeoutStartSec=infinity
+WatchdogSec=5min
+WorkingDirectory=/var/lib/oxen
+Restart=always
+RestartSec=5s
+ExecStart=/usr/bin/oxend-stagenet --non-interactive --config-file /etc/oxen/stagenet.conf
+# Enable coloured daemon output:
+Environment=TERM=xterm
+
+[Install]
+WantedBy=multi-user.target

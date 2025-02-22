@@ -1,0 +1,111 @@
+Source: oxen-snapshot
+Section: net
+Priority: optional
+Maintainer: Jason Rhinelander <jason@loki.network>
+Build-Depends:
+    debhelper (>= 12),
+    debhelper-compat (=12),
+    cmake (>= 3.16),
+    ninja-build,
+    g++,
+    qttools5-dev,
+    libboost-dev (>= 1.65),
+    libboost-thread-dev,
+    libboost-serialization-dev,
+    libboost-program-options-dev,
+    nettle-dev,
+    libevent-dev,
+    libsodium-dev,
+    libreadline-dev,
+    libhidapi-dev,
+    libusb-1.0-0-dev,
+    libprotobuf-dev,
+    protobuf-compiler,
+    pkg-config,
+    libsystemd-dev,
+    libsqlite3-dev,
+    liboxenmq-dev (>= 1.2.13-2~),
+    liboxenc-dev (>= 1.1.0-3~),
+    libcurl4-dev,
+    libssl-dev @IF_FMT , libfmt-dev (>= 9)@@IF_SPD , libspdlog-dev (>= 1.9.1)@@IF_SECP , libsecp256k1-dev (>= 0.2)@ @OXEN_APPEND_DEPS@
+Standards-Version: 4.1.3
+Homepage: https://oxen.io
+
+Package: liboxen-snapshot@LIBOXEN_VERSION@
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Oxen shared libraries (development version)
+ This package contains the common Oxen library code used by the various Oxen
+ binaries.
+
+Package: liboxen-wallet-snapshot@LIBOXEN_VERSION@
+Architecture: any
+Depends: liboxen-snapshot@LIBOXEN_VERSION@ (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}
+Description: Oxen wallet shared libraries (development snapshot)
+ This package contains the common Oxen library code used by the various Oxen
+ wallet-related code.
+
+Package: oxend-snapshot
+Architecture: any
+Depends: liboxen-snapshot@LIBOXEN_VERSION@ (= ${binary:Version}), ${shlibs:Depends}, ${misc:Depends}, debconf
+Suggests: oxen-blockchain-tools-snapshot
+Description: Oxen network daemon (development snapshot)
+ This package contains the Oxen network daemon, oxend, for running an Oxen node
+ as part of an Oxen service node.
+ .
+ This is a development build of oxend; you should not use this package for a
+ mainnet Oxen node.
+
+Package: oxen-wallet-cli-snapshot
+Architecture: any
+Depends: liboxen-wallet-snapshot@LIBOXEN_VERSION@ (= ${binary:Version}), liboxen-snapshot@LIBOXEN_VERSION@ (= ${binary:Version}),
+    ${shlibs:Depends}, ${misc:Depends}
+Suggests: oxend-snapshot
+Description: Oxen command-line wallet and JSON RPC wallet (development snapshot)
+ This package contains the Oxen command-line wallet for accessing a wallet
+ stored on the Oxen blockchain.
+ .
+ The wallets require a oxend node to work, such as the one provided in the
+ oxend-snapshot package, but can also work with a remote Oxen node.
+
+Package: oxen-wallet-rpc-snapshot
+Architecture: any
+Depends: liboxen-wallet-snapshot@LIBOXEN_VERSION@ (= ${binary:Version}), liboxen-snapshot@LIBOXEN_VERSION@ (= ${binary:Version}),
+    ${shlibs:Depends}, ${misc:Depends}
+Suggests: oxend-snapshot
+Description: Oxen RPC wallet (development snapshot)
+ This package contains the Oxen JSON RPC wallet interface to accessing a wallet
+ on the Oxen blockchain.  This wallet interface is typically used by external
+ software that needs to interact with a wallet.
+ .
+ The wallet requires a oxend node to work, such as the one provided in the
+ oxend package, but can also work with a remote Oxen node.
+
+Package: oxen-blockchain-tools-snapshot
+Architecture: any
+Depends: liboxen-wallet-snapshot@LIBOXEN_VERSION@ (= ${binary:Version}), liboxen-snapshot@LIBOXEN_VERSION@ (= ${binary:Version}),
+    ${shlibs:Depends}, ${misc:Depends}
+Recommends: oxend
+Description: Oxen blockchain utilities (development snapshot)
+ This contains the oxen-blockchain-* binaries for managing and querying the
+ oxend blockchain database.  These tools are used for blockchain diagnostics
+ and are not typically needed to run an ordinary node or service node.
+
+Package: liboxen-snapshot-dev
+Architecture: any
+Multi-Arch: same
+Section: libdevel
+Depends: liboxen-wallet-snapshot@LIBOXEN_VERSION@ (= ${binary:Version}), liboxen-snapshot@LIBOXEN_VERSION@ (= ${binary:Version}),
+ libboost-dev (>= 1.58), libboost-thread-dev, libboost-serialization-dev, libboost-program-options-dev,
+ libsodium-dev, libreadline-dev, libhidapi-dev, liboxenmq-dev (>= 1.2.13-2~), liboxenc-dev (>= 1.1.0-3~),
+ libsqlite3-dev, libcurl4-dev, ${misc:Depends}
+Description: Oxen development files
+ This contains the headers needed to compile code that uses the oxen libraries.
+
+Package: session-stagenet-node
+Architecture: all
+Pre-Depends: curl
+Depends: oxend-snapshot (=${binary:Version}), ucf
+Description: Session stagenet service node metapackage
+ This package depends on the necessary components to run a Session Service Node
+ on the public "stagenet" test network.

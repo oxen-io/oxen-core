@@ -113,7 +113,7 @@ bool gen_uint_overflow_1::generate(std::vector<test_event_entry>& events) const
     oxen_blockchain_entry entry       = gen.create_next_block();
     if ( entry.block.major_version < cryptonote::hf::hf19_reward_batching)
     {
-      cryptonote::transaction &miner_tx = entry.block.miner_tx;
+      cryptonote::transaction &miner_tx = entry.block.miner_tx.value();
       split_miner_tx_outs(miner_tx, oxen::MONEY_SUPPLY);
       gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We purposely overflow miner tx by MONEY_SUPPLY in the miner tx");
     }
@@ -129,7 +129,7 @@ bool gen_uint_overflow_1::generate(std::vector<test_event_entry>& events) const
       oxen_blockchain_entry entry       = gen.create_next_block(txs);
       if ( entry.block.major_version < cryptonote::hf::hf19_reward_batching)
       {
-        cryptonote::transaction &miner_tx = entry.block.miner_tx;
+        cryptonote::transaction &miner_tx = entry.block.miner_tx.value();
         miner_tx.vout[0].amount           = 0; // Take partial block reward, fee > block_reward so ordinarly it would overflow. This should be disallowed
         gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We should not be able to add TX because the fee is greater than the base miner reward");
       }
@@ -143,7 +143,7 @@ bool gen_uint_overflow_1::generate(std::vector<test_event_entry>& events) const
       oxen_blockchain_entry entry       = gen.create_next_block(txs);
       if ( entry.block.major_version < cryptonote::hf::hf19_reward_batching)
       {
-        cryptonote::transaction &miner_tx = entry.block.miner_tx;
+        cryptonote::transaction &miner_tx = entry.block.miner_tx.value();
         miner_tx.vout[0].amount           = 0; // Take partial block reward, fee > block_reward so ordinarly it would overflow. This should be disallowed
         gen.add_block(entry, false /*can_be_added_to_blockchain*/, "We should not be able to add TX because the fee is greater than the base miner reward even if kept_by_block is true");
       }
@@ -167,11 +167,11 @@ bool gen_uint_overflow_2::generate(std::vector<test_event_entry>& events) const
 
   // Problem 1. Regular tx outputs overflow
   std::vector<cryptonote::tx_source_entry> sources;
-  for (size_t i = 0; i < blk_0.miner_tx.vout.size(); ++i)
+  for (size_t i = 0; i < blk_0.miner_tx.value().vout.size(); ++i)
   {
-    if (TESTS_DEFAULT_FEE < blk_0.miner_tx.vout[i].amount)
+    if (TESTS_DEFAULT_FEE < blk_0.miner_tx->vout[i].amount)
     {
-      append_tx_source_entry(sources, blk_0.miner_tx, i);
+      append_tx_source_entry(sources, *blk_0.miner_tx, i);
       break;
     }
   }

@@ -28,17 +28,17 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include "wallet/api/wallet2_api.h"
 #include <shared_mutex>
+
+#include "wallet/api/wallet2_api.h"
 
 namespace Wallet {
 
 class WalletImpl;
 
-class TransactionHistoryImpl : public TransactionHistory
-{
-public:
-    TransactionHistoryImpl(WalletImpl * wallet);
+class TransactionHistoryImpl : public TransactionHistory {
+  public:
+    TransactionHistoryImpl(WalletImpl* wallet);
     ~TransactionHistoryImpl();
     int count() const override;
     TransactionInfo* transaction(int index) const override;
@@ -46,12 +46,11 @@ public:
     std::vector<TransactionInfo*> getAll() const override;
     void refresh() override;
 
-private:
-
+  private:
     // TransactionHistory is responsible of memory management
     std::vector<TransactionInfo*> m_history;
-    WalletImpl *m_wallet;
+    WalletImpl* m_wallet;
     mutable std::shared_mutex m_historyMutex;
 };
 
-}
+}  // namespace Wallet

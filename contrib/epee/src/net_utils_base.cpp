@@ -1,12 +1,14 @@
 
 #include "epee/net/net_utils_base.h"
 
-#include <boost/uuid/uuid_io.hpp>
+#include <random>
+#include <oxenc/hex.h>
 
 #include "epee/string_tools.h"
 #include "epee/net/local_ip.h"
+#include "epee/net/enums.h"
 
-namespace epee { namespace net_utils
+namespace epee::net_utils
 {
 	bool ipv4_network_address::equal(const ipv4_network_address& other) const noexcept
 	{ return is_same_host(other) && port() == other.port(); }
@@ -86,7 +88,6 @@ namespace epee { namespace net_utils
 		return self_->is_same_host(*other_self);
 	}
 
-
   // should be here, but network_address is perverted with a circular dependency into src/net, so
   // this is in src/net/epee_network_address_hack.cpp instead.
   //KV_SERIALIZE_MAP_CODE_BEGIN(network_address)
@@ -104,5 +105,46 @@ namespace epee { namespace net_utils
     ss << ctx.m_remote_address.str() << (ctx.m_is_income ? " INC":" OUT");
     return ss.str();
   }
-}}
 
+  std::ostream& operator<<(std::ostream& o, address_type a)
+  {
+    return o << to_string(a);
+  }
+  std::ostream& operator<<(std::ostream& o, zone z)
+  {
+    return o << to_string(z);
+  }
+} // namespace epee::net_utils
+
+namespace epee {
+
+static std::mt19937_64 seed_rng() {
+    std::random_device dev;
+    // each dev() gives us 32 bits of random data; 256 bits ought to be plenty for what we need:
+    std::seed_seq seed{{dev(), dev(), dev(), dev(), dev(), dev(), dev(), dev()}};
+    std::mt19937_64 rng{seed};
+    return rng;
+}
+
+connection_id_t connection_id_t::random() {
+    static thread_local auto rng = seed_rng();
+    uint64_t x[2];
+    x[0] = rng();
+    x[1] = rng();
+    connection_id_t conn_id;
+    static_assert(sizeof(conn_id) == sizeof(x));
+    std::memcpy(conn_id.data(), &x, sizeof(x));
+    return conn_id;
+}
+
+std::ostream& operator<<(std::ostream& out, const connection_id_t& c) {
+    // Output in uuid form:
+    // 00112233-4455-6677-8899-101112131415
+    return out << oxenc::to_hex(c.begin(), c.begin() + 4) << '-'
+               << oxenc::to_hex(c.begin() + 4, c.begin() + 6) << '-'
+               << oxenc::to_hex(c.begin() + 6, c.begin() + 8) << '-'
+               << oxenc::to_hex(c.begin() + 8, c.begin() + 10) << '-'
+               << oxenc::to_hex(c.begin() + 10, c.end());
+}
+
+}  // namespace epee

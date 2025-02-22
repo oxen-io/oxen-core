@@ -59,7 +59,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     miner_accounts[n].generate();
     CHECK_AND_ASSERT_MES(generator.construct_block_manually(blocks[n], *prev_block, miner_accounts[n],
         test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
-        cryptonote::hf::hf7, 2, prev_block->timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+        cryptonote::hf::hf7, 2, prev_block->timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
           crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
         false, "Failed to generate block");
     events.push_back(blocks[n]);
@@ -75,7 +75,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
       cryptonote::block blk;
       CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk, blk_last, miner_account,
           test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
-          cryptonote::hf::hf7, 2, blk_last.timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+          cryptonote::hf::hf7, 2, blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
           crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
           false, "Failed to generate block");
       events.push_back(blk);
@@ -99,9 +99,9 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     const size_t index_in_tx = 5;
     src.amount = 30000000000000;
     for (int m = 0; m < 4; ++m) {
-      src.push_output(m, var::get<txout_to_key>(blocks[m].miner_tx.vout[index_in_tx].target).key, src.amount);
+      src.push_output(m, var::get<txout_to_key>(blocks[m].miner_tx.value().vout[index_in_tx].target).key, src.amount);
     }
-    src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[n].miner_tx);
+    src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[n].miner_tx.value());
     src.real_output = n;
     src.real_output_in_tx_index = index_in_tx;
     src.mask = rct::identity();
@@ -144,7 +144,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
 
     CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk_txes[n], blk_last, miner_account,
         test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_tx_hashes | test_generator::bf_hf_version,
-        cryptonote::hf::hf7, 4, blk_last.timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+        cryptonote::hf::hf7, 4, blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
         crypto::hash(), 0, transaction(), starting_rct_tx_hashes, 0),
         false, "Failed to generate block");
     events.push_back(blk_txes[n]);
@@ -158,7 +158,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
       cryptonote::block blk;
       CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk, blk_last, miner_account,
           test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
-          last_version, static_cast<uint8_t>(last_version), blk_last.timestamp + tools::to_seconds(TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
+          last_version, static_cast<uint8_t>(last_version), blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
           crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
           false, "Failed to generate block");
       events.push_back(blk);
@@ -199,12 +199,12 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     {
       // pre rct
       src.amount = 5000000000000;
-      src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[pre_rct_idx].miner_tx);
+      src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[pre_rct_idx].miner_tx.value());
       src.real_output_in_tx_index = 4;
       src.mask = rct::identity();
       src.rct = false;
       for (int m = 0; m <= mixin; ++m) {
-        src.push_output(m, var::get<txout_to_key>(blocks[pre_rct_idx].miner_tx.vout[4].target).key, src.amount);
+        src.push_output(m, var::get<txout_to_key>(blocks[pre_rct_idx].miner_tx.value().vout[4].target).key, src.amount);
         ++pre_rct_idx;
       }
     }
@@ -238,7 +238,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
   if (!valid)
     DO_CALLBACK(events, "mark_invalid_tx");
   events.push_back(tx);
-  LOG_PRINT_L0("Test tx: " << obj_to_json_str(tx));
+  oxen::log::warning(globallogcat, "Test tx: {}", obj_to_json_str(tx));
 
   return true;
 }
@@ -508,8 +508,13 @@ bool gen_rct_tx_pre_rct_altered_extra::generate(std::vector<test_event_entry>& e
   const int out_idx[] = {0, -1};
   const uint64_t amount_paid = 10000;
   bool failed = false;
-  return generate_with(events, out_idx, mixin, amount_paid, false,
-    NULL, [&failed](transaction &tx) {std::string extra_nonce; crypto::hash pid = crypto::null_hash; set_payment_id_to_tx_extra_nonce(extra_nonce, pid); if (!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce)) failed = true; }) && !failed;
+  return generate_with(events, out_idx, mixin, amount_paid, false, nullptr,
+    [&failed](transaction &tx) {
+        std::string extra_nonce;
+        crypto::hash pid{};
+        set_payment_id_to_tx_extra_nonce(extra_nonce, pid);
+        if (!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce)) failed = true;
+    }) && !failed;
 }
 
 bool gen_rct_tx_rct_altered_extra::generate(std::vector<test_event_entry>& events) const
@@ -518,8 +523,13 @@ bool gen_rct_tx_rct_altered_extra::generate(std::vector<test_event_entry>& event
   const int out_idx[] = {1, -1};
   const uint64_t amount_paid = 10000;
   bool failed = false;
-  return generate_with(events, out_idx, mixin, amount_paid, false,
-    NULL, [&failed](transaction &tx) {std::string extra_nonce; crypto::hash pid = crypto::null_hash; set_payment_id_to_tx_extra_nonce(extra_nonce, pid); if (!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce)) failed = true; }) && !failed;
+  return generate_with(events, out_idx, mixin, amount_paid, false, nullptr,
+    [&failed](transaction &tx) {
+        std::string extra_nonce;
+        crypto::hash pid{};
+        set_payment_id_to_tx_extra_nonce(extra_nonce, pid);
+        if (!add_extra_nonce_to_tx_extra(tx.extra, extra_nonce)) failed = true;
+    }) && !failed;
 }
 
 bool gen_rct_tx_uses_output_too_early::generate(std::vector<test_event_entry>& events) const

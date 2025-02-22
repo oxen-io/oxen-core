@@ -78,12 +78,12 @@ bool one_block::verify_1(cryptonote::core& c, size_t ev_index, const eventV &eve
     // check height
     std::vector<cryptonote::block> blocks;
     std::list<crypto::public_key> outs;
-    bool r = c.get_blocks(0, 100, blocks);
+    bool r = c.blockchain.get_blocks(0, 100, blocks);
     //c.get_outs(100, outs);
     CHECK_TEST_CONDITION(r);
     CHECK_TEST_CONDITION(blocks.size() == 1);
     //CHECK_TEST_CONDITION(outs.size() == blocks.size());
-    CHECK_TEST_CONDITION(c.get_blockchain_total_transactions() == 1);
+    CHECK_TEST_CONDITION(c.blockchain.get_total_transactions() == 1);
     CHECK_TEST_CONDITION(blocks.back() == var::get<cryptonote::block>(events[0]));
 
     return true;

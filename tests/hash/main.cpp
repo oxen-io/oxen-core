@@ -30,23 +30,18 @@
 
 #include <cstddef>
 #include <fstream>
-#include <iomanip>
 #include <ios>
 #include <string>
+#include <string_view>
 #include <cfenv>
 
-#include "epee/misc_log_ex.h"
-#include "epee/warnings.h"
 #include "crypto/hash.h"
 #include "crypto/variant2_int_sqrt.h"
-#include "cryptonote_core/cryptonote_tx_utils.h"
 #include "../io.h"
 
+using namespace std::literals;
 using namespace crypto;
 typedef crypto::hash chash;
-
-using std::cerr;
-using std::endl;
 
 #define X_MACRO \
     HASH_X_MACRO(invalid,         "INVALID") \
@@ -74,10 +69,8 @@ int test_variant2_int_sqrt();
 int test_variant2_int_sqrt_ref();
 
 int main(int argc, char *argv[]) {
-  TRY_ENTRY();
-
   std::fstream input;
-  std::vector<char> data;
+  std::vector<unsigned char> data;
   chash expected, actual;
   size_t test = 0;
   bool error = false;
@@ -91,28 +84,17 @@ int main(int argc, char *argv[]) {
         std::fesetround(round_modes[i]);
         const int result = test_variant2_int_sqrt();
         if (result != 0) {
-          cerr << "FPU round mode was set to ";
-          switch (round_modes[i]) {
-            case FE_DOWNWARD:
-              cerr << "FE_DOWNWARD";
-              break;
-            case FE_TONEAREST:
-              cerr << "FE_TONEAREST";
-              break;
-            case FE_UPWARD:
-              cerr << "FE_UPWARD";
-              break;
-            default:
-              cerr << "unknown";
-              break;
-          }
-          cerr << endl;
+          fmt::print(stderr, "FPU round mode was set to {}\n",
+              round_modes[i] == FE_DOWNWARD ? "FE_DOWNWARD" :
+              round_modes[i] == FE_TONEAREST ? "FE_TONEAREST" :
+              round_modes[i] == FE_UPWARD ? "FE_UPWARD" :
+              "unknown");
           return result;
         }
       }
       return 0;
     }
-    cerr << "Wrong number of arguments" << endl;
+    fmt::print(stderr, "Wrong arguments.  Usage: {} TESTTYPE test-file.txt\n", argv[0]);
     return 1;
   }
 
@@ -128,7 +110,7 @@ int main(int argc, char *argv[]) {
 
   if (type == hash_type::invalid)
   {
-    cerr << "Unknown hashing function" << endl;
+    std::cerr << "Unknown hashing function\n";
     return 1;
   }
 
@@ -146,7 +128,7 @@ int main(int argc, char *argv[]) {
 
     void const *buf   = data.data();
     size_t len        = data.size();
-    auto *actual_byte_ptr = reinterpret_cast<char *>(&actual);
+    auto *actual_byte_ptr = actual.data();
     switch(type)
     {
       case hash_type::fast: cn_fast_hash(buf, len, actual_byte_ptr); break;
@@ -154,7 +136,7 @@ int main(int argc, char *argv[]) {
       {
         if ((len & 31) != 0)
           throw std::ios_base::failure("Invalid input length for tree_hash");
-        tree_hash((const char (*)[crypto::HASH_SIZE]) buf, len >> 5, actual_byte_ptr);
+        tree_hash((const unsigned char (*)[HASH_SIZE]) buf, len >> 5, actual_byte_ptr);
       }
       break;
 
@@ -165,38 +147,16 @@ int main(int argc, char *argv[]) {
       case hash_type::heavy_v1:        cn_slow_hash      (buf, len, actual, cn_slow_hash_type::heavy_v1); break;
       case hash_type::heavy_v2:        cn_slow_hash      (buf, len, actual, cn_slow_hash_type::heavy_v2); break;
       case hash_type::turtle_light_v2: cn_slow_hash      (buf, len, actual, cn_slow_hash_type::turtle_lite_v2); break;
-
-      default:
-      {
-        cerr << "Unknown hashing function" << endl;
-        return 1;
-      }
-    };
+      default: throw std::runtime_error{"Unknown hashing function"};
+    }
 
     if (expected != actual) {
-      size_t i;
-      cerr << "Hash mismatch on test " << test << endl << "Input: ";
-      if (data.size() == 0) {
-        cerr << "empty";
-      } else {
-        for (i = 0; i < data.size(); i++) {
-          cerr << std::setbase(16) << std::setw(2) << std::setfill('0') << int(static_cast<unsigned char>(data[i]));
-        }
-      }
-      cerr << endl << "Expected hash: ";
-      for (i = 0; i < 32; i++) {
-          cerr << std::setbase(16) << std::setw(2) << std::setfill('0') << int(reinterpret_cast<unsigned char *>(&expected)[i]);
-      }
-      cerr << endl << "Actual hash: ";
-      for (i = 0; i < 32; i++) {
-          cerr << std::setbase(16) << std::setw(2) << std::setfill('0') << int(reinterpret_cast<unsigned char *>(&actual)[i]);
-      }
-      cerr << endl;
+      fmt::print(stderr, "Hash mismatch on test {}\nInput: {}\nExpected hash: {}\nActual hash: {}\n",
+          test, (data.empty() ? "Empty" : oxenc::to_hex(data.begin(), data.end())), expected, actual);
       error = true;
     }
   }
   return error ? 1 : 0;
-  CATCH_ENTRY_L0("main", 1);
 }
 
 #if defined(__x86_64__) || (defined(_MSC_VER) && defined(_WIN64))
@@ -218,9 +178,9 @@ static inline bool test_variant2_int_sqrt_sse(const uint64_t sqrt_input, const u
   VARIANT2_INTEGER_MATH_SQRT_STEP_SSE2();
   VARIANT2_INTEGER_MATH_SQRT_FIXUP(sqrt_result);
   if (sqrt_result != correct_result) {
-    cerr << "Integer sqrt (SSE2 version) returned incorrect result for N = " << sqrt_input << endl;
-    cerr << "Expected result: " << correct_result << endl;
-    cerr << "Returned result: " << sqrt_result << endl;
+    std::cerr << "Integer sqrt (SSE2 version) returned incorrect result for N = " << sqrt_input << "\n";
+    std::cerr << "Expected result: " << correct_result << "\n";
+    std::cerr << "Returned result: " << sqrt_result << "\n";
     return false;
   }
 #endif
@@ -235,9 +195,9 @@ static inline bool test_variant2_int_sqrt_fp64(const uint64_t sqrt_input, const 
   VARIANT2_INTEGER_MATH_SQRT_STEP_FP64();
   VARIANT2_INTEGER_MATH_SQRT_FIXUP(sqrt_result);
   if (sqrt_result != correct_result) {
-    cerr << "Integer sqrt (FP64 version) returned incorrect result for N = " << sqrt_input << endl;
-    cerr << "Expected result: " << correct_result << endl;
-    cerr << "Returned result: " << sqrt_result << endl;
+    std::cerr << "Integer sqrt (FP64 version) returned incorrect result for N = " << sqrt_input << "\n";
+    std::cerr << "Expected result: " << correct_result << "\n";
+    std::cerr << "Returned result: " << sqrt_result << "\n";
     return false;
   }
 #endif
@@ -250,9 +210,9 @@ static inline bool test_variant2_int_sqrt_ref(const uint64_t sqrt_input, const u
   uint64_t sqrt_result;
   VARIANT2_INTEGER_MATH_SQRT_STEP_REF();
   if (sqrt_result != correct_result) {
-    cerr << "Integer sqrt (reference version) returned incorrect result for N = " << sqrt_input << endl;
-    cerr << "Expected result: " << correct_result << endl;
-    cerr << "Returned result: " << sqrt_result << endl;
+    std::cerr << "Integer sqrt (reference version) returned incorrect result for N = " << sqrt_input << "\n";
+    std::cerr << "Expected result: " << correct_result << "\n";
+    std::cerr << "Returned result: " << sqrt_result << "\n";
     return false;
   }
 
