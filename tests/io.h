@@ -35,11 +35,12 @@
 #include <vector>
 #include <oxenc/hex.h>
 
-inline bool hexdecode(const char *from, std::size_t length, void *to) {
-  const char* end = from + 2*length;
+template <typename Char>
+inline bool hexdecode(const Char *from, std::size_t length, void *to) {
+  const Char* end = from + 2*length;
   if (!oxenc::is_hex(from, end))
     return false;
-  oxenc::from_hex(from, end, reinterpret_cast<char*>(to));
+  oxenc::from_hex(from, end, reinterpret_cast<Char*>(to));
   return true;
 }
 
@@ -73,7 +74,8 @@ void get(std::istream &input, T &res) {
   getvar(input, sizeof(T), &res);
 }
 
-inline void get(std::istream &input, std::vector<char> &res) {
+template <typename Char, std::enable_if_t<sizeof(Char) == 1 && std::is_scalar_v<Char>, int> = 0>
+inline void get(std::istream &input, std::vector<Char> &res) {
   std::string sres;
   input >> sres;
   if (sres == "x") {

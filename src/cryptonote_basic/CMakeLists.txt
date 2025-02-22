@@ -27,7 +27,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(cryptonote_basic
+oxen_add_library(cryptonote_basic
   account.cpp
   cryptonote_basic.cpp
   cryptonote_basic_impl.cpp
@@ -41,7 +41,6 @@ target_link_libraries(cryptonote_basic
   PRIVATE
     common
     device
-    Boost::program_options
     Boost::serialization
-    filesystem
+    logging
     extra)

@@ -1,5 +1,5 @@
 
-add_library(sqlitedb
+oxen_add_library(sqlitedb
   database.cpp)
 
 target_link_libraries(sqlitedb
@@ -9,5 +9,5 @@ target_link_libraries(sqlitedb
     common
   PRIVATE
     SQLite::SQLite3
-    fmt::fmt
+    logging
     extra)

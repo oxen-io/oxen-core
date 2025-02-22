@@ -34,6 +34,7 @@
 #include <iostream>
 #include <vector>
 #include <boost/archive/portable_binary_iarchive.hpp>
+#include "common/guts.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "ringct/rctSigs.h"
@@ -42,6 +43,7 @@
 #include "serialization/variant.h"
 #include "serialization/vector.h"
 #include "serialization/binary_utils.h"
+#include "serialization/optional.h"
 #include "wallet/wallet2.h"
 #include "gtest/gtest.h"
 #include "unit_tests_utils.h"
@@ -77,10 +79,11 @@ struct Struct1
   std::vector<std::variant<whatever::Struct, int32_t>> si;
   std::vector<int16_t> vi;
 
-  BEGIN_SERIALIZE_OBJECT()
-    FIELD(si)
-    FIELD(vi)
-  END_SERIALIZE()
+  template <class Archive>
+  void serialize_object(Archive& ar) {
+    field(ar, "si", si);
+    field(ar, "vi", vi);
+  }
 };
 
 struct Blob
@@ -442,7 +445,7 @@ TEST(serialization, serializes_transaction_signatures_correctly)
   tx.signatures[1].resize(2);
   for (char i : {0, 1})
     for (char j : {0, 1})
-      tx.signatures[i][j].c.data[2*i + j] = ((i+1) << 4) + 2*i + j + 1;
+      tx.signatures[i][j].c()[2*i + j] = ((i+1) << 4) + 2*i + j + 1;
   tx.invalidate_hashes();
   ASSERT_NO_THROW(blob = serialization::dump_binary(tx));
   ASSERT_EQ(oxenc::to_hex(blob),
@@ -595,6 +598,79 @@ TEST(serialization, serializes_ringct)
   ASSERT_EQ(clsag.D, clsag1.D);
 }
 
+struct XYZ {
+    std::optional<uint32_t> x;
+    std::optional<crypto::hash> y;
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        field(ar, "x", x);
+        field(ar, "y", y);
+    }
+    auto operator<=>(const XYZ&) const = default;
+};
+
+TEST(serialization, optionals) {
+    auto test = []<typename T>(const T& val, std::string_view json, std::string_view binhex) {
+        assert(oxenc::is_hex(binhex));
+        {
+            std::ostringstream bin;
+            serialization::json_archiver ar;
+            serialization::serialize(ar, const_cast<T&>(val));
+            ASSERT_EQ(ar.json().dump(), json);
+
+            serialization::binary_archiver bar{bin};
+            serialization::serialize(bar, const_cast<T&>(val));
+            ASSERT_EQ(oxenc::to_hex(bin.str()), binhex);
+        }
+
+        {
+            std::istringstream bin;
+            bin.str(oxenc::from_hex(binhex));
+            serialization::binary_unarchiver bar{bin};
+            T new_val;
+            serialization::serialize(bar, new_val);
+            ASSERT_EQ(new_val, val);
+        }
+    };
+
+    std::optional<uint32_t> opt_u32 = 123;
+    test(opt_u32, "123", "017b");
+    opt_u32.reset();
+    test(opt_u32, "null", "00");
+
+    std::optional<uint64_t> opt_u64 = 123456789101112;
+    test(opt_u64, "123456789101112", "01b8f4bcb088891c");
+    opt_u64.reset();
+    test(opt_u64, "null", "00");
+
+    std::optional<crypto::hash> opt_hash = tools::make_from_hex_guts<crypto::hash>(
+            "fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff"sv);
+    test(opt_hash,
+         "\"fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff\"",
+         "01fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff");
+    opt_hash.reset();
+    test(opt_hash, "null", "00");
+
+    std::vector<std::optional<uint32_t>> v_opt{{std::nullopt, 2, 3, std::nullopt, 10}};
+    test(v_opt, "[null,2,3,null,10]", "05000102010300010a");
+
+    std::optional<std::vector<uint32_t>> opt_v{{{1, 2, 3}}};
+    test(opt_v, "[1,2,3]", "0103010203");
+    opt_v.reset();
+    test(opt_v, "null", "00");
+
+    XYZ xyz;
+    xyz.x = 66;
+    xyz.y = tools::make_from_hex_guts<crypto::hash>(
+            "fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff"sv);
+    test(xyz,
+         R"({"x":66,"y":"fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff"})",
+         "014201fedcba98765432100123456789abcdef00112233445566778899aabbccddeeff");
+    xyz.x.reset();
+    xyz.y.reset();
+    test(xyz, R"({"x":null,"y":null})", "0000");
+}
+
 // TODO(oxen): These tests are broken because they rely on testnet which has
 // since been restarted, and so the genesis block of these predefined wallets
 // are broken
@@ -635,25 +711,25 @@ TEST(serialization, portability_wallet)
 
   ASSERT_TRUE(w.m_blockchain.size() == 11652);
 
-  ASSERT_TRUE(tools::type_to_hex(w.m_blockchain[0]) == "da0d7c7824d82c15fc1e046259ce16a7d216e0c0f4406122e207127cf9a77bec");
-  ASSERT_TRUE(tools::type_to_hex(w.m_blockchain[1]) == "ca9fcde568ad56e01342fa951db7cd0b8f8bdb8a7bf64eb3aa16af79fd44cfab");
-  ASSERT_TRUE(tools::type_to_hex(w.m_blockchain[11635]) == "84adf6f5a518fcebfea31c304334f7f9358fed610b40034576c46a8c4870b310");
-  ASSERT_TRUE(tools::type_to_hex(w.m_blockchain[11636]) == "e991be0387c636496ebd224fa9d135dfa917c4b6129bfcfed1458b77666d8b5c");
+  ASSERT_TRUE(tools::hex_guts(w.m_blockchain[0]) == "da0d7c7824d82c15fc1e046259ce16a7d216e0c0f4406122e207127cf9a77bec");
+  ASSERT_TRUE(tools::hex_guts(w.m_blockchain[1]) == "ca9fcde568ad56e01342fa951db7cd0b8f8bdb8a7bf64eb3aa16af79fd44cfab");
+  ASSERT_TRUE(tools::hex_guts(w.m_blockchain[11635]) == "84adf6f5a518fcebfea31c304334f7f9358fed610b40034576c46a8c4870b310");
+  ASSERT_TRUE(tools::hex_guts(w.m_blockchain[11636]) == "e991be0387c636496ebd224fa9d135dfa917c4b6129bfcfed1458b77666d8b5c");
 
   // transfers (TODO)
   ASSERT_TRUE(w.m_transfers.size() == 3);
 
   // account public address
-  ASSERT_TRUE(tools::type_to_hex(w.m_account_public_address.m_view_public_key) == "fa871f6af764d2b3fc43eddb9f311b73b387652809992afa5ca3acacc6ff44b0");
-  ASSERT_TRUE(tools::type_to_hex(w.m_account_public_address.m_spend_public_key) == "efb5d51e3ab4a7c09c207f85650c970eeb671f03d98defcb70265930c0d86240");
+  ASSERT_TRUE(tools::hex_guts(w.m_account_public_address.m_view_public_key) == "fa871f6af764d2b3fc43eddb9f311b73b387652809992afa5ca3acacc6ff44b0");
+  ASSERT_TRUE(tools::hex_guts(w.m_account_public_address.m_spend_public_key) == "efb5d51e3ab4a7c09c207f85650c970eeb671f03d98defcb70265930c0d86240");
 
   // key images
   ASSERT_TRUE(w.m_key_images.size() == 3);
   {
     crypto::key_image ki[3];
-    tools::hex_to_type("05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11", ki[0]);
-    tools::hex_to_type("21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8", ki[1]);
-    tools::hex_to_type("92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d", ki[2]);
+    tools::load_from_hex_guts("05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11", ki[0]);
+    tools::load_from_hex_guts("21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8", ki[1]);
+    tools::load_from_hex_guts("92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d", ki[2]);
     ASSERT_EQ_MAP(0, w.m_key_images, ki[0]);
     ASSERT_EQ_MAP(1, w.m_key_images, ki[1]);
     ASSERT_EQ_MAP(2, w.m_key_images, ki[2]);
@@ -667,8 +743,8 @@ TEST(serialization, portability_wallet)
   {
     auto pd0 = w.m_payments.begin();
 
-    ASSERT_TRUE(tools::type_to_hex(pd0->first) == "0000000000000000000000000000000000000000000000000000000000000000");
-    ASSERT_TRUE(tools::type_to_hex(pd0->second.m_tx_hash) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
+    ASSERT_TRUE(tools::hex_guts(pd0->first) == "0000000000000000000000000000000000000000000000000000000000000000");
+    ASSERT_TRUE(tools::hex_guts(pd0->second.m_tx_hash) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
     ASSERT_TRUE(pd0->second.m_amount       == 100000000000);
     ASSERT_TRUE(pd0->second.m_block_height == 8478);
     ASSERT_TRUE(pd0->second.m_unlock_time  == 0);
@@ -687,8 +763,8 @@ TEST(serialization, portability_wallet)
     {
       crypto::hash txid;
       crypto::secret_key txkey;
-      tools::hex_to_type(txid_txkey[i].first, txid);
-      tools::hex_to_type(txid_txkey[i].second, txkey);
+      tools::load_from_hex_guts(txid_txkey[i].first, txid);
+      tools::load_from_hex_guts(txid_txkey[i].second, txkey);
       ASSERT_EQ_MAP(txkey, w.m_tx_keys, txid);
     }
   }
@@ -700,7 +776,7 @@ TEST(serialization, portability_wallet)
   ASSERT_TRUE(w.m_tx_notes.size() == 1);
   {
     crypto::hash h[1];
-    tools::hex_to_type("d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c", h[0]);
+    tools::load_from_hex_guts("d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c", h[0]);
     ASSERT_EQ_MAP("Unconfirmed transaction test", w.m_tx_notes, h[0]);
   }
 
@@ -711,9 +787,9 @@ TEST(serialization, portability_wallet)
   ASSERT_TRUE(w.m_pub_keys.size() == 3);
   {
     crypto::public_key pubkey[3];
-    tools::hex_to_type("cc6ac78ac21c034210dcce72a96909b8ba7abd1b3d3917b5ee0c5bc0fe1f6a55", pubkey[0]);
-    tools::hex_to_type("4cea6373d27bdde002a745ef025375e36ca4b1042c4defdaf2fc56a48ef67230", pubkey[1]);
-    tools::hex_to_type("b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbff", pubkey[2]);
+    tools::load_from_hex_guts("cc6ac78ac21c034210dcce72a96909b8ba7abd1b3d3917b5ee0c5bc0fe1f6a55", pubkey[0]);
+    tools::load_from_hex_guts("4cea6373d27bdde002a745ef025375e36ca4b1042c4defdaf2fc56a48ef67230", pubkey[1]);
+    tools::load_from_hex_guts("b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbff", pubkey[2]);
     ASSERT_EQ_MAP(0, w.m_pub_keys, pubkey[0]);
     ASSERT_EQ_MAP(1, w.m_pub_keys, pubkey[1]);
     ASSERT_EQ_MAP(2, w.m_pub_keys, pubkey[2]);
@@ -724,13 +800,13 @@ TEST(serialization, portability_wallet)
   {
     auto address_book_row = w.m_address_book.begin();
 <<<<<<< HEAD
-    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_spend_public_key) == "938fc84cbacb271fdbc9bfc34e9d887f4bdb89f20a9d4e2c05916d6b9f6a7cb8");
-    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_view_public_key) == "9eec0bbb1728bce79209e1ae995cbae8e3f6cf78f7262b5db049594e4907bb33");
-    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_payment_id) == "e0470453783dd65dc16bb740f82902b9a26a48216e4c89278586637011c858a3");
+    ASSERT_TRUE(tools::hex_guts(address_book_row->m_address.m_spend_public_key) == "938fc84cbacb271fdbc9bfc34e9d887f4bdb89f20a9d4e2c05916d6b9f6a7cb8");
+    ASSERT_TRUE(tools::hex_guts(address_book_row->m_address.m_view_public_key) == "9eec0bbb1728bce79209e1ae995cbae8e3f6cf78f7262b5db049594e4907bb33");
+    ASSERT_TRUE(tools::hex_guts(address_book_row->m_payment_id) == "e0470453783dd65dc16bb740f82902b9a26a48216e4c89278586637011c858a3");
     ASSERT_TRUE(address_book_row->m_description == "A test address");
 =======
-    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_spend_public_key) == "9bc53a6ff7b0831c9470f71b6b972dbe5ad1e8606f72682868b1dda64e119fb3");
-    ASSERT_TRUE(tools::type_to_hex(address_book_row->m_address.m_view_public_key) == "49fece1ef97dc0c0f7a5e2106e75e96edd910f7e86b56e1e308cd0cf734df191");
+    ASSERT_TRUE(tools::hex_guts(address_book_row->m_address.m_spend_public_key) == "9bc53a6ff7b0831c9470f71b6b972dbe5ad1e8606f72682868b1dda64e119fb3");
+    ASSERT_TRUE(tools::hex_guts(address_book_row->m_address.m_view_public_key) == "49fece1ef97dc0c0f7a5e2106e75e96edd910f7e86b56e1e308cd0cf734df191");
     ASSERT_TRUE(address_book_row->m_description == "testnet wallet 9y52S6");
 >>>>>>> a26e5b3
   }
@@ -779,7 +855,7 @@ TEST(serialization, portability_outputs)
     return plaintext;
   };
   crypto::secret_key view_secret_key;
-  tools::hex_to_type("cb979d21cde0fbcafb9ff083791a6771b750534948ede6d66058609884b27604", view_secret_key);
+  tools::load_from_hex_guts("cb979d21cde0fbcafb9ff083791a6771b750534948ede6d66058609884b27604", view_secret_key);
   bool authenticated = true;
   data = decrypt(std::string(data, magiclen), view_secret_key, authenticated);
   ASSERT_FALSE(data.empty());
@@ -789,8 +865,8 @@ TEST(serialization, portability_outputs)
   const crypto::public_key &public_spend_key = *(const crypto::public_key*)&data[0];
   const crypto::public_key &public_view_key = *(const crypto::public_key*)&data[sizeof(crypto::public_key)];
 
-  ASSERT_TRUE(tools::type_to_hex(public_spend_key) == "efb5d51e3ab4a7c09c207f85650c970eeb671f03d98defcb70265930c0d86240");
-  ASSERT_TRUE(tools::type_to_hex(public_view_key)  == "fa871f6af764d2b3fc43eddb9f311b73b387652809992afa5ca3acacc6ff44b0");
+  ASSERT_TRUE(tools::hex_guts(public_spend_key) == "efb5d51e3ab4a7c09c207f85650c970eeb671f03d98defcb70265930c0d86240");
+  ASSERT_TRUE(tools::hex_guts(public_view_key)  == "fa871f6af764d2b3fc43eddb9f311b73b387652809992afa5ca3acacc6ff44b0");
   r = false;
   std::vector<tools::wallet2::transfer_details> outputs;
 
@@ -836,9 +912,9 @@ TEST(serialization, portability_outputs)
   ASSERT_TRUE(td0.m_block_height == 8478);
   ASSERT_TRUE(td1.m_block_height == 11034);
   ASSERT_TRUE(td2.m_block_height == 11651);
-  ASSERT_TRUE(tools::type_to_hex(td0.m_txid) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
-  ASSERT_TRUE(tools::type_to_hex(td1.m_txid) == "4baf027b724623c524c539c5aec441a41c5c76730e4074280189005797a7329d");
-  ASSERT_TRUE(tools::type_to_hex(td2.m_txid) == "d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c");
+  ASSERT_TRUE(tools::hex_guts(td0.m_txid) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
+  ASSERT_TRUE(tools::hex_guts(td1.m_txid) == "4baf027b724623c524c539c5aec441a41c5c76730e4074280189005797a7329d");
+  ASSERT_TRUE(tools::hex_guts(td2.m_txid) == "d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c");
   ASSERT_TRUE(td0.m_internal_output_index == 1);
   ASSERT_TRUE(td1.m_internal_output_index == 1);
   ASSERT_TRUE(td2.m_internal_output_index == 1);
@@ -851,12 +927,12 @@ TEST(serialization, portability_outputs)
   ASSERT_TRUE(td0.m_spent_height == 11034);
   ASSERT_TRUE(td1.m_spent_height == 11651);
   ASSERT_TRUE(td2.m_spent_height == 0);
-  ASSERT_TRUE(tools::type_to_hex(td0.m_key_image) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
-  ASSERT_TRUE(tools::type_to_hex(td1.m_key_image) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
-  ASSERT_TRUE(tools::type_to_hex(td2.m_key_image) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
-  ASSERT_TRUE(tools::type_to_hex(td0.m_mask) == "e87548646fdca2caf508c7036e975593063beb38ce6345dcebf6a4f78ac6690a");
-  ASSERT_TRUE(tools::type_to_hex(td1.m_mask) == "270fbc097ac0ce6d46f7d731ef8f6c28e7d29091106d50d8db5a96c2b43b0009");
-  ASSERT_TRUE(tools::type_to_hex(td2.m_mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
+  ASSERT_TRUE(tools::hex_guts(td0.m_key_image) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
+  ASSERT_TRUE(tools::hex_guts(td1.m_key_image) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
+  ASSERT_TRUE(tools::hex_guts(td2.m_key_image) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
+  ASSERT_TRUE(tools::hex_guts(td0.m_mask) == "e87548646fdca2caf508c7036e975593063beb38ce6345dcebf6a4f78ac6690a");
+  ASSERT_TRUE(tools::hex_guts(td1.m_mask) == "270fbc097ac0ce6d46f7d731ef8f6c28e7d29091106d50d8db5a96c2b43b0009");
+  ASSERT_TRUE(tools::hex_guts(td2.m_mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
   ASSERT_TRUE(td0.m_amount == 100000000000);
   ASSERT_TRUE(td1.m_amount == 47531982120);
   ASSERT_TRUE(td2.m_amount == 35464004140);
@@ -984,27 +1060,27 @@ TEST(serialization, portability_unsigned_tx)
   ASSERT_TRUE(out8.first == 23236);
   ASSERT_TRUE(out9.first == 23560);
 
-  ASSERT_TRUE(tools::type_to_hex(out0.second) == "b92dd8689d86f3ddf4a21998f9f206dfa478b2944a5a272be6ac0896a406b0186b94ba5f17c6aa64a4cc1332825e1176952417f671ea04342fe6f156c951417d");
-  ASSERT_TRUE(tools::type_to_hex(out1.second) == "50cb891b4cda04360647b4e0c764de48c7ec82807f844f2fe5446d2684b8df403cba128103c46f40f1564e78b640d8fa11bb2a9d40579e792de30f4febae5ac0");
-  ASSERT_TRUE(tools::type_to_hex(out2.second) == "fb046f73105eca35aac2ea9befb1be75649456e8e69b78a7104c925f0546e890ea03efb93dddd97a9527248f423d3c1a7afffdf0efff8c844feecf0fe72449fe");
-  ASSERT_TRUE(tools::type_to_hex(out3.second) == "49c0d412f994b69d09458a8af7602f2ed2fd41d8e430a694d6c0fa5e17bc507ab096d83facce8e3f6381244fe97070e344d71a9d7380f74b9bef209c20308549");
-  ASSERT_TRUE(tools::type_to_hex(out4.second) == "f4c96b02d97e480fd20d9ad063f10787114ddda3d7a200b532283c4f25707d7ae49bc555dbd83d17a089c1c3acde66dce6a163f75e19835d58f15c2d2cb90c42");
-  ASSERT_TRUE(tools::type_to_hex(out5.second) == "0e7ca50fec28b7a6f47ee293b7ef9c9522f85fd5bb60ac3105edb9ef8d1e3c079ded4d5d3a45cf6a67200b0e434e7b057230274fed40305e96cab710319bf5cc");
-  ASSERT_TRUE(tools::type_to_hex(out6.second) == "806d57c9a2ab3402c171332c3fad13838dd125df846f076ca4545e0304b121525525ce94d662ab1eff88cbce06d1bcec37bf1042c3d9b20d04f743bd7392c05e");
-  ASSERT_TRUE(tools::type_to_hex(out7.second) == "92306e8714fb9c958e3e1df44e798b8c64bb09264d2c97e994b18af4c2fc89e4eab67da527dd194e087a811ae419e5012e32eea80d0c54ef6e39e389bad14edb");
-  ASSERT_TRUE(tools::type_to_hex(out8.second) == "e29aeceb86042442cbaf15e3907e8bcd254a8740810a75b5583f853a9fdc2228bc74f6a7198c89f7cf770f6c76755f7285fdb13761abaa72d5c79be33d0bd199");
-  ASSERT_TRUE(tools::type_to_hex(out9.second) == "b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbffd013ecf4ffecb0bc694eb4e12cf36b55c80b150acae7a3da42a99b9932dcdd22");
+  ASSERT_TRUE(tools::hex_guts(out0.second) == "b92dd8689d86f3ddf4a21998f9f206dfa478b2944a5a272be6ac0896a406b0186b94ba5f17c6aa64a4cc1332825e1176952417f671ea04342fe6f156c951417d");
+  ASSERT_TRUE(tools::hex_guts(out1.second) == "50cb891b4cda04360647b4e0c764de48c7ec82807f844f2fe5446d2684b8df403cba128103c46f40f1564e78b640d8fa11bb2a9d40579e792de30f4febae5ac0");
+  ASSERT_TRUE(tools::hex_guts(out2.second) == "fb046f73105eca35aac2ea9befb1be75649456e8e69b78a7104c925f0546e890ea03efb93dddd97a9527248f423d3c1a7afffdf0efff8c844feecf0fe72449fe");
+  ASSERT_TRUE(tools::hex_guts(out3.second) == "49c0d412f994b69d09458a8af7602f2ed2fd41d8e430a694d6c0fa5e17bc507ab096d83facce8e3f6381244fe97070e344d71a9d7380f74b9bef209c20308549");
+  ASSERT_TRUE(tools::hex_guts(out4.second) == "f4c96b02d97e480fd20d9ad063f10787114ddda3d7a200b532283c4f25707d7ae49bc555dbd83d17a089c1c3acde66dce6a163f75e19835d58f15c2d2cb90c42");
+  ASSERT_TRUE(tools::hex_guts(out5.second) == "0e7ca50fec28b7a6f47ee293b7ef9c9522f85fd5bb60ac3105edb9ef8d1e3c079ded4d5d3a45cf6a67200b0e434e7b057230274fed40305e96cab710319bf5cc");
+  ASSERT_TRUE(tools::hex_guts(out6.second) == "806d57c9a2ab3402c171332c3fad13838dd125df846f076ca4545e0304b121525525ce94d662ab1eff88cbce06d1bcec37bf1042c3d9b20d04f743bd7392c05e");
+  ASSERT_TRUE(tools::hex_guts(out7.second) == "92306e8714fb9c958e3e1df44e798b8c64bb09264d2c97e994b18af4c2fc89e4eab67da527dd194e087a811ae419e5012e32eea80d0c54ef6e39e389bad14edb");
+  ASSERT_TRUE(tools::hex_guts(out8.second) == "e29aeceb86042442cbaf15e3907e8bcd254a8740810a75b5583f853a9fdc2228bc74f6a7198c89f7cf770f6c76755f7285fdb13761abaa72d5c79be33d0bd199");
+  ASSERT_TRUE(tools::hex_guts(out9.second) == "b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbffd013ecf4ffecb0bc694eb4e12cf36b55c80b150acae7a3da42a99b9932dcdd22");
 
   // tcd.sources[0].{real_output, real_out_tx_key, real_output_in_tx_index, amount, rct, mask}
   ASSERT_TRUE(tse.real_output == 9);
 
-  ASSERT_TRUE(tools::type_to_hex(tse.real_out_tx_key) == "1e2092d2e8a72eaec814d8e7ecab9276f2779a5c58324a0fb057e24ffa11a14e");
+  ASSERT_TRUE(tools::hex_guts(tse.real_out_tx_key) == "1e2092d2e8a72eaec814d8e7ecab9276f2779a5c58324a0fb057e24ffa11a14e");
   ASSERT_TRUE(tse.real_output_in_tx_index == 1);
 
   ASSERT_TRUE(tse.amount == 35464004140);
   ASSERT_TRUE(tse.rct);
 
-  ASSERT_TRUE(tools::type_to_hex(tse.mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
+  ASSERT_TRUE(tools::hex_guts(tse.mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
 
   // tcd.change_dts
   ASSERT_TRUE(tcd.change_dts.amount == 25396028820);
@@ -1047,9 +1123,9 @@ TEST(serialization, portability_unsigned_tx)
   ASSERT_TRUE(td0.m_block_height == 8478);
   ASSERT_TRUE(td1.m_block_height == 11034);
   ASSERT_TRUE(td2.m_block_height == 11651);
-  ASSERT_TRUE(tools::type_to_hex(td0.m_txid) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
-  ASSERT_TRUE(tools::type_to_hex(td1.m_txid) == "4baf027b724623c524c539c5aec441a41c5c76730e4074280189005797a7329d");
-  ASSERT_TRUE(tools::type_to_hex(td2.m_txid) == "d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c");
+  ASSERT_TRUE(tools::hex_guts(td0.m_txid) == "b77633fe663a07283b071d16c3b783fe838389273fde373a569ad08cb214ab1b");
+  ASSERT_TRUE(tools::hex_guts(td1.m_txid) == "4baf027b724623c524c539c5aec441a41c5c76730e4074280189005797a7329d");
+  ASSERT_TRUE(tools::hex_guts(td2.m_txid) == "d986bc2e49ed83a990424ac42b2db9be0264be54c7ce13f7a8dca5177aa4781c");
   ASSERT_TRUE(td0.m_internal_output_index == 1);
   ASSERT_TRUE(td1.m_internal_output_index == 1);
   ASSERT_TRUE(td2.m_internal_output_index == 1);
@@ -1062,12 +1138,12 @@ TEST(serialization, portability_unsigned_tx)
   ASSERT_TRUE(td0.m_spent_height == 11034);
   ASSERT_TRUE(td1.m_spent_height == 11651);
   ASSERT_TRUE(td2.m_spent_height == 0);
-  ASSERT_TRUE(tools::type_to_hex(td0.m_key_image) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
-  ASSERT_TRUE(tools::type_to_hex(td1.m_key_image) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
-  ASSERT_TRUE(tools::type_to_hex(td2.m_key_image) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
-  ASSERT_TRUE(tools::type_to_hex(td0.m_mask) == "e87548646fdca2caf508c7036e975593063beb38ce6345dcebf6a4f78ac6690a");
-  ASSERT_TRUE(tools::type_to_hex(td1.m_mask) == "270fbc097ac0ce6d46f7d731ef8f6c28e7d29091106d50d8db5a96c2b43b0009");
-  ASSERT_TRUE(tools::type_to_hex(td2.m_mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
+  ASSERT_TRUE(tools::hex_guts(td0.m_key_image) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
+  ASSERT_TRUE(tools::hex_guts(td1.m_key_image) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
+  ASSERT_TRUE(tools::hex_guts(td2.m_key_image) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
+  ASSERT_TRUE(tools::hex_guts(td0.m_mask) == "e87548646fdca2caf508c7036e975593063beb38ce6345dcebf6a4f78ac6690a");
+  ASSERT_TRUE(tools::hex_guts(td1.m_mask) == "270fbc097ac0ce6d46f7d731ef8f6c28e7d29091106d50d8db5a96c2b43b0009");
+  ASSERT_TRUE(tools::hex_guts(td2.m_mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
   ASSERT_TRUE(td0.m_amount == 100000000000);
   ASSERT_TRUE(td1.m_amount == 47531982120);
   ASSERT_TRUE(td2.m_amount == 35464004140);
@@ -1158,7 +1234,7 @@ TEST(serialization, portability_signed_tx)
 
   // ptx.{key_images, tx_key}
   ASSERT_TRUE(ptx.key_images == "<92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d> ");
-  ASSERT_TRUE(tools::type_to_hex(ptx.tx_key) == "0100000000000000000000000000000000000000000000000000000000000000");
+  ASSERT_TRUE(tools::hex_guts(ptx.tx_key) == "0100000000000000000000000000000000000000000000000000000000000000");
 
   // ptx.dests
   ASSERT_TRUE(ptx.dests.size() == 1);
@@ -1194,24 +1270,24 @@ TEST(serialization, portability_signed_tx)
   ASSERT_TRUE(out8.first == 23236);
   ASSERT_TRUE(out9.first == 23560);
 
-  ASSERT_TRUE(tools::type_to_hex(out0.second) == "b92dd8689d86f3ddf4a21998f9f206dfa478b2944a5a272be6ac0896a406b0186b94ba5f17c6aa64a4cc1332825e1176952417f671ea04342fe6f156c951417d");
-  ASSERT_TRUE(tools::type_to_hex(out1.second) == "50cb891b4cda04360647b4e0c764de48c7ec82807f844f2fe5446d2684b8df403cba128103c46f40f1564e78b640d8fa11bb2a9d40579e792de30f4febae5ac0");
-  ASSERT_TRUE(tools::type_to_hex(out2.second) == "fb046f73105eca35aac2ea9befb1be75649456e8e69b78a7104c925f0546e890ea03efb93dddd97a9527248f423d3c1a7afffdf0efff8c844feecf0fe72449fe");
-  ASSERT_TRUE(tools::type_to_hex(out3.second) == "49c0d412f994b69d09458a8af7602f2ed2fd41d8e430a694d6c0fa5e17bc507ab096d83facce8e3f6381244fe97070e344d71a9d7380f74b9bef209c20308549");
-  ASSERT_TRUE(tools::type_to_hex(out4.second) == "f4c96b02d97e480fd20d9ad063f10787114ddda3d7a200b532283c4f25707d7ae49bc555dbd83d17a089c1c3acde66dce6a163f75e19835d58f15c2d2cb90c42");
-  ASSERT_TRUE(tools::type_to_hex(out5.second) == "0e7ca50fec28b7a6f47ee293b7ef9c9522f85fd5bb60ac3105edb9ef8d1e3c079ded4d5d3a45cf6a67200b0e434e7b057230274fed40305e96cab710319bf5cc");
-  ASSERT_TRUE(tools::type_to_hex(out6.second) == "806d57c9a2ab3402c171332c3fad13838dd125df846f076ca4545e0304b121525525ce94d662ab1eff88cbce06d1bcec37bf1042c3d9b20d04f743bd7392c05e");
-  ASSERT_TRUE(tools::type_to_hex(out7.second) == "92306e8714fb9c958e3e1df44e798b8c64bb09264d2c97e994b18af4c2fc89e4eab67da527dd194e087a811ae419e5012e32eea80d0c54ef6e39e389bad14edb");
-  ASSERT_TRUE(tools::type_to_hex(out8.second) == "e29aeceb86042442cbaf15e3907e8bcd254a8740810a75b5583f853a9fdc2228bc74f6a7198c89f7cf770f6c76755f7285fdb13761abaa72d5c79be33d0bd199");
-  ASSERT_TRUE(tools::type_to_hex(out9.second) == "b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbffd013ecf4ffecb0bc694eb4e12cf36b55c80b150acae7a3da42a99b9932dcdd22");
+  ASSERT_TRUE(tools::hex_guts(out0.second) == "b92dd8689d86f3ddf4a21998f9f206dfa478b2944a5a272be6ac0896a406b0186b94ba5f17c6aa64a4cc1332825e1176952417f671ea04342fe6f156c951417d");
+  ASSERT_TRUE(tools::hex_guts(out1.second) == "50cb891b4cda04360647b4e0c764de48c7ec82807f844f2fe5446d2684b8df403cba128103c46f40f1564e78b640d8fa11bb2a9d40579e792de30f4febae5ac0");
+  ASSERT_TRUE(tools::hex_guts(out2.second) == "fb046f73105eca35aac2ea9befb1be75649456e8e69b78a7104c925f0546e890ea03efb93dddd97a9527248f423d3c1a7afffdf0efff8c844feecf0fe72449fe");
+  ASSERT_TRUE(tools::hex_guts(out3.second) == "49c0d412f994b69d09458a8af7602f2ed2fd41d8e430a694d6c0fa5e17bc507ab096d83facce8e3f6381244fe97070e344d71a9d7380f74b9bef209c20308549");
+  ASSERT_TRUE(tools::hex_guts(out4.second) == "f4c96b02d97e480fd20d9ad063f10787114ddda3d7a200b532283c4f25707d7ae49bc555dbd83d17a089c1c3acde66dce6a163f75e19835d58f15c2d2cb90c42");
+  ASSERT_TRUE(tools::hex_guts(out5.second) == "0e7ca50fec28b7a6f47ee293b7ef9c9522f85fd5bb60ac3105edb9ef8d1e3c079ded4d5d3a45cf6a67200b0e434e7b057230274fed40305e96cab710319bf5cc");
+  ASSERT_TRUE(tools::hex_guts(out6.second) == "806d57c9a2ab3402c171332c3fad13838dd125df846f076ca4545e0304b121525525ce94d662ab1eff88cbce06d1bcec37bf1042c3d9b20d04f743bd7392c05e");
+  ASSERT_TRUE(tools::hex_guts(out7.second) == "92306e8714fb9c958e3e1df44e798b8c64bb09264d2c97e994b18af4c2fc89e4eab67da527dd194e087a811ae419e5012e32eea80d0c54ef6e39e389bad14edb");
+  ASSERT_TRUE(tools::hex_guts(out8.second) == "e29aeceb86042442cbaf15e3907e8bcd254a8740810a75b5583f853a9fdc2228bc74f6a7198c89f7cf770f6c76755f7285fdb13761abaa72d5c79be33d0bd199");
+  ASSERT_TRUE(tools::hex_guts(out9.second) == "b143a6f53cf20f986cbfe87ace7d33143275457dfaa5ea6f14cb78861302dbffd013ecf4ffecb0bc694eb4e12cf36b55c80b150acae7a3da42a99b9932dcdd22");
 
   // ptx.construction_data.sources[0].{real_output, real_out_tx_key, real_output_in_tx_index, amount, rct, mask}
   ASSERT_TRUE(tse.real_output == 9);
-  ASSERT_TRUE(tools::type_to_hex(tse.real_out_tx_key) == "1e2092d2e8a72eaec814d8e7ecab9276f2779a5c58324a0fb057e24ffa11a14e");
+  ASSERT_TRUE(tools::hex_guts(tse.real_out_tx_key) == "1e2092d2e8a72eaec814d8e7ecab9276f2779a5c58324a0fb057e24ffa11a14e");
   ASSERT_TRUE(tse.real_output_in_tx_index == 1);
   ASSERT_TRUE(tse.amount == 35464004140);
   ASSERT_TRUE(tse.rct);
-  ASSERT_TRUE(tools::type_to_hex(tse.mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
+  ASSERT_TRUE(tools::hex_guts(tse.mask) == "fedf66717b339fdcdd70809a20af7b4314645c859f3c71738567c0c0372f3509");
 
   // ptx.construction_data.change_dts
   ASSERT_TRUE(tcd.change_dts.amount == 25396028820);
@@ -1249,8 +1325,8 @@ TEST(serialization, portability_signed_tx)
   auto& ki1 = exported_txs.key_images[1];
   auto& ki2 = exported_txs.key_images[2];
 
-  ASSERT_TRUE(tools::type_to_hex(ki0) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
-  ASSERT_TRUE(tools::type_to_hex(ki1) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
-  ASSERT_TRUE(tools::type_to_hex(ki2) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
+  ASSERT_TRUE(tools::hex_guts(ki0) == "05e1050df8262068682951b459a722495bfd5d070300e96a8d52c6255e300f11");
+  ASSERT_TRUE(tools::hex_guts(ki1) == "21dfe89b3dbde221eccd9b71e7f6383c81f9ada224a670956c895b230749a8d8");
+  ASSERT_TRUE(tools::hex_guts(ki2) == "92194cadfbb4f1317d25d39d6216cbf1030a2170a3edb47b5f008345a879150d");
 }
 #endif

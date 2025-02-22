@@ -26,13 +26,12 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(cryptonote_protocol
+oxen_add_library(cryptonote_protocol
   levin_notify.cpp
   block_queue.cpp
   cryptonote_protocol_handler.inl
   cryptonote_protocol_defs.cpp
   quorumnet.cpp
-  core_protocol_instantiation.cpp
   p2p_net_node_instantiation.cpp
 )
 
@@ -40,6 +39,6 @@ target_link_libraries(cryptonote_protocol
   PUBLIC
     p2p
   PRIVATE
-    easylogging
     SQLiteCpp
+    logging
     extra)

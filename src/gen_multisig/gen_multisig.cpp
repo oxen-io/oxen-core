@@ -1,22 +1,22 @@
 // Copyright (c) 2017-2019, The Monero Project
 // Copyright (c)      2018, The Loki Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -26,225 +26,233 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 /*!
  * \file gen_multisig.cpp
- * 
+ *
  * \brief Generates a set of multisig wallets
  */
-#include <iostream>
-#include <sstream>
-#include <boost/program_options.hpp>
-#include <boost/algorithm/string.hpp>
 #include <fmt/core.h>
-#include "crypto/crypto.h"  // for crypto::secret_key definition
-#include "common/i18n.h"
+#include <fmt/std.h>
+
+#include <boost/algorithm/string.hpp>
+#include <boost/program_options.hpp>
+#include <iostream>
+
 #include "common/command_line.h"
-#include "common/util.h"
+#include "common/i18n.h"
 #include "common/scoped_message_writer.h"
-#include "wallet/wallet_args.h"
+#include "common/util.h"
+#include "crypto/crypto.h"  // for crypto::secret_key definition
 #include "wallet/wallet2.h"
+#include "wallet/wallet_args.h"
 
 using namespace cryptonote;
-using boost::lexical_cast;
 namespace po = boost::program_options;
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "wallet.gen_multisig"
-
-namespace genms
-{
-  const char* tr(const char* str)
-  {
+namespace genms {
+const char* tr(const char* str) {
     return i18n_translate(str, "tools::gen_multisig");
-  }
-
 }
+}  // namespace genms
 
-namespace
-{
-  const command_line::arg_descriptor<std::string> arg_filename_base = {"filename-base", genms::tr("Base filename (-1, -2, etc suffixes will be appended as needed)"), ""};
-  const command_line::arg_descriptor<std::string> arg_scheme = {"scheme", genms::tr("Give threshold and participants at once as M/N"), ""};
-  const command_line::arg_descriptor<uint32_t> arg_participants = {"participants", genms::tr("How many participants will share parts of the multisig wallet"), 0};
-  const command_line::arg_descriptor<uint32_t> arg_threshold = {"threshold", genms::tr("How many signers are required to sign a valid transaction"), 0};
-  const command_line::arg_descriptor<bool, false> arg_testnet = {"testnet", genms::tr("Create testnet multisig wallets"), false};
-  const command_line::arg_descriptor<bool, false> arg_devnet = {"devnet", genms::tr("Create devnet multisig wallets"), false};
-  const command_line::arg_descriptor<bool, false> arg_create_address_file = {"create-address-file", genms::tr("Create an address file for new wallets"), false};
+namespace {
+static auto logcat = log::Cat("wallet.gen_multisig");
 
-  const command_line::arg_descriptor< std::vector<std::string> > arg_command = {"command", ""};
-}
+const command_line::arg_descriptor<std::string> arg_filename_base = {
+        "filename-base",
+        genms::tr("Base filename (-1, -2, etc suffixes will be appended as needed)"),
+        ""};
+const command_line::arg_descriptor<std::string> arg_scheme = {
+        "scheme", genms::tr("Give threshold and participants at once as M/N"), ""};
+const command_line::arg_descriptor<uint32_t> arg_participants = {
+        "participants",
+        genms::tr("How many participants will share parts of the multisig wallet"),
+        0};
+const command_line::arg_descriptor<uint32_t> arg_threshold = {
+        "threshold", genms::tr("How many signers are required to sign a valid transaction"), 0};
+const command_line::arg_flag arg_create_address_file = {
+        "create-address-file", genms::tr("Create an address file for new wallets")};
 
-static bool generate_multisig(uint32_t threshold, uint32_t total, const fs::path& basename, network_type nettype, bool create_address_file)
-{
-  tools::msg_writer() << fmt::format(genms::tr("Generating {:d} {:d}/{:d} multisig wallets"), total, threshold, total);
+const command_line::arg_descriptor<std::vector<std::string>> arg_command = {"command", ""};
+}  // namespace
 
-  const auto pwd_container = tools::password_container::prompt(true, "Enter password for new multisig wallets");
+static bool generate_multisig(
+        uint32_t threshold,
+        uint32_t total,
+        const fs::path& basename,
+        network_type nettype,
+        bool create_address_file) {
+    tools::msg_writer(
+            fmt::runtime(genms::tr("Generating {:d} {:d}/{:d} multisig wallets")),
+            total,
+            threshold,
+            total);
 
-  try
-  {
-    // create M wallets first
-    std::vector<std::shared_ptr<tools::wallet2>> wallets(total);
-    for (size_t n = 0; n < total; ++n)
-    {
-      fs::path name = basename;
-      name += "-" + std::to_string(n + 1);
-      wallets[n].reset(new tools::wallet2(nettype, 1, false));
-      wallets[n]->init("");
-      wallets[n]->generate(name, pwd_container->password(), rct::rct2sk(rct::skGen()), false, false, create_address_file);
-    }
+    const auto pwd_container =
+            tools::password_container::prompt(true, "Enter password for new multisig wallets");
 
-    // gather the keys
-    std::vector<crypto::secret_key> sk(total);
-    std::vector<crypto::public_key> pk(total);
-    for (size_t n = 0; n < total; ++n)
-    {
-      wallets[n]->decrypt_keys(pwd_container->password());
-      if (!tools::wallet2::verify_multisig_info(wallets[n]->get_multisig_info(), sk[n], pk[n]))
-      {
-        tools::fail_msg_writer() << genms::tr("Failed to verify multisig info");
+    try {
+        // create M wallets first
+        std::vector<std::shared_ptr<tools::wallet2>> wallets(total);
+        for (size_t n = 0; n < total; ++n) {
+            fs::path name = basename;
+            name += "-" + std::to_string(n + 1);
+            wallets[n].reset(new tools::wallet2(nettype, 1, false));
+            wallets[n]->init("");
+            wallets[n]->generate(
+                    name,
+                    pwd_container->password(),
+                    rct::rct2sk(rct::skGen()),
+                    false,
+                    false,
+                    create_address_file);
+        }
+
+        // gather the keys
+        std::vector<crypto::secret_key> sk(total);
+        std::vector<crypto::public_key> pk(total);
+        for (size_t n = 0; n < total; ++n) {
+            wallets[n]->decrypt_keys(pwd_container->password());
+            if (!tools::wallet2::verify_multisig_info(
+                        wallets[n]->get_multisig_info(), sk[n], pk[n])) {
+                tools::fail_msg_writer() + genms::tr("Failed to verify multisig info");
+                return false;
+            }
+            wallets[n]->encrypt_keys(pwd_container->password());
+        }
+
+        // make the wallets multisig
+        std::vector<std::string> extra_info(total);
+        std::vector<fs::path> filenames;
+        for (size_t n = 0; n < total; ++n) {
+            auto& name = filenames.emplace_back(basename);
+            name += "-" + std::to_string(n + 1);
+            std::vector<crypto::secret_key> skn;
+            std::vector<crypto::public_key> pkn;
+            for (size_t k = 0; k < total; ++k) {
+                if (k != n) {
+                    skn.push_back(sk[k]);
+                    pkn.push_back(pk[k]);
+                }
+            }
+            extra_info[n] =
+                    wallets[n]->make_multisig(pwd_container->password(), skn, pkn, threshold);
+        }
+
+        // exchange keys unless exchange_multisig_keys returns no extra info
+        while (!extra_info[0].empty()) {
+            std::unordered_set<crypto::public_key> pkeys;
+            std::vector<crypto::public_key> signers(total);
+            for (size_t n = 0; n < total; ++n) {
+                if (!tools::wallet2::verify_extra_multisig_info(extra_info[n], pkeys, signers[n])) {
+                    tools::fail_msg_writer() + genms::tr("Error verifying multisig extra info");
+                    return false;
+                }
+            }
+            for (size_t n = 0; n < total; ++n) {
+                extra_info[n] = wallets[n]->exchange_multisig_keys(
+                        pwd_container->password(), pkeys, signers);
+            }
+        }
+
+        tools::success_msg_writer(
+                "{}{}\n{}",
+                genms::tr("Generated multisig wallets for address "),
+                wallets[0]->get_account().get_public_address_str(wallets[0]->nettype()),
+                fmt::join(filenames, "  "));
+    } catch (const std::exception& e) {
+        tools::fail_msg_writer("{}{}", genms::tr("Error creating multisig wallets: "), e.what());
         return false;
-      }
-      wallets[n]->encrypt_keys(pwd_container->password());
     }
 
-    // make the wallets multisig
-    std::vector<std::string> extra_info(total);
-    std::stringstream ss;
-    for (size_t n = 0; n < total; ++n)
-    {
-      fs::path name = basename;
-      name += "-" + std::to_string(n + 1);
-      std::vector<crypto::secret_key> skn;
-      std::vector<crypto::public_key> pkn;
-      for (size_t k = 0; k < total; ++k)
-      {
-        if (k != n)
-        {
-          skn.push_back(sk[k]);
-          pkn.push_back(pk[k]);
-        }
-      }
-      extra_info[n] = wallets[n]->make_multisig(pwd_container->password(), skn, pkn, threshold);
-      ss << "  " << name << std::endl;
-    }
-
-    //exchange keys unless exchange_multisig_keys returns no extra info
-    while (!extra_info[0].empty())
-    {
-      std::unordered_set<crypto::public_key> pkeys;
-      std::vector<crypto::public_key> signers(total);
-      for (size_t n = 0; n < total; ++n)
-      {
-        if (!tools::wallet2::verify_extra_multisig_info(extra_info[n], pkeys, signers[n]))
-        {
-          tools::fail_msg_writer() << genms::tr("Error verifying multisig extra info");
-          return false;
-        }
-      }
-      for (size_t n = 0; n < total; ++n)
-      {
-          extra_info[n] = wallets[n]->exchange_multisig_keys(pwd_container->password(), pkeys, signers);
-      }
-    }
-
-    std::string address = wallets[0]->get_account().get_public_address_str(wallets[0]->nettype());
-    tools::success_msg_writer() << genms::tr("Generated multisig wallets for address ") << address << std::endl << ss.str();
-  }
-  catch (const std::exception &e)
-  {
-    tools::fail_msg_writer() << genms::tr("Error creating multisig wallets: ") << e.what();
-    return false;
-  }
-
-  return true;
+    return true;
 }
 
-int main(int argc, char* argv[])
-{
-  TRY_ENTRY();
+int main(int argc, char* argv[]) {
+    oxen::set_terminate_handler();
+    TRY_ENTRY();
 
-  po::options_description desc_params(wallet_args::tr("Wallet options"));
-  command_line::add_arg(desc_params, arg_filename_base);
-  command_line::add_arg(desc_params, arg_scheme);
-  command_line::add_arg(desc_params, arg_threshold);
-  command_line::add_arg(desc_params, arg_participants);
-  command_line::add_arg(desc_params, arg_testnet);
-  command_line::add_arg(desc_params, arg_devnet);
-  command_line::add_arg(desc_params, arg_create_address_file);
+    po::options_description desc_params(wallet_args::tr("Wallet options"));
+    command_line::add_arg(desc_params, arg_filename_base);
+    command_line::add_arg(desc_params, arg_scheme);
+    command_line::add_arg(desc_params, arg_threshold);
+    command_line::add_arg(desc_params, arg_participants);
+    command_line::add_network_args(desc_params);
+    command_line::add_arg(desc_params, arg_create_address_file);
 
-  auto [vm, should_terminate] = wallet_args::main(
-   argc, argv,
-   "oxen-gen-multisig [(--testnet|--devnet)] [--filename-base=<filename>] [--scheme=M/N] [--threshold=M] [--participants=N]",
-    genms::tr("This program generates a set of multisig wallets - use this simpler scheme only if all the participants trust each other"),
-    desc_params,
-    po::options_description{},
-    boost::program_options::positional_options_description(),
-    [](const std::string &s, bool emphasis){ tools::scoped_message_writer(emphasis ? epee::console_color_white : epee::console_color_default, true) << s; },
-    "oxen-gen-multisig.log"
-  );
-  if (!vm)
-    return 1;
-  if (should_terminate)
+    auto [maybe_vm, should_terminate] = wallet_args::main(
+            argc,
+            argv,
+            "oxen-gen-multisig [(--testnet|--devnet)] [--filename-base=<filename>] [--scheme=M/N] "
+            "[--threshold=M] [--participants=N]",
+            genms::tr("This program generates a set of multisig wallets - use this simpler scheme "
+                      "only if all the participants trust each other"),
+            desc_params,
+            po::options_description{},
+            boost::program_options::positional_options_description(),
+            [](const std::string& s) { tools::msg_writer() + s; },
+            "oxen-gen-multisig.log");
+    if (!maybe_vm)
+        return 1;
+    if (should_terminate)
+        return 0;
+
+    auto& vm = *maybe_vm;
+    uint32_t threshold = 0, total = 0;
+
+    auto net_type = command_line::get_network(vm);
+
+    if (command_line::has_arg(vm, arg_scheme)) {
+        if (sscanf(command_line::get_arg(vm, arg_scheme).c_str(), "%u/%u", &threshold, &total) !=
+            2) {
+            tools::fail_msg_writer(
+                    "{}{}",
+                    genms::tr("Error: expected N/M, but got: "),
+                    command_line::get_arg(vm, arg_scheme));
+            return 1;
+        }
+    }
+    if (!vm["threshold"].defaulted()) {
+        if (threshold) {
+            tools::fail_msg_writer() + genms::tr(
+                                               "Error: either --scheme or both of --threshold and "
+                                               "--participants may be given");
+            return 1;
+        }
+        threshold = command_line::get_arg(vm, arg_threshold);
+    }
+    if (!vm["participants"].defaulted()) {
+        if (total) {
+            tools::fail_msg_writer() + genms::tr(
+                                               "Error: either --scheme or both of --threshold and "
+                                               "--participants may be given");
+            return 1;
+        }
+        total = command_line::get_arg(vm, arg_participants);
+    }
+    if (threshold <= 1 || threshold > total) {
+        tools::fail_msg_writer(
+                fmt::runtime(genms::tr("Error: expected N > 1 and N <= M, but got N=={:d} and "
+                                       "M=={:d}")),
+                threshold,
+                total);
+        return 1;
+    }
+    fs::path basename;
+    if (!vm["filename-base"].defaulted() && !command_line::get_arg(vm, arg_filename_base).empty()) {
+        basename = tools::utf8_path(command_line::get_arg(vm, arg_filename_base));
+    } else {
+        tools::fail_msg_writer() + genms::tr("Error: --filename-base is required");
+        return 1;
+    }
+
+    bool create_address_file = command_line::get_arg(vm, arg_create_address_file);
+    if (!generate_multisig(threshold, total, basename, net_type, create_address_file))
+        return 1;
+
     return 0;
-
-  bool testnet, devnet;
-  uint32_t threshold = 0, total = 0;
-
-  testnet = command_line::get_arg(*vm, arg_testnet);
-  devnet = command_line::get_arg(*vm, arg_devnet);
-  if (testnet && devnet)
-  {
-    tools::fail_msg_writer() << genms::tr("Error: Can't specify more than one of --testnet and --devnet");
-    return 1;
-  }
-  if (command_line::has_arg(*vm, arg_scheme))
-  {
-    if (sscanf(command_line::get_arg(*vm, arg_scheme).c_str(), "%u/%u", &threshold, &total) != 2)
-    {
-      tools::fail_msg_writer() << genms::tr("Error: expected N/M, but got: ") << command_line::get_arg(*vm, arg_scheme);
-      return 1;
-    }
-  }
-  if (!(*vm)["threshold"].defaulted())
-  {
-    if (threshold)
-    {
-      tools::fail_msg_writer() << genms::tr("Error: either --scheme or both of --threshold and --participants may be given");
-      return 1;
-    }
-    threshold = command_line::get_arg(*vm, arg_threshold);
-  }
-  if (!(*vm)["participants"].defaulted())
-  {
-    if (total)
-    {
-      tools::fail_msg_writer() << genms::tr("Error: either --scheme or both of --threshold and --participants may be given");
-      return 1;
-    }
-    total = command_line::get_arg(*vm, arg_participants);
-  }
-  if (threshold <= 1 || threshold > total)
-  {
-    tools::fail_msg_writer() << fmt::format(genms::tr("Error: expected N > 1 and N <= M, but got N=={:d} and M=={:d}"), threshold, total);
-    return 1;
-  }
-  fs::path basename;
-  if (!(*vm)["filename-base"].defaulted() && !command_line::get_arg(*vm, arg_filename_base).empty())
-  {
-    basename = fs::u8path(command_line::get_arg(*vm, arg_filename_base));
-  }
-  else
-  {
-    tools::fail_msg_writer() << genms::tr("Error: --filename-base is required");
-    return 1;
-  }
-
-  bool create_address_file = command_line::get_arg(*vm, arg_create_address_file);
-  if (!generate_multisig(threshold, total, basename, testnet ? network_type::TESTNET : devnet ? network_type::DEVNET : network_type::MAINNET, create_address_file))
-    return 1;
-
-  return 0;
-  CATCH_ENTRY_L0("main", 1);
+    CATCH_ENTRY("main", 1);
 }

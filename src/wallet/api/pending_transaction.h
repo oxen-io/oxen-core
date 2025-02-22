@@ -28,26 +28,25 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include "wallet2_api.h"
-#include "../wallet2.h"
-
 #include <string>
 #include <vector>
 
+#include "../wallet2.h"
+#include "wallet2_api.h"
 
 namespace Wallet {
 
 class WalletImpl;
-class PendingTransactionImpl : public PendingTransaction
-{
-public:
-    PendingTransactionImpl(WalletImpl &wallet);
-    PendingTransactionImpl(WalletImpl &wallet, std::vector<tools::wallet2::pending_tx> pending_tx);
+class PendingTransactionImpl : public PendingTransaction {
+  public:
+    PendingTransactionImpl(WalletImpl& wallet);
+    PendingTransactionImpl(WalletImpl& wallet, std::vector<tools::wallet2::pending_tx> pending_tx);
     ~PendingTransactionImpl();
     std::pair<int, std::string> status() const override { return m_status; }
     void setError(std::string error_msg) override;
     bool good() const override { return m_status.first == Status_Ok; }
-    bool commit(std::string_view filename = "", bool overwrite = false, bool blink = false) override;
+    bool commit(
+            std::string_view filename = "", bool overwrite = false, bool blink = false) override;
     uint64_t amount() const override;
     uint64_t dust() const override;
     uint64_t fee() const override;
@@ -61,9 +60,9 @@ public:
     void signMultisigTx() override;
     std::vector<std::string> signersKeys() const override;
 
-private:
+  private:
     friend class WalletImpl;
-    WalletImpl &m_wallet;
+    WalletImpl& m_wallet;
 
     std::pair<int, std::string> m_status;
     std::vector<tools::wallet2::pending_tx> m_pending_tx;
@@ -72,4 +71,4 @@ private:
     std::vector<crypto::key_image> m_key_images;
 };
 
-}
+}  // namespace Wallet
