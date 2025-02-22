@@ -9,17 +9,17 @@ override it to x86-64 when compiled with the deb default `westmere`.
  1 file changed, 4 insertions(+)
 
 diff --git a/external/CMakeLists.txt b/external/CMakeLists.txt
-index 87dd560..6503121 100644
+index ba0baef..5105337 100644
 --- a/external/CMakeLists.txt
 +++ b/external/CMakeLists.txt
-@@ -65,6 +65,10 @@ system_or_submodule(FMT fmt fmt>=8.0.0 fmt)
+@@ -43,6 +43,10 @@ system_or_submodule(OXENC oxenc liboxenc>=1.1.0 oxen-encoding)
+ system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.13 oxen-mq)
  
  add_subdirectory(db_drivers)
- add_subdirectory(easylogging++ easyloggingpp)
 +
 +if(ARCH_ID STREQUAL "westmere")
 +  set(ARCH_ID "x86-64")  # deb workaround: randomx doesn't like ARCH_ID=westmere
 +endif()
  add_subdirectory(randomx EXCLUDE_FROM_ALL)
- 
- install(
+ oxen_install_library(randomx)
+ add_subdirectory(date EXCLUDE_FROM_ALL)

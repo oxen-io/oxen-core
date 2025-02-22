@@ -12,15 +12,15 @@ simplify that greatly.
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/cryptonote_core/cryptonote_core.cpp b/src/cryptonote_core/cryptonote_core.cpp
-index cafe8b8..85f1da5 100644
+index 60a8034..91e3444 100644
 --- a/src/cryptonote_core/cryptonote_core.cpp
 +++ b/src/cryptonote_core/cryptonote_core.cpp
-@@ -905,7 +905,7 @@ namespace cryptonote
+@@ -1062,7 +1062,7 @@ bool core::init_service_keys() {
      // backwards compatibility with existing active service nodes.)  The legacy key consists of
      // *just* the private point, but not the seed, and so cannot be used for full Ed25519 signatures
      // (which rely on the seed for signing).
 -    if (m_service_node) {
 +    if (true || m_service_node) {
-       if (std::error_code ec; !fs::exists(m_config_folder / "key", ec)) {
-         epee::wipeable_string privkey_signhash;
-         privkey_signhash.resize(crypto_hash_sha512_BYTES);
+         if (std::error_code ec; !fs::exists(m_config_folder / "key", ec)) {
+             epee::wipeable_string privkey_signhash;
+             privkey_signhash.resize(crypto_hash_sha512_BYTES);
