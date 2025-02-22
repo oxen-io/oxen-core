@@ -40,7 +40,7 @@
 	url = https://github.com/oxen-io/ethyl.git
 [submodule "external/oxen-encoding"]
 	path = external/oxen-encoding
-	url = https://github.com/oxen-io/oxen-encoding.git
+	url = https://github.com/session-foundation/oxen-encoding.git
 [submodule "external/cpptrace"]
 	path = external/cpptrace
 	url = https://github.com/jeremy-rifkin/cpptrace

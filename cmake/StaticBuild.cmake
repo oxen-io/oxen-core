@@ -27,11 +27,11 @@ set(READLINE_SOURCE readline-${READLINE_VERSION}.tar.gz)
 set(READLINE_HASH SHA512=27790d0461da3093a7fee6e89a51dcab5dc61928ec42e9228ab36493b17220641d5e481ea3d8fee5ee0044c70bf960f55c7d3f1a704cf6b9c42e5c269b797e00
     CACHE STRING "readline source hash")
 
-set(SQLITE3_VERSION 3460100 CACHE STRING "sqlite3 version")
+set(SQLITE3_VERSION 3490100 CACHE STRING "sqlite3 version")
 set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2024
     CACHE STRING "sqlite3 download mirror(s)")
 set(SQLITE3_SOURCE sqlite-autoconf-${SQLITE3_VERSION}.tar.gz)
-set(SQLITE3_HASH SHA512=a5ba5af9c8d6440d39ba67e3d5903c165df3f1d111e299efbe7c1cca4876d4d5aecd722e0133670daa6eb5cbf8a85c6a3d9852ab507a393615fb5245a3e1a743
+set(SQLITE3_HASH SHA512=ace92f20fb13a28a8be0eb3560ebf79e71e882611108179b45abba6e77ec0964d75a96c1e187c0e5f883b83896fd44074ef244e1f589288b6354bc9db85223ca
     CACHE STRING "sqlite3 source hash")
 
 if(SQLITE3_VERSION MATCHES "^([0-9]+)(0([0-9])|([1-9][0-9]))(0([0-9])|([1-9][0-9]))[0-9][0-9]$")
@@ -95,17 +95,17 @@ set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.xz)
 set(ZLIB_HASH SHA256=38ef96b8dfe510d42707d9c781877914792541133e1870841463bfa73f883e32
     CACHE STRING "zlib source hash")
 
-set(CURL_VERSION 8.9.1 CACHE STRING "curl version")
+set(CURL_VERSION 8.12.1 CACHE STRING "curl version")
 set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.se/download https://curl.askapache.com
     CACHE STRING "curl mirror(s)")
 set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
-set(CURL_HASH SHA512=a0fe234402875db194aad4e4208b7e67e7ffc1562622eea90948d4b9b0122c95c3dde8bbe2f7445a687cb3de7cb09f20e5819d424570442d976aa4c913227fc7
+set(CURL_HASH SHA512=88915468fa1bb7256e3dd6c9d058ada6894faa1e3e7800c7d9bfee3e8be4081ae57e7f2bf260c5342b709499fc4302ddc2d7864e25bfa3300fa07f118a3de603
     CACHE STRING "curl source hash")
 
-set(OPENSSL_VERSION 3.0.15 CACHE STRING "openssl version")
+set(OPENSSL_VERSION 3.0.16 CACHE STRING "openssl version")
 set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION} CACHE STRING "openssl download mirror(s)")
 set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
-set(OPENSSL_HASH SHA256=23c666d0edf20f14249b3d8f0368acaee9ab585b09e1de82107c66e1f3ec9533
+set(OPENSSL_HASH SHA256=57e03c50feab5d31b152af2b764f10379aecd8ee92f16c985983ce4a99f7ef86
     CACHE STRING "openssl source hash")
 
 set(LIBICONV_VERSION 1.17 CACHE STRING "libiconv version")
@@ -445,8 +445,10 @@ set(Boost_VERSION ${BOOST_VERSION})
 
 
 build_external(sqlite3
+  CONFIGURE_COMMAND ./configure ${cross_host} --disable-shared --prefix=${DEPS_DESTDIR}
+    "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS}" ${cross_extra}
   BUILD_COMMAND true
-  INSTALL_COMMAND make install-includeHEADERS install-libLTLIBRARIES)
+  INSTALL_COMMAND make install-headers install-lib)
 add_static_target( SQLite::SQLite3 sqlite3_external libsqlite3.a)
 
 
