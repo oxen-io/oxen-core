@@ -30,13 +30,11 @@
 
 #include <string_view>
 #include <cstdint>
+#include <iosfwd>
 
-namespace epee
+namespace epee::net_utils
 {
 using namespace std::literals;
-
-namespace net_utils
-{
 	enum class address_type : std::uint8_t
 	{
 		// Do not change values, this will break serialization
@@ -55,10 +53,19 @@ namespace net_utils
 		tor = 3
 	};
 
-	// implementations in src/net_utils_base.cpp
+    //! \return String name of address type
+    constexpr std::string_view to_string(address_type a) noexcept {
+      switch (a) {
+        case address_type::ipv4: return "IPv4"sv;
+        case address_type::ipv6: return "IPv6"sv;
+        case address_type::i2p: return "I2P"sv;
+        case address_type::tor: return "Tor"sv;
+        default: return "invalid"sv;
+      }
+    }
 
 	//! \return String name of zone or "invalid" on error.
-    constexpr std::string_view zone_to_string(zone value) noexcept {
+    constexpr std::string_view to_string(zone value) noexcept {
       switch(value) {
         case zone::public_: return "public"sv;
         case zone::i2p:     return "i2p"sv;
@@ -74,6 +81,10 @@ namespace net_utils
       if (value == "tor"sv)    return zone::tor;
       return zone::invalid;
     }
-} // net_utils
-} // epee
 
+	// implementations in src/net_utils_base.cpp
+
+    std::ostream& operator<<(std::ostream& o, address_type a);
+    std::ostream& operator<<(std::ostream& o, zone z);
+
+} // epee::net_utils

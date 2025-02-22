@@ -36,6 +36,7 @@ target_link_libraries(performance_tests
     common
     epee
     Boost::program_options
+    logging
     extra)
 set_property(TARGET performance_tests
   PROPERTY

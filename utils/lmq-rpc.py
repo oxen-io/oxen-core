@@ -20,7 +20,7 @@ socket.setsockopt(zmq.CONNECT_TIMEOUT, 5000)
 socket.setsockopt(zmq.HANDSHAKE_IVL, 5000)
 #socket.setsockopt(zmq.IMMEDIATE, 1)
 
-if len(sys.argv) > 1 and any(sys.argv[1].startswith(x) for x in ("ipc://", "tcp://")):
+if len(sys.argv) > 1 and any(sys.argv[1].startswith(x) for x in ("ipc://", "tcp://", "curve://")):
     remote = sys.argv[1]
     del sys.argv[1]
 else:
@@ -28,6 +28,18 @@ else:
 
 curve_pubkey = b''
 my_privkey, my_pubkey = b'', b''
+
+# If given a curve://whatever/pubkey argument then transform it into 'tcp://whatever' and put the
+# 'pubkey' back into argv to be handled below.
+if remote.startswith("curve://"):
+    pos = remote.rfind('/')
+    pkhex = remote[pos+1:]
+    remote = "tcp://" + remote[8:pos]
+    if len(pkhex) != 64 or not all(x in "0123456789abcdefABCDEF" for x in pkhex):
+        print("curve:// addresses must be in the form curve://HOST:PORT/REMOTE_PUBKEY_HEX", file=sys.stderr)
+        sys.exit(1)
+    sys.argv[1:0] = [pkhex]
+
 if len(sys.argv) > 1 and len(sys.argv[1]) == 64 and all(x in "0123456789abcdefABCDEF" for x in sys.argv[1]):
     curve_pubkey = bytes.fromhex(sys.argv[1])
     del sys.argv[1]
@@ -72,7 +84,12 @@ if socket.poll(timeout=5000):
             print("(empty reply data)", file=sys.stderr)
         else:
             for x in m[3:]:
-                print(x.decode(), end="\n\n")
+                print("{} bytes data part:".format(len(x)), file=sys.stderr)
+                if any(x.startswith(y) for y in (b'd', b'l', b'i')) and x.endswith(b'e'):
+                    sys.stdout.buffer.write(x)
+                else:
+                    print(x.decode(), end="\n\n")
+
 else:
     print("Request timed out", file=sys.stderr)
     socket.close(linger=0)

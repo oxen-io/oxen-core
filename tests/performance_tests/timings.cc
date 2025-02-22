@@ -33,7 +33,7 @@ bool TimingsDatabase::load()
   FILE *f = fopen(filename.c_str(), "r");
   if (!f)
   {
-    MDEBUG("Failed to load timings file " << filename << ": " << strerror(errno));
+    oxenlog::debug("Failed to load timings file {}: {}", filename, strerror(errno));
     return false;
   }
   while (1)
@@ -44,7 +44,7 @@ bool TimingsDatabase::load()
     char *tab = strchr(s, '\t');
     if (!tab)
     {
-      MWARNING("Bad format: no tab found");
+      oxenlog::warn("Bad format: no tab found");
       continue;
     }
     const std::string name = std::string(s, tab - s);
@@ -53,7 +53,7 @@ bool TimingsDatabase::load()
 
     if (fields_sv.size() != N_EXPECTED_FIELDS)
     {
-      MERROR("Bad format: wrong number of fields: got " << fields_sv.size() << " expected " << N_EXPECTED_FIELDS);
+      oxenlog::err("Bad format: wrong number of fields: got {} expected {}", fields_sv.size(), N_EXPECTED_FIELDS);
       continue;
     }
     // We need C strings for the below, so make copies
@@ -91,7 +91,7 @@ bool TimingsDatabase::save()
   FILE *f = fopen(filename.c_str(), "w");
   if (!f)
   {
-    MERROR("Failed to write to file " << filename << ": " << strerror(errno));
+    MERROR("Failed to write to file {}: {}", filename, strerror(errno));
     return false;
   }
   for (const auto &i: instances)

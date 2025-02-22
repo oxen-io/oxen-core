@@ -119,7 +119,6 @@ namespace epee {
       m_root.m_entries.clear();
       if(source.size() < sizeof(storage_block_header))
       {
-        LOG_ERROR("portable_storage: wrong binary format, packet size = " << source.size() << " less than expected sizeof(storage_block_header)=" << sizeof(storage_block_header));
         return false;
       }
       storage_block_header* pbuff = (storage_block_header*)source.data();
@@ -127,12 +126,10 @@ namespace epee {
         pbuff->m_signature_b != PORTABLE_STORAGE_SIGNATUREB
         )
       {
-        LOG_ERROR("portable_storage: wrong binary format - signature mismatch");
         return false;
       }
       if(pbuff->m_ver != PORTABLE_STORAGE_FORMAT_VER)
       {
-        LOG_ERROR("portable_storage: wrong binary format - unknown format ver = " << pbuff->m_ver);
         return false;
       }
       TRY_ENTRY();

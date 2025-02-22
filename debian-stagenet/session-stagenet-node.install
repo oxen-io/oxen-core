@@ -1,0 +1,3 @@
+debian/oxend-stagenet /usr/bin
+debian/stagenet.conf /usr/share/oxend
+debian/ufw/oxend-stagenet /etc/ufw/applications.d

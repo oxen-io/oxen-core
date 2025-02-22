@@ -215,18 +215,6 @@ POP_WARNINGS
     trim(str);
     return str;
   }
-  //----------------------------------------------------------------------------
-  inline std::string pad_string(std::string s, size_t n, char c = ' ', bool prepend = false)
-  {
-    if (s.size() < n)
-    {
-      if (prepend)
-        s = std::string(n - s.size(), c) + s;
-      else
-        s.append(n - s.size(), c);
-    }
-    return s;
-  }
 }
 }
 #endif //_STRING_TOOLS_H_

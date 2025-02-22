@@ -28,13 +28,16 @@
 
 #pragma once
 
+#include <filesystem>
+
 #include "version.h"
 
+namespace blockchain_utils {
 
-// bounds checking is done before writing to buffer, but buffer size
-// should be a sensible maximum
-#define BUFFER_SIZE (2 * 1024 * 1024)
-#define CHUNK_SIZE_WARNING_THRESHOLD 500000
-#define NUM_BLOCKS_PER_CHUNK 1
-#define BLOCKCHAIN_RAW "blockchain.raw"
+// bounds checking is done before writing to buffer, but buffer size should be a sensible maximum
+inline constexpr size_t BUFFER_SIZE = 2 * 1024 * 1024;
+inline constexpr size_t CHUNK_SIZE_WARNING_THRESHOLD = 500000;
+inline constexpr size_t NUM_BLOCKS_PER_CHUNK = 1;
+inline const std::filesystem::path BLOCKCHAIN_RAW{u8"blockchain.raw"};
 
+}  // namespace blockchain_utils

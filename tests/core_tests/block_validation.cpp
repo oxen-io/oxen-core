@@ -46,7 +46,7 @@ namespace
     for (size_t i = 0; i < new_block_count; ++i)
     {
       block blk_next;
-      difficulty_type diffic = next_difficulty_v2(timestamps, cummulative_difficulties,tools::to_seconds(TARGET_BLOCK_TIME), cryptonote::difficulty_calc_mode::normal);
+      difficulty_type diffic = next_difficulty_v2(timestamps, cummulative_difficulties,tools::to_seconds(get_config(cryptonote::network_type::FAKECHAIN).TARGET_BLOCK_TIME), cryptonote::difficulty_calc_mode::normal);
       if (!generator.construct_block_manually(blk_next, blk_prev, miner_account,
         test_generator::bf_timestamp | test_generator::bf_diffic, hf::none, 0, blk_prev.timestamp, crypto::hash(), diffic))
         return false;
@@ -176,15 +176,16 @@ bool gen_block_invalid_nonce::generate(std::vector<test_event_entry>& events) co
     return false;
 
   // Create invalid nonce
-  difficulty_type diffic = next_difficulty_v2(timestamps, cummulative_difficulties,tools::to_seconds(TARGET_BLOCK_TIME), cryptonote::difficulty_calc_mode::normal);
+  difficulty_type diffic = next_difficulty_v2(timestamps, cummulative_difficulties,tools::to_seconds(get_config(cryptonote::network_type::FAKECHAIN).TARGET_BLOCK_TIME), cryptonote::difficulty_calc_mode::normal);
   assert(1 < diffic);
   const block& blk_last = var::get<block>(events.back());
   uint64_t timestamp = blk_last.timestamp;
   block blk_3;
+  blk_3.miner_tx.emplace();
   do
   {
     ++timestamp;
-    blk_3.miner_tx.set_null();
+    blk_3.miner_tx.value().set_null();
     if (!generator.construct_block_manually(blk_3, blk_last, miner_account,
       test_generator::bf_diffic | test_generator::bf_timestamp, hf::none, 0, timestamp, crypto::hash(), diffic))
       return false;
@@ -214,7 +215,7 @@ bool gen_block_no_miner_tx::generate(std::vector<test_event_entry>& events) cons
 
 #define MAKE_MINER_TX_MANUALLY(TX, BLK)                                                                                \
   transaction TX;                                                                                                      \
-  auto [r, block_rewards] = construct_miner_tx(get_block_height(BLK) + 1,                                              \
+  auto [r, block_rewards] = construct_miner_tx(BLK.get_height() + 1,                                                   \
                           0,                                                                                           \
                           generator.get_already_generated_coins(BLK),                                                  \
                           0,                                                                                           \
@@ -280,7 +281,7 @@ bool gen_block_unlock_time_is_timestamp_in_future::generate(std::vector<test_eve
   BLOCK_VALIDATION_INIT_GENERATE();
 
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_0);
-  miner_tx.unlock_time = blk_0.timestamp + 3 * MINED_MONEY_UNLOCK_WINDOW * tools::to_seconds(TARGET_BLOCK_TIME);
+  miner_tx.unlock_time = blk_0.timestamp + 3 * MINED_MONEY_UNLOCK_WINDOW * tools::to_seconds(get_config(cryptonote::network_type::FAKECHAIN).TARGET_BLOCK_TIME);
 
   block blk_1;
   generator.construct_block_manually(blk_1, blk_0, miner_account, test_generator::bf_miner_tx, hf::none, 0, 0, crypto::hash(), 0, miner_tx);
@@ -330,7 +331,7 @@ bool gen_block_miner_tx_has_2_tx_gen_in::generate(std::vector<test_event_entry>&
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_0);
 
   txin_gen in;
-  in.height = get_block_height(blk_0) + 1;
+  in.height = blk_0.get_height() + 1;
   miner_tx.vin.push_back(in);
 
   block blk_1;
@@ -350,7 +351,7 @@ bool gen_block_miner_tx_has_2_in::generate(std::vector<test_event_entry>& events
 
   transaction tmp_tx;
 
-  if (!oxen_tx_builder(events, tmp_tx, blk_0r, miner_account, miner_account.get_keys().m_account_address, blk_0.miner_tx.vout[0].amount, cryptonote::hf::hf7).build())
+  if (!oxen_tx_builder(events, tmp_tx, blk_0r, miner_account, miner_account.get_keys().m_account_address, blk_0.miner_tx.value().vout[0].amount, cryptonote::hf::hf7).build())
     return false;
 
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_0r);
@@ -377,7 +378,7 @@ bool gen_block_miner_tx_with_txin_to_key::generate(std::vector<test_event_entry>
   REWIND_BLOCKS(events, blk_1r, blk_1, miner_account);
 
   transaction tmp_tx;
-  if (!oxen_tx_builder(events, tmp_tx, blk_1r, miner_account, miner_account.get_keys().m_account_address, blk_1.miner_tx.vout[0].amount, cryptonote::hf::hf7).build())
+  if (!oxen_tx_builder(events, tmp_tx, blk_1r, miner_account, miner_account.get_keys().m_account_address, blk_1.miner_tx.value().vout[0].amount, cryptonote::hf::hf7).build())
     return false;
 
   MAKE_MINER_TX_MANUALLY(miner_tx, blk_1);
@@ -457,7 +458,7 @@ static bool construct_miner_tx_with_extra_output(cryptonote::transaction& tx,
     const auto hard_fork_version = hf::hf7; // NOTE(oxen): We know this test doesn't need the new block reward formula
     uint64_t block_reward, block_reward_unpenalized;
     if (!get_base_block_reward(0, 0, already_generated_coins, block_reward, block_reward_unpenalized, hf::hf7, 0)) {
-        LOG_PRINT_L0("Block is too big");
+        oxen::log::warning(globallogcat, "Block is too big");
         return false;
     }
 
@@ -489,7 +490,7 @@ static bool construct_miner_tx_with_extra_output(cryptonote::transaction& tx,
 
         if (!get_deterministic_output_key(
               governance_wallet_address.address, gov_key, tx.vout.size(), out_eph_public_key)) {
-            MERROR("Failed to generate deterministic output key for governance wallet output creation");
+            oxen::log::error(globallogcat, "Failed to generate deterministic output key for governance wallet output creation");
             return false;
         }
 
@@ -509,7 +510,7 @@ bool gen_block_miner_tx_has_out_to_alice::generate(std::vector<test_event_entry>
 
   transaction miner_tx;
 
-  const auto height = get_block_height(blk_0);
+  const auto height = blk_0.get_height();
   const auto coins = generator.get_already_generated_coins(blk_0);
   const auto& miner_address = miner_account.get_keys().m_account_address;
   const auto& alice_address = alice.get_keys().m_account_address;
@@ -626,8 +627,8 @@ bool gen_block_invalid_binary_format::generate(std::vector<test_event_entry>& ev
   oxen_register_callback(events, "check_blocks_arent_accepted", [last_valid_height](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_blocks_arent_accepted");
-    CHECK_EQ(c.get_pool().get_transactions_count(), 1);
-    CHECK_EQ(c.get_current_blockchain_height(), last_valid_height + 1);
+    CHECK_EQ(c.mempool.get_transactions_count(), 1);
+    CHECK_EQ(c.blockchain.get_current_blockchain_height(), last_valid_height + 1);
     return true;
   });
 
@@ -655,7 +656,7 @@ bool gen_block_invalid_binary_format::generate(std::vector<test_event_entry>& ev
   do
   {
     blk_last = var::get<block>(events.back());
-    diffic = next_difficulty_v2(timestamps, cummulative_difficulties,tools::to_seconds(TARGET_BLOCK_TIME), cryptonote::difficulty_calc_mode::normal);
+    diffic = next_difficulty_v2(timestamps, cummulative_difficulties,tools::to_seconds(get_config(cryptonote::network_type::FAKECHAIN).TARGET_BLOCK_TIME), cryptonote::difficulty_calc_mode::normal);
     if (!lift_up_difficulty(events, timestamps, cummulative_difficulties, generator, 1, blk_last, miner_account))
       return false;
     std::cout << "Block #" << events.size() << ", difficulty: " << diffic << std::endl;
@@ -670,7 +671,7 @@ bool gen_block_invalid_binary_format::generate(std::vector<test_event_entry>& ev
   std::vector<crypto::hash> tx_hashes;
   tx_hashes.push_back(get_transaction_hash(tx_0));
   size_t txs_weight = get_transaction_weight(tx_0);
-  diffic = next_difficulty_v2(timestamps, cummulative_difficulties,tools::to_seconds(TARGET_BLOCK_TIME), cryptonote::difficulty_calc_mode::normal);
+  diffic = next_difficulty_v2(timestamps, cummulative_difficulties,tools::to_seconds(get_config(cryptonote::network_type::FAKECHAIN).TARGET_BLOCK_TIME), cryptonote::difficulty_calc_mode::normal);
   if (!generator.construct_block_manually(blk_test, blk_last, miner_account,
     test_generator::bf_diffic | test_generator::bf_timestamp | test_generator::bf_tx_hashes, 0, 0, blk_last.timestamp,
     crypto::hash(), diffic, transaction(), tx_hashes, txs_weight))

@@ -28,62 +28,57 @@
 
 #pragma once
 
-#include <boost/iostreams/stream_buffer.hpp>
-#include <boost/iostreams/stream.hpp>
+#include <algorithm>
+#include <atomic>
+#include <boost/iostreams/copy.hpp>
 #include <boost/iostreams/device/back_inserter.hpp>
 #include <boost/iostreams/filtering_streambuf.hpp>
-
-#include "cryptonote_basic/cryptonote_basic.h"
-#include "cryptonote_core/blockchain.h"
-
-#include <algorithm>
+#include <boost/iostreams/stream.hpp>
+#include <boost/iostreams/stream_buffer.hpp>
 #include <cstdio>
 #include <fstream>
-#include <boost/iostreams/copy.hpp>
-#include <atomic>
-
-#include "common/command_line.h"
-#include "common/fs.h"
-#include "version.h"
 
 #include "blockchain_utilities.h"
-
+#include "common/command_line.h"
+#include "common/fs.h"
+#include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_core/blockchain.h"
+#include "version.h"
 
 using namespace cryptonote;
 
+class BootstrapFile {
+  public:
+    uint64_t count_bytes(std::ifstream& import_file, uint64_t blocks, uint64_t& h, bool& quit);
+    uint64_t count_blocks(
+            const fs::path& dir_path, std::streampos& start_pos, uint64_t& seek_height);
+    uint64_t count_blocks(const fs::path& dir_path);
+    uint64_t seek_to_first_chunk(std::ifstream& import_file);
 
-class BootstrapFile
-{
-public:
+    bool store_blockchain_raw(
+            cryptonote::Blockchain* cs,
+            cryptonote::tx_memory_pool* txp,
+            fs::path& output_file,
+            uint64_t use_block_height = 0);
 
-  uint64_t count_bytes(fs::ifstream& import_file, uint64_t blocks, uint64_t& h, bool& quit);
-  uint64_t count_blocks(const fs::path& dir_path, std::streampos& start_pos, uint64_t& seek_height);
-  uint64_t count_blocks(const fs::path& dir_path);
-  uint64_t seek_to_first_chunk(fs::ifstream& import_file);
+  protected:
+    Blockchain* m_blockchain_storage;
 
-  bool store_blockchain_raw(cryptonote::Blockchain* cs, cryptonote::tx_memory_pool* txp,
-      fs::path& output_file, uint64_t use_block_height=0);
+    tx_memory_pool* m_tx_pool;
+    typedef std::vector<char> buffer_type;
+    std::ofstream* m_raw_data_file;
+    buffer_type m_buffer;
+    boost::iostreams::stream<boost::iostreams::back_insert_device<buffer_type>>* m_output_stream;
 
-protected:
+    // open export file for write
+    bool open_writer(const fs::path& file_path);
+    bool initialize_file();
+    bool close();
+    void write_block(block& block);
+    void flush_chunk();
 
-  Blockchain* m_blockchain_storage;
-
-  tx_memory_pool* m_tx_pool;
-  typedef std::vector<char> buffer_type;
-  std::ofstream * m_raw_data_file;
-  buffer_type m_buffer;
-  boost::iostreams::stream<boost::iostreams::back_insert_device<buffer_type>>* m_output_stream;
-
-  // open export file for write
-  bool open_writer(const fs::path& file_path);
-  bool initialize_file();
-  bool close();
-  void write_block(block& block);
-  void flush_chunk();
-
-private:
-
-  uint64_t m_height;
-  uint64_t m_cur_height; // tracks current height during export
-  uint32_t m_max_chunk;
+  private:
+    uint64_t m_height;
+    uint64_t m_cur_height;  // tracks current height during export
+    uint32_t m_max_chunk;
 };

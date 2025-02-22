@@ -27,7 +27,7 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-add_library(ringct_basic
+oxen_add_library(ringct_basic
   rctOps.cpp
   rctTypes.cpp
   rctCryptoOps.c
@@ -38,9 +38,10 @@ target_link_libraries(ringct_basic
   PUBLIC
     common
   PRIVATE
+    logging
     extra)
 
-add_library(ringct
+oxen_add_library(ringct
   rctSigs.cpp
   )
 target_link_libraries(ringct
@@ -49,4 +50,5 @@ target_link_libraries(ringct
     cryptonote_basic
     device
   PRIVATE
+    logging
     extra)

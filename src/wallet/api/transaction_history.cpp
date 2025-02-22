@@ -28,50 +28,41 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-
 #include "transaction_history.h"
+
+#include <list>
+#include <string>
+
+#include "common/hex.h"
+#include "common_defines.h"
+#include "crypto/hash.h"
 #include "transaction_info.h"
 #include "wallet.h"
-#include "common_defines.h"
-
-#include "crypto/hash.h"
 #include "wallet/wallet2.h"
-#include "common/hex.h"
-
-#include <string>
-#include <list>
 
 namespace Wallet {
 
 EXPORT
 TransactionHistory::~TransactionHistory() {}
 
+EXPORT
+TransactionHistoryImpl::TransactionHistoryImpl(WalletImpl* wallet) : m_wallet(wallet) {}
 
 EXPORT
-TransactionHistoryImpl::TransactionHistoryImpl(WalletImpl *wallet)
-    : m_wallet(wallet)
-{
-
-}
-
-EXPORT
-TransactionHistoryImpl::~TransactionHistoryImpl()
-{
+TransactionHistoryImpl::~TransactionHistoryImpl() {
     for (auto t : m_history)
         delete t;
 }
 
 EXPORT
-int TransactionHistoryImpl::count() const
-{
+int TransactionHistoryImpl::count() const {
     std::shared_lock lock{m_historyMutex};
     int result = m_history.size();
     return result;
 }
 
 EXPORT
-TransactionInfo *TransactionHistoryImpl::transaction(int index) const
-{
+TransactionInfo* TransactionHistoryImpl::transaction(int index) const {
     std::shared_lock lock{m_historyMutex};
     // sanity check
     if (index < 0)
@@ -81,19 +72,16 @@ TransactionInfo *TransactionHistoryImpl::transaction(int index) const
 }
 
 EXPORT
-TransactionInfo *TransactionHistoryImpl::transaction(std::string_view id) const
-{
+TransactionInfo* TransactionHistoryImpl::transaction(std::string_view id) const {
     std::shared_lock lock{m_historyMutex};
-    auto itr = std::find_if(m_history.begin(), m_history.end(),
-                            [&](const TransactionInfo * ti) {
+    auto itr = std::find_if(m_history.begin(), m_history.end(), [&](const TransactionInfo* ti) {
         return ti->hash() == id;
     });
     return itr != m_history.end() ? *itr : nullptr;
 }
 
 EXPORT
-std::vector<TransactionInfo *> TransactionHistoryImpl::getAll() const
-{
+std::vector<TransactionInfo*> TransactionHistoryImpl::getAll() const {
     std::shared_lock lock{m_historyMutex};
     return m_history;
 }
@@ -107,8 +95,7 @@ static reward_type from_pay_type(wallet::pay_type ptype) {
 }
 
 EXPORT
-void TransactionHistoryImpl::refresh()
-{
+void TransactionHistoryImpl::refresh() {
     // multithreaded access:
     // for "write" access, locking exclusively
     std::unique_lock lock{m_historyMutex};
@@ -134,27 +121,30 @@ void TransactionHistoryImpl::refresh()
     std::list<std::pair<crypto::hash, tools::wallet2::payment_details>> in_payments;
     auto w = m_wallet->wallet();
     w->get_payments(in_payments, min_height, max_height);
-    for (std::list<std::pair<crypto::hash, tools::wallet2::payment_details>>::const_iterator i = in_payments.begin(); i != in_payments.end(); ++i) {
-        const tools::wallet2::payment_details &pd = i->second;
-        std::string payment_id = tools::type_to_hex(i->first);
+    for (std::list<std::pair<crypto::hash, tools::wallet2::payment_details>>::const_iterator i =
+                 in_payments.begin();
+         i != in_payments.end();
+         ++i) {
+        const tools::wallet2::payment_details& pd = i->second;
+        std::string payment_id = tools::hex_guts(i->first);
         if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
-            payment_id = payment_id.substr(0,16);
-        TransactionInfoImpl * ti = new TransactionInfoImpl();
+            payment_id = payment_id.substr(0, 16);
+        TransactionInfoImpl* ti = new TransactionInfoImpl();
         ti->m_paymentid = payment_id;
-        ti->m_amount    = pd.m_amount;
+        ti->m_amount = pd.m_amount;
         ti->m_direction = TransactionInfo::Direction_In;
-        ti->m_hash      = tools::type_to_hex(pd.m_tx_hash);
+        ti->m_hash = tools::hex_guts(pd.m_tx_hash);
         ti->m_blockheight = pd.m_block_height;
-        ti->m_subaddrIndex = { pd.m_subaddr_index.minor };
+        ti->m_subaddrIndex = {pd.m_subaddr_index.minor};
         ti->m_subaddrAccount = pd.m_subaddr_index.major;
-        ti->m_label     = w->get_subaddress_label(pd.m_subaddr_index);
+        ti->m_label = w->get_subaddress_label(pd.m_subaddr_index);
         ti->m_timestamp = pd.m_timestamp;
-        ti->m_confirmations = (wallet_height > pd.m_block_height) ? wallet_height - pd.m_block_height : 0;
+        ti->m_confirmations =
+                (wallet_height > pd.m_block_height) ? wallet_height - pd.m_block_height : 0;
         ti->m_unlock_time = pd.m_unlock_time;
         ti->m_reward_type = from_pay_type(pd.m_type);
         ti->m_is_stake = pd.m_type == wallet::pay_type::stake;
         m_history.push_back(ti);
-
     }
 
     // confirmed output transactions
@@ -168,37 +158,41 @@ void TransactionHistoryImpl::refresh()
     std::list<std::pair<crypto::hash, tools::wallet2::confirmed_transfer_details>> out_payments;
     w->get_payments_out(out_payments, min_height, max_height);
 
-    for (std::list<std::pair<crypto::hash, tools::wallet2::confirmed_transfer_details>>::const_iterator i = out_payments.begin();
-         i != out_payments.end(); ++i) {
-        
-        const crypto::hash &hash = i->first;
-        const tools::wallet2::confirmed_transfer_details &pd = i->second;
-        
-        uint64_t change = pd.m_change == (uint64_t)-1 ? 0 : pd.m_change; // change may not be known
+    for (std::list<std::pair<crypto::hash, tools::wallet2::confirmed_transfer_details>>::
+                 const_iterator i = out_payments.begin();
+         i != out_payments.end();
+         ++i) {
+
+        const crypto::hash& hash = i->first;
+        const tools::wallet2::confirmed_transfer_details& pd = i->second;
+
+        uint64_t change = pd.m_change == (uint64_t)-1 ? 0 : pd.m_change;  // change may not be known
         uint64_t fee = pd.m_amount_in - pd.m_amount_out;
-        
 
-        std::string payment_id = tools::type_to_hex(i->second.m_payment_id);
+        std::string payment_id = tools::hex_guts(i->second.m_payment_id);
         if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
-            payment_id = payment_id.substr(0,16);
+            payment_id = payment_id.substr(0, 16);
 
-
-        TransactionInfoImpl * ti = new TransactionInfoImpl();
+        TransactionInfoImpl* ti = new TransactionInfoImpl();
         ti->m_paymentid = payment_id;
         ti->m_amount = pd.m_amount_in - change - fee;
-        ti->m_fee    = fee;
+        ti->m_fee = fee;
         ti->m_direction = TransactionInfo::Direction_Out;
-        ti->m_hash = tools::type_to_hex(hash);
+        ti->m_hash = tools::hex_guts(hash);
         ti->m_blockheight = pd.m_block_height;
         ti->m_subaddrIndex = pd.m_subaddr_indices;
         ti->m_subaddrAccount = pd.m_subaddr_account;
-        ti->m_label = pd.m_subaddr_indices.size() == 1 ? w->get_subaddress_label({pd.m_subaddr_account, *pd.m_subaddr_indices.begin()}) : "";
+        ti->m_label = pd.m_subaddr_indices.size() == 1
+                            ? w->get_subaddress_label(
+                                      {pd.m_subaddr_account, *pd.m_subaddr_indices.begin()})
+                            : "";
         ti->m_timestamp = pd.m_timestamp;
-        ti->m_confirmations = (wallet_height > pd.m_block_height) ? wallet_height - pd.m_block_height : 0;
+        ti->m_confirmations =
+                (wallet_height > pd.m_block_height) ? wallet_height - pd.m_block_height : 0;
         ti->m_is_stake = pd.m_pay_type == wallet::pay_type::stake;
 
         // single output transaction might contain multiple transfers
-        for (const auto &d: pd.m_dests) {
+        for (const auto& d : pd.m_dests) {
             ti->m_transfers.push_back({d.amount, d.address(w->nettype(), pd.m_payment_id)});
         }
         m_history.push_back(ti);
@@ -207,61 +201,68 @@ void TransactionHistoryImpl::refresh()
     // unconfirmed output transactions
     std::list<std::pair<crypto::hash, tools::wallet2::unconfirmed_transfer_details>> upayments_out;
     w->get_unconfirmed_payments_out(upayments_out);
-    for (std::list<std::pair<crypto::hash, tools::wallet2::unconfirmed_transfer_details>>::const_iterator i = upayments_out.begin(); i != upayments_out.end(); ++i) {
-        const tools::wallet2::unconfirmed_transfer_details &pd = i->second;
-        const crypto::hash &hash = i->first;
+    for (std::list<std::pair<crypto::hash, tools::wallet2::unconfirmed_transfer_details>>::
+                 const_iterator i = upayments_out.begin();
+         i != upayments_out.end();
+         ++i) {
+        const tools::wallet2::unconfirmed_transfer_details& pd = i->second;
+        const crypto::hash& hash = i->first;
         uint64_t amount = pd.m_amount_in;
         uint64_t fee = amount - pd.m_amount_out;
-        std::string payment_id = tools::type_to_hex(i->second.m_payment_id);
+        std::string payment_id = tools::hex_guts(i->second.m_payment_id);
         if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
-            payment_id = payment_id.substr(0,16);
+            payment_id = payment_id.substr(0, 16);
         bool is_failed = pd.m_state == tools::wallet2::unconfirmed_transfer_details::failed;
 
-        TransactionInfoImpl * ti = new TransactionInfoImpl();
+        TransactionInfoImpl* ti = new TransactionInfoImpl();
         ti->m_paymentid = payment_id;
         ti->m_amount = amount - pd.m_change - fee;
-        ti->m_fee    = fee;
+        ti->m_fee = fee;
         ti->m_direction = TransactionInfo::Direction_Out;
         ti->m_failed = is_failed;
         ti->m_pending = true;
-        ti->m_hash = tools::type_to_hex(hash);
+        ti->m_hash = tools::hex_guts(hash);
         ti->m_subaddrIndex = pd.m_subaddr_indices;
         ti->m_subaddrAccount = pd.m_subaddr_account;
-        ti->m_label = pd.m_subaddr_indices.size() == 1 ? w->get_subaddress_label({pd.m_subaddr_account, *pd.m_subaddr_indices.begin()}) : "";
+        ti->m_label = pd.m_subaddr_indices.size() == 1
+                            ? w->get_subaddress_label(
+                                      {pd.m_subaddr_account, *pd.m_subaddr_indices.begin()})
+                            : "";
         ti->m_timestamp = pd.m_timestamp;
         ti->m_confirmations = 0;
         ti->m_is_stake = pd.m_pay_type == wallet::pay_type::stake;
         m_history.push_back(ti);
     }
-    
-    
+
     // unconfirmed payments (tx pool)
     std::list<std::pair<crypto::hash, tools::wallet2::pool_payment_details>> upayments;
     w->get_unconfirmed_payments(upayments);
-    for (std::list<std::pair<crypto::hash, tools::wallet2::pool_payment_details>>::const_iterator i = upayments.begin(); i != upayments.end(); ++i) {
-        const tools::wallet2::payment_details &pd = i->second.m_pd;
-        std::string payment_id = tools::type_to_hex(i->first);
+    for (std::list<std::pair<crypto::hash, tools::wallet2::pool_payment_details>>::const_iterator
+                 i = upayments.begin();
+         i != upayments.end();
+         ++i) {
+        const tools::wallet2::payment_details& pd = i->second.m_pd;
+        std::string payment_id = tools::hex_guts(i->first);
         if (payment_id.substr(16).find_first_not_of('0') == std::string::npos)
-            payment_id = payment_id.substr(0,16);
-        TransactionInfoImpl * ti = new TransactionInfoImpl();
+            payment_id = payment_id.substr(0, 16);
+        TransactionInfoImpl* ti = new TransactionInfoImpl();
         ti->m_paymentid = payment_id;
-        ti->m_amount    = pd.m_amount;
+        ti->m_amount = pd.m_amount;
         ti->m_direction = TransactionInfo::Direction_In;
-        ti->m_hash      = tools::type_to_hex(pd.m_tx_hash);
+        ti->m_hash = tools::hex_guts(pd.m_tx_hash);
         ti->m_blockheight = pd.m_block_height;
         ti->m_pending = true;
-        ti->m_subaddrIndex = { pd.m_subaddr_index.minor };
+        ti->m_subaddrIndex = {pd.m_subaddr_index.minor};
         ti->m_subaddrAccount = pd.m_subaddr_index.major;
-        ti->m_label     = w->get_subaddress_label(pd.m_subaddr_index);
+        ti->m_label = w->get_subaddress_label(pd.m_subaddr_index);
         ti->m_timestamp = pd.m_timestamp;
         ti->m_confirmations = 0;
         ti->m_reward_type = from_pay_type(pd.m_type);
         ti->m_is_stake = pd.m_type == wallet::pay_type::stake;
         m_history.push_back(ti);
-        
-        LOG_PRINT_L1(__FUNCTION__ << ": Unconfirmed payment found " << pd.m_amount);
+
+        log::info(logcat, "{}: Unconfirmed payment found {}", __FUNCTION__, pd.m_amount);
     }
-     
 }
 
-} // namespace
+}  // namespace Wallet

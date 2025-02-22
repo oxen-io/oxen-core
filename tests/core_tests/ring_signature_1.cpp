@@ -54,8 +54,7 @@ namespace
 
 bool gen_ring_signature_1::generate(std::vector<test_event_entry>& events) const
 {
-  const get_test_options<gen_ring_signature_1> test_options;
-  oxen_chain_generator gen(events, test_options.hard_forks);
+  oxen_chain_generator gen(events, get_test_options<gen_ring_signature_1>{}.test_options.hard_forks);
 
   const auto miner = gen.first_miner();
   const auto bob = gen.add_account(); /// event 1
@@ -105,7 +104,7 @@ bool gen_ring_signature_1::check_balances_1(cryptonote::core& c, size_t ev_index
   m_alice_account = var::get<account_base>(events[3]);
 
   std::vector<block> blocks;
-  bool r = c.get_blocks(0, 1000, blocks);
+  bool r = c.blockchain.get_blocks(0, 1000, blocks);
   CHECK_TEST_CONDITION(r);
 
   std::vector<cryptonote::block> chain;
@@ -123,7 +122,7 @@ bool gen_ring_signature_1::check_balances_2(cryptonote::core& c, size_t ev_index
   DEFINE_TESTS_ERROR_CONTEXT("gen_ring_signature_1::check_balances_2");
 
   std::vector<block> blocks;
-  bool r = c.get_blocks(0, 1000, blocks);
+  bool r = c.blockchain.get_blocks(0, 1000, blocks);
   CHECK_TEST_CONDITION(r);
 
   std::vector<cryptonote::block> chain;
@@ -187,7 +186,7 @@ bool gen_ring_signature_2::check_balances_1(cryptonote::core& c, size_t ev_index
   m_alice_account = var::get<account_base>(events[2]);
 
   std::vector<block> blocks;
-  bool r = c.get_blocks(0, 100 + 3 * MINED_MONEY_UNLOCK_WINDOW, blocks);
+  bool r = c.blockchain.get_blocks(0, 100 + 3 * MINED_MONEY_UNLOCK_WINDOW, blocks);
   CHECK_TEST_CONDITION(r);
 
   std::vector<cryptonote::block> chain;
@@ -205,7 +204,7 @@ bool gen_ring_signature_2::check_balances_2(cryptonote::core& c, size_t ev_index
   DEFINE_TESTS_ERROR_CONTEXT("gen_ring_signature_2::check_balances_2");
 
   std::vector<block> blocks;
-  bool r = c.get_blocks(0, 100 + 3 * MINED_MONEY_UNLOCK_WINDOW, blocks);
+  bool r = c.blockchain.get_blocks(0, 100 + 3 * MINED_MONEY_UNLOCK_WINDOW, blocks);
   CHECK_TEST_CONDITION(r);
 
   std::vector<cryptonote::block> chain;
@@ -276,8 +275,11 @@ bool gen_ring_signature_big::generate(std::vector<test_event_entry>& events) con
 
     std::vector<cryptonote::block> chain;
     map_hash2tx_t mtx;
-    bool r = find_block_chain(events, chain, mtx, get_block_hash(blk_i));
-    CHECK_AND_NO_ASSERT_MES(r, false, "failed to call find_block_chain");
+    if (!find_block_chain(events, chain, mtx, get_block_hash(blk_i)))
+    {
+      oxen::log::warning(globallogcat, "failed to call find_block_chain");
+      return false;
+    }
     std::cout << i << ": " << get_balance(accounts[i], chain, mtx) << std::endl;
   }
 
@@ -297,7 +299,7 @@ bool gen_ring_signature_big::check_balances_1(cryptonote::core& c, size_t ev_ind
   m_alice_account = var::get<account_base>(events[1 + m_test_size]);
 
   std::vector<block> blocks;
-  bool r = c.get_blocks(0, 2 * m_test_size + MINED_MONEY_UNLOCK_WINDOW, blocks);
+  bool r = c.blockchain.get_blocks(0, 2 * m_test_size + MINED_MONEY_UNLOCK_WINDOW, blocks);
   CHECK_TEST_CONDITION(r);
 
   std::vector<cryptonote::block> chain;
@@ -322,7 +324,7 @@ bool gen_ring_signature_big::check_balances_2(cryptonote::core& c, size_t ev_ind
   DEFINE_TESTS_ERROR_CONTEXT("gen_ring_signature_big::check_balances_2");
 
   std::vector<block> blocks;
-  bool r = c.get_blocks(0, 2 * m_test_size + MINED_MONEY_UNLOCK_WINDOW, blocks);
+  bool r = c.blockchain.get_blocks(0, 2 * m_test_size + MINED_MONEY_UNLOCK_WINDOW, blocks);
   CHECK_TEST_CONDITION(r);
 
   std::vector<cryptonote::block> chain;
