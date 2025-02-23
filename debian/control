@@ -5,6 +5,7 @@ Maintainer: Jason Rhinelander <jason@loki.network>
 Build-Depends: debhelper (>= 11), cmake (>= 3.10), ninja-build, g++, qttools5-dev,
     libboost-dev (>= 1.65), libboost-thread-dev, libboost-serialization-dev, libboost-program-options-dev,
     nettle-dev, libevent-dev, libunwind8-dev, libsodium-dev,
+    libssl-dev,
     libfmt-dev, libspdlog-dev,
     libreadline-dev, libhidapi-dev, libusb-1.0-0-dev, libprotobuf-dev, protobuf-compiler, python3, pkg-config,
     libsystemd-dev, libsqlite3-dev, liboxenmq-dev (>= 1.2.13-2~), libcurl4-dev
