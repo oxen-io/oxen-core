@@ -12,7 +12,7 @@ ifeq ($(DEB_TARGET_ARCH),amd64)
 else ifeq ($(DEB_TARGET_ARCH),i386)
 	DEB_CMAKE_ARCH_OPTIONS=-DARCH=i686 -DARCH_ID=i386
 else ifeq ($(DEB_TARGET_ARCH),arm64)
-	DEB_CMAKE_ARCH_OPTIONS=-DARCH=armv8-a+crc -DARM_ID=arm64 -DNO_AES=ON -DCMAKE_CXX_FLAGS="-mtune=cortex-a72" -DCMAKE_C_FLAGS="-mtune=cortex-a72" -DRANDOMX_ENABLE_JIT=OFF
+	DEB_CMAKE_ARCH_OPTIONS=-DARCH=armv8-a+crc -DARM_ID=arm64 -DNO_AES=ON -DCMAKE_CXX_FLAGS="-mtune=cortex-a72" -DCMAKE_C_FLAGS="-mtune=cortex-a72"
 else ifeq ($(DEB_TARGET_ARCH),armhf)
 	DEB_CMAKE_ARCH_OPTIONS=-DARCH=armv6 -DARM_ID=armhf -DNO_AES=ON -DCMAKE_CXX_FLAGS="-marm -mtune=cortex-a53 -mfloat-abi=hard -mfpu=vfp" -DCMAKE_C_FLAGS="-marm -mtune=cortex-a53 -mfloat-abi=hard -mfpu=vfp"
 else
