@@ -1,3 +1,1452 @@
+oxen (11.1.0-1~ubuntu2404) noble; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Code simplification
+  * Update oxenmq to latest dev (needed for inproc rpc support)
+  * Minor api improvement: return pair instead of two output params
+  * friendly_duration: show 0s for exactly 0 rather than 0ns
+  * Make RPC more flexible & add bt-encoding
+  * Remove old code
+
+  [ Sean Darcy ]
+  * GET_NET_STATS - To new RPC format
+  * START_MINING and GET_OUTPUTS to new RPC format
+  * New RPC formats for STOP_MINING, SAVE_BC, STOP_DAEMON, GETBLOCKCOUNT
+  * Convert RPC functions to new format:
+
+  [ Jason Rhinelander ]
+  * Add int-to-string converter (from storage server)
+  * Simplify participation structures
+  * Remove dumb configurable decimal place support
+  * print_money: allow trimming unused decimals
+  * lmq-rpc.py: curve:// url support and binary bt printing
+  * Add a version of tools::join that also transforms
+  * using nlohmann::json
+  * Move json binary handling code; teach it about vectors
+  * Promote critical startup errors to MFATAL
+  * RPC: GET_SERVICE_NODES & GET_SERVICE_NODE_STATUS
+  * get_service_node *client* updates
+  * Update doc formatting style
+
+  [ Sean Darcy ]
+  * define parsers, returning correct types
+  * parse params of get_outputs
+
+  [ Jason Rhinelander ]
+  * Add support for loading from various container types
+  * Add nlohmann-json submodule
+  * get_outputs - finish, backwards compat, add results as tuple
+  * Deprecated all the garbage in epee/misc_os_dependent.h
+  * Replace epee C date crap with C++20 date backport
+  * Eviscerate epee timing garbage
+  * Remove useless junk from miner: autodetect, miner_conf.json
+  * Remove parse_request() overloads for no-args endpoints
+  * Fix nlohmann submodule
+  * START_MINING fixes
+  * Move tx pool stats struct out of rpc code
+  * Apply some lipstick to a pig
+  * Add generic concat and concat-with-delimiter string utils
+  * Remove hide_hr, show_hr commands, part 2
+  * RPC update: get_connections
+  * Remove "support_flags" from p2p protocol
+  * Add `invoke_simple` for invoking simple RPC calls
+  * Fix mining status commands
+  * Return tx pool hashes as potential binary
+  * Remove debugging & superfluous 'return;'s
+  * RPC overhaul: SYNC_INFO
+  * Push RPC response serialization down into handlers
+  * Append newline after printing CLI command error
+  * Add fmtlib::fmt backport of C++20 std::format
+  * RPC: GET_TRANSACTION_POOL_STATS improvements/tweaks
+  * RPC: HARD_FORK_INFO
+  * Make operator_fee in millionths
+  * RPC: GET_TRANSACTIONS
+  * RPC: add support for fetching transaction pool
+  * Wire up start_mining command
+  * wtf
+  * RPC: GET_LIMIT, SET_LIMIT
+  * Remove useless GET_TRANSACTION_POOL_BACKLOG endpoint
+  * Split core_rpc_server_commands_defs into 2
+  * RPC: IS_KEY_IMAGE_SPENT
+  * Zero-initialize RPC
+  * RPC: SUBMIT_TRANSACTION new rpc update
+  * RPC: GET_BLOCK_HASH updated
+  * Remove external block generation/submission support
+  * RPC: +peerlist, -publicnodes
+  * fix
+  * Remove p2p rpc_port; p2p code clean-ups
+
+  [ Sean Darcy ]
+  * set_log_level and set_log_categories to use new RPC
+  * make_request template instead of try_running
+  * BANNED to new RPC format
+  * FLUSH_TRANSACTION_POOL to new rpc format
+  * GET_VERSION to new rpc
+  * GET_COINBASE_TX_SUM
+  * GET_BASE_FEE_ESTIMATE
+  * OUT_PEERS and IN_PEERS
+  * POP_BLOCKS
+  * STORAGE_SERVER_PING and LOKINET_PING
+  * PRUNE_BLOCKCHAIN
+  * GET_SN_STATE_CHANGES
+  * TEST_TRIGGER_UPTIME_PROOF TEST_TRIGGER_P2P_RESYNC REPORT_PEER_STATUS
+  * FLUSH_CACHE
+
+  [ Jason Rhinelander ]
+  * Various formatting fixes
+
+  [ Thomas Winget ]
+  * rebase fixups
+
+  [ Sean Darcy ]
+  * GET_LAST_BLOCK_HEADER
+  * GET_BLOCK_HEADER_BY_HASH
+  * GETBANS
+  * SETBANS
+  * GET_CHECKPOINTS
+  * GET_STAKING_REQUIREMENT
+  * GET_SERVICE_KEYS
+  * GET_SERVICE_PRIVKEYS
+  * GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES
+  * RELAY_TX
+  * GET_BLOCK_HEADERS_RANGE
+  * GET_BLOCK_HEADER_BY_HEIGHT
+  * GET_BLOCK
+  * delete bootstrap daemon
+  * GET_SERVICE_NODE_REGISTRATION_CMD_RAW
+  * GET_QUORUM_STATE
+  * GET_ALTERNATE_CHAINS
+  * GET_OUTPUT_HISTOGRAM
+  * ONS_OWNERS_TO_NAMES
+  * move nlohmann all to rpc
+
+  [ Thomas Winget ]
+  * Wallet3 squashed initial commit
+
+  [ Sean Darcy ]
+  * initial tx creation
+
+  [ Thomas Winget ]
+  * rename wallet3 functions to be more in line with the rest of the codebase
+
+  [ Jason Rhinelander ]
+  * Rewrite logic to avoid warning about binding a temporary
+
+  [ Sean Darcy ]
+  * Calculate the fee based on the current pending transaction.
+  * ffs
+  * initial commit for decoy selection
+  * review notes
+  * decoy range
+  * basic structure for signing transactions
+  * amend wallet2 and simple wallet to use bt-rpc definitions
+  * SD review notes
+
+  [ Thomas Winget ]
+  * move and refactor common RPC code
+  * wallet3 rpc initial commit
+  * Wallet3 design overview doc initial commit
+  * refactor wallet3 db usage
+  * transfer request parsing and some request syntax fixup
+  * add key derivation for outputs to scanner
+  * fix mock_wallet after rebase mistake
+  * fix wallet3 Output type mismatch
+  * add daemon comms submit tx endpoint
+
+  [ Sean Darcy ]
+  * Loads in real data to test if the transaction is signing correctly
+  * public keys
+  * check output of sign transaction
+  * more stuff
+  * some align!
+  * key image generates correctly
+
+  [ Thomas Winget ]
+  * very basic tx construction, signing, and submission should be working
+  * lots of minor wallet 3 fixes, rct signing still failing verification
+  * add not-equal operator to rct::key
+  * add pop_block function and block removal trigger to wallet3 db
+  * fix wallet3 db output fetch
+  * refactor return-by-reference
+  * sort tx inputs by key image
+  * set correct amount on tx construction
+  * tx constructor, check fetched decoy values for our real input
+  * testnet address in wallet test was wrong...somehow
+  * do not silently allow empty tx input indices
+  * small status/error message change
+  * fix wallet3 db overall output count
+  * cleanup some wallet daemon comms error handling
+  * wallet3: fix tx construction (sorted inputs)
+  * remove erroneous check from wallet3 tx constructor
+  * submodule fix after merge
+  * fix build after merge
+  * wallet3 send/receive works, more or less
+
+  [ Sean Darcy ]
+  * rpc for get_version
+  * Config Struct for wallet3
+  * Wallet RPC calls for Get Balance, Get Address and Export Keys
+
+  [ Thomas Winget ]
+  * wallet3 demo code and syncing bugfix
+  * wallet3 changes and demo fixup
+
+  [ Jason Rhinelander ]
+  * Change dev version to 11.0.0
+  * Fix automining by default
+
+  [ Sean Darcy ]
+  * start of compiler errors
+
+  [ Thomas Winget ]
+  * all tests building now, not all passing
+
+  [ Sean Darcy ]
+  * tests rely on false returned here
+
+  [ Jason Rhinelander ]
+  * Fix get_accrued_batched_earnings being non-public
+
+  [ Sean Darcy ]
+  * fixes wallet3 test segfault, first test passing
+  * transaction fees updated for blink, mock decoy selector was not being used previously
+  * Disable TX Signing test
+
+  [ Jason Rhinelander ]
+  * Put current info for ourself in service node list
+  * Allow lokinet/ss to send an error ping
+  * zlib security update
+
+  [ Sean Darcy ]
+  * create virtual destructor on wallet class and define destructor on child
+  * change naked throws to throw exceptions
+  * change naked throws to throw exceptions
+  * Logging Refactor
+
+  [ Jason Rhinelander ]
+  * Bump oxen-logging to stable release; fix imported fmt/spdlog targets
+  * Dep updates
+  * Fix missing oxen logger include when no HIDAPI
+  * Change most oxen::log::whatever to log::whatever
+  * Unwrap fmt::format with a style argument
+  * Change simple fmt::format calls to new "..."_format(...)
+  * Add formattable helper header
+  * Simplify arg printing; move <iostream> out of header
+  * Remove nasty print-on-destruction wrapper; more fmt
+
+  [ Sean Darcy ]
+  * wallet_api updated to use new json_rpc and logging
+  * update windows builds
+  * silence unused variable error for if constexpr
+  * bump readme copyright
+
+  [ Jason Rhinelander ]
+  * sqlite3: update to latest; run autoreconf before configure
+  * Fix cmake 3.24 idiotic behaviour
+  * For submodules for fmt/spdlog on macos builds
+  * Make sure we are using fmt/spdlog submodules for static builds
+
+  [ Sean Darcy ]
+  * trace noop in release build
+
+  [ Jason Rhinelander ]
+  * Make ghc::filesystem fmt-formattable
+  * apple now links everything to libobjc.dylib now, hurray for great success!
+  * Remove unnecessary move
+  * Remove unused variable
+  * Add garbage to make it work on a garbage OS
+  * Fix deprecated oxenmq::* usage
+  * Eliminate most << output operators
+  * Fix slurp_file potentially reading in non-binary mode
+  * Add missing header
+  * Fix ec_point sub-types not being formattable; fix crappy test code
+  * Update variant header from oxenmq to oxenc
+  * Overhaul and fix crypto::{public_key,ec_point,etc.} types
+  * Remove broken formattable::to_string(T) support
+
+  [ Sean Darcy ]
+  * Creates archiving for reward batching
+
+  [ Jason Rhinelander ]
+  * Update sqlite static build to latest version
+  * Don't build curl with nghttp3/quic support
+  * curl: latest version; don't attempt to use nghttp2
+  * Fix macos no-dynamic-libs check
+
+  [ Sean Darcy ]
+  * wallet3 cli
+  * move blacklisted key images to completed
+  * enable ONS_OWNERS_TO_NAMES
+
+  [ Jason Rhinelander ]
+  * Add support for skipping empty string fields
+
+  [ Sean Darcy ]
+  * option to exclude making pybind on android and windows by default
+
+  [ Jason Rhinelander ]
+  * Activate get_service_keys/get_service_privkeys rpc endpoints
+  * :sort
+  * Fix get_service_keys/get_service_privkeys arg parsing
+  * Respond with `"id"` as-provided
+  * Strip project build dir from logs
+  * Fix binary local pubkey setting
+  * :sort
+  * Fix out-of-order argument parsing
+  * Activate various RPC endpoints
+  * Make get_sn_state_changes admin-only
+  * More RPC fixes
+  * Remove errant extra {} from error string
+  * Reformatting/cleanup
+  * Fix string construction when no pow_hash
+  * Rename LMQ -> OMQ in code
+  * Debug log bad request body
+  * Log levels: case-insensitive levels; add abbreviations
+  * Re-add `get_transaction_pool`
+  * Disable stringop-overflow warnings under GCC12
+  * Redo json_archiver in nlohmann::json
+  * Fix coinbase_payouts in block rpc output
+  * Remove json_archiver debugging
+  * Fix segfault in get_block
+  * Move nlohmann_json dependency to 'common' target
+  * Update oxen-logging for macos build fix
+  * Fix coinbase_payouts in block rpc output, continued
+  * Fix error when pow_hash missing
+  * Bump minor network revision for testnet
+  * Fix get_accrued_batched_earnings missing "status": "OK"
+  * Fix get_service_node_blacklisted_key_images
+  * Fix locked_contributions not included in cached SN list
+  * Small string_view optimizations
+  * Fix get_service_nodes rpc node proxy query
+  * Change ["key"] -> .at("key")
+  * Documentation generation using docsify
+  * Lower pre-request rpc access logging to debug level
+  * Fix ping pubkey_ed25519 parameter name
+  * Remove can-be-empty on ss/lokinet ping pubkey handling
+  * Revert wallet2 output blacklist retrieval
+  * Fix GET requests
+  * Fix wallet2 staking
+  * Small optimizations/cleanups
+  * Handle missing total_reserved
+  * Move
+
+  [ Sean Darcy ]
+  * Disable logging to stdout for wallet2
+
+  [ Jason Rhinelander ]
+  * Cure std's
+  * Replace std::tuple<A, B> with std::pair<A, B>
+  * Fix moronic code
+  * Move gross single-macro-only "header" into wallet2
+  * Remove epee/time_helper
+  * Remove bitrotten headers
+  * Fix HF19.2 timestamp
+  * Schedule 19.3 hard spoon
+  * Updated my personal server IP as it has moved
+  * Replace defunct OVH servers with another OPTF server
+
+  [ Sean Darcy ]
+  * Silency noisy logs
+  * Adds util to parse tx extra messages
+  * introduces logging to wallet3
+  * Introduces OMQ to cli and additional commands
+  * adds gpg key for deb.oxen.io so that we can download pyoxenmq from oxen.ios repo, this should be identical to lokinet
+  * droneci build for wallet3
+  * Introduces Subaddresses to Wallet3
+  * up decoys in stub
+  * implements ons_names_to_owners, modifys so it only takes a single name
+  * ons buy and ons update mapping
+  * wallet3 python cleanup, rounding for balance, lokinet ons buy split into years
+  * cleanup of wallet3 code - change to db schema to remove keyring object
+  * remove newlines from logging
+  * Cleanup of wallet3 code
+  * blobs for keys in db
+  * metadata table changed from 1xN to Nx1
+  * load keyring into wallet using initializer
+  * implement unlocked balance
+  * get address implemented in cli wallet
+  * statusbar to command line
+  * rename db_schema to walletdb
+  * removes unused OXEN_RPC_DOC_INTROSPECT from wallet3
+  * remove unnecessary semicolons from SQL queries
+  * blob_binder instead of manual binding params to query
+  * upsert instead of update for wallet keys
+  * new clang format params
+  * clang-format lint check
+
+  [ Jason Rhinelander ]
+  * run clang format
+  * Manual reformatting and post-formatting fixes
+  * Bump oxen-encoding for header include fix
+  * Fix horrible tr() in wallet_api; remove boost::format
+  * Fix pywallet3 build
+  * Fix compiler warning about sign mismatch
+
+  [ KeeJef ]
+  * Update GPG keys
+
+  [ Sean Darcy ]
+  * Load ethyl library and basic sepolia parameters
+  * adds a L2 tracker to core, which checks the smart contract every 10 secs for it state and maintains the history so block verifiers can check
+  * hardforks for devnet
+  * rpc commands needing updating to new format
+  * wallet2 updates
+  * local devnet updates to latest hardfork
+  * l2 tracker data
+  * hardfork devnet to HF20
+  * more block header info
+  * rewards actually reads
+  * update ethyl to include height in eth calls
+  * l2 tracker keeps state up to date
+  * checks state before including it in block
+  * start on BLS signing
+  * update local devnet codes
+  * bls library
+  * bls signing
+  * use connection for omq
+  * rpc call for bls
+  * bls signing not working
+  * aggregate signing works
+  * folders for local devnet to exclude changing ip addresses
+  * merkle tree creator
+  * merkle tree from batching rewards
+  * rpc request for merkle tree
+  * update to latest ethyl
+  * cli command to get link to claim rewards
+  * remove coinbase rewards
+  * delay hardfork in devnet cause no longer getting rewards
+  * rpc request to get all of the bls pubkeys
+  * silence warnings
+  * Adds a new ethereum transaction to update nodes about eth address
+  * epee cstdint
+  * put query for nodes into its own function
+  * new transaction types for ethereum
+  * extract logs from block, get state changes as transactions in l2 tracker
+  * transactions added to block
+  * sends transaction to contract
+  * local devnet will spin up a node and submit a register transaction through ethereum
+  * flags for setting provider
+  * submit the transaction
+  * transaction gets included in a block
+  * node gets added to sn list from eth transaction
+  * Ethereum service node rewards recorded to an ethereum address
+  * Unlock Service Node - Ethereum Transaction
+  * Claim rewards functioning
+  * bls rpc calls for exiting and liquidation
+  * exiting adds to the batching database
+  * multiple contributors data, registration signature validation
+  * change zero length arrays to nullptr
+  * core tests passing
+  * unit tests passing
+  * bls and ethyl librarys to https instead off ssl
+  * update ethyl to latest
+  * update oxen encoding
+  * add logs to ethyl
+  * update oxen-mq
+
+  [ doylet ]
+  * Update static build ZLIB url to Github
+  * Add libgmp to requirements for ethyl dependency
+  * Remove oxen-encoding, use oxen-mq/external/oxen-encoding
+
+  [ Sean Darcy ]
+  * save bls key to file and load on startup
+  * start of following pool
+
+  [ doylet ]
+  * Undo unneeded churn on error strings to minimise PR changes
+  * Fix eth_mapping_table_count typo adding not operator on equality
+  * Avoid fmt::format when raw string literal suffices
+  * Calculate a return value for BlockchainSQLite::update_sn_rewards_address
+  * Fix converting of lvalue to 'const& string' from get_address_str
+  * Interim fix `initial_data_set` race by locking in BLS agg
+  * Remove unused BLSaggregator destructor
+  * Move BLS headers into impl file for BLSAggregator
+  * Move BLSAggregator::processNodes into impl file by removing templated callback
+  * Add addressing info to processNodes callback for diagnostics
+  * Use  to talk to nodes in BLSAggregator
+  * Avoid expensive lock/race when iterating the SNs for BLS aggregation
+  * Take in string_view's where possible in bls_signer
+  * Make strings inline, remove unneeded sv suffix
+  * Use UB safe impl of BLS primitive conversions, simplify header
+  * Reuse string helpers in string tools for BLS OMQ input
+  * Avoid multiple locks and spurious heap allocs in bls_public_key_lookup
+  * Make some targets public due to header usage
+  * Use the same techniques to load BLS keys as we do Ed25519
+  * Use correct sqlite target in core_tests to defer to static/sys deps accordingly
+
+  [ Sean Darcy ]
+  * oxen-mq to stable
+
+  [ doylet ]
+  * Bad assertion in json_archive, stack is +=1 for each scope not 2
+  * Create the .oxen folder before we try create keys
+  * Correctly de/serialise the BLS key as per API
+  * Fix unused else branch of immutable_height check
+
+  [ Sean Darcy ]
+  * block rewards pulled from rewards pool smart contract
+
+  [ doylet ]
+  * Allow specifying of binpath from CLI for local devnet sn script
+  * Update the smart contract hashes to match eth-sn-contracts @ 0a223380813
+  * Uncomment else if branch prevent service node leave requests from executing
+  * Switch oxen-mq to stable branch
+  * Fix block reward verify fmt log specifying incorrect number of args
+  * Pre-empt block reward to 0 in chaingen tests when ETH_BLS is enabled
+  * Add some basic guards around L2 tracker that is use concurrently
+  * Get ethyl  thread-safe fix & getLogs failing
+
+  [ Jason Rhinelander ]
+  * Unbreak oxen-encoding dependency when oxenmq is installed on the system
+  * C++20
+  * Reintroduce oxen-encoding into external, before oxen-mq
+  * More C++20
+  * Reformat with clang-format-16 and nested namespaces
+  * Reboot devnet
+  * Remove unfinished wallet3 from build
+  * C++20 fixes
+  * C++20 compilation fixes for gcc 10; fmt 10
+  * Bump ethyl for C++20
+  * Build bls256 manually
+  * Force >= C++20
+  * Disable -Wno-stringop-overflow under gcc 13+
+  * Remove explicit linking to fmt/spdlog
+  * Switch to forked `bls` repo
+  * actually switch to forked bls repo
+  * Update ethyl/oxenc
+  * Fix logging prefix paths
+
+  [ doylet ]
+  * Re-enable BLS_ETH on BLS after moving to forked submodule
+  * Allow ethereum providers via ethyl
+  * Configure the Ethereum provider connect timeout to 2s per client
+  * Update ethyl branch to be rebased onto new C++20 changes
+  * Update ethyl again to newly rebased branch on master
+
+  [ Jason Rhinelander ]
+  * Remove ringct/fmt.h
+  * Fix "balances" being null when there are no balances
+  * Reset devnet again with longer period before HF15
+  * Allow for different staking requirement at HF20
+  * Address C++20 deprecation warnings
+  * Fix broken read_varint/write_varint
+  * Fix ASSERT_MES_AND_THROW
+
+  [ Sean Darcy ]
+  * return non signers in rpc calls
+  * clear old TODOs
+  * rename address notification function
+  * restrict unstake and liquidate signatures
+  * switch to c++ non signers for exits and liquidations
+
+  [ Sean ]
+  * sepolia arbitrum contracts (#1664)
+
+  [ Jason Rhinelander ]
+  * cap devnet difficulty at 2k, reset devnet
+  * Don't request ancient hf status
+  * Fix broken RPC "get_fee_estimate" endpoint name
+
+  [ Sean Darcy ]
+  * fixed compilation errors after merge conflicts
+  * update sepolia contract addresses
+  * remove wallet3 CI
+  * debug utilities compiling
+
+  [ doylet ]
+  * Set ETH devnet parameters seperately
+  * Correctly parse out new Service Node BLOB from contract
+  * Update contract ABI on ethereum.py script
+  * Decrease sleep time before getting bls rewards from 155 to 10s
+  * Fix incorrect not on empty() check for RPC clients
+  * Simplify error check in rewards contract, move string helper to utils
+  * Parse out contributors in the SN contract blobs
+
+  [ Sean Darcy ]
+  * clang 13 updated to 14 (13 no longer available in sid)
+  * clear misc todos
+  * check l2 height doesnt go backwards
+
+  [ doylet ]
+  * Add USE_LOCAL_DEVNET_ETH_ADDRESSES option to opt into devnet config
+  * Simplify command line, N=1 is same as N=many, use C++20 requires to merge struct sfinae
+
+  [ Jason Rhinelander ]
+  * Make crypto::eth_address and ::bls_public_key hashable
+  * fix fmt path formatting
+  * Make initCurve thread-safe and idempotent
+
+  [ Sean Darcy ]
+  * initialize block weight database with provider
+  * check that eth heights only go forwards needed initializing
+
+  [ Jason Rhinelander ]
+  * Do BLS key initialization with other keys; allow hex encoding
+
+  [ Sean Darcy ]
+  * service node liquidatable or exitable from rpc
+  * initialize l2_height variable
+  * handle bad data for liquidatable and removable node query
+
+  [ doylet ]
+  * Update ethyl w/ hashPtr and hashBytes fix
+  * Add notes on running the local devnet
+  * Simplify block constructors by reusing operator= variants
+  * Secure the aggregateWithdrawRequest endpoint
+  * Switch to direct connection to SN via OMQ in bls_aggregator
+  * Verify the height in rewards aggregate, use consistent naming and decl order
+  * Add an exclude filter when aggregating to skip ourselves
+  * Update SN blob parsing from rewards contract w/ contributor array
+  * Skip blk reward if no provider is set, trust the quorum
+  * Update old un-namespaced ethyl code usage
+  * Address failing unit test where possible
+
+  [ Sean Darcy ]
+  * build delay option into batching database
+
+  [ doylet ]
+  * Polish pass over bls_rewards_request
+
+  [ Jason Rhinelander ]
+  * Make keccak hash interface nicer
+  * Ignore uninitialized warning in cryptonote_core ctor
+  * Utils enhancements
+
+  [ doylet ]
+  * Fix off-by-one in removable_nodes requesting non-existing block
+  * Make devnet only pulse parameters to speed up block creation
+  * Checkpoint debug work for debugging bls rewards request
+  * Correctly parse contributor address (a 32 byte padded value)
+  * Add more error checking
+  * Check for TX revert in the python script
+  * Add work-around to script for insufficient SENT balance on contract
+  * Remove oxen address workaround for addresses stored in DB
+  * Remove debug code from PR
+  * Revert "Remove oxen address workaround for addresses stored in DB"
+  * Handle staking requirement change >=HF20 in python script
+  * Handle unused-variable and unused vars warning in RPC server
+  * Remove extraneous return at end of void function
+  * Revert "Revert "Remove oxen address workaround for addresses stored in DB""
+  * Fix various bugs to get rewards claim working
+
+  [ Jason Rhinelander ]
+  * Move/replace type_to_hex and hex_to_type
+  * guts.h: split_guts_into and split_hex_into
+  * common/bigint.h: utilities for large encoded integers
+  * Various fixes and improvements towards HF21
+  * Fix rpc get_accrued_earnings always returning 0
+  * Tighten up random iterator requirements
+  * fix C++ keccak interface
+  * Remove ethereum_address_notification transaction type
+  * Remove old non-bt-encoded uptime proof code
+  * OMQ BLS reworking
+  * Fix missing omq port in proof; catch Proof constructor exception
+  * Shorten l2 tracker sleep time
+  * Require 0 storage server ports for DEVNET
+  * Uncatch exceptions in Proof constructor
+  * Fix backwards condition
+  * Downgrade log spam
+  * Allow last_decommission_reason_consensus_any to be omitted
+  * Unbreak syncing, difficulty, etc.
+  * Fix wrong height in log statement
+  * Remove unused function
+  * Fix eth_address being uninitialized causing junk in the batching db
+  * Fix corrupted output in `print_pool` output
+  * Fix get_transaction_pool endpoint
+  * Fix get_transactions rpc staked_amount value
+  * Fix broken oxend command-line commands
+  * Fix broken BLS fork check
+  * Bump ethyl for header mismatch avoidance
+  * Catch & log uptime proof errors
+  * Make periodic_task exception safe with error logging
+  * epee: fix broken exception handling
+  * Fix compress/uncompressed mismatch
+  * Fix BLS pubkey & PoP parsing
+  * Remove hash rate periodic check
+  * Fix failing crypto formatting tests
+  * Fix BLS signature loading, and add BLS unit tests
+  * Remove debugging
+
+  [ Doyle ]
+  * Reuse operator=(block&&) for move constructor
+
+  [ Thomas Winget ]
+  * "fixed" scoped_message_writer double-print
+  * const-ify BLSSigner methods
+  * bls signer instance shared_ptr -> optional
+  * Add eth stake registration cli helper
+
+  [ Jason Rhinelander ]
+  * Namespace L2Tracker inside `eth::`
+  * Make `sqlite_db()` return a reference
+  * Don't expose m_l2_tracker
+  * L2 visitor: deduce T; check for unhandled types
+  * Make make_from_hex_guts (and similar) handle a 0x prefix
+  * Update ethyl for async; cpr via ethyl; updates for newer cpr
+  * Allow log categories to be passed to --log-level
+  * Clean up blockchain init and raw pointer usage
+  * Various small warning fixes and cleanups
+  * Optimization + avoid deprecation warnings
+  * Added shared lockable support to common/lock.h
+  * Add keccak N-prefix hash
+  * Rewrite L2 tracker to be asynchronous
+  * Flag duplicate-non-standard tx failures
+  * Suppress pulse info logs at default `info` log level
+  * Split network config out of cryptonote_config.h
+
+  [ doylet ]
+  * Rename binpath to oxen-bin-dir to be more accurate'
+  * Add support for running python-script without manual setup of blockchain
+  * Expose BLS key in 'get_service_keys' for python script to enumerate
+  * Add more comments and diagnostics to python script
+  * Add cpptrace for stack trace on exception
+  * Introduce oxen exceptions that dump stacktrace w/ code snippets
+  * Update storage-server-ping output for local-devnet
+  * Make BLSSigner interface const, pass in signer from core not keys
+  * Quit anvil on exit in local-devnet
+  * Do not skip 1st stack frame (the callsite) when dumping trace
+  * Set the devnet HF21 to 1hr after the transition HF
+  * Ensure anvil is terminated on program exit
+  * Improve error checking in python script, guard against ABI changing
+  * Fix parsing of contributors using wrong offset in NewServiceNodeTx
+  * Fix incorrectly printing ETH address as BLS key
+  * Log the registration details in debug, switch to vector contributors to minimise changes
+  * Fix missing val assignmnet when converting message[0] to hex
+  * Fix serviceNodes incorrectly advancing stream by bytes not hex charactes
+  * Update BLS signing to match contract specific signing scheme
+  * Fix parsing code for contributors incorrectly reading address as amount
+  * Non signers field got renamed to non_signer_indices
+  * Store proof BLS key into state and use it, ensuring BLS works post-Eth-transition
+  * Copy BLS key from proof before it is std::moved
+  * Handle L2 tracker returning nothing when querying service node gracefully
+  * Improve diagnostics when parsing a BLS response
+  * Improve guts diagnostic logs
+  * Tweak the script and try to emit proofs w/ BLS keys at HF20
+  * Update map_to_g2 to extract boolean flag 'b' for square root
+  * Add work-around for local devnet to propagate proof w/ BLS key
+  * Fix whitespace changes or incorrect typos introduced
+  * Fix BLS sig verification by using our new method from eth-sn-contracts
+  * Remove unused bls to hex functions, use consistent naming scheme
+  * Fwd declare oxenmq in BLS, sort headers by local/project/third party
+  * Log out contract SNs for debugging
+  * Fix exit request failing due to lack of contributors in seed SNs
+  * Use traced<...> for exceptions to avoid boilerplate in overriding exceptions
+  * Fix build after rebase
+  * Fix incorrectly using the non-hex-spanned span in load_from_hex_guts
+  * Handle '0x' payload in reward rate hex string
+
+  [ Jason Rhinelander ]
+  * Remove (some) toxicity from arg_descriptor
+  * Allow l2-provider to be given multiple times
+  * Drop unused ZMQ_RPC port from network config
+  * Add --stagenet and --localdev networks
+
+  [ doylet ]
+  * Fix missing 'z-TWO_MANT_DIG' from oxen::round
+  * Fix l2_height wrapping negatively when SAFE_BLOCKS >= height
+  * Handle bad SN query during serviceNodes
+  * Add target IP logs when sending json_rpc request
+  * Make proofs allowed if qnet is 0 in local devnet
+
+  [ Jason Rhinelander ]
+  * Disable (by default) building rarely used utilities
+  * Force mcl to build statically
+
+  [ doylet ]
+  * Fix missing 'z-TWO_MANT_DIG' from oxen::round
+  * Re-add the old seeding code whilst contract seeding PR is not merged
+  * Checkpoint debugging code for tracing the shared lock deadlock
+  * Prevent shared-lock in parent call-stack causing upgrade to exclusive to fail
+
+  [ Jason Rhinelander ]
+  * Merge fix: BLSSigner
+  * Make exception tracing code work in release builds
+  * avoid unused variable warning in release builds
+  * fix test suite compilation warning
+  * Redeploy sepolia stagenet contract
+  * TODO FIXME: comment out failing eth_call
+
+  [ doylet ]
+  * Add L2 height to 'get_info' response
+
+  [ Jason Rhinelander ]
+  * Fix syncing with pruned reward rate data
+  * Address various logging issues
+  * Fix compilation warning from obnoxiously obtuse code
+  * Add BLS pubkey to `status` command output
+  * More logging cat/colour fixes
+  * Fix uptime proofs on stagenet
+
+  [ doylet ]
+  * Add a type to extracted tx_extra to diambiguate fields
+
+  [ Jason Rhinelander ]
+  * Fixes for unexpected data in print_pool
+  * Fix LOCALDEV merge leakage
+  * ETH transition: use full message in uptime proof POP
+  * Fix ETH reward calculation
+  * Fix prepare_eth_registration for solo mode
+  * Improve x25519 lookup at eth HF
+  * set_log command and RPC fixes
+  * Another SN state change log -> global cat
+  * Disable OXEN stake/unlocks at HF20/21
+  * Make ETH transaction types consistent with smart contract
+  * Fix high_resolution_clock portability problem in removal signing
+  * Add FIXME for eth removal tx processing
+  * Remove dead liquidated tx code
+  * break circular library deps
+  * Fix broken code
+  * oxen-core packaging updates for stagenet
+  * compilation fixes for newer nlohmann::json
+  * Shared lib fixes for external deps
+  * Add mixing oxen_add_library calls
+  * fix missing header
+  * Add deb snapshot builds
+  * Workaround gcc 11 ambiguous argument error
+  * Replace boost::format with fmt to fix focal build
+  * drone ci cleanups
+  * Unset info level for logging category
+  * Don't show Lokinet/SS status if the network doesn't have Lokinet/SS
+  * Fix path formatting problem with fmt 9
+  * Don't print stake data by default; update URLs
+  * Fix install error if /etc/oxen doesn't exist
+  * Bump version & fix timestamp in snapshot debs
+  * Don't try linking to system ethyl
+  * common publicly depends on boost::po
+  * oxen-sn-keys: add BLS key support
+
+  [ doylet ]
+  * Support querying rewards by ETH address
+  * Warn against out-of-date node in prepare_eth_registration
+
+  [ Jason Rhinelander ]
+  * fix warning log typo
+  * Fix uninitialized top block hash in rpc get_info
+
+  [ doylet ]
+  * Remove left-over USE_LOCAL_DEVNET_PARAMS and use network_config LOCALDEV instead
+  * Fix localdev using wrong parameters for BLS
+  * Use the correct nettype L2 values to make local-devnet work
+  * Use SAFE_BLOCKS from network config
+  * Use designated initializers to setup network_config
+  * Update the unit-tests to use the new BLS cryptography
+  * Remove debug code msg log code in BLSSigner
+  * Update localdevnet to handle oxen registrations being rejected in ETH_TRANSITION
+  * Tweak localdev settings for more reliability
+  * Build CURL w/ SSL and w/o ZSTD statically
+  * Disable broken code to leave branch in working state
+  * Fix incorrect usage of 'height' on block for get_info'
+  * Use new seeded contributors API
+  * Fix XPK map failing to initialise in HF21
+  * Tweak localdev settings more for succesful testing
+  * Fix rewards claim call missing 32 0's and handle new timestamp field
+  * Decrease localdev sleep time to reduce test runtime
+  * Use new allServiceNodeIDs to enumerate non signers
+  * Update static build deps and add OpenSSL from storage-server for CURL
+  * Prepare stagenet HF rev.1 for rewards claim
+  * Update stagenet HF21 rev1 to 1.5 days from this commit
+  * Fix crash at Arbitrum HF when executing BLS requests using the proofs x25519 key
+  * Add deadlock fix for L2 tracker taking tx pool lock non-atomically
+  * Add a cache for querying the rewards request to bls aggregator
+  * Update HF21 rev.1 to 2024-08-05 9:30am GMT+1000 (AEST)
+  * Fix incorrect timestamp set for HF21 in stagenet
+  * Fix crash when quorumnet_port is not received via uptime proofs yet in print_sn
+  * Expose allServiceNodeIDs into L2 tracker and use snake_casing
+  * Add code for re-tracing BLS aggregation steps in debug only
+  * Simplify test code w/ less headers and lib linkage
+  * Remove unused headers in service_node_list
+  * Reduce the time required to complete localdev tests by tweaking timings
+  * Setup threadpool to create wallets in parallel
+  * Rename some functions to snake_case to match codebase conventions
+  * Convert more code to in l2_tracker to snake_case
+  * More snake_case in BLS code
+  * Improve consistency of BLS API naming
+  * Align bls_aggregator to snake_case convention of the code base
+  * Improve reliability of tests by repeatedly sleeping until target height is met
+  * Merge removal and liquidation request in the RPC layer
+  * Downgrade severity of logs in bls rewards request
+  * Revise stagenet HF21 rev.1 to Aug 13th 9:30AM AEST
+
+  [ Sean Darcy ]
+  * logging needs format string
+  * reorder epee to avoid reorder-ctor warning
+  * definitions for block_queue
+
+  [ Jason Rhinelander ]
+  * SENT L2 tx confirmation overview doc & examples
+  * Remove non-operator contributor minimum staking requirements for ETH regs
+  * Restore pre-ETH_BLS registration signatures
+  * Add map serialization support
+  * Remove devnet hardfork
+  * remove OXEN_LOG_ENABLED macro
+  * Compat hack for current devnet
+  * Print Synced messages in globallogcat
+  * De-inline globallogcat
+  * Properly apply --l2-provider-check intervals
+  * Move process_ethereum_* definitions together
+  * Simplify
+  * Fix wrong output iterator on write_varint concept
+  * rpc: only put block_header or block_headers in output if requested
+  * Remove miner_tx from HF21+ blocks
+  * De-clutter `core`
+  * Avoid double compilation of t_cryptonote_protocol_handler
+  * fix compat with fmt 9
+  * Drop blockchain_blackball
+  * Promote registration rejection logs to warnings
+  * ETH HF registrations: enforce full stake
+  * Log reasons in decomm/dereg log messages
+  * Remove 9 year old comments about 10 year old code
+  * Methodize block_has_pulse_components
+  * Fix block add error message
+  * friendly_duration: Don't print fractions for whole seconds
+  * Add design docs about block reward determination
+  * formatting
+  * Confirmations, part 1: reward consensus & structure changes
+  * Serialization map fixes; vector<bool> support; drop pair
+  * Pulse quorum L2 event confirmations
+  * Fix l2_votes comment about sort order
+  * Fix wrong pulse quorum calculations
+  * Add l2_height to L2 events
+  * Fix: always serialize reward in HF19
+  * Fix debug build
+  * No swarm update needed for removal reqs
+  * Block syncing optimizations
+  * Revert vector -> set misoptimization
+  * Add block sync speed to Synced messages
+  * Allow shutting down during subsystem rescan
+  * Optimization: skip verification during SN state rescan
+  * Add chainId to events; check chainId on startup
+  * Un-split base field serialization
+  * Fix height calculation in block template creation
+  * Reject identical L2 events in the mempool
+  * Move network default subdir into network_config
+  * Version bump; reboot/redir devnet & stagenet
+  * fix broken start_mining help output
+  * bump ethyl to latest
+  * Fix mempool selection/drop penalty zone under SENT
+  * Fix Sepolia errors fetching recent reward heights
+  * Fix tx tree hash when a block has no txes
+  * Various fixes for creating a BLS_ETH block
+  * Fix pool duplicate L2 event check
+  * Allow "none" as mining address
+  * Don't log errors for duplicate L2 event txes
+  * Replace toxic monstrosity data structure
+  * Add backward compat support for `get_accrued_batched_earnings` endpoint
+  * Expose actual block_size in RPC endpoints
+  * formatting
+  * Fix l2_reward inclusion and validation
+  * Fix l2_votes json serialization
+  * Prevent already-mined L2 events from entering mempool
+  * Fix popped txes in mempool not having l2_height set
+
+  [ doylet ]
+  * Update the unit test interfaces to accept block size ptr
+  * Update contract addresses for relaunch
+
+  [ Jason Rhinelander ]
+  * Move dereg & unlock durations into net config; reduce stagenet durations
+  * Add miner to default log output
+  * Update stagenet seed node port
+  * Add a hack to wipe the database files if the old stagenet db is found
+  * Add hack to switch p2pstate.bin for stagenet reboot
+  * Fix provider description when using --l2-provider multiple times
+  * Fix mempool selector
+  * Fix wrong log messages
+  * Add new `get_pending_events` RPC endpoint
+
+  [ doylet ]
+  * Fix bans RPC cmd failing due to improper JSON access
+
+  [ Jason Rhinelander ]
+  * Fix most command line commands
+  * p2p: replace stupid "parabola \/" selection with truncated exponential
+  * Replace more stupidity in p2p selection
+  * Fix off-by-1 in truncation point
+  * Fix decommission credit not applying
+  * Fix assertion failure on mainnet debug build syncing
+  * Drop unused table; abstract table existance query
+  * Track recent blocks' accrued rewards
+  * Add height to RPC and OMQ reward request endpoints
+  * Fix reward return values of >= current height
+
+  [ doylet ]
+  * Reject malformed blocks in the parse and validate stage
+
+  [ andyo ]
+  * Add a requirements.txt to define web3/python versions. Update deprecated rawTransaction calls to raw_transaction
+
+  [ doylet ]
+  * Truncate the L2 provider URLs that are logged
+  * Update mask URL to be protocol aware and preserve more information
+
+  [ Jason Rhinelander ]
+  * Optimization: coalesce payments before inserting
+
+  [ doylet ]
+  * Add the timestamp into the BLS remove/exit response
+  * Enable exit/remove in the local devnet and correctly query the contract
+  * Merge removal and liquidation OMQ response handler
+  * Pull BLS OMQ endpoints and categories to common variables
+  * Remove different dict key for exit/removal pubkeys, we use tag to differentiate request
+  * Validate arguments for BLS exit, add detailed logging
+  * Use snake_case block_number in get_all_bls_pubkeys
+  * Remove unused 'hf_version' in process_ethereum_removal* funcs
+  * Simplify state_change_name by storing name as static member variable
+  * Clean up l2_tracker headers
+  * Remove old state_serialized::version_0 code, no longer generated
+  * Fix double-encoding of msg_to_sign from b8 -> hex -> hex to b8 -> hex
+  * BLS timestamp in exit must be encoded as 32 big-endian value
+  * Remove crypto.h include in daemon/main.cpp from debugging session
+  * Update localdev scripts to test exit, remove and liquidation
+  * Move liquidatable/expiry check to blockchain, add expired state to node
+  * Sleep the devnet script until the node is payable
+  * Expose the payable field of SNs to the sn response entry
+  * Inilne check block size, it's only used once
+  * Remove unused probability functions in core
+  * Fix tests to get liquidations working
+  * Return to the recently_removed_nodes approach as we need to persist dereg node data
+  * DO NOT MERGE: Checkpoint the some work
+  * Fix formatting of balance check in python devnet script
+  * Add a wait for one block after SN is payable to receive rewards
+  * Make liquidation RPC take a ed25519 key for consistency
+  * Inline increment/decrement height in db_sqlite
+  * Update include headers for db_sqlite
+  * Update the comments regarding removable nodes for BLS
+  * Remove outdated comment re: rederiving SNL history
+  * Serialise the recently removed node list to the BD
+  * Default initialised JSON archiver doesn't serialize
+  * Add an endpoint for querying all the liquidatable and removable nodes
+  * Rename BLS removal to exit
+  * Add liquidation height to the recently removed endpoint
+  * Force a rescan on startup for stagenet node to populate B:S recently_removed_nodes
+  * Add a cache for exits and liquidation responses
+  * Revise some comments, remove unused vars, pull BLS var locally
+  * Set the exit type when constructing a recently removed node
+  * Use the liquidation height stored in the recently removed node
+  * A voluntary exit can be liquidated if the liquidation height is met
+  * Revise comments, remove unused height vars, support fakechain on SN erase
+  * Ensure that std::array is available in string_util.cpp
+
+  [ Doyle ]
+  * Update BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST comment
+  * Use curve protocol to auth to SN for non-active SN BLS aggregation
+  * Don't initially define removable to get unused var warnings
+  * Leave `removable` uninitialised to capture missing switch case in BLS exit
+  * Remove unuse dTX extra SN deregister
+  * Handle unknown L2 event at compile time when getting removable nodes
+  * Simplify the bls_non_signer_threshold calc
+  * rvalue BLS pubkeys vector can be assigned directly for brevity
+
+  [ doylet ]
+  * Fix double 'to' in BlockchainSQLite::update_height log statement
+  * Rename BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST to BLS_MAX_TIME_ALLOWED_FOR_EXIT_REQUEST
+  * Use formattable::via_to_string to allow native fmt of bls_exit_type
+  * Use angle #include for non-local files in bls_aggregator.h
+  * Use to_string to fmt bls_rewards/exit reponses
+  * Use more idiomatic end iterator for inserting of BE unix ts for exits
+  * Prune the BLS response caches every 5 mins
+  * Incorporate fixes for disconnect nodes from the unauth SN BLS aggregation step
+  * Simplify the BLS exit response cache and rename the signature expiry to ref. exits
+  * Fix typo introducing extra brace in removable nodes comptime branch
+  * Rename 'it' to 'elem' which is more accurate for BLS_EXIT_LIQUDATION_LIST RPC call
+  * Abort querying of BLS removable nodes when parsing errors occur
+
+  [ Jason Rhinelander ]
+  * Fix rpc wrong staking requirement
+  * Sync staking requirement from SN rewards contract (#1714)
+
+  [ doylet ]
+  * Ensure staking requirement update TXs are processed in the SNL
+  * Initialize the staking requirement variable to 0
+
+  [ Jason Rhinelander ]
+  * Fix stake change event processing
+
+  [ doylet ]
+  * Initialize the staking requirement variable to 0
+
+  [ Jason Rhinelander ]
+  * Fix sqlite unit test compilation
+  * fix compat with older nlohmann::json
+  * Revert "Default initialised JSON archiver doesn't serialize"
+  * Add and use `serialize_object` for objects
+  * Purge remaining BEGIN_SERIALIZE/FIELD/etc. macros
+
+  [ andyo ]
+  * Fix clang parameters
+
+  [ doylet ]
+  * Correctly enumerate the total BLS requests sent out, only query active for backwards compat
+
+  [ Jason Rhinelander ]
+  * RPC: Fix/improve required arguments handling
+  * Remove dead `from_block` code from block creation
+  * Add checks for running with an L2 provider
+  * RPC bls sig functions improvements
+  * Fix uninitialized value warnings
+  * 10.0.4 stagenet version bump
+
+  [ doylet ]
+  * Version clear out to 0 meant serialized version is always reset after it is updated
+  * Lookup recently removed list for SN pubkey, add ETH confirm log
+  * Downgrade non-user specific event logs to debug
+  * Log the TX hash to make log tracing more usabel
+  * Use strong-typing to manipulate money amounts that interface with the SQL DB
+  * Pack the SN info w/ recently removed nodes and regen the SNL+SQL DB
+  * Fix ETH exit log statement print order of variables
+  * Fix SQL reset_database, fix delayed payments conflict
+  * Update bls_exit_liquidation_list RPC call w/ new info
+
+  [ Jason Rhinelander ]
+  * Fix miner block amount validation
+
+  [ doylet ]
+  * Use spaceship operator for sql_db_money
+  * Remove unused return_first_address function
+  * Rename sql_db_money to reward_money
+  * Add helper batch_sn_payments::coin_amount() to reduce boilerplate
+  * DRY the renaming of keys in the bls_exit_liquidation_list RPC endpoint
+  * Revert "Downgrade non-user specific event logs to debug"
+  * 11.0.5 stagenet version bump
+  * Add staking information to get_info RPC for other clients to use
+
+  [ Jason Rhinelander ]
+  * Propagate LTO config to ethyl
+  * Fix function pointer arg type mismatch
+  * Fix clang LTO by making sure `llvm` is installed
+  * Update static dep versions
+  * fix mislabeled bullseye build
+  * Fix cn_deserialize compilation:
+  * tools::span_guts: return fixed size spans
+  * Fix BLS unit_test signatures
+  * Replace herumi with AntelopeIO/bn256
+  * Fix 32-bit compilation
+  * Fix reward_money compilation errors in test suite
+  * Bump gtest to latest stable to address -Werror failures
+  * full static build fixes
+  * Drop boost::uuids::uuid because boost 1.85+ broke it
+  * Fix broken upstream code
+  * Address compiler warnings
+  * Warning reductions
+  * Hack around secp256k1's broken compiler flag detection
+  * Don't require rebuilding everything from turning unit tests on/off
+  * unit_tests fixes
+  * Silence some uninitialized variable warnings in simplewallet
+  * Fix off-by-one in debug log
+  * core_tests: make success/failure status bold green/red
+  * Many core_tests fixes
+  * add missing <optional> header
+  * Update ethyl and remove secp256k1 hacks
+  * Add apple arm64 builds
+  * Fix std::variant serialization with boost 1.84+
+  * Fix block_weight test
+  * Remove dead code
+  * fix displayed gmp version
+  * macos build fixes
+  * Update randomXL to latest
+  * Add both intel/arm64 static builds for macos
+  * Don't build openssl on mac/windows
+  * Don't try -maes/-msse2 on non-x86-64
+  * Add oxend run test to macos builds
+  * Let uWebSockets use zlib
+  * Disable broken crypto extension version of turtle hash
+  * Android build fixes
+  * cpr build hacks
+  * static build --host fixes
+  * iOS build fixes
+  * build ios build on m2
+  * Disable android/ios builds
+  * remove upstream-applied zmq patch
+  * libtasn1: silence more overly verbose warnings
+  * win32 toolchain files: set CMAKE_SYSTEM_PROCESSOR
+  * windows compilation fixes
+  * Formatting
+
+  [ doylet ]
+  * Remove unused HF variable in wait_for_next_block
+  * Use top-block when initially evaluating Pulse round
+  * In Pulse use top_hash to determine if the chain has changed
+  * Remove unused variable warnings in Pulse
+  * Downgrade signature accepted spam to trace logs
+  * Remove DB TXN logs, make func trace logs useful w/ args
+
+  [ Jason Rhinelander ]
+  * formatting
+  * formatting
+  * Unit test occassional failure fix
+  * Fix GET_BLOCKS_BIN handling of no-miner-tx transactions
+  * Improve handling of skipped hard forks
+
+  [ Thomas Winget ]
+  * Remove pending registrations at hf20
+
+  [ javabudd ]
+  * [oxen-1483] Periodically check connection to self on public IP (#1721)
+
+  [ Jason Rhinelander ]
+  * Allow 0x prefix for binary value rpc inputs
+  * get_service_nodes: use direct ed/x keys for HF21+
+  * Use checksum formatting for eth addresses
+
+  [ Sean Darcy ]
+  * Disables loadExtension function which is unavailable to macOS
+
+  [ Jason Rhinelander ]
+  * promote partial removal log to global log category
+  * prepare_eth_registration: remove multi-contributor address
+  * Use null contract address in HF20 uptime proof BLS sigs
+
+  [ Doyle ]
+  * WIP: Prep for stagenet reboot (#1746)
+
+  [ Jason Rhinelander ]
+  * Reset stagenet p2p database for network reboot
+  * HF20 for testnet
+  * Make prepare_registration fail in HF20+
+  * Add stagenet v2 db reset code
+  * Use new stagenet seed node address
+  * Avoid L2 provider requests for SN exit signing
+  * minor fixes
+  * Add BLS signature debug tool
+
+  [ doylet ]
+  * Ensure that SNL rescan failure also resets the SQL DB
+  * Appease the linter on the long SNL version check line
+
+  [ saravanan ]
+  * Correct cache behavior for multiple ONS name lookups. (#1655)
+
+  [ Doyle ]
+  * Fix formatting for wallet LOC (#1758)
+
+  [ Jason Rhinelander ]
+  * Fix oxen-sn-keys restoring bls keys as an empty file (#1755)
+
+  [ doylet ]
+  * Remove useless init hook for quorum_cop
+
+  [ Jason Rhinelander ]
+  * Fix invalid mempool selection with conflicting ONS buys
+  * Asychronous RPC requests
+  * Make debug_redo_bls_aggregation_steps_locally asynchronous
+  * Fix nodes_request callback exception handling
+  * Fix missing fields on signing request endpoints
+  * optimize signature copy
+  * RPC: expand get_pending_events capabilities (#1757)
+  * Optimize signature aggregation
+  * Fix caching/async interaction bug
+  * Add configurable staking URL to `register` command
+  * Per-network reg URLs; rpc cleanup; output modes
+  * Add spacing between registration pubkey outputs
+
+  [ Sean Darcy ]
+  * filtered list index needs to be incremented every loop
+
+  [ doylet ]
+  * Fix pulse_sorter.last_height_validating_in_quorum off-by-1
+  * Only reset SQL DB in SNL when delete is requested
+  * Expose the pulse-sorting metrics to the get_sn endpoint
+  * Increment version to recalc the pulse sort keys on stagenet
+  * Break up load blocks into subsystem into sections
+  * Fix SN sort_and_filter being able to sort by shared_ptr contents
+  * Move repeated parameters in process_confirmed_event into struct
+  * Store {block,tx,contrib} index in delayed_payments
+  * Correctly share STORE_LONG_TERM_STATE_INTERVAL in SNL and SQL
+  * Rename STORE_LONG_TERM_STATE_INTERVAL/STORE_RECENT_REWARDS -> HISTORY_ARCHIVE_INTERVAL/HISTORY_KEEP_RECENT_WINDOW
+  * Use HISTORY_KEEP_RECENT_WINDOW in SNL&SQL to unify stored backups
+  * Rewrite state serialization to execute linearly
+  * Add throughput stats to subsystem rescan
+  * Initiate one SQL transaction at start of upgrade_schema
+  * Setup SQL and SNL to store the same amount of archive backups
+  * Ensure SNL and SQL cull/keep the same heights
+  * Serialize SNL state before block is processed
+  * Add wrapper around blockchain detach to detect errors
+  * Remove pop_blocks API from SQLite and correctyl restore from archive/recent tableL
+  * Make SNL detach call directly into SQL detach to lockstep the detach step
+  * Allow detach of SNL and SQL to lower height than requested
+  * Format non-complying code
+  * Cleanup pass over PR, fix comments/grammar, remove fakechain SQL check
+  * Serialize SNL state before updating
+  * Detach ONS in the detach hook after all blocks popped
+  * Ensure that SQL block is added instead of early exiting in SNL block add
+  * Remove outdated comment about SQL DB not being present in FAKECHAIN
+  * ONS check for nullptr, unit tests invokes w/o initialising DB
+  * Handle unit-tests asserting due to missing txin_gen in miner_tx w/ FAKECHAIN on startup
+  * Check if the SQL DB is present for unit tests
+  * Add integration test for delayed_paments rollback
+  * Verify batch db info height was undone as well in integration tests
+  * Use special local-devnet deploy script to avoid exit-too-early by 2hrs problem
+  * Remove subtract_sn_rewards from db_sqlite
+  * Fix bool return in add_sn_rewards being unused in db_sqlite
+  * Have transition path for syncing from oxen-stable DB
+  * Fix broken 'make_archive'
+  * Ensure we have 2 triggers for block add and detach for delayed payments
+  * Fix outdated assertion comment, form->from typo
+  * Fix linting error in SNL w/ data_for_serialization version
+  * Avoid naked throw in TX lookup after confirmation
+  * Fix broken claimRewards in test and add more syncing diagnostics
+  * Store delayed payment history, fix delayed payments being applied too early
+  * Fix localdev test detection of delayed payments
+  * Merge the delete trigger on detach into the re-org trigger
+  * Fix incorrect stake check and bad estimation of stake return
+  * Adhere to linter in SNL.cpp
+  * Remove row restored assert, there's a brief period in <=HF19 where this is not the case
+  * Fir linting error in db_sqlite.cpp, extraneous newline
+  * Fix repeated insertion of delayed payments
+  * Fix clear_recent_and_archive trigger not being reset every run
+  * Simplify long/short term SNL data serialisation
+  * Persiste long/short term data w/ pimpl instead to be more robust
+  * Fix lint error on long version check
+
+  [ Jason Rhinelander ]
+  * Increase max file descriptor limit during daemon init
+  * BLS: check funded SNs instead of active SNs
+  * BLS: blast all requests at once
+
+  [ Sean Darcy ]
+  * more detailed tracking of peers in p2p
+  * new functions for calculating peer score
+  * select best peer using rating system
+  * remove pruning and splitting from peer selection
+  * select best peer to return filtered index
+  * avoid unnecessary looping
+  * remove unused variables
+  * set highest score to -max
+  * move peer stats functions to static
+  * record failed ones
+  * linter
+
+  [ Jason Rhinelander ]
+  * Increase max file descriptor limit during daemon init
+
+  [ doylet ]
+  * Fix incorrect archive window calculations
+  * Fix SQL DB not resetting SNL correctly after deletion
+
+  [ Sean Darcy ]
+  * updated testnet contracts
+
+  [ doylet ]
+  * Stagenet network reboot v4
+  * Fix linting errors for stagenet v4 reboot
+
+  [ Jason Rhinelander ]
+  * Fix ARM64 compilation for a modified arch
+  * Add some arm64 snapshot deb builds
+
+  [ Sean ]
+  * Git hash to uptime proof (#1772)
+
+  [ Jason Rhinelander ]
+  * Update time/byte formatting to use fmt
+  * Subsystem rescan statistics and logging fixes
+  * add ubuntu 24.10 snapshot build
+  * Add a persistent Ed->X conversion cache
+
+  [ doylet ]
+  * Install static boost to consistent 'system' layout
+  * Ensure static Boost build on Windows uses win32 threadapi
+  * Add Windows host workaround to configuring static zlib
+  * Handle MSYS MinGW compiler which does not have a posix suffixed executable
+  * Fix HIDAPI static build failing w/ relative toolchain path
+  * Force windows build w/ STATIC_DEPS
+  * Update windows instructions, remove 32 bit instructions
+  * Set ARCH triplet before using it in MinGW cmake toolchain file
+  * Fix MacOS CI failing w/ emplace back in agg_log
+  * MacOS target fails to capture structured unbinding into lambda
+  * Fix another MacOS emplace back complaint
+  * More MacOS fix for structured bindings capture into lambda
+  * Fix log_detailed_peer_stats declared static in header
+
+  [ Jason Rhinelander ]
+  * Fix pre-HF19 subsystem rescan resetting to 0
+  * Fix resyncing without an ONS DB
+  * Bi-thread subsystem loader
+
+  [ doylet ]
+  * Fix linting errors
+  * Only allow threaded-load on startup due to DB batch committing
+  * Merge separate SQL DB <feature::ETH_BLS branches into one
+  * Handle 0 oxen address payout modulus gracefully
+  * Remove batched_payments_accrued raw and paid
+  * Ensure delayed payments archive/recent tables are dropped on reset
+  * Ensure deprecated SQL tables are removed
+  * Defer updating of height until HF19
+  * Log LMDB size in friendly byte sizes
+  * Remove unused eth address in batch sn payment
+  * Fix unit tests, batched accrued raw has been removed
+  * Feed blocks into ONS DB even before HF15
+
+  [ Sean Darcy ]
+  * local devnet tweaks
+
+  [ doylet ]
+  * Assign the TX/block hash on load
+  * DRAFT: Stage SQL changes in runtime structs and defer commit to DB
+  * DRAFT: Tracy integration
+  * On rescan, load TXs using a threadpool
+  * Track the time spent loading blocks
+  * Remove unused headers and extraneous pulse:: namespacing
+
+  [ Jason Rhinelander ]
+  * Remove superfluous time unit
+
+  [ doylet ]
+  * Store the SNL blobs on rescan every 60s
+  * Remove SNL wasteful intermediate serialisation structs
+  * Commit the SQL DB to restore old behaviour temporarily whilst ensuring syncing works
+
+  [ Jason Rhinelander ]
+  * oxen-wallet-rpc: log to stdout by default and fix early printing
+
+  [ doylet ]
+  * Store SQL data in runtime memory before committing to disk
+  * Occassionally commit the ONS db even if there are no ONS txs
+  * Pre-walk the SNL and precompute data to avoid extra SNL list walks
+  * Pre-calculated the expired nodes to avoid another SNL walk
+  * Cache the pulse block entropy over time to minimise DB reads
+  * Revert "Store SQL data in runtime memory before committing to disk"
+  * Revert SQL DB to old implementation, to derisk changes
+  * Commit SQL height at the end of rescan, speed up list gen
+  * Try load as a new blob first before old
+  * Add instructions for Tracy profiler and a cmake command to enable it
+  * Fix off-by-one in startup detach check, fix sql_db_has not using correct table
+  * Simplify the blob list, re-add if it shows up in profiler
+  * Format the code
+  * Formatting
+
+  [ Jason Rhinelander ]
+  * Tweak and fix dereg/unlock issues
+
+  [ doylet ]
+  * Add tracy_shim.h to avoid compiling Tracy at all
+  * Reduce RECENT_KEEP_WINDOW to the abs min required, 65 blocks
+  * Adhere to formatting linter
+  * Tweak test to handle new 65 SNL history window
+
+  [ Thomas Winget ]
+  * sqlite db transaction during large rescans
+
+  [ Jason Rhinelander ]
+  * Update dependencies to latest versions
+  * bump version
+  * Bump required storage server & lokinet versions
+  * Don't require L2 tracker if HF20 not scheduled on current chain
+  * Bump required storage server & lokinet versions
+  * Don't require L2 tracker if HF20 not scheduled on current chain
+  * Update dependencies to latest versions
+  * Rename debian -> debian-stagenet
+  * Rediff patches
+  * Fix broken hashing signatures
+  * don't build source package
+  * fix .so versioning
+  * build optional stuff
+  * add missing spdlog dep
+  * add sqlitecpp so
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Sun, 23 Feb 2025 16:07:02 -0400
+
 oxen (10.6.2-1~ubuntu2404) noble; urgency=medium
 
   * add another missing oxenc dep
