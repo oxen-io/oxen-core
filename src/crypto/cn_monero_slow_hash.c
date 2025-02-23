@@ -1082,7 +1082,7 @@ void cn_monero_hash(
     size_t i, j;
     uint64_t* p = NULL;
 
-    static void (*const extra_hashes[4])(const void*, size_t, char*) = {
+    static void (*const extra_hashes[4])(const void*, size_t, unsigned char*) = {
             hash_extra_blake, hash_extra_groestl, hash_extra_jh, hash_extra_skein};
 
     /* CryptoNight Step 1:  Use Keccak1600 to initialize the 'state' (and 'text') buffers from the
@@ -1288,7 +1288,7 @@ void cn_monero_hash(
 
     size_t i, j;
     uint8_t* p = NULL;
-    static void (*const extra_hashes[4])(const void*, size_t, char*) = {
+    static void (*const extra_hashes[4])(const void*, size_t, unsigned char*) = {
             hash_extra_blake, hash_extra_groestl, hash_extra_jh, hash_extra_skein};
 
 #ifndef FORCE_USE_HEAP
@@ -1388,7 +1388,7 @@ void monero_hash_free_state(void) {
     return;
 }
 
-static void (*const extra_hashes[4])(const void*, size_t, char*) = {
+static void (*const extra_hashes[4])(const void*, size_t, unsigned char*) = {
         hash_extra_blake, hash_extra_groestl, hash_extra_jh, hash_extra_skein};
 
 static size_t e2i(const uint8_t* a, size_t count) {
