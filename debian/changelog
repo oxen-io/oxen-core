@@ -1,3 +1,11 @@
+oxen (11.1.0-2~ubuntu2404) noble; urgency=medium
+
+  * arm64: build jit
+  * add missing openssl dependency
+  * bump lokinet/ss versions
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 24 Feb 2025 18:32:35 -0400
+
 oxen (11.1.0-1~ubuntu2404) noble; urgency=medium
 
   [ Jason Rhinelander ]
