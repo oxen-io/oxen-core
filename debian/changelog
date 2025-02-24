@@ -1,5 +1,11 @@
 oxen (11.1.0-2) unstable; urgency=medium
 
+  * Fix crash when no l2-tracker provided
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 24 Feb 2025 19:47:04 -0400
+
+oxen (11.1.0-2) unstable; urgency=medium
+
   * Bump required storage server & lokinet versions
   * Don't require L2 tracker if HF20 not scheduled on current chain
   * Update dependencies to latest versions
