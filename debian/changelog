@@ -1,5 +1,11 @@
 oxen (11.1.0-2~deb13) trixie; urgency=medium
 
+  * Fix crash when no l2-tracker provided
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 24 Feb 2025 19:47:10 -0400
+
+oxen (11.1.0-2~deb13) trixie; urgency=medium
+
   * arm64: build jit
   * add missing openssl dependency
   * bump lokinet/ss versions
