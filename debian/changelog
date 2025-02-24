@@ -1,3 +1,20 @@
+oxen (11.1.0-2) unstable; urgency=medium
+
+  * Bump required storage server & lokinet versions
+  * Don't require L2 tracker if HF20 not scheduled on current chain
+  * Update dependencies to latest versions
+  * don't build source package
+  * fix .so versioning
+  * build optional stuff
+  * add missing spdlog dep
+  * add sqlitecpp so
+  * Fix broken hashing signatures
+  * arm64: build jit
+  * add missing openssl dependency
+  * bump lokinet/ss versions
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Mon, 24 Feb 2025 18:32:09 -0400
+
 oxen (11.1.0-1) unstable; urgency=medium
 
   [ Jason Rhinelander ]
