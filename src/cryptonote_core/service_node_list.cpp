@@ -4210,8 +4210,12 @@ void service_node_list::blockchain_detached(uint64_t height) {
         if (height < sqlite_begins)
             return true;
 
+        cryptonote::BlockchainSQLite& sql_db = blockchain.sqlite_db();
+        if (sql_db.height == height)
+            return true;
+
         // NOTE: Accept if SQL has payment rows for the requested height:
-        return blockchain.sqlite_db().batch_payments_accrued_row_count(table_type, height) > 0;
+        return sql_db.batch_payments_accrued_row_count(table_type, height) > 0;
     };
 
     // NOTE: Lookup desired SNL state from recent backups
@@ -4937,7 +4941,7 @@ static std::string serialize_snl_directly(Archive& ar, service_node_list::state_
     return result;
 }
 
-bool service_node_list::store() {
+bool service_node_list::store(uint64_t state_height) {
     ZoneScoped;
     if (!blockchain.has_db())
         return false;  // Haven't been initialized yet
@@ -4958,13 +4962,17 @@ bool service_node_list::store() {
     tools::threadpool::waiter tpool_waiter = {};
 
     // NOTE: Serialize archive
+    int long_term_size = 0;
+    std::atomic<int> long_term_count = 0;
     if (m_transient->long_term_data_dirty) {
         size_t archive_index = 0;
+        long_term_size = m_transient->state_archive.size();
         for (auto& it : m_transient->state_archive) {
             std::string& dest = archive_blob_list[archive_index++];
-            tpool.submit(&tpool_waiter, [&dest, &it]() {
+            tpool.submit(&tpool_waiter, [&dest, &it, &long_term_count]() {
                 serialization::binary_string_archiver ba;
                 dest = serialize_snl_directly(ba, const_cast<state_t&>(it));
+                long_term_count++;
             });
         }
     }
@@ -4987,7 +4995,40 @@ bool service_node_list::store() {
             curr = serialize_snl_directly(ba, m_state);
         });
     }
-    tpool_waiter.wait(&tpool);
+
+    bool reporting_long_term = false;
+    tpool.run(true);
+    while (!tpool_waiter.wait_for(10s)) {
+        if (long_term_size > 0) {
+            int done = long_term_count.load();
+            if (done < long_term_size) {
+                // We are >=10s in and aren't done with long term states, so start (or continue)
+                // logging updates about it:
+                reporting_long_term = true;
+                log::info(
+                        globallogcat,
+                        "Serializing long-term SN state archive data ({}/{})",
+                        done,
+                        long_term_size);
+            } else if (reporting_long_term) {
+                // We're still waiting on something else, but we're done with the long-term
+                // data:
+                log::info(
+                        globallogcat,
+                        "Finished serializing {} long-term SN state archives",
+                        long_term_size);
+                reporting_long_term = false;
+            }
+        }
+        log::debug(logcat, "SNL store, waiting on serialization");
+        blockchain.extend_watchdog_timeout(state_height);
+    }
+    // Print the final one if we started printing but didn't finish in the wait loop above
+    if (reporting_long_term)
+        log::info(
+                globallogcat,
+                "Finished serializing {} long-term SN state archives",
+                long_term_size);
 
     // NOTE: Store blobs to DB
     {
@@ -5000,7 +5041,9 @@ bool service_node_list::store() {
             serialization::binary_string_archiver ar;
             std::string db_blob = serialize_db_blob(ar, archive_blob_list, nullptr);
             TracyCZoneEnd(serialize_step);
-            db.set_service_node_data(db_blob, true /*long_term*/);
+            db.set_service_node_data(db_blob, /*long_term = */ true);
+            log::debug(logcat, "SNL store, finished storing long term state");
+            blockchain.extend_watchdog_timeout(state_height);
         }
 
         {
@@ -5009,7 +5052,8 @@ bool service_node_list::store() {
             std::string db_blob =
                     serialize_db_blob(ar, history_blob_list, &m_transient->old_quorum_states);
             TracyCZoneEnd(serialize_step);
-            db.set_service_node_data(db_blob, false /*long_term*/);
+            db.set_service_node_data(db_blob, /*long_term = */ false);
+            log::debug(logcat, "SNL store, finished storing short term state");
         }
     }
 

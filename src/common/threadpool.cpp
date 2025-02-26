@@ -132,6 +132,11 @@ void threadpool::waiter::wait(threadpool* tpool) {
         cv.wait(lock);
 }
 
+bool threadpool::waiter::wait_for(const std::chrono::milliseconds& t) {
+    std::unique_lock lock{mt};
+    return cv.wait_for(lock, t, [this] { return num == 0; });
+}
+
 void threadpool::waiter::inc() {
     const std::unique_lock lock{mt};
     num++;
