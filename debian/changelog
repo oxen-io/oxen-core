@@ -1,3 +1,23 @@
+oxen (11.1.0-3) unstable; urgency=medium
+
+  [ doylet ]
+  * Fix a rescan dropping by 10k blocks when killed mid-scan
+  * Remove rescan optimisation on update height
+
+  [ Thomas Winget ]
+  * extend watchdog timer during snl store
+
+  [ Jason Rhinelander ]
+  * Check condition with the lambda version of wait_for
+
+  [ doylet ]
+  * Remove left-over 'clear_archive' trigger in SQL DB
+
+  [ Jason Rhinelander ]
+  * Add global info messages during long-term storage
+
+ -- Jason Rhinelander <jason@imaginary.ca>  Tue, 25 Feb 2025 21:39:16 -0400
+
 oxen (11.1.0-2) unstable; urgency=medium
 
   * Fix crash when no l2-tracker provided
