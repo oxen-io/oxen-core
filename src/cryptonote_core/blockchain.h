@@ -144,6 +144,14 @@ class Blockchain {
     ~Blockchain();
 
     /**
+     * @brief Extend system watchdog timeout (for long rescans)
+     *
+     * If we're using a watchdog to monitor the process, this will tell the system
+     * watchdog (currently only systemd supported) to give us more time for startup
+     */
+    void extend_watchdog_timeout(uint64_t height = 0);
+
+    /**
      * @brief Initialize the Blockchain state.
      *
      * @param db a pointer to the backing store to use for the blockchain.

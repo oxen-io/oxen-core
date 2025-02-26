@@ -56,9 +56,7 @@ class BlockchainSQLite : public db::Database {
 
     // Update the height stored in the SQL DB that indicates the last block height that this DB has
     // synchronised to in.
-    void update_height(
-            uint64_t new_height,
-            const std::optional<service_nodes::rescan_context>& rescan = std::nullopt);
+    void update_height(uint64_t new_height);
 
     enum class PaymentTableType {
         Nil,      // Table containing current state
