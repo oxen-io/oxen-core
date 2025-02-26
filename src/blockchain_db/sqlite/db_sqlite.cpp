@@ -365,6 +365,7 @@ void BlockchainSQLite::upgrade_schema() {
         --
         -- We rename the trigger to be more apt for its new role of handling
         -- both archive and recent tables.
+        DROP   TRIGGER IF EXISTS clear_archive;
         DROP   TRIGGER IF EXISTS clear_recent;
         DROP   TRIGGER IF EXISTS clear_recent_and_archive;
         CREATE TRIGGER           clear_recent_and_archive AFTER UPDATE ON batch_db_info
@@ -421,8 +422,7 @@ void BlockchainSQLite::reset_database() {
     log::debug(logcat, "Database reset complete");
 }
 
-void BlockchainSQLite::update_height(
-        uint64_t new_height, const std::optional<service_nodes::rescan_context>& rescan) {
+void BlockchainSQLite::update_height(uint64_t new_height) {
     ZoneScoped;
     log::trace(
             logcat,
@@ -431,56 +431,60 @@ void BlockchainSQLite::update_height(
             new_height,
             height);
     height = new_height;
-
-    bool commit = true;
-    if (rescan) {
-        const auto& netconf = get_config(m_nettype);
-        uint64_t block_count = rescan->top_block_height + 1;
-        uint64_t commit_from_height = block_count - netconf.HISTORY_RECENT_KEEP_WINDOW;
-        bool is_archive_height = height % netconf.HISTORY_ARCHIVE_INTERVAL == 0;
-        commit = is_archive_height || height >= commit_from_height;
-    }
-
-    if (commit)
-        prepared_exec("UPDATE batch_db_info SET height = ?", static_cast<int64_t>(height));
+    prepared_exec("UPDATE batch_db_info SET height = ?", static_cast<int64_t>(height));
 }
 
 void BlockchainSQLite::blockchain_detached(
         PaymentTableType history, uint64_t new_height, uint64_t target_height) {
     const auto& netconf = get_config(m_nettype);
 
-    // NOTE: Execute detach
     std::string detach_label = "";
     int rows_restored = 0;
-    int rows_removed = batch_payments_accrued_row_count(PaymentTableType::Nil, std::nullopt);
-    switch (history) {
-        case PaymentTableType::Nil: {
-            reset_database();
-            detach_label = " (via reset)";
-        } break;
+    int rows_removed = 0;
+    if (new_height == height) {
+        detach_label = " (DB is already at requested height)";
+    } else {
+        // NOTE: Execute detach
+        rows_removed = batch_payments_accrued_row_count(PaymentTableType::Nil, std::nullopt);
+        switch (history) {
+            case PaymentTableType::Nil: {
+                reset_database();
+                detach_label = " (via reset)";
+            } break;
 
-        default: {
-            std::string batched_payments_history_table = "batched_payments_accrued_{}"_format(
-                    history == PaymentTableType::Archive ? "archive" : "recent");
-            rows_restored = batch_payments_accrued_row_count(history, new_height);
+            default: {
+                std::string batched_payments_history_table = "batched_payments_accrued_{}"_format(
+                        history == PaymentTableType::Archive ? "archive" : "recent");
+                rows_restored = batch_payments_accrued_row_count(history, new_height);
 
-            db.exec(R"(DELETE FROM batched_payments_accrued;
-                       INSERT INTO batched_payments_accrued
-                       SELECT address, amount, payout_offset
-                       FROM {1} WHERE height = {0};
-              )"_format(new_height, batched_payments_history_table));
+                db.exec(R"(DELETE FROM batched_payments_accrued;
+                           INSERT INTO batched_payments_accrued
+                           SELECT address, amount, payout_offset
+                           FROM {1} WHERE height = {0};
+                  )"_format(new_height, batched_payments_history_table));
 
-            std::string delayed_payments_history_table = "delayed_payments_{}"_format(
-                    history == PaymentTableType::Archive ? "archive" : "recent");
-            db.exec(R"(DELETE FROM delayed_payments;
-                       INSERT INTO delayed_payments
-                       SELECT *
-                       FROM {1} WHERE {0} >= height AND {0} <= payout_height;
-              )"_format(new_height, delayed_payments_history_table));
-        } break;
+                std::string delayed_payments_history_table = "delayed_payments_{}"_format(
+                        history == PaymentTableType::Archive ? "archive" : "recent");
+                db.exec(R"(DELETE FROM delayed_payments;
+                           INSERT INTO delayed_payments
+                           SELECT *
+                           FROM {1} WHERE {0} >= height AND {0} <= payout_height;
+                  )"_format(new_height, delayed_payments_history_table));
+            } break;
+        }
     }
 
     update_height(new_height);
+
+    if (height + 5000 < target_height) {
+        log::debug(logcat, "large rescan starting");
+        rescan_target = target_height;
+        rescan_start();
+    } else {
+        log::debug(
+                logcat, "not large rescan, height = {}, target_height = {}", height, target_height);
+    }
+
     log::debug(
             logcat,
             "Detach request for SQL @ {} executed to {}{} (-{} rows deleted, +{} restored)",
@@ -489,14 +493,6 @@ void BlockchainSQLite::blockchain_detached(
             detach_label,
             rows_removed,
             rows_restored);
-
-    if (height + 5000 < target_height) {
-        log::debug(logcat, "large rescan starting");
-        rescan_target = target_height;
-        rescan_start();
-    } else
-        log::debug(
-                logcat, "not large rescan, height = {}, target_height = {}", height, target_height);
 }
 
 const std::string& BlockchainSQLite::get_address_str(const cryptonote::batch_sn_payment& addr) {
@@ -872,7 +868,7 @@ bool BlockchainSQLite::add_block(
 
     auto hf_version = block.major_version;
     if (hf_version < hf::hf19_reward_batching) {
-        update_height(block_height, rescan);
+        update_height(block_height);
         return true;
     }
 
@@ -880,7 +876,7 @@ bool BlockchainSQLite::add_block(
         cryptonote::hard_fork_begins(m_nettype, hf::hf19_reward_batching).value_or(0)) {
         log::debug(logcat, "Batching of Service Node Rewards Begins");
         reset_database();
-        update_height(block_height - 1, rescan);
+        update_height(block_height - 1);
     }
 
     if (block_height != height + 1) {
@@ -919,7 +915,7 @@ bool BlockchainSQLite::add_block(
         if (!validate_batch_payment(miner_tx_vouts, calculated_rewards, block_height, rescan))
             return false;
         reward_handler(block, service_nodes_state, block_add, get_delayed_payments(block_height));
-        update_height(height + 1, rescan);
+        update_height(height + 1);
         if (transaction)
             transaction->commit();
         else {  // rescanning

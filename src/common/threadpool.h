@@ -60,6 +60,7 @@ class threadpool {
         void inc();
         void dec();
         void wait(threadpool* tpool);  //! Wait for a set of tasks to finish.
+        bool wait_for(const std::chrono::milliseconds& t);
         waiter() : num(0) {}
         ~waiter();
     };
@@ -77,6 +78,7 @@ class threadpool {
     ~threadpool();
     void stop();
     void start(unsigned int max_threads = 0);
+    void run(bool flush = false);
 
   private:
     threadpool(unsigned int max_threads = 0);
@@ -94,7 +96,6 @@ class threadpool {
     unsigned int active;
     unsigned int max;
     bool running;
-    void run(bool flush = false);
 };
 
 }  // namespace tools

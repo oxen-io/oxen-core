@@ -157,6 +157,19 @@ Blockchain::~Blockchain() {
     } catch (const std::exception& e) { /* ignore */
     }
 }
+
+void Blockchain::extend_watchdog_timeout(uint64_t height) {
+#ifdef ENABLE_SYSTEMD
+    // Tell systemd that we're doing something so that it should let us continue starting up
+    // (giving us 120s until we have to send the next notification):
+    sd_notify(
+            0,
+            "EXTEND_TIMEOUT_USEC=120000000\nSTATUS=Recanning blockchain; height {}/{}"_format(
+                    height, m_db->height())
+                    .c_str());
+#endif
+}
+
 //------------------------------------------------------------------
 bool Blockchain::have_tx(const crypto::hash& id) const {
     log::trace(logcat, "Blockchain::{}", __func__);
@@ -601,7 +614,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
             store_accumulator += interval_duration;
             if (store_accumulator >= 60s) {
                 store_accumulator -= 60s;
-                service_node_list.store();
+                service_node_list.store(height);
             }
 
             float blocks_per_s = static_cast<float>(work_blocks) / interval_duration.count();
@@ -619,15 +632,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
                     ons_interval_duration.count(),
                     blocks_per_s,
                     tools::get_human_readable_bytes(bytes_per_s));
-#ifdef ENABLE_SYSTEMD
-            // Tell systemd that we're doing something so that it should let us continue starting up
-            // (giving us 120s until we have to send the next notification):
-            sd_notify(
-                    0,
-                    "EXTEND_TIMEOUT_USEC=120000000\nSTATUS=Recanning blockchain; height {}"_format(
-                            height)
-                            .c_str());
-#endif
+            extend_watchdog_timeout(height);
             // NOTE: Accumulate stats
             ons_duration += ons_interval_duration;
             snl_duration += snl_interval_duration;
