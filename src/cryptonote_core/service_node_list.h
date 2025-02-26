@@ -816,7 +816,7 @@ class service_node_list {
     void set_my_service_node_keys(const service_node_keys* keys);
     void set_quorum_history_storage(
             uint64_t hist_size);  // 0 = none (default), 1 = unlimited, N = # of blocks
-    bool store();
+    bool store(uint64_t state_height = 0);
 
     uptime_proof::Proof generate_uptime_proof(
             cryptonote::hf hardfork,
