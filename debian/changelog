@@ -1,5 +1,12 @@
 oxen (11.1.1-1) unstable; urgency=medium
 
+  * 11.1.1 release
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 27 Feb 2025 17:10:09 -0400
+
+oxen (11.1.1-1) unstable; urgency=medium
+
   * Add missing fmt linking
 
  -- Jason Rhinelander <jason@session.foundation>  Thu, 27 Feb 2025 16:51:35 -0400
