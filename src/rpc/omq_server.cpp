@@ -386,7 +386,7 @@ static void send_notifies(Mutex& mutex, Subs& subs, const char* desc, Call call)
             log::debug(
                     logcat,
                     "Removing {} from {} subscriptions: subscription timed out",
-                    conn,
+                    conn.to_string(),
                     desc);
             subs.erase(it);
         }
@@ -622,7 +622,7 @@ void omq_rpc::on_mempool_sub_request(oxenmq::Message& m) {
                 log::trace(
                         logcat,
                         "Renewed mempool subscription request from conn id {}@{}",
-                        m.conn,
+                        m.conn.to_string(),
                         m.remote);
                 m.send_reply("ALREADY");
                 return;
@@ -633,7 +633,7 @@ void omq_rpc::on_mempool_sub_request(oxenmq::Message& m) {
                 logcat,
                 "New {} mempool subscription request from conn {}@{}",
                 (sub_type == mempool_sub_type::blink ? "blink" : "all"),
-                m.conn,
+                m.conn.to_string(),
                 m.remote);
         m.send_reply("OK");
     }
@@ -657,10 +657,17 @@ void omq_rpc::on_block_sub_request(oxenmq::Message& m) {
     if (!result.second) {
         result.first->second.expiry = expiry;
         log::trace(
-                logcat, "Renewed block subscription request from conn id {}@{}", m.conn, m.remote);
+                logcat,
+                "Renewed block subscription request from conn id {}@{}",
+                m.conn.to_string(),
+                m.remote);
         m.send_reply("ALREADY");
     } else {
-        log::debug(logcat, "New block subscription request from conn {}@{}", m.conn, m.remote);
+        log::debug(
+                logcat,
+                "New block subscription request from conn {}@{}",
+                m.conn.to_string(),
+                m.remote);
         m.send_reply("OK");
     }
 }
