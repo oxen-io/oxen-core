@@ -72,3 +72,9 @@ struct raw_hasher {
 
 template <crypto::hash_hex_comparable T>
 struct fmt::formatter<T> : formattable::hex_span_formatter {};
+
+// Define this so that the above does not conflict with fmt's build in range overload:
+template <crypto::hash_hex_comparable T, typename Char>
+struct fmt::is_range<T, Char> {
+    static constexpr bool value = false;
+};

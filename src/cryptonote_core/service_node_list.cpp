@@ -4997,7 +4997,6 @@ bool service_node_list::store(uint64_t state_height) {
     }
 
     bool reporting_long_term = false;
-    tpool.run(true);
     while (!tpool_waiter.wait_for(10s)) {
         if (long_term_size > 0) {
             int done = long_term_count.load();
