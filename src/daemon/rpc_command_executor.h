@@ -44,9 +44,6 @@
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "rpc/http_client.h"
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "daemon"
-
 namespace daemonize {
 
 class rpc_command_executor final {
