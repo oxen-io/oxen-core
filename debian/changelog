@@ -1,3 +1,23 @@
+oxen (11.1.1-1~deb13) trixie; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Remove defines for old, gone logging system
+
+  [ Thomas Winget ]
+  * fix l2 tracker check before hf21
+  * adds some pulse logging
+  * fix misuse of threadpool run
+
+  [ Jason Rhinelander ]
+  * Bump to latest oxen-logging, and let it use a system lib
+  * Update ethyl repo; fix oxen-logging build issues
+  * Add missing fmt linking
+  * 11.1.1 release
+  * add oxen-logging build dep
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 27 Feb 2025 19:06:25 -0400
+
 oxen (11.1.0-3~deb13) trixie; urgency=medium
 
   [ doylet ]
