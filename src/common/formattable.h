@@ -51,8 +51,7 @@ namespace detail {
 
 template <typename T>
 struct to_string_formatter : fmt::formatter<std::string_view> {
-    template <typename FormatContext>
-    auto format(const T& val, FormatContext& ctx) const {
+    auto format(const T& val, fmt::format_context& ctx) const {
         if constexpr (::formattable::detail::callable_to_string_method<T>)
             return formatter<std::string_view>::format(val.to_string(), ctx);
         else
@@ -171,8 +170,7 @@ struct underlying_t_formatter : fmt::formatter<std::underlying_type_t<T>> {
             std::is_enum_v<T> && !std::is_convertible_v<T, std::underlying_type_t<T>>,
             "formattable::via_underlying<T> type is not a scoped enum");
 #endif
-    template <typename FormatContext>
-    auto format(const T& val, FormatContext& ctx) const {
+    auto format(const T& val, fmt::format_context& ctx) const {
         using Underlying = std::underlying_type_t<T>;
         return fmt::formatter<Underlying>::format(static_cast<Underlying>(val), ctx);
     }
