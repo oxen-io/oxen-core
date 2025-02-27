@@ -37,7 +37,7 @@
 	branch = stable
 [submodule "external/ethyl"]
 	path = external/ethyl
-	url = https://github.com/oxen-io/ethyl.git
+	url = https://github.com/session-foundation/ethyl.git
 [submodule "external/oxen-encoding"]
 	path = external/oxen-encoding
 	url = https://github.com/session-foundation/oxen-encoding.git
