@@ -45,9 +45,6 @@
 #include "p2p/net_node.h"
 #include "rpc/common/rpc_command.h"
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "daemon.rpc"
-
 namespace boost::program_options {
 class options_description;
 class variables_map;
