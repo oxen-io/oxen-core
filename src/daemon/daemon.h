@@ -38,9 +38,6 @@
 #include "rpc/http_server.h"
 #include "rpc/omq_server.h"
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "daemon"
-
 namespace daemonize {
 
 // Parse an IP:PORT string into a {IP,PORT} pair.  Throws if the string value is not valid.  Accepts

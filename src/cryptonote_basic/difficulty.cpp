@@ -39,9 +39,6 @@
 #include "epee/int-util.h"
 #include "hardfork.h"
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "difficulty"
-
 namespace cryptonote {
 
 using std::size_t;
