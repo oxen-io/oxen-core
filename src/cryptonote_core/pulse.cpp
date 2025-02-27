@@ -1575,16 +1575,26 @@ namespace {
             uint64_t height = 0;
             service_nodes::payout block_producer_payouts =
                     service_nodes::service_node_payout_portions(key.pub, *info);
-            if (!blockchain.create_next_pulse_block_template(
-                        block,
-                        block_producer_payouts,
-                        context.prepare_for_round.round,
-                        context.transient.wait_for_handshake_bitsets.best_bitset,
-                        height)) {
+
+            try {
+                if (!blockchain.create_next_pulse_block_template(
+                            block,
+                            block_producer_payouts,
+                            context.prepare_for_round.round,
+                            context.transient.wait_for_handshake_bitsets.best_bitset,
+                            height)) {
+                    log::error(
+                            logcat,
+                            "{}Failed to generate a block template, waiting until next round",
+                            log_prefix(context));
+                    return goto_preparing_for_next_round(context);
+                }
+            } catch (const std::exception& e) {
                 log::error(
                         logcat,
-                        "{}Failed to generate a block template, waiting until next round",
-                        log_prefix(context));
+                        "{}Failed to generate a block template, waiting until next round: {}",
+                        log_prefix(context),
+                        e.what());
                 return goto_preparing_for_next_round(context);
             }
 

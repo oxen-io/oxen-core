@@ -2020,11 +2020,27 @@ bool Blockchain::create_block_template_internal(
     uint64_t already_generated_coins;
     uint64_t pool_cookie;
 
-    if (!m_l2_tracker)
+    // Creates the block template for next block on main chain
+    std::tie(height, b.prev_id) = get_tail_id();
+    ++height;  // Convert to the next block's height
+    std::tie(b.major_version, b.minor_version) = get_ideal_block_version(m_nettype, height);
+    auto hf_version = b.major_version;
+
+    if (!m_l2_tracker && hf_version >= cryptonote::feature::ETH_BLS)
         throw oxen::traced<std::logic_error>{
                 "Cannot create a block template without a configured L2 provider"};
 
-    auto lock = tools::shared_locks(tx_pool, *this, *m_l2_tracker);
+    std::unique_lock pool_lock{tx_pool, std::defer_lock};
+    std::unique_lock bc_lock{*this, std::defer_lock};
+    auto l2_lock = m_l2_tracker ? std::shared_lock{*m_l2_tracker, std::defer_lock}
+                                : std::shared_lock<eth::L2Tracker>{};
+
+    if (m_l2_tracker) {
+        std::lock(pool_lock, bc_lock, l2_lock);
+    } else {
+        std::lock(pool_lock, bc_lock);
+    }
+
     if (m_btc_valid) {
         // The pool cookie is atomic. The lack of locking is OK, as if it changes
         // just as we compare it, we'll just use a slightly old template, but
@@ -2053,10 +2069,6 @@ bool Blockchain::create_block_template_internal(
         invalidate_block_template_cache();
     }
 
-    // Creates the block template for next block on main chain
-    std::tie(height, b.prev_id) = get_tail_id();
-    ++height;  // Convert to the next block's height
-    std::tie(b.major_version, b.minor_version) = get_ideal_block_version(m_nettype, height);
     median_weight = m_current_block_cumul_weight_limit / 2;
     diffic = get_difficulty_for_next_block(!info.is_miner);
     already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
@@ -2069,7 +2081,6 @@ bool Blockchain::create_block_template_internal(
 
     CHECK_AND_ASSERT_MES(diffic, false, "difficulty overhead.");
 
-    auto hf_version = b.major_version;
     size_t txs_weight;
     uint64_t fee;
 

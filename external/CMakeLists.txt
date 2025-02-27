@@ -39,6 +39,19 @@ endif()
 
 include(system_or_submodule)
 
+if(BUILD_STATIC_DEPS)
+  set(OXEN_LOGGING_FORCE_SUBMODULES TRUE CACHE BOOL "" FORCE)
+endif()
+
+system_or_submodule(OXENLOGGING oxen-logging liboxen-logging>=1.1.0 oxen-logging)
+if(OXENLOGGING_FOUND)
+    add_library(oxen::logging ALIAS oxen-logging::oxen-logging)
+
+    # If we load oxen-logging via system lib then we won't necessarily have fmt/spdlog targets, but
+    # this script will give us them:
+    include(oxen-logging/cmake/load_fmt_spdlog.cmake)
+endif()
+
 system_or_submodule(OXENC oxenc liboxenc>=1.1.0 oxen-encoding)
 system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.13 oxen-mq)
 
@@ -51,13 +64,6 @@ set(BN256_ENABLE_TEST OFF CACHE BOOL "" FORCE)
 set(BUILD_DOC OFF CACHE BOOL "" FORCE)
 add_subdirectory(bn256 EXCLUDE_FROM_ALL)
 oxen_install_library(bn256)
-
-if(BUILD_STATIC_DEPS)
-  set(OXEN_LOGGING_FORCE_SUBMODULES TRUE CACHE BOOL "" FORCE)
-endif()
-add_subdirectory(oxen-logging)
-oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}")
-oxen_logging_add_source_dir("${PROJECT_SOURCE_DIR}/src")
 
 install(
     DIRECTORY boost
