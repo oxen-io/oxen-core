@@ -430,13 +430,13 @@ struct name_system_db {
 
 template <>
 struct fmt::formatter<ons::mapping_value> : fmt::formatter<std::string> {
-    auto format(const ons::mapping_value& v, format_context& ctx) {
+    auto format(const ons::mapping_value& v, format_context& ctx) const {
         return formatter<std::string>::format(oxenc::to_hex(v.to_view()), ctx);
     }
 };
 template <>
 struct fmt::formatter<ons::mapping_type> : fmt::formatter<std::string_view> {
-    auto format(const ons::mapping_type& t, format_context& ctx) {
+    auto format(const ons::mapping_type& t, format_context& ctx) const {
         return formatter<std::string_view>::format(ons::mapping_type_str(t), ctx);
     }
 };

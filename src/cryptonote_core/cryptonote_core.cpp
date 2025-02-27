@@ -1153,17 +1153,20 @@ oxenmq::AuthLevel core::omq_allow(
         if (user_auth >= AuthLevel::basic) {
             if (user_auth > auth)
                 auth = user_auth;
-            log::info(log::Cat("omq"), "Incoming {}-authenticated connection", auth);
+            log::info(
+                    log::Cat("omq"),
+                    "Incoming {}-authenticated connection",
+                    oxenmq::to_string(auth));
         }
 
         log::debug(
                 log::Cat("omq"),
                 "Incoming [{}] curve connection from {}/{}",
-                auth,
+                to_string(auth),
                 ip,
                 x25519_pubkey);
     } else {
-        log::info(log::Cat("omq"), "Incoming [{}] plain connection from {}", auth, ip);
+        log::info(log::Cat("omq"), "Incoming [{}] plain connection from {}", to_string(auth), ip);
     }
     return auth;
 }
@@ -1187,7 +1190,7 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     // ping.ping: a simple debugging target for pinging the omq listener
     m_omq->add_category("ping", Access{AuthLevel::none})
             .add_request_command("ping", [](Message& m) {
-                log::info(log::Cat("omq"), "Received ping from {}", m.conn);
+                log::info(log::Cat("omq"), "Received ping from {}", m.conn.to_string());
                 m.send_reply("pong");
             });
 
