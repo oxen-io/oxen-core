@@ -1,5 +1,12 @@
 oxen (11.1.1-1) unstable; urgency=medium
 
+  * Update ethyl repo; fix oxen-logging build issues
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 27 Feb 2025 15:51:33 -0400
+
+oxen (11.1.1-1) unstable; urgency=medium
+
   [ Jason Rhinelander ]
   * Remove defines for old, gone logging system
 
