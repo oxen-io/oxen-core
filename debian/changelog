@@ -1,5 +1,11 @@
 oxen (11.1.1-1~deb13) trixie; urgency=medium
 
+  * fix fmt/spdlog when using system oxen-logging without system fmt/spdlog
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 27 Feb 2025 19:27:41 -0400
+
+oxen (11.1.1-1~deb13) trixie; urgency=medium
+
   [ Jason Rhinelander ]
   * Remove defines for old, gone logging system
 
