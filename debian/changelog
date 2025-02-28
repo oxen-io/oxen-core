@@ -1,3 +1,9 @@
+oxen (11.1.1-1+b1) sid; urgency=medium
+
+  * sid rebuild
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 27 Feb 2025 21:52:27 -0400
+
 oxen (11.1.1-1) unstable; urgency=medium
 
   * fix fmt/spdlog when using system oxen-logging without system fmt/spdlog
