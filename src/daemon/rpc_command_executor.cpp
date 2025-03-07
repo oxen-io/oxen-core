@@ -1346,9 +1346,7 @@ bool rpc_command_executor::unban(const std::string& address) {
 
 bool rpc_command_executor::banned(const std::string& address) {
     auto maybe_banned = try_running(
-            [this, &address] {
-                return invoke<BANNED>(json{{"address", std::move(address)}});
-            },
+            [this, &address] { return invoke<BANNED>(json{{"address", std::move(address)}}); },
             "Failed to retrieve ban information");
     if (!maybe_banned)
         return false;
@@ -1634,10 +1632,7 @@ bool rpc_command_executor::print_blockchain_dynamic_stats(uint64_t nblocks) {
 
 bool rpc_command_executor::relay_tx(const std::string& txid) {
     auto maybe_relay = try_running(
-            [&] {
-                return invoke<RELAY_TX>(json{{"txid", txid}});
-            },
-            "Failed to relay tx");
+            [&] { return invoke<RELAY_TX>(json{{"txid", txid}}); }, "Failed to relay tx");
     if (!maybe_relay)
         return false;
 
@@ -2055,9 +2050,7 @@ bool rpc_command_executor::print_sn(const std::vector<std::string>& args, bool s
     std::string my_sn_pk;
     if (!self) {
         auto maybe_sns = try_running(
-                [&] {
-                    return invoke<GET_SERVICE_NODES>(json{{"service_node_pubkeys", pubkeys}});
-                },
+                [&] { return invoke<GET_SERVICE_NODES>(json{{"service_node_pubkeys", pubkeys}}); },
                 "Failed to retrieve service node data");
         if (!maybe_sns)
             return false;
@@ -2171,9 +2164,7 @@ bool rpc_command_executor::claim_rewards(std::string_view address) {
     if (address.starts_with("0x"))
         address.remove_prefix(2);
     auto maybe_withdrawal_response = try_running(
-            [this, address] {
-                return invoke<BLS_REWARDS_REQUEST>(json{{"address", address}});
-            },
+            [this, address] { return invoke<BLS_REWARDS_REQUEST>(json{{"address", address}}); },
             "Failed to get withdrawal rewards");
     if (!maybe_withdrawal_response)
         return false;
@@ -2194,9 +2185,7 @@ bool rpc_command_executor::print_sn_status(std::vector<std::string> args) {
 
 bool rpc_command_executor::print_sr(uint64_t height) {
     auto maybe_staking_requirement = try_running(
-            [this, height] {
-                return invoke<GET_STAKING_REQUIREMENT>(json{{"height", height}});
-            },
+            [this, height] { return invoke<GET_STAKING_REQUIREMENT>(json{{"height", height}}); },
             "Failed to retrieve staking requirements");
     if (!maybe_staking_requirement)
         return false;
@@ -2210,9 +2199,7 @@ bool rpc_command_executor::print_sr(uint64_t height) {
 
 bool rpc_command_executor::pop_blocks(uint64_t num_blocks) {
     auto maybe_pop_blocks = try_running(
-            [this, num_blocks] {
-                return invoke<POP_BLOCKS>(json{{"nblocks", num_blocks}});
-            },
+            [this, num_blocks] { return invoke<POP_BLOCKS>(json{{"nblocks", num_blocks}}); },
             "Failed to pop blocks");
     if (!maybe_pop_blocks)
         return false;
@@ -2875,9 +2862,7 @@ bool rpc_command_executor::prune_blockchain() {
 
 bool rpc_command_executor::check_blockchain_pruning() {
     auto maybe_pruning = try_running(
-            [this] {
-                return invoke<PRUNE_BLOCKCHAIN>(json{{"check", true}});
-            },
+            [this] { return invoke<PRUNE_BLOCKCHAIN>(json{{"check", true}}); },
             "Failed to check blockchain pruning status");
     if (!maybe_pruning)
         return false;

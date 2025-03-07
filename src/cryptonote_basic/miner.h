@@ -61,7 +61,7 @@ struct i_miner_handler {
             const std::string& ex_nonce) = 0;
 
   protected:
-    ~i_miner_handler(){};
+    ~i_miner_handler() {};
 };
 
 /************************************************************************/

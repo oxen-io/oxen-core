@@ -11845,7 +11845,9 @@ void wallet2::light_wallet_get_unspent_outs() {
                 spent = true;
                 break;
             }
-            { log::trace(logcat, "Unspent output found. {}", o.public_key); }
+            {
+                log::trace(logcat, "Unspent output found. {}", o.public_key);
+            }
         }
 
         // Check if tx already exists in m_transfers.
