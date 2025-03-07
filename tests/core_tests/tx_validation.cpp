@@ -170,7 +170,7 @@ transaction make_simple_tx_with_unlock_time(
     builder.step4_calc_hash();
     builder.step5_sign(sources);
     return builder.m_tx;
-};
+}
 
 crypto::public_key generate_invalid_pub_key() {
     for (int i = 0; i <= 0xFF; ++i) {

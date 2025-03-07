@@ -57,7 +57,7 @@ template <class Archive>
 void serialize_object(Archive& ar, multisig_tx_set& x) {
     field(ar, "m_ptx", x.m_ptx);
     field(ar, "m_signers", x.m_signers);
-};
+}
 
 }  // namespace wallet
 

@@ -255,8 +255,8 @@ class device_ledger : public device {
 
     bool set_mode(mode m) override;
 
-    type get_type() const override { return type::LEDGER; };
-    protocol device_protocol() const override { return protocol::PROXY; };
+    type get_type() const override { return type::LEDGER; }
+    protocol device_protocol() const override { return protocol::PROXY; }
 
     /* ======================================================================= */
     /*  LOCKER                                                                 */

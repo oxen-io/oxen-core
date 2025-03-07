@@ -14,9 +14,9 @@ class OutputSelector {
     std::vector<Output> operator()(
             const std::vector<Output>& available_outputs, int64_t amount) const;
 
-    void push_fee(int64_t input_count, int64_t fee) { fee_map[input_count] = fee; };
+    void push_fee(int64_t input_count, int64_t fee) { fee_map[input_count] = fee; }
 
-    void clear_fees() { fee_map.clear(); };
+    void clear_fees() { fee_map.clear(); }
 
   private:
     // Keeps track of the fees that need to be paid on top of the amount passed in

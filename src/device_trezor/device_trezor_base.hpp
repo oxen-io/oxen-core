@@ -229,7 +229,7 @@ class device_trezor_base : public hw::core::device_default {
     device_trezor_base& operator=(const device_trezor_base& device) = delete;
 
     explicit operator bool() const override { return true; }
-    device_type get_type() const override { return device_type::TREZOR; };
+    device_type get_type() const override { return device_type::TREZOR; }
 
     bool reset();
 

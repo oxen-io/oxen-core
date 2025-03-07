@@ -249,7 +249,7 @@ namespace net_utils {
 
     class network_address {
         struct interface {
-            virtual ~interface() {};
+            virtual ~interface() {}
 
             virtual bool equal(const interface&) const = 0;
             virtual bool less(const interface&) const = 0;

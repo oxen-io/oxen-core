@@ -5091,7 +5091,7 @@ static bool update_val(T& val, const T& to) {
     return false;
 }
 
-proof_info::proof_info() : proof(std::make_unique<uptime_proof::Proof>()) {};
+proof_info::proof_info() : proof(std::make_unique<uptime_proof::Proof>()) {}
 
 void proof_info::store(const crypto::public_key& pubkey, cryptonote::Blockchain& blockchain) {
     if (!proof)

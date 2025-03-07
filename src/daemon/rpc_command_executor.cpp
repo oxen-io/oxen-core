@@ -2262,7 +2262,7 @@ namespace {
 
     std::string highlight_money(uint64_t amount) {
         return "\x1b[36;1m{}\x1b[0m"_format(cryptonote::format_money(amount));
-    };
+    }
 
     bool check_if_node_is_reasonably_synced(rpc_command_executor* rpc, const nlohmann::json& info) {
         uint64_t block_height =

@@ -84,10 +84,10 @@ namespace epee { namespace levin {
                 int command,
                 const epee::span<const uint8_t> in_buff,
                 t_connection_context& context) = 0;
-        virtual void callback(t_connection_context& context) {};
+        virtual void callback(t_connection_context& context) {}
 
-        virtual void on_connection_new(t_connection_context& context) {};
-        virtual void on_connection_close(t_connection_context& context) {};
+        virtual void on_connection_new(t_connection_context& context) {}
+        virtual void on_connection_close(t_connection_context& context) {}
 
         virtual ~levin_commands_handler() {}
     };

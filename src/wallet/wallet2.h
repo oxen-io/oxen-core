@@ -183,7 +183,7 @@ class i_wallet2_callback {
         on_device = true;
         return std::nullopt;
     }
-    virtual void on_device_progress(const hw::device_progress& event) {};
+    virtual void on_device_progress(const hw::device_progress& event) {}
     // Common callbacks
     virtual void on_pool_tx_removed(const crypto::hash& txid) {}
     virtual ~i_wallet2_callback() {}
@@ -191,7 +191,7 @@ class i_wallet2_callback {
 
 class wallet_device_callback : public hw::i_device_callback {
   public:
-    wallet_device_callback(wallet2* wallet) : wallet(wallet) {};
+    wallet_device_callback(wallet2* wallet) : wallet(wallet) {}
     void on_button_request(uint64_t code = 0) override;
     void on_button_pressed() override;
     std::optional<epee::wipeable_string> on_pin_request() override;
@@ -1274,8 +1274,8 @@ class wallet2 {
     void confirm_backlog(bool always) { m_confirm_backlog = always; }
     void set_confirm_backlog_threshold(uint32_t threshold) {
         m_confirm_backlog_threshold = threshold;
-    };
-    uint32_t get_confirm_backlog_threshold() const { return m_confirm_backlog_threshold; };
+    }
+    uint32_t get_confirm_backlog_threshold() const { return m_confirm_backlog_threshold; }
     bool confirm_export_overwrite() const { return m_confirm_export_overwrite; }
     void confirm_export_overwrite(bool always) { m_confirm_export_overwrite = always; }
     bool segregate_pre_fork_outputs() const { return m_segregate_pre_fork_outputs; }
@@ -1914,8 +1914,8 @@ class wallet2 {
 #ifdef WALLET_ENABLE_MMS
     // MMS
     // -------------------------------------------------------------------------------------------------
-    mms::message_store& get_message_store() { return m_message_store; };
-    const mms::message_store& get_message_store() const { return m_message_store; };
+    mms::message_store& get_message_store() { return m_message_store; }
+    const mms::message_store& get_message_store() const { return m_message_store; }
     mms::multisig_wallet_state get_multisig_wallet_state() const;
 #endif
 

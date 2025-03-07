@@ -76,7 +76,7 @@ struct checkpoint_participation_entry {
     uint64_t height = INVALID_HEIGHT;
     bool voted = true;
 
-    bool pass() const { return voted; };
+    bool pass() const { return voted; }
 };
 struct pulse_participation_entry {
     uint64_t height = INVALID_HEIGHT;
@@ -87,7 +87,7 @@ struct pulse_participation_entry {
 };
 struct timestamp_participation_entry {
     bool participated = true;
-    bool pass() const { return participated; };
+    bool pass() const { return participated; }
 };
 struct timesync_entry {
     bool in_sync = true;

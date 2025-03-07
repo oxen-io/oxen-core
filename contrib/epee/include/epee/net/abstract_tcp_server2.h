@@ -235,7 +235,7 @@ namespace epee { namespace net_utils {
         /// Stop the server.
         void send_stop_signal();
 
-        bool is_stop_signal_sent() const noexcept { return m_stop_signal_sent; };
+        bool is_stop_signal_sent() const noexcept { return m_stop_signal_sent; }
 
         const std::atomic<bool>& get_stop_signal() const noexcept { return m_stop_signal_sent; }
 

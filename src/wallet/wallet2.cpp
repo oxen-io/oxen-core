@@ -1236,7 +1236,7 @@ gamma_picker::gamma_picker(
     average_output_time =
             tools::to_seconds(conf.TARGET_BLOCK_TIME) * blocks_to_consider /
             outputs_to_consider;  // this assumes constant target over the whole rct range
-};
+}
 
 gamma_picker::gamma_picker(network_type nettype, const std::vector<uint64_t>& rct_offsets) :
         gamma_picker(nettype, rct_offsets, GAMMA_SHAPE, GAMMA_SCALE) {}
@@ -1259,7 +1259,7 @@ uint64_t gamma_picker::pick() {
         return std::numeric_limits<uint64_t>::max();  // bad pick
     log::trace(logcat, "Picking 1/{} in block {}", n_rct, index);
     return first_rct + crypto::rand_idx(n_rct);
-};
+}
 
 std::mutex wallet_keys_unlocker::lockers_mutex;
 unsigned int wallet_keys_unlocker::lockers = 0;

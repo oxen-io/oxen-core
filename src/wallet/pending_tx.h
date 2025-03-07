@@ -67,7 +67,7 @@ void serialize_object(Archive& ar, pending_tx& x) {
     field(ar, "dests", x.dests);
     field(ar, "construction_data", x.construction_data);
     field(ar, "multisig_sigs", x.multisig_sigs);
-};
+}
 
 }  // namespace wallet
 

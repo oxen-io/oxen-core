@@ -70,7 +70,7 @@ void remove_excess_snode_from_swarm(
 
 crypto::public_key newPubKey() {
     return cryptonote::keypair{hw::get_device("default")}.pub;
-};
+}
 
 size_t calculateExcess(const swarm_snode_map_t& swarm_to_snodes) {
     return std::accumulate(

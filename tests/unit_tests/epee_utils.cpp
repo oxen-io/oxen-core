@@ -509,7 +509,7 @@ TEST(NetUtils, NetworkAddress) {
         constexpr static bool is_same_host(const custom_address&) noexcept { return false; }
         constexpr static bool is_loopback() noexcept { return false; }
         constexpr static bool is_local() noexcept { return false; }
-        constexpr uint16_t port() const noexcept { return 0; };
+        constexpr uint16_t port() const noexcept { return 0; }
         static std::string str() { return {}; }
         static std::string host_str() { return {}; }
         constexpr static epee::net_utils::address_type get_type_id() noexcept {

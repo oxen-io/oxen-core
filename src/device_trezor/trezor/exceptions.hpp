@@ -140,7 +140,7 @@ namespace proto {
                 code(code), message(message) {
             reason = "Trezor returned failure: code=" + (code ? std::to_string(*code) : ""s) +
                      ", message=" + (message ? *message : ""s);
-        };
+        }
     };
 
     class UnexpectedMessageException : public FailureException {

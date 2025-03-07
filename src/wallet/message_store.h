@@ -132,7 +132,7 @@ struct authorized_signer {
         auto_config_public_key.zero();
         auto_config_secret_key.zero();
         auto_config_running = false;
-    };
+    }
 };
 
 struct processing_data {
@@ -199,15 +199,15 @@ class message_store {
             const std::string& own_transport_address,
             uint32_t num_authorized_signers,
             uint32_t num_required_signers);
-    void set_active(bool active) { m_active = active; };
-    void set_auto_send(bool auto_send) { m_auto_send = auto_send; };
+    void set_active(bool active) { m_active = active; }
+    void set_auto_send(bool auto_send) { m_auto_send = auto_send; }
     void set_options(const boost::program_options::variables_map& vm);
     void set_options(
             const std::string& bitmessage_address, const epee::wipeable_string& bitmessage_login);
-    bool get_active() const { return m_active; };
-    bool get_auto_send() const { return m_auto_send; };
-    uint32_t get_num_required_signers() const { return m_num_required_signers; };
-    uint32_t get_num_authorized_signers() const { return m_num_authorized_signers; };
+    bool get_active() const { return m_active; }
+    bool get_auto_send() const { return m_auto_send; }
+    uint32_t get_num_required_signers() const { return m_num_required_signers; }
+    uint32_t get_num_authorized_signers() const { return m_num_authorized_signers; }
 
     void set_signer(
             const multisig_wallet_state& state,
@@ -220,7 +220,7 @@ class message_store {
     bool get_signer_index_by_monero_address(
             const cryptonote::account_public_address& monero_address, uint32_t& index) const;
     bool get_signer_index_by_label(const std::string label, uint32_t& index) const;
-    const std::vector<authorized_signer>& get_all_signers() const { return m_signers; };
+    const std::vector<authorized_signer>& get_all_signers() const { return m_signers; }
     bool signer_config_complete() const;
     bool signer_labels_complete() const;
     void get_signer_config(std::string& signer_config);
@@ -269,7 +269,7 @@ class message_store {
             message_type type,
             message_direction direction,
             const std::string& content);
-    const std::vector<message>& get_all_messages() const { return m_messages; };
+    const std::vector<message>& get_all_messages() const { return m_messages; }
     bool get_message_by_id(uint32_t id, message& m) const;
     message get_message_by_id(uint32_t id) const;
     void set_message_processed_or_sent(uint32_t id);

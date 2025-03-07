@@ -8,7 +8,7 @@ namespace wallet {
 
 class MockDaemonComms : public DefaultDaemonComms {
   public:
-    MockDaemonComms() : DefaultDaemonComms(get_omq()) {};
+    MockDaemonComms() : DefaultDaemonComms(get_omq()) {}
 
     std::vector<Decoy> predetermined_decoys;
 

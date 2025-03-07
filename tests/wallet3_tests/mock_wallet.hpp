@@ -31,7 +31,7 @@ class MockWallet : public Wallet {
                    std::make_shared<MockDaemonComms>(),
                    ":memory:",
                    "",
-                   {}) {};
+                   {}) {}
     MockWallet(
             crypto::secret_key _spend_private_key,
             crypto::public_key _spend_public_key,
@@ -48,11 +48,11 @@ class MockWallet : public Wallet {
                    std::make_shared<MockDaemonComms>(),
                    ":memory:",
                    "",
-                   {}) {};
+                   {}) {}
 
     int64_t height = 0;
 
-    std::shared_ptr<WalletDB> get_db() { return db; };
+    std::shared_ptr<WalletDB> get_db() { return db; }
 
     void store_test_transaction(const int64_t amount) {
         height++;
@@ -75,7 +75,7 @@ class MockWallet : public Wallet {
         auto db_tx = db->db_transaction();
         db->store_transaction(hash, height, dummy_outputs);
         db_tx.commit();
-    };
+    }
 
     void store_test_output(wallet::Output o) {
         height++;
@@ -93,7 +93,7 @@ class MockWallet : public Wallet {
         SQLite::Transaction db_tx(db->db);
         db->store_transaction(hash, height, dummy_outputs);
         db_tx.commit();
-    };
+    }
 };
 
 }  // namespace wallet

@@ -36,7 +36,7 @@ class TransactionConstructor {
         // outputs;");
         int64_t max_output_index = 1000;
         decoy_selector = std::make_unique<DecoySelector>(0, max_output_index);
-    };
+    }
 
     PendingTransaction create_transaction(
             const std::vector<cryptonote::tx_destination_entry>& recipients,

@@ -385,12 +385,12 @@ struct WalletListener {
     /**
      * @brief Signalizes device operation progress
      */
-    virtual void onDeviceProgress(const DeviceProgress& event) { (void)event; };
+    virtual void onDeviceProgress(const DeviceProgress& event) { (void)event; }
 
     /**
      * @brief If the listener is created before the wallet this enables to set created wallet object
      */
-    virtual void onSetWallet(Wallet* wallet) { (void)wallet; };
+    virtual void onSetWallet(Wallet* wallet) { (void)wallet; }
 };
 
 /**
@@ -420,11 +420,11 @@ struct Wallet {
     virtual bool setDevicePin(const std::string& pin) {
         (void)pin;
         return false;
-    };
+    }
     virtual bool setDevicePassphrase(const std::string& passphrase) {
         (void)passphrase;
         return false;
-    };
+    }
     virtual std::string address(uint32_t accountIndex = 0, uint32_t addressIndex = 0) const = 0;
     std::string mainAddress() const { return address(0, 0); }
     virtual std::string path() const = 0;

@@ -998,7 +998,7 @@ std::string WebUsbTransport::get_path() const {
     }
 
     return get_usb_path(static_cast<uint8_t>(m_bus_id), m_port_numbers);
-};
+}
 
 void WebUsbTransport::open() {
     if (!pre_open()) {
@@ -1093,7 +1093,7 @@ void WebUsbTransport::open() {
     m_proto->session_begin(*this);
 
 #undef TREZOR_DESTROY_SESSION
-};
+}
 
 void WebUsbTransport::close() {
     if (!pre_close()) {
@@ -1118,7 +1118,7 @@ void WebUsbTransport::close() {
         libusb_exit(m_usb_session);
         m_usb_session = nullptr;
     }
-};
+}
 
 std::shared_ptr<Transport> WebUsbTransport::find_debug() {
 #ifdef WITH_TREZOR_DEBUGGING
@@ -1157,12 +1157,12 @@ unsigned char WebUsbTransport::get_endpoint() const {
 
 void WebUsbTransport::write(const google::protobuf::Message& req) {
     m_proto->write(*this, req);
-};
+}
 
 void WebUsbTransport::read(
         std::shared_ptr<google::protobuf::Message>& msg, messages::MessageType* msg_type) {
     m_proto->read(*this, msg, msg_type);
-};
+}
 
 void WebUsbTransport::write_chunk(const void* buff, size_t size) {
     require_connected();
@@ -1180,7 +1180,7 @@ void WebUsbTransport::write_chunk(const void* buff, size_t size) {
     if (transferred != (int)size) {
         throw exc::CommunicationException("Could not transfer chunk");
     }
-};
+}
 
 size_t WebUsbTransport::read_chunk(void* buff, size_t size) {
     require_connected();
@@ -1196,7 +1196,7 @@ size_t WebUsbTransport::read_chunk(void* buff, size_t size) {
     }
 
     return transferred;
-};
+}
 
 std::ostream& WebUsbTransport::dump(std::ostream& o) const {
     o << "WebUsbTransport<path=" << get_path()
@@ -1216,7 +1216,7 @@ std::ostream& WebUsbTransport::dump(std::ostream& o) const {
     }
 
     return o << ">";
-};
+}
 
 #endif  // WITH_DEVICE_TREZOR_WEBUSB
 

@@ -77,7 +77,7 @@ class DebugLink {
         } else {
             throw exc::UnexpectedMessageException(msg_resp_type, msg_resp);
         }
-    };
+    }
 
   private:
     std::shared_ptr<Transport> m_transport;

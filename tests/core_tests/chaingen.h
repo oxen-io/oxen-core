@@ -506,7 +506,7 @@ class block_tracker {
 
     block_tracker() = default;
     block_tracker(const block_tracker& bt) :
-            m_outs(bt.m_outs), m_map_outs(bt.m_map_outs), m_blocks(bt.m_blocks) {};
+            m_outs(bt.m_outs), m_map_outs(bt.m_map_outs), m_blocks(bt.m_blocks) {}
     map_txid_output_t::iterator find_out(const crypto::hash& txid, size_t out);
     map_txid_output_t::iterator find_out(const output_hasher& id);
     void process(const std::vector<cryptonote::block>& blockchain, const map_hash2tx_t& mtx);
@@ -1701,7 +1701,7 @@ struct oxen_chain_generator {
             hf_version_(other.hf_version_),
             events_(other.events_),
             hard_forks_(other.hard_forks_),
-            first_miner_(other.first_miner_) {};
+            first_miner_(other.first_miner_) {}
 
     uint64_t height() const { return db_.blocks.back().block.get_height(); }
     uint64_t chain_height() const { return height() + 1; }

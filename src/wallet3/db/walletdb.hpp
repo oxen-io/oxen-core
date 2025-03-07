@@ -47,7 +47,7 @@ class WalletDB : public db::Database {
     template <typename T>
     T get_metadata_blob_guts(const std::string& id) {
         return prepared_get<db::blob_guts<T>>("SELECT val_binary FROM metadata WHERE id = ?", id);
-    };
+    }
 
     cryptonote::network_type network_type();
 

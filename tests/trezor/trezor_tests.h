@@ -52,7 +52,7 @@ class gen_trezor_base : public test_chain_unit_base {
 
     gen_trezor_base();
     gen_trezor_base(const gen_trezor_base& other);
-    virtual ~gen_trezor_base() {};
+    virtual ~gen_trezor_base() {}
 
     virtual void setup_args(const std::string& trezor_path, bool heavy_tests = false);
     virtual bool generate(std::vector<test_event_entry>& events);
@@ -222,7 +222,7 @@ class tsx_builder {
     tsx_builder* rct_config(const rct::RCTConfig& rct_config) {
         m_rct_config = rct_config;
         return this;
-    };
+    }
 
     tsx_builder* build_tx();
     tsx_builder* construct_pending_tx(

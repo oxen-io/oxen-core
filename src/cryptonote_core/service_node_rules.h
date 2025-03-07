@@ -218,7 +218,7 @@ constexpr size_t min_votes_for_quorum_type(quorum_type q) {
          : q == quorum_type::checkpointing ? CHECKPOINT_MIN_VOTES
          : q == quorum_type::blink         ? BLINK_MIN_VOTES
                                            : std::numeric_limits<size_t>::max();
-};
+}
 
 constexpr quorum_type max_quorum_type_for_hf(cryptonote::hf version) {
     return version <= cryptonote::hf::hf12_checkpointing ? quorum_type::obligations

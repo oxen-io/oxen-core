@@ -313,7 +313,7 @@ class BaseTestDB : public cryptonote::BlockchainDB {
 
     virtual cryptonote::transaction get_pruned_tx(const crypto::hash& h) const override {
         return {};
-    };
+    }
     virtual bool get_tx(const crypto::hash& h, cryptonote::transaction& tx) const override {
         return false;
     }

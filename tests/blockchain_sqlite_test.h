@@ -14,7 +14,7 @@ class BlockchainSQLiteTest : public cryptonote::BlockchainSQLite {
 
   public:
     BlockchainSQLiteTest(cryptonote::network_type nettype, fs::path db_path) :
-            BlockchainSQLite(nettype, db_path), filename{std::move(db_path)} {};
+            BlockchainSQLite(nettype, db_path), filename{std::move(db_path)} {}
 
     BlockchainSQLiteTest(BlockchainSQLiteTest& other) :
             BlockchainSQLiteTest(other.m_nettype, check_if_copy_filename(other.filename)) {

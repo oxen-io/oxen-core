@@ -66,7 +66,7 @@ inline constexpr std::string_view to_string(const quorum_type& q) {
         case quorum_type::pulse: return "pulse";
         default: assert(false); return "xx_unhandled_type";
     }
-};
+}
 
 enum struct quorum_group : uint8_t { invalid, validator, worker, _count };
 struct quorum_vote_t {
