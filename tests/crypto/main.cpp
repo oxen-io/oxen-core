@@ -49,7 +49,7 @@ using namespace std::literals;
 using namespace crypto;
 typedef crypto::hash chash;
 
-DISABLE_GCC_WARNING(maybe-uninitialized)
+DISABLE_GCC_WARNING("-Wmaybe-uninitialized")
 
 size_t lineno;
 

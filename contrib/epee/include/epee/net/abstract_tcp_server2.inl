@@ -897,7 +897,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
   }
   //-----------------------------------------------------------------------------
 PUSH_WARNINGS
-DISABLE_GCC_WARNING(maybe-uninitialized)
+DISABLE_GCC_WARNING("-Wmaybe-uninitialized")
   template<class t_protocol_handler>
   bool boosted_tcp_server<t_protocol_handler>::init_server(const std::string port,  const std::string& address,
       const std::string port_ipv6, const std::string address_ipv6, bool use_ipv6, bool require_ipv4)
