@@ -1,21 +1,21 @@
 // Copyright (c) 2017-2018, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -27,20 +27,27 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "common/guts.h"
-#include "gtest/gtest.h"
-
 #include "common/sha256sum.h"
 #include "crypto/hash.h"
+#include "gtest/gtest.h"
 
-static bool check(const std::string &data, std::string_view expected_hash_hex)
-{
-  crypto::hash hash, expected_hash;
-  if (!tools::try_load_from_hex_guts(expected_hash_hex, expected_hash))
-    return false;
-  return tools::sha256sum_str(data, hash) && hash == expected_hash;
+static bool check(const std::string& data, std::string_view expected_hash_hex) {
+    crypto::hash hash, expected_hash;
+    if (!tools::try_load_from_hex_guts(expected_hash_hex, expected_hash))
+        return false;
+    return tools::sha256sum_str(data, hash) && hash == expected_hash;
 }
 
-TEST(sha256, empty) { ASSERT_TRUE(check(std::string(), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")); }
-TEST(sha256, small) { ASSERT_TRUE(check("0123456789", "84d89877f0d4041efb6bf91a16f0248f2fd573e6af05c19f96bedb9f882f7882")); }
-TEST(sha256, large) { ASSERT_TRUE(check(std::string(65536*256, 0), "080acf35a507ac9849cfcba47dc2ad83e01b75663a516279c8b9d243b719643e")); }
-
+TEST(sha256, empty) {
+    ASSERT_TRUE(check(
+            std::string(), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
+}
+TEST(sha256, small) {
+    ASSERT_TRUE(check(
+            "0123456789", "84d89877f0d4041efb6bf91a16f0248f2fd573e6af05c19f96bedb9f882f7882"));
+}
+TEST(sha256, large) {
+    ASSERT_TRUE(
+            check(std::string(65536 * 256, 0),
+                  "080acf35a507ac9849cfcba47dc2ad83e01b75663a516279c8b9d243b719643e"));
+}

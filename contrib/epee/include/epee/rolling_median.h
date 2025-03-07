@@ -34,7 +34,7 @@
 
 #pragma once
 
-#include <cstdint>
+#include <algorithm>
 #include <cstdlib>
 
 namespace epee { namespace misc_utils {

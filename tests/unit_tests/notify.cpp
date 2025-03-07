@@ -1,21 +1,21 @@
 // Copyright (c) 2018, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -30,62 +30,57 @@
 #include <sys/stat.h>
 #endif
 
-#include "gtest/gtest.h"
+#include <chrono>
+#include <thread>
 
-#include "epee/string_tools.h"
 #include "common/file.h"
 #include "common/notify.h"
-
-#include <thread>
-#include <chrono>
+#include "epee/string_tools.h"
+#include "gtest/gtest.h"
 
 using namespace std::literals;
 
-TEST(notify, works)
-{
+TEST(notify, works) {
 #ifdef __GLIBC__
-  mode_t prevmode = umask(077);
+    mode_t prevmode = umask(077);
 #endif
-  const char *tmp = getenv("TEMP");
-  if (!tmp)
-    tmp = "/tmp";
-  static const char *filename = "monero-notify-unit-test-XXXXXX";
-  const size_t len = strlen(tmp) + 1 + strlen(filename);
-  std::unique_ptr<char[]> name_template_(new char[len + 1]);
-  char *name_template = name_template_.get();
-  ASSERT_TRUE(name_template != NULL);
-  snprintf(name_template, len + 1, "%s/%s", tmp, filename);
-  int fd = mkstemp(name_template);
+    const char* tmp = getenv("TEMP");
+    if (!tmp)
+        tmp = "/tmp";
+    static const char* filename = "monero-notify-unit-test-XXXXXX";
+    const size_t len = strlen(tmp) + 1 + strlen(filename);
+    std::unique_ptr<char[]> name_template_(new char[len + 1]);
+    char* name_template = name_template_.get();
+    ASSERT_TRUE(name_template != NULL);
+    snprintf(name_template, len + 1, "%s/%s", tmp, filename);
+    int fd = mkstemp(name_template);
 #ifdef __GLIBC__
-  umask(prevmode);
+    umask(prevmode);
 #endif
-  ASSERT_TRUE(fd >= 0);
-  close(fd);
+    ASSERT_TRUE(fd >= 0);
+    close(fd);
 
-  const std::string spec = epee::string_tools::get_current_module_folder() + "/test_notifier"
+    const std::string spec = epee::string_tools::get_current_module_folder() + "/test_notifier"
 #ifdef _WIN32
-      + ".exe"
+                           + ".exe"
 #endif
-      + " " + name_template + " %s";
+                           + " " + name_template + " %s";
 
-  tools::Notify notify(spec);
-  notify.notify("%s", "1111111111111111111111111111111111111111111111111111111111111111");
+    tools::Notify notify(spec);
+    notify.notify("%s", "1111111111111111111111111111111111111111111111111111111111111111");
 
-  bool ok = false;
-  for (int i = 0; i < 10; ++i)
-  {
-    std::this_thread::sleep_for(100ms);
+    bool ok = false;
+    for (int i = 0; i < 10; ++i) {
+        std::this_thread::sleep_for(100ms);
 
-    std::string s;
-    if (tools::slurp_file(name_template, s))
-    {
-      if (s == "1111111111111111111111111111111111111111111111111111111111111111")
-      {
-        ok = true;
-        break;
-      }
+        std::string s;
+        if (tools::slurp_file(name_template, s)) {
+            if (s == "1111111111111111111111111111111111111111111111111111111111111111") {
+                ok = true;
+                break;
+            }
+        }
     }
-  }
-  fs::remove(name_template);
-  ASSERT_TRUE(ok);
+    fs::remove(name_template);
+    ASSERT_TRUE(ok);
 }

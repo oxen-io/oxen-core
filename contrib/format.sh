@@ -2,7 +2,7 @@
 
 CLANG_FORMAT_DESIRED_VERSION=19
 
-TARGET_DIRS=(src pybind contrib/epee)
+TARGET_DIRS=(src pybind contrib/epee tests)
 
 binary=$(which clang-format-$CLANG_FORMAT_DESIRED_VERSION 2>/dev/null)
 if [ $? -ne 0 ]; then
