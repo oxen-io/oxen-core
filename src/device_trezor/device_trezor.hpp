@@ -100,7 +100,7 @@ class device_trezor : public hw::trezor::device_trezor_base, public hw::device_c
     bool release() override;
     bool disconnect() override;
 
-    device_protocol_t device_protocol() const override { return PROTOCOL_COLD; };
+    device_protocol_t device_protocol() const override { return PROTOCOL_COLD; }
 
     bool has_ki_cold_sync() const override { return true; }
     bool has_tx_cold_sign() const override { return true; }

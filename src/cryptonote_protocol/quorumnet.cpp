@@ -145,9 +145,9 @@ namespace {
 
     template <typename E>
 #ifdef __GNUG__
-[[gnu::warn_unused_result]]
+    [[gnu::warn_unused_result]]
 #endif
-E get_enum(const bt_dict &d, const std::string &key) {
+    E get_enum(const bt_dict& d, const std::string& key) {
         E result = static_cast<E>(get_int<std::underlying_type_t<E>>(d.at(key)));
         if (result < E::_count)
             return result;

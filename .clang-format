@@ -40,6 +40,8 @@ AccessModifierOffset: -2
 ConstructorInitializerIndentWidth: 8
 ContinuationIndentWidth: 8
 
+# Breaks some things, but can be used manually with selective applications:
+#RemoveSemicolon: true
 
 # treat pointers and reference declarations as if part of the type
 DerivePointerAlignment: false

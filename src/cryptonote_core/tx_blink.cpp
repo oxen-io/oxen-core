@@ -64,7 +64,7 @@ crypto::public_key blink_tx::get_sn_pubkey(
         return blink_quorum->validators[position];
 
     return crypto::null<crypto::public_key>;
-};
+}
 
 crypto::hash blink_tx::hash(bool approved) const {
     auto buf = tools::memcpy_le(height, get_txhash(), uint8_t{approved});

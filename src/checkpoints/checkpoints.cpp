@@ -61,7 +61,7 @@ bool checkpoint_t::check(crypto::hash const& hash) const {
                 block_hash,
                 hash);
     return result;
-};
+}
 
 height_to_hash const HARDCODED_MAINNET_CHECKPOINTS[] = {
         {0, "08ff156d993012b0bdf2816c4bee47c9bbc7930593b70ee02574edddf15ee933"},

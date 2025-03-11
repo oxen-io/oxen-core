@@ -101,33 +101,33 @@ namespace boost::serialization {
 
 template <class Archive>
 void serialize(Archive& a, wallet::transfer_details& x, const unsigned int ver) {
-    a& x.m_block_height;
-    a& x.m_global_output_index;
-    a& x.m_internal_output_index;
-    a& x.m_tx;
-    a& x.m_spent;
-    a& x.m_key_image;
-    a& x.m_mask;
-    a& x.m_amount;
-    a& x.m_spent_height;
-    a& x.m_txid;
-    a& x.m_rct;
-    a& x.m_key_image_known;
-    a& x.m_pk_index;
-    a& x.m_subaddr_index;
-    a& x.m_multisig_info;
-    a& x.m_multisig_k;
-    a& x.m_key_image_partial;
+    a & x.m_block_height;
+    a & x.m_global_output_index;
+    a & x.m_internal_output_index;
+    a & x.m_tx;
+    a & x.m_spent;
+    a & x.m_key_image;
+    a & x.m_mask;
+    a & x.m_amount;
+    a & x.m_spent_height;
+    a & x.m_txid;
+    a & x.m_rct;
+    a & x.m_key_image_known;
+    a & x.m_pk_index;
+    a & x.m_subaddr_index;
+    a & x.m_multisig_info;
+    a & x.m_multisig_k;
+    a & x.m_key_image_partial;
     if (ver > 9)
-        a& x.m_key_image_request;
+        a & x.m_key_image_request;
     if (ver > 10)
-        a& x.m_uses;
+        a & x.m_uses;
     if (ver > 11)
-        a& x.m_frozen;
+        a & x.m_frozen;
     if (ver > 12)
-        a& x.m_unmined_blink;
+        a & x.m_unmined_blink;
     if (ver > 13)
-        a& x.m_was_blink;
+        a & x.m_was_blink;
 
     if constexpr (typename Archive::is_loading()) {
         if (ver < 10)

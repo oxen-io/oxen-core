@@ -182,7 +182,7 @@ static void copy_table(
             mdb_txn_abort(txn1);
         if (tx_active0)
             mdb_txn_abort(txn0);
-    };
+    }
 
     dbr = mdb_txn_begin(env0, NULL, MDB_RDONLY, &txn0);
     if (dbr)
@@ -311,7 +311,7 @@ static void prune(MDB_env* env0, MDB_env* env1) {
             mdb_txn_abort(txn1);
         if (tx_active0)
             mdb_txn_abort(txn0);
-    };
+    }
 
     dbr = mdb_txn_begin(env0, NULL, MDB_RDONLY, &txn0);
     if (dbr)

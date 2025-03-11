@@ -1,6 +1,6 @@
 // Copyright (c) 2006-2013, Andrey N. Sabelnikov, www.sabelnikov.net
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are met:
 // * Redistributions of source code must retain the above copyright
@@ -11,7 +11,7 @@
 // * Neither the name of the Andrey N. Sabelnikov nor the
 // names of its contributors may be used to endorse or promote products
 // derived from this software without specific prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 // ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 // WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -22,29 +22,28 @@
 // ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 
 #pragma once
 
-namespace epee::misc_utils
-{
+namespace epee::misc_utils {
 
-  /************************************************************************/
-  /*                                                                      */
-  /************************************************************************/
+/************************************************************************/
+/*                                                                      */
+/************************************************************************/
 
-  template <typename Callback>
-  class scope_leave_handler_impl
-  {
+template <typename Callback>
+class scope_leave_handler_impl {
     Callback m_func;
 
   public:
     scope_leave_handler_impl(Callback f) : m_func(std::move(f)) {}
 
-    ~scope_leave_handler_impl()
-    {
-      try { m_func(); }
-      catch (...) { /* ignore */ }
+    ~scope_leave_handler_impl() {
+        try {
+            m_func();
+        } catch (...) { /* ignore */
+        }
     }
 
     // Moveable, Non-copyable
@@ -52,12 +51,11 @@ namespace epee::misc_utils
     scope_leave_handler_impl& operator=(const scope_leave_handler_impl&) = delete;
     scope_leave_handler_impl(scope_leave_handler_impl&&) = default;
     scope_leave_handler_impl& operator=(scope_leave_handler_impl&&) = default;
-  };
+};
 
-  template <typename Callback>
-  auto create_scope_leave_handler(Callback f)
-  {
+template <typename Callback>
+auto create_scope_leave_handler(Callback f) {
     return scope_leave_handler_impl(std::move(f));
-  }
-
 }
+
+}  // namespace epee::misc_utils

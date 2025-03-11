@@ -67,7 +67,7 @@ void assign_from_repeatable(
     for (InputIterator it = begin; it != end; it++) {
         dst->push_back(*it);
     }
-};
+}
 
 template <typename T>
 bool cn_deserialize(const std::string_view buff, T& dst) {

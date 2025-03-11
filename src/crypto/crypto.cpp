@@ -574,7 +574,7 @@ struct rs_comm {
         keccak_finish(&state, result.data(), 32);
         sc_reduce32(result.data());
         return result;
-    };
+    }
 };
 
 void generate_ring_signature(

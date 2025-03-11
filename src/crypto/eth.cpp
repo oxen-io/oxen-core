@@ -24,4 +24,4 @@ fmt::format_context::iterator fmt::formatter<eth::address>::default_format(
     } else {
         return oxenc::to_hex(val.begin(), val.end(), out);
     }
-};
+}

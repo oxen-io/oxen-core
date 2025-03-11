@@ -567,7 +567,7 @@ class core final {
      *
      * @return which network are we on?
      */
-    network_type get_nettype() const { return m_nettype; };
+    network_type get_nettype() const { return m_nettype; }
 
     /**
      * Returns the config settings for the network we are on.

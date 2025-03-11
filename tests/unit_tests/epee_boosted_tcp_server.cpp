@@ -1,21 +1,21 @@
 // Copyright (c) 2014-2018, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -25,108 +25,102 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <chrono>
-#include <mutex>
 #include <condition_variable>
+#include <mutex>
 
-#include "gtest/gtest.h"
-
-#include "epee/string_tools.h"
 #include "epee/net/abstract_tcp_server2.h"
+#include "epee/string_tools.h"
+#include "gtest/gtest.h"
 
 using namespace std::literals;
 
-namespace
-{
-  const uint32_t test_server_port = 5626;
-  const std::string test_server_host("127.0.0.1");
+namespace {
+const uint32_t test_server_port = 5626;
+const std::string test_server_host("127.0.0.1");
 
-  struct test_connection_context : public epee::net_utils::connection_context_base
-  {
-  };
+struct test_connection_context : public epee::net_utils::connection_context_base {};
 
-  struct test_protocol_handler_config
-  {
-  };
+struct test_protocol_handler_config {};
 
-  struct test_protocol_handler
-  {
+struct test_protocol_handler {
     typedef test_connection_context connection_context;
     typedef test_protocol_handler_config config_type;
 
-    test_protocol_handler(epee::net_utils::i_service_endpoint* /*psnd_hndlr*/, config_type& /*config*/, connection_context& /*conn_context*/)
+    test_protocol_handler(
+            epee::net_utils::i_service_endpoint* /*psnd_hndlr*/,
+            config_type& /*config*/,
+            connection_context& /*conn_context*/) {}
+
+    void after_init_connection() {}
+
+    void handle_qued_callback() {}
+
+    bool release_protocol() { return true; }
+
+    bool handle_recv(const void* /*data*/, size_t /*size*/) { return false; }
+};
+
+typedef epee::net_utils::boosted_tcp_server<test_protocol_handler> test_tcp_server;
+}  // namespace
+
+TEST(boosted_tcp_server, worker_threads_are_exception_resistant) {
+    test_tcp_server srv(
+            epee::net_utils::e_connection_type_RPC);  // RPC disables network limit for unit tests
+    ASSERT_TRUE(srv.init_server(test_server_port, test_server_host));
+
+    std::mutex mtx;
+    std::condition_variable cond;
+    int counter = 0;
+
+    auto counter_incrementer = [&counter, &cond, &mtx]() {
+        std::unique_lock lock{mtx};
+        ++counter;
+        if (4 <= counter) {
+            cond.notify_one();
+        }
+    };
+
+    // 2 theads, but 4 exceptions
+    ASSERT_TRUE(srv.run_server(2, false));
+    ASSERT_TRUE(srv.async_call([&counter_incrementer]() {
+        counter_incrementer();
+        throw std::runtime_error("test 1");
+    }));
+    ASSERT_TRUE(srv.async_call([&counter_incrementer]() {
+        counter_incrementer();
+        throw std::string("test 2");
+    }));
+    ASSERT_TRUE(srv.async_call([&counter_incrementer]() {
+        counter_incrementer();
+        throw "test 3";
+    }));
+    ASSERT_TRUE(srv.async_call([&counter_incrementer]() {
+        counter_incrementer();
+        throw 4;
+    }));
+
     {
+        std::unique_lock lock{mtx};
+        ASSERT_TRUE(cond.wait_for(lock, 5s, [&] { return counter == 4; }));
     }
 
-    void after_init_connection()
+    // Check if threads are alive
+    counter = 0;
+    ASSERT_TRUE(srv.async_call(counter_incrementer));
+    ASSERT_TRUE(srv.async_call(counter_incrementer));
+    ASSERT_TRUE(srv.async_call(counter_incrementer));
+    ASSERT_TRUE(srv.async_call(counter_incrementer));
+
     {
+        std::unique_lock lock{mtx};
+        ASSERT_TRUE(cond.wait_for(lock, 5s, [&] { return counter == 4; }));
     }
 
-    void handle_qued_callback()
-    {
-    }
-
-    bool release_protocol()
-    {
-      return true;
-    }
-
-    bool handle_recv(const void* /*data*/, size_t /*size*/)
-    {
-      return false;
-    }
-  };
-
-  typedef epee::net_utils::boosted_tcp_server<test_protocol_handler> test_tcp_server;
-}
-
-TEST(boosted_tcp_server, worker_threads_are_exception_resistant)
-{
-  test_tcp_server srv(epee::net_utils::e_connection_type_RPC); // RPC disables network limit for unit tests
-  ASSERT_TRUE(srv.init_server(test_server_port, test_server_host));
-
-  std::mutex mtx;
-  std::condition_variable cond;
-  int counter = 0;
-
-  auto counter_incrementer = [&counter, &cond, &mtx]()
-  {
-    std::unique_lock lock{mtx};
-    ++counter;
-    if (4 <= counter)
-    {
-      cond.notify_one();
-    }
-  };
-
-  // 2 theads, but 4 exceptions
-  ASSERT_TRUE(srv.run_server(2, false));
-  ASSERT_TRUE(srv.async_call([&counter_incrementer]() { counter_incrementer(); throw std::runtime_error("test 1"); }));
-  ASSERT_TRUE(srv.async_call([&counter_incrementer]() { counter_incrementer(); throw std::string("test 2"); }));
-  ASSERT_TRUE(srv.async_call([&counter_incrementer]() { counter_incrementer(); throw "test 3"; }));
-  ASSERT_TRUE(srv.async_call([&counter_incrementer]() { counter_incrementer(); throw 4; }));
-
-  {
-    std::unique_lock lock{mtx};
-    ASSERT_TRUE(cond.wait_for(lock, 5s, [&] { return counter == 4; }));
-  }
-
-  // Check if threads are alive
-  counter = 0;
-  ASSERT_TRUE(srv.async_call(counter_incrementer));
-  ASSERT_TRUE(srv.async_call(counter_incrementer));
-  ASSERT_TRUE(srv.async_call(counter_incrementer));
-  ASSERT_TRUE(srv.async_call(counter_incrementer));
-
-  {
-    std::unique_lock lock{mtx};
-    ASSERT_TRUE(cond.wait_for(lock, 5s, [&] { return counter == 4; }));
-  }
-
-  srv.send_stop_signal();
-  ASSERT_TRUE(srv.server_stop());
-  ASSERT_TRUE(srv.deinit_server());
+    srv.send_stop_signal();
+    ASSERT_TRUE(srv.server_stop());
+    ASSERT_TRUE(srv.deinit_server());
 }

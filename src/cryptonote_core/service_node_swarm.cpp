@@ -61,7 +61,7 @@ size_t calc_excess(const swarm_snode_map_t& swarm_to_snodes) {
             });
     log::trace(logcat, "Calculated excess: {}", excess);
     return excess;
-};
+}
 
 /// Calculate threshold above which the excess should create a new swarm.
 /// The threshold should be such that
@@ -71,7 +71,7 @@ size_t calc_threshold(const swarm_snode_map_t& swarm_to_snodes) {
     const size_t threshold = NEW_SWARM_SIZE + (swarm_to_snodes.size() * IDEAL_SWARM_MARGIN);
     log::trace(logcat, "Calculated threshold: {}", threshold);
     return threshold;
-};
+}
 
 const excess_pool_snode& pick_from_excess_pool(
         const std::vector<excess_pool_snode>& excess_pool, std::mt19937_64& mt) {

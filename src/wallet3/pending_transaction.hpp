@@ -38,7 +38,7 @@ struct PendingTransaction {
     uint64_t burn_fixed = 0;
 
     std::vector<uint8_t> extra = {};
-    size_t extra_size() const { return extra.size(); };
+    size_t extra_size() const { return extra.size(); }
 
     PendingTransaction() = default;
 

@@ -39,7 +39,7 @@ class device_default : public hw::device {
   public:
     device_default() = default;
 
-    bool is_hardware_device() const override { return false; };
+    bool is_hardware_device() const override { return false; }
 
     /* ======================================================================= */
     /*                              SETUP/TEARDOWN                             */
@@ -53,7 +53,7 @@ class device_default : public hw::device {
     bool connect() override;
     bool disconnect() override;
 
-    type get_type() const override { return type::SOFTWARE; };
+    type get_type() const override { return type::SOFTWARE; }
 
     /* ======================================================================= */
     /*  LOCKER                                                                 */

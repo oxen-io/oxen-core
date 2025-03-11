@@ -26,64 +26,77 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-
 #ifndef __cplusplus
 #error "this header is c++ only"
 #endif
 
 #include <cassert>
-#include <string>
-#include <sstream>
 #include <iostream>
 #include <oxen/log.hpp>
+#include <sstream>
+#include <string>
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "default"
 
-namespace epee
-{
+namespace epee {
 namespace log = oxen::log;
 
 inline auto logcat = oxen::log::Cat("epee");
 
 #define TRY_ENTRY() try {
-#define CATCH_ENTRY(location, return_val) } \
-  catch(const std::exception& ex) \
-{ \
-    oxen::log::error(logcat, "Exception at [{}]: {}", location, ex.what()); \
-  return return_val; \
-}\
-  catch(...)\
-{\
-    oxen::log::error(logcat, "Unknown exception at [{}]", location); \
-  return return_val; \
-}
+#define CATCH_ENTRY(location, return_val)                                       \
+    }                                                                           \
+    catch (const std::exception& ex) {                                          \
+        oxen::log::error(logcat, "Exception at [{}]: {}", location, ex.what()); \
+        return return_val;                                                      \
+    }                                                                           \
+    catch (...) {                                                               \
+        oxen::log::error(logcat, "Unknown exception at [{}]", location);        \
+        return return_val;                                                      \
+    }
 
-#define ASSERT_MES_AND_THROW(...) do { \
-    auto msg = fmt::format(__VA_ARGS__); \
-    oxen::log::error(logcat, "{}", msg); \
-    throw std::runtime_error{msg}; } while(0)
-#define CHECK_AND_ASSERT_THROW_MES(expr, ...) do {if(!(expr)) ASSERT_MES_AND_THROW(__VA_ARGS__);} while(0)
+#define ASSERT_MES_AND_THROW(...)            \
+    do {                                     \
+        auto msg = fmt::format(__VA_ARGS__); \
+        oxen::log::error(logcat, "{}", msg); \
+        throw std::runtime_error{msg};       \
+    } while (0)
+#define CHECK_AND_ASSERT_THROW_MES(expr, ...)  \
+    do {                                       \
+        if (!(expr))                           \
+            ASSERT_MES_AND_THROW(__VA_ARGS__); \
+    } while (0)
 
 #ifndef CHECK_AND_ASSERT
-#define CHECK_AND_ASSERT(expr, fail_ret_val)   do{if(!(expr)){return fail_ret_val;};}while(0)
+#define CHECK_AND_ASSERT(expr, fail_ret_val) \
+    do {                                     \
+        if (!(expr)) {                       \
+            return fail_ret_val;             \
+        };                                   \
+    } while (0)
 #endif
 
 #ifndef CHECK_AND_ASSERT_MES
-#define CHECK_AND_ASSERT_MES(expr, fail_ret_val, ...)   do{if(!(expr)) {oxen::log::error(logcat, __VA_ARGS__); return fail_ret_val;};}while(0)
+#define CHECK_AND_ASSERT_MES(expr, fail_ret_val, ...) \
+    do {                                              \
+        if (!(expr)) {                                \
+            oxen::log::error(logcat, __VA_ARGS__);    \
+            return fail_ret_val;                      \
+        };                                            \
+    } while (0)
 #endif
 
-enum console_colors
-{
-  console_color_default,
-  console_color_white,
-  console_color_red,
-  console_color_green,
-  console_color_blue,
-  console_color_cyan,
-  console_color_magenta,
-  console_color_yellow
+enum console_colors {
+    console_color_default,
+    console_color_white,
+    console_color_red,
+    console_color_green,
+    console_color_blue,
+    console_color_cyan,
+    console_color_magenta,
+    console_color_yellow
 };
 
 bool is_stdout_a_tty();
-}
+}  // namespace epee

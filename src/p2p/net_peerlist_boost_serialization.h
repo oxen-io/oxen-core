@@ -47,14 +47,14 @@ namespace boost::serialization {
 template <class T, class Archive>
 inline void do_serialize(boost::mpl::false_, Archive& a, epee::net_utils::network_address& na) {
     T addr{};
-    a& addr;
+    a & addr;
     na = std::move(addr);
 }
 
 template <class T, class Archive>
 inline void do_serialize(
         boost::mpl::true_, Archive& a, const epee::net_utils::network_address& na) {
-    a& na.as<T>();
+    a & na.as<T>();
 }
 
 template <class Archive, class ver_type>
@@ -64,7 +64,7 @@ inline void serialize(Archive& a, epee::net_utils::network_address& na, const ve
     uint8_t type;
     if (is_saving)
         type = uint8_t(na.get_type_id());
-    a& type;
+    a & type;
     switch (epee::net_utils::address_type(type)) {
         case epee::net_utils::ipv4_network_address::get_type_id():
             do_serialize<epee::net_utils::ipv4_network_address>(is_saving, a, na);
@@ -87,9 +87,9 @@ inline void serialize(Archive& a, epee::net_utils::ipv4_network_address& na, con
     uint32_t ip{na.ip()};
     uint16_t port{na.port()};
     ip = SWAP32LE(ip);
-    a& ip;
+    a & ip;
     ip = SWAP32LE(ip);
-    a& port;
+    a & port;
     if (!typename Archive::is_saving())
         na = epee::net_utils::ipv4_network_address{ip, port};
 }
@@ -99,11 +99,11 @@ inline void serialize(Archive& a, boost::asio::ip::address_v6& v6, const ver_typ
     if (typename Archive::is_saving()) {
         auto bytes = v6.to_bytes();
         for (auto& e : bytes)
-            a& e;
+            a & e;
     } else {
         boost::asio::ip::address_v6::bytes_type bytes;
         for (auto& e : bytes)
-            a& e;
+            a & e;
         v6 = boost::asio::ip::address_v6(bytes);
     }
 }
@@ -112,8 +112,8 @@ template <class Archive, class ver_type>
 inline void serialize(Archive& a, epee::net_utils::ipv6_network_address& na, const ver_type ver) {
     boost::asio::ip::address_v6 ip{na.ip()};
     uint16_t port{na.port()};
-    a& ip;
-    a& port;
+    a & ip;
+    a & port;
     if (!typename Archive::is_saving())
         na = epee::net_utils::ipv6_network_address{ip, port};
 }
@@ -126,8 +126,8 @@ inline void save(Archive& a, const net::tor_address& na, const ver_type) {
 
     const uint16_t port{na.port()};
     const uint8_t len = length;
-    a& port;
-    a& len;
+    a & port;
+    a & len;
     a.save_binary(na.host_str(), length);
 }
 
@@ -139,8 +139,8 @@ inline void save(Archive& a, const net::i2p_address& na, const ver_type) {
 
     const uint16_t port{na.port()};
     const uint8_t len = length;
-    a& port;
-    a& len;
+    a & port;
+    a & len;
     a.save_binary(na.host_str(), length);
 }
 
@@ -148,8 +148,8 @@ template <class Archive, class ver_type>
 inline void load(Archive& a, net::tor_address& na, const ver_type) {
     uint16_t port = 0;
     uint8_t length = 0;
-    a& port;
-    a& length;
+    a & port;
+    a & length;
 
     const size_t buffer_size = net::tor_address::buffer_size();
     if (length > buffer_size)
@@ -169,8 +169,8 @@ template <class Archive, class ver_type>
 inline void load(Archive& a, net::i2p_address& na, const ver_type) {
     uint16_t port = 0;
     uint8_t length = 0;
-    a& port;
-    a& length;
+    a & port;
+    a & length;
 
     const size_t buffer_size = net::i2p_address::buffer_size();
     if (length > buffer_size)
@@ -198,15 +198,15 @@ inline void serialize(Archive& a, net::i2p_address& na, const ver_type ver) {
 
 template <class Archive, class ver_type>
 inline void serialize(Archive& a, nodetool::peerlist_entry& pl, const ver_type ver) {
-    a& pl.adr;
-    a& pl.id;
-    a& pl.last_seen;
+    a & pl.adr;
+    a & pl.id;
+    a & pl.last_seen;
     if (ver < 1) {
         if (!typename Archive::is_saving())
             pl.pruning_seed = 0;
         return;
     }
-    a& pl.pruning_seed;
+    a & pl.pruning_seed;
     if constexpr (cryptonote::PRUNING_DEBUG_SPOOF_SEED && !typename Archive::is_saving()) {
         pl.pruning_seed = tools::make_pruning_seed(
                 1 + pl.adr.as<epee::net_utils::ipv4_network_address>().ip() %
@@ -220,14 +220,14 @@ inline void serialize(Archive& a, nodetool::peerlist_entry& pl, const ver_type v
     if (ver < 3) {
         // Unused, but don't break
         uint16_t rpc_port = 0;
-        a& rpc_port;
+        a & rpc_port;
     }
 }
 
 template <class Archive, class ver_type>
 inline void serialize(Archive& a, nodetool::anchor_peerlist_entry& pl, const ver_type ver) {
-    a& pl.adr;
-    a& pl.id;
-    a& pl.first_seen;
+    a & pl.adr;
+    a & pl.id;
+    a & pl.first_seen;
 }
 }  // namespace boost::serialization

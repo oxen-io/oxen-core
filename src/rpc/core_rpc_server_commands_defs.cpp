@@ -36,7 +36,7 @@ void to_json(nlohmann::json& j, const checkpoint_t& c) {
             {"signatures", c.signatures},
             {"prev_height", c.prev_height},
     };
-};
+}
 }  // namespace cryptonote
 
 namespace service_nodes {
@@ -45,14 +45,14 @@ void to_json(nlohmann::json& j, const key_image_blacklist_entry& b) {
             {"key_image", tools::hex_guts(b.key_image)},
             {"unlock_height", b.unlock_height},
             {"amount", b.amount}};
-};
+}
 
 void to_json(nlohmann::json& j, const quorum_signature& s) {
     j = nlohmann::json{
             {"voter_index", s.voter_index},
             {"signature", tools::hex_guts(s.signature)},
     };
-};
+}
 }  // namespace service_nodes
 
 namespace cryptonote::rpc {
@@ -65,10 +65,10 @@ void RPC_COMMAND::set_bt() {
 
 void to_json(nlohmann::json& j, const GET_QUORUM_STATE::quorum_t& q) {
     j = nlohmann::json{{"validators", q.validators}, {"workers", q.workers}};
-};
+}
 void to_json(nlohmann::json& j, const GET_QUORUM_STATE::quorum_for_height& q) {
     j = nlohmann::json{{"height", q.height}, {"quorum_type", q.quorum_type}, {"quorum", q.quorum}};
-};
+}
 
 void to_json(nlohmann::json& j, const GET_ALTERNATE_CHAINS::chain_info& c) {
     j = nlohmann::json{
@@ -103,7 +103,7 @@ void from_json(const nlohmann::json& j, GET_OUTPUT_HISTOGRAM::entry& e) {
     j.at("total_instances").get_to(e.total_instances);
     j.at("unlocked_instances").get_to(e.unlocked_instances);
     j.at("recent_instances").get_to(e.recent_instances);
-};
+}
 
 void to_json(nlohmann::json& j, const ONS_OWNERS_TO_NAMES::response_entry& r) {
     j = nlohmann::json{

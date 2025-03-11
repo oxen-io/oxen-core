@@ -1268,7 +1268,7 @@ struct ban {
 };
 inline void to_json(nlohmann::json& j, const ban& b) {
     j = nlohmann::json{{"host", b.host}, {"seconds", b.seconds}};
-};
+}
 
 /// RPC: daemon/set_bans
 ///

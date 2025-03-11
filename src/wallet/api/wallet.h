@@ -156,7 +156,7 @@ class WalletImpl : public Wallet {
     void setRefreshFromBlockHeight(uint64_t refresh_from_block_height) override;
     uint64_t getRefreshFromBlockHeight() const override {
         return m_wallet_ptr->get_refresh_from_block_height();
-    };
+    }
     void setRecoveringFromSeed(bool recoveringFromSeed) override;
     void setRecoveringFromDevice(bool recoveringFromDevice) override;
     void setSubaddressLookahead(uint32_t major, uint32_t minor) override;

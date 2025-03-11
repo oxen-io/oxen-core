@@ -1,21 +1,21 @@
 // Copyright (c) 2014-2018, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -25,7 +25,7 @@
 // INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-// 
+//
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include "wallet/wallet2.h"
@@ -46,7 +46,8 @@ bool transactions_generation_from_blockchain(std::string& blockchain_folder_path
   //
 }
 
-tx_source_entry::output_entry make_outptu_entr_for_gindex(size_t i, std::map<crypto::hash, transaction>& txs, std::vector<std::pair<crypto::hash, size_t> >& v)
+tx_source_entry::output_entry make_outptu_entr_for_gindex(size_t i, std::map<crypto::hash,
+transaction>& txs, std::vector<std::pair<crypto::hash, size_t> >& v)
 {
   tx_source_entry::output_entry oe;
   oe = i;
@@ -84,8 +85,9 @@ bool make_tx(blockchain_storage& bch)
     //paste mixin transaction
     if(daemon_resp.outs.size())
     {
-      daemon_resp.outs[i].outs.sort([](const out_entry& a, const out_entry& b){return a.global_amount_index < b.global_amount_index;});
-      for (out_entry& daemon_oe : daemon_resp.outs[i].outs)
+      daemon_resp.outs[i].outs.sort([](const out_entry& a, const out_entry& b){return
+a.global_amount_index < b.global_amount_index;}); for (out_entry& daemon_oe :
+daemon_resp.outs[i].outs)
       {
         if(td.m_global_output_index == daemon_oe.global_amount_index)
           continue;
@@ -99,7 +101,8 @@ bool make_tx(blockchain_storage& bch)
     }
 
     //paste real transaction to the random index
-    auto it_to_insert = std::find_if(src.outputs.begin(), src.outputs.end(), [&](const tx_output_entry& a)
+    auto it_to_insert = std::find_if(src.outputs.begin(), src.outputs.end(), [&](const
+tx_output_entry& a)
     {
       return a.first >= td.m_global_output_index;
     });
@@ -121,8 +124,9 @@ bool make_tx(blockchain_storage& bch)
     //lets make last output to odd money
     dsts.resize(dsts.size()+1);
     cryptonote::tx_destination_entry& destination = dsts.back();
-    CHECK_AND_ASSERT_MES(found_money > needed_money, false, "internal error found_money=" << found_money << " !> needed_money=" << needed_money);
-    destination.amount = found_money - needed_money;
+    CHECK_AND_ASSERT_MES(found_money > needed_money, false, "internal error found_money=" <<
+found_money << " !> needed_money=" << needed_money); destination.amount = found_money -
+needed_money;
   }
 
 
@@ -136,8 +140,8 @@ bool make_tx(blockchain_storage& bch)
   rpc::SEND_RAW_TX::request req;
   req.tx_as_hex = oxenc::to_hex(tx_to_blob(tx));
   rpc::SEND_RAW_TX::response daemon_send_resp;
-  r = net_utils::http::invoke_http_json_remote_command(m_daemon_address + "/sendrawtransaction", req, daemon_send_resp, m_http_client);
-  CHECK_AND_ASSERT_MES(r, false, "failed to send transaction");
+  r = net_utils::http::invoke_http_json_remote_command(m_daemon_address + "/sendrawtransaction",
+req, daemon_send_resp, m_http_client); CHECK_AND_ASSERT_MES(r, false, "failed to send transaction");
   if(daemon_send_resp.status != rpc::STATUS_OK)
   {
     std::cout << "daemon failed to accept generated transaction" << std::endl;

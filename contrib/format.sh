@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 
-CLANG_FORMAT_DESIRED_VERSION=16
+CLANG_FORMAT_DESIRED_VERSION=19
 
-TARGET_DIRS=(src pybind)
-
-set -e
+TARGET_DIRS=(src pybind contrib/epee tests)
 
 binary=$(which clang-format-$CLANG_FORMAT_DESIRED_VERSION 2>/dev/null)
 if [ $? -ne 0 ]; then
@@ -23,17 +21,21 @@ if [ $? -ne 0 ]; then
     fi
 fi
 
+set -e
+
+file_match='\.([hc](pp)?|inl)$'
+
 cd "$(dirname $0)/../"
 if [ "$1" = "verify" ] ; then
     for d in ${TARGET_DIRS[@]}; do
-        if [ $($binary --output-replacements-xml $(find $d | grep -E '\.([hc](pp)?|inl)$' | grep -v '\#') | grep '</replacement>' | wc -l) -ne 0 ] ; then
+        if [ $($binary --output-replacements-xml $(find $d | grep -E "$file_match" | grep -v '\#') | grep '</replacement>' | wc -l) -ne 0 ] ; then
             exit 1
         fi
     done
 else
     for d in ${TARGET_DIRS[@]}; do
         echo "Formatting $d"
-        $binary -i $(find $d | grep -E '\.([hc](pp)?|mm)$' | grep -v '\#') &> /dev/null
+        $binary -i $(find $d | grep -E "$file_match" | grep -v '\#') &> /dev/null
     done
 fi
 
