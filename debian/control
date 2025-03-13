@@ -4,6 +4,7 @@ Priority: optional
 Maintainer: Jason Rhinelander <jason@loki.network>
 Build-Depends: debhelper (>= 11), cmake (>= 3.10), ninja-build, g++-10, qttools5-dev,
     libboost-dev (>= 1.65), libboost-thread-dev, libboost-serialization-dev, libboost-program-options-dev,
+    libzstd-dev,
     nettle-dev, libevent-dev, libunwind8-dev, libsodium-dev,
     liboxen-logging-dev,
     libssl-dev,
