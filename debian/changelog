@@ -1,3 +1,12 @@
+oxen (11.1.2-2~ubuntu2410) oracular; urgency=medium
+
+  * add libzstd-dev build dep
+  * bump dev version
+  * Fix l2-proxy default update interval
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 13 Mar 2025 13:31:28 -0300
+
 oxen (11.1.2-1~ubuntu2410) oracular; urgency=medium
 
   [ Jason Rhinelander ]
