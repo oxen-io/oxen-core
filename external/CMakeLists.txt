@@ -46,12 +46,14 @@ endif()
 if(NOT TARGET oxen::logging)
     system_or_submodule(OXENLOGGING oxen-logging liboxen-logging>=1.1.0 oxen-logging)
     if(OXENLOGGING_FOUND)
-        add_library(oxen::logging ALIAS oxen-logging)
-    endif()
+        # If we load oxen-logging via system lib then we won't necessarily have fmt/spdlog targets,
+        # but this script will give us them:
+        include(oxen-logging/cmake/load_fmt_spdlog.cmake)
 
-    # If we load oxen-logging via system lib then we won't necessarily have fmt/spdlog targets, but
-    # this script will give us them:
-    include(oxen-logging/cmake/load_fmt_spdlog.cmake)
+        add_library(oxen-logging-fmt-spdlog INTERFACE)
+        target_link_libraries(oxen-logging-fmt-spdlog INTERFACE oxen-logging ${OXEN_LOGGING_FMT_TARGET} ${OXEN_LOGGING_SPDLOG_TARGET})
+        add_library(oxen::logging ALIAS oxen-logging-fmt-spdlog)
+    endif()
 endif()
 
 system_or_submodule(OXENC oxenc liboxenc>=1.1.0 oxen-encoding)

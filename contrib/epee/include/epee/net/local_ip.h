@@ -61,7 +61,11 @@ namespace epee
     bool is_ipv6_loopback(const std::string& ip)
     {
       // ipv6 loopback is ::1
+#if BOOST_VERSION >= 106600
+      return boost::asio::ip::make_address_v6(ip).is_loopback();
+#else
       return boost::asio::ip::address_v6::from_string(ip).is_loopback();
+#endif
     }
 
     inline
