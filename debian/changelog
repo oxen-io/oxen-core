@@ -1,3 +1,45 @@
+oxen (11.1.2-1) sid; urgency=medium
+
+  [ Jason Rhinelander ]
+  * fix fmt/spdlog when using system oxen-logging without system fmt/spdlog
+  * Add oxen-logging dev dependency to snapshot builds
+  * Ensure oxen::logging target gives us fmt/spdlog
+
+  [ doylet ]
+  * Fix L2 backup provider leakage in logs
+
+  [ Thomas Winget ]
+  * change hardfork grace period
+  * boost 1.87 deprecated removal fixes
+  * remove boost version guard on typedef
+  * bump static build boost to 1.87
+  * clang format to appease the lint gods
+  * undo superfluous (invalid) boost-related change
+  * boost is so much fun
+  * thank you again, clang format!
+
+  [ Jason Rhinelander ]
+  * Use zstd to compress state archives
+  * Add zstd to deps & update outdated requirements
+  * static zstd: fix compilation issues
+  * Extract & reserve decompressed size; simplify
+
+  [ Thomas Winget ]
+  * typedef -> using
+
+  [ Jason Rhinelander ]
+  * Avoid std::char_traits<unsigned char> for libc++-19+
+  * Add missing lock
+  * Fix broken set/unordered_set serialization
+  * L2 oxend-as-proxy support
+  * Tweak startup logging to show Ed25519 pubkey
+  * Change `--lmq-curve` connection default auth to none
+  * Sync dev with stable
+  * Stable version bump (11.1.2)
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 12 Mar 2025 21:53:59 -0300
+
 oxen (11.1.1-1+b1) sid; urgency=medium
 
   * sid rebuild
