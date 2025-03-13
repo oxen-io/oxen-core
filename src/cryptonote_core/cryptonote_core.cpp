@@ -731,7 +731,7 @@ bool core::init(
         // long if other nodes are relying on results loaded into this node).
         if (command_line::is_arg_defaulted(vm, arg_l2_refresh) &&
             !command_line::get_arg(vm, arg_l2_proxy).empty())
-            l2_refresh = ETH_L2_DEFAULT_REFRESH / 2;
+            l2_refresh = std::chrono::milliseconds{ETH_L2_DEFAULT_REFRESH} / 2;
         else
             l2_refresh = as_duration<std::chrono::milliseconds>(
                     command_line::get_arg(vm, arg_l2_refresh));
