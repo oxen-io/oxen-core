@@ -29,6 +29,7 @@
 oxen_add_library(l2_tracker
     contracts.cpp
     l2_tracker.cpp
+    l2_tracker_proxy.cpp
     rewards_contract.cpp
 )
 

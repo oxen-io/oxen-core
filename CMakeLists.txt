@@ -51,7 +51,7 @@ message(STATUS "CMake version ${CMAKE_VERSION}")
 set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "macOS deployment target (Apple clang only)")
 
 project(oxen
-    VERSION 11.1.1
+    VERSION 11.1.2
     LANGUAGES CXX C)
 set(OXEN_RELEASE_CODENAME "Wistful Wagyu")
 # Version update notes:
@@ -490,6 +490,10 @@ if(NOT BUILD_STATIC_DEPS)
   pkg_check_modules(GMP REQUIRED gmp IMPORTED_TARGET GLOBAL)
   message(STATUS "Found gmp ${GMP_VERSION}")
   add_library(gmp::gmp ALIAS PkgConfig::GMP)
+
+  pkg_check_modules(ZSTD REQUIRED libzstd IMPORTED_TARGET GLOBAL)
+  message(STATUS "Found zstd ${ZSTD_VERSION}")
+  add_library(zstd::zstd ALIAS PkgConfig::ZSTD)
 endif()
 
 set(OXEN_EXECUTABLE_SUFFIX "" CACHE STRING "suffix to add to executable names")

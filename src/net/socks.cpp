@@ -159,7 +159,7 @@ struct client::completed {
 struct client::read {
     std::shared_ptr<client> self_;
 
-    static boost::asio::mutable_buffers_1 get_buffer(client& self) noexcept {
+    static boost::asio::mutable_buffer get_buffer(client& self) noexcept {
         static_assert(
                 sizeof(v4_header) <= sizeof(self.buffer_), "buffer too small for v4 response");
         return boost::asio::buffer(self.buffer_, sizeof(v4_header));
@@ -184,7 +184,7 @@ struct client::read {
 struct client::write {
     std::shared_ptr<client> self_;
 
-    static boost::asio::const_buffers_1 get_buffer(client const& self) noexcept {
+    static boost::asio::const_buffer get_buffer(client const& self) noexcept {
         return boost::asio::buffer(self.buffer_, self.buffer_size_);
     }
 
@@ -290,12 +290,14 @@ bool client::send(std::shared_ptr<client> self) {
 void client::async_close::operator()(boost::system::error_code error) {
     if (self_ && error != boost::system::errc::operation_canceled) {
         const std::shared_ptr<client> self = std::move(self_);
-        self->strand_.dispatch([self]() {
-            if (self && self->proxy_.is_open()) {
-                self->proxy_.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
-                self->proxy_.close();
-            }
-        });
+        self->strand_.dispatch(
+                [self]() {
+                    if (self && self->proxy_.is_open()) {
+                        self->proxy_.shutdown(boost::asio::ip::tcp::socket::shutdown_both);
+                        self->proxy_.close();
+                    }
+                },
+                std::allocator<void>{});
     }
 }
 }  // namespace net::socks
