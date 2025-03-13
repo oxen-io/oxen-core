@@ -7,7 +7,7 @@ Subject: Fix boost::asio missing include
  1 file changed, 1 insertion(+)
 
 diff --git a/contrib/epee/include/epee/net/connection_basic.hpp b/contrib/epee/include/epee/net/connection_basic.hpp
-index 15fedd1..904d078 100644
+index 487e26a..1e8a2df 100644
 --- a/contrib/epee/include/epee/net/connection_basic.hpp
 +++ b/contrib/epee/include/epee/net/connection_basic.hpp
 @@ -49,6 +49,7 @@
@@ -16,5 +16,5 @@ index 15fedd1..904d078 100644
  
 +#include <utility>  // Because boost::asio doesn't include everything it uses
  #include <boost/asio.hpp>
- 
- #include "../shared_sv.h"
+ #if BOOST_VERSION >= 108700
+ namespace boost::asio {
