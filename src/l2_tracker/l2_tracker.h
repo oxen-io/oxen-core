@@ -11,6 +11,7 @@
 #include <shared_mutex>
 #include <unordered_set>
 
+#include "crypto/crypto.h"
 #include "crypto/eth.h"
 #include "events.h"
 #include "recent_events.h"
@@ -26,37 +27,78 @@ struct public_key;
 
 namespace eth {
 
-class L2Tracker {
-  private:
-    cryptonote::core& core;
-    oxenmq::TimerID updater;
-    // We have to hold this in a shared_ptr because it requires shared_from_this
-    const std::shared_ptr<ethyl::Provider> provider_ptr = ethyl::Provider::make_provider();
+struct L2State {
+    static constexpr uint8_t MIN_VERSION = 1;
+    static constexpr uint8_t MAX_VERSION = 1;
+    uint8_t version = MAX_VERSION;
+    uint64_t chain_id;
+    std::string rewards_contract;
 
-  public:
-    ethyl::Provider& provider{*provider_ptr};
-
-  private:
-    RewardsContract rewards_contract;
-    mutable std::shared_mutex mutex;
-
-    const uint64_t chain_id;
+    uint64_t latest_height = 0;
+    uint64_t synced_height = 0;
 
     // l2_height => recent events at that height
-    RecentEvents<event::NewServiceNodeV2> recent_regs_v2;
+    RecentEvents<event::NewServiceNodeV2> recent_regs;
     RecentEvents<event::ServiceNodeExitRequest> recent_unlocks;
     RecentEvents<event::ServiceNodeExit> recent_exits;
     RecentEvents<event::StakingRequirementUpdated> recent_req_changes;
-    std::unordered_set<eth::bls_public_key> in_contract;
+
     std::map<uint64_t, uint64_t> reward_rate;
-    uint64_t latest_height = 0, synced_height = 0, latest_blockchain_l2_height = 0,
-             latest_purge_check = 0;
+};
+
+struct L2PurgeState {
+    static constexpr uint8_t MIN_VERSION = 1;
+    static constexpr uint8_t MAX_VERSION = 1;
+    uint8_t version = MAX_VERSION;
+    uint64_t chain_id;
+    std::string rewards_contract;
+    uint64_t latest_height = 0;
+    std::unordered_set<eth::bls_public_key> in_contract;
+};
+
+class L2Proxy;
+
+class L2Tracker {
+  private:
+    cryptonote::core& core;
+    oxenmq::TaggedThreadID update_thread_id;
+
+    template <class Archive>
+    friend void serialize_object(Archive&, L2Tracker&);
+
+  public:
+    // We have to hold this in a shared_ptr because it requires shared_from_this.  This will be
+    // nullptr when our L2 state comes from an oxend proxy.
+    const std::shared_ptr<ethyl::Provider> provider;
+
+  private:
+    std::optional<RewardsContract> rewards_contract;  // nullopt in oxend-proxy mode
+    mutable std::shared_mutex mutex;
+
+    L2State state{};
+    L2PurgeState purge_state{};
+
+    uint64_t latest_blockchain_l2_height = 0;
     bool initial = true;
     bool update_in_progress = false;
     std::chrono::steady_clock::time_point next_provider_check = std::chrono::steady_clock::now();
     std::optional<std::chrono::steady_clock::time_point> primary_down;
     std::chrono::steady_clock::time_point primary_last_warned;
     std::optional<std::chrono::steady_clock::time_point> latest_height_ts;
+
+    // Proxy object for handing proxy requests to us, i.e. we are the proxy:
+    std::unique_ptr<L2Proxy> l2_proxy;
+
+    // Connection info that we proxy to, i.e. we use a proxy for L2 info:
+    struct l2_oxend_proxy {
+        oxenmq::address address;
+        std::string id;  // Descriptive string identifying this remote for logs
+        oxenmq::ConnectionID connid;
+        bool pending_connect;
+        l2_oxend_proxy(oxenmq::address a, std::string id) :
+                address{std::move(a)}, id{std::move(id)}, connid{}, pending_connect{false} {}
+    };
+    std::vector<l2_oxend_proxy> l2_oxend_proxies;
 
     // Provider state updating: `update_state()` starts a chain of updates, each one triggering the
     // next step in the chain when its response is received.  While such an update is in progress
@@ -97,19 +139,84 @@ class L2Tracker {
     void update_rewards(std::optional<std::forward_list<uint64_t>> more = std::nullopt);
     void update_logs();
     void update_purge_list(bool curr_height_fallback = false);
+    void update_done(bool changes = true);
+
+    void generate_purge_transactions();
+
+    // oxend proxy updates works entirely differently from the above: we subscribe for l2 updates
+    // with the remote oxend every 30s (to ensure we remain subscribed), and then it pushes
+    // notifications to us when its L2 state changes, at which point we initiate a state update and
+    // then, when that comes back, apply it in one shot.
+    //
+    // (Definitions of the proxy-related functions in l2_tracker_proxy.cpp, alongside the server
+    // proxy code).
+
+    // Interval for re-subscribing with the proxy.  Unlike the L2 provider interval, this is fixed
+    // because it doesn't have any effect on how fast we get updates: the proxy pushes update
+    // notifications to us as soon as they arrive; the 30s interval is just how often we send
+    // (re-)subscribe requests to keep us subscribed to those push updates.
+    static constexpr std::chrono::milliseconds PROXY_RESUB_INTERVAL = 30s;
+
+    void proxy_connect_and_subscribe();
+    void proxy_send_subscribe(const l2_oxend_proxy& oxend);
+    void proxy_disconnect(oxenmq::ConnectionID conn, bool clear_only = false);
+    // Handler for reverse command l2_notify.(purge_)state:
+    void l2_notify_state(oxenmq::Message& msg, bool purge);
+    void proxy_request_generic(
+            oxenmq::ConnectionID to,
+            std::string_view endpoint,
+            std::optional<std::string_view> body,
+            std::string_view descr,
+            std::string_view id,
+            std::function<
+                    void(bool& success,
+                         bool& log_error,
+                         std::vector<std::string>& data,
+                         const oxenmq::ConnectionID& conn,
+                         std::string_view id)>);
+    void proxy_request_if_newer(
+            oxenmq::ConnectionID conn,
+            std::optional<uint64_t> state_height,
+            std::optional<uint64_t> purge_state_height);
+    void proxy_request_state(oxenmq::ConnectionID conn, bool purge_state);
+    uint64_t l2_state_requested = 0, l2_purge_state_requested = 0;
+    void proxy_update_state(L2State&& new_state, std::string_view from);
+    void proxy_update_state(L2PurgeState&& new_state, std::string_view from);
+
     void add_to_mempool(const event::StateChangeVariant& state_change);
 
+    // Base constructor
+    L2Tracker(
+            cryptonote::core& core,
+            std::shared_ptr<ethyl::Provider>,
+            std::function<void()> on_startup);
+
   public:
-    // Constructs an L2Tracker.  The optional `update_frequency` determines how frequently we poll
-    // for updated chain state and logs: This defines how many requests we make to the L2 provider:
-    // each (this period) we need to make one request to get the current block height, and then at
-    // least one more to fetch any logs since the previous block height we knew about.
+    // Constructs an L2Tracker in regular, fetch-from-L2-provider-rpc mode.  The optional
+    // `update_frequency` determines how frequently we poll for updated chain state and logs: This
+    // defines how many requests we make to the L2 provider: each (this period) we need to make one
+    // request to get the current block height, and then at least one more to fetch any logs since
+    // the previous block height we knew about.
     explicit L2Tracker(cryptonote::core& core, std::chrono::milliseconds update_frequency = 10s);
+
+    // Constructs an L2Tracker in L2 proxy mode, where we rely on one or more external oxends to
+    // provide us with L2 state data.
+    explicit L2Tracker(
+            cryptonote::core& core,
+            std::span<const std::pair<oxenmq::address, crypto::ed25519_public_key>> oxend_proxies);
+
+    // Returns true if this L2Tracker is in oxend-proxied mode, in which case L2 state from events
+    // is dictated by the configured proxy, and active requests (get_all_service_node_ids() and
+    // get_non_signers()) are not available.
+    bool proxied() const { return static_cast<bool>(provider); }
 
     // Numbers of states we track behind the current L2 height before discarding them.  The default
     // is enough to have the last hour of history (for an L2 such as Arbitrum with its 0.25s block
     // time), plus a buffer so that pulse quorum nodes can properly recognize L2 events from the
     // past hour (for achieving pulse consensus).
+    //
+    // Ignored when in oxend-proxy mode (in proxy mode the entire L2 state gets replaced on each
+    // update, and so we drop states when the proxied-from node drops states).
     uint64_t HIST_SIZE = 70min / 250ms;
 
     // The "safe" number of blocks ago within which we expect to be able to issue recent historic
@@ -133,6 +240,8 @@ class L2Tracker {
     //
     // This also affects startup, when we need to fetch `HIST_SIZE` logs, and so need to make
     // HIST_SIZE / (this value) requests to fill the initial event state.
+    //
+    // Ignored when in oxend-proxy mode.
     uint64_t GETLOGS_MAX_BLOCKS = cryptonote::ETH_L2_DEFAULT_MAX_LOGS;
 
     // These two parameters control how we re-check all the configured L2 providers to reprioritize,
@@ -142,6 +251,8 @@ class L2Tracker {
     // to use (so that if you have primary and two backups, the primary will always be first as long
     // as it isn't too far behind), followed by non-good providers sorted by how far behind they
     // were.
+    //
+    // Ignored when in oxend-proxy mode.
     std::chrono::milliseconds PROVIDERS_CHECK_INTERVAL = cryptonote::ETH_L2_DEFAULT_CHECK_INTERVAL;
     uint64_t PROVIDERS_CHECK_THRESHOLD = cryptonote::ETH_L2_DEFAULT_CHECK_THRESHOLD;
 
@@ -150,6 +261,8 @@ class L2Tracker {
     // wrong chain.  Logs errors and returns false if any return a chainId that doesn't match the
     // required L2 chain Id.  Returns true if all providers match.  Any providers that time out
     // produce a warning, but do not cause a false return value.
+    //
+    // This method does nothing when using l2 oxend proxies.
     bool check_chain_id() const;
 
     // Returns the reward rate for the given L2 height.  Returns nullopt if we don't know/haven't
@@ -221,12 +334,28 @@ class L2Tracker {
     bool get_vote_for(const event::ServiceNodePurge& purge) const;
     bool get_vote_for(const std::monostate&) const { return false; }
 
+    // Returns a copy of the current full L2 tracking state (excluding in-contract nodes for
+    // purging).
+    L2State get_state() const;
+
+    // Returns the current L2 purge state tracking, containing all the known service nodes in the
+    // contract.  This is updated infrequently (once/hour by default) and is huge, and so is kept
+    // separate from the rest of the L2State, above.
+    L2PurgeState get_purge_state() const;
+
+    // Enables L2 proxy support.  This allows whitelisted remotes to obtain our L2 state via OMQ
+    // (instead of using their own L2 provider), with subscription that notifications them upon
+    // completion of L2 state updates.
+    void enable_proxy(oxenmq::OxenMQ& omq, std::filesystem::path whitelist);
+
     // Allow public shared locking of current state.  Note that exclusive locking is *not* publicly
     // exposed, and is used internally when updating the data (holding the shared lock is sufficient
     // to prevent any updates).
     void lock_shared() { mutex.lock_shared(); }
     bool try_lock_shared() { return mutex.try_lock_shared(); }
     void unlock_shared() { mutex.unlock_shared(); }
+
+    ~L2Tracker();
 
   private:
     // Must hold mutex (in exclusive mode) while calling!
@@ -237,4 +366,5 @@ class L2Tracker {
     // whether to put things in the mempool.
     bool is_node_purgeable(const bls_public_key& bls_pubkey) const;
 };
+
 }  // namespace eth

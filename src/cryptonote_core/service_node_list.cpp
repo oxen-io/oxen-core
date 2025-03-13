@@ -34,12 +34,14 @@
 #include <oxenc/endian.h>
 #include <oxenc/hex.h>
 #include <sodium.h>
+#include <zstd.h>
 
 #include <algorithm>
 #include <chrono>
 #include <limits>
 #include <mutex>
 #include <stdexcept>
+#include <type_traits>
 
 #include "blockchain.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
@@ -732,32 +734,35 @@ void validate_registration(
                 "Registration expired ({} < {})"_format(reg.hf, block_timestamp)};
 }
 
+static void append(std::vector<unsigned char>& buf, std::span<const unsigned char> val) {
+    std::copy(val.begin(), val.end(), std::back_inserter(buf));
+}
+
 // For ETH_BLS+:
-std::basic_string<unsigned char> get_eth_registration_message_for_signing(
+std::vector<unsigned char> get_eth_registration_message_for_signing(
         const registration_details& registration) {
-    std::basic_string<unsigned char> buffer;
+    std::vector<unsigned char> buffer;
     size_t size = sizeof(crypto::ed25519_public_key) + sizeof(eth::bls_public_key);
-    buffer.reserve(size);
-    buffer += tools::view_guts<unsigned char>(registration.service_node_pubkey);
-    buffer += tools::view_guts<unsigned char>(registration.bls_pubkey);
+    append(buffer, registration.service_node_pubkey);
+    append(buffer, registration.bls_pubkey);
     assert(buffer.size() == size);
     return buffer;
 }
 
 // For pre-ETH_BLS:
 crypto::hash get_registration_hash(const registration_details& registration) {
-    std::basic_string<unsigned char> buffer;
+    std::vector<unsigned char> buffer;
     size_t size = sizeof(uint64_t) +  // fee
                   registration.reserved.size() * (sizeof(cryptonote::account_public_address) +
                                                   sizeof(uint64_t)) +  // addr+amount for each
                   sizeof(uint64_t);                                    // expiration timestamp
     buffer.reserve(size);
-    buffer += tools::view_guts<unsigned char>(oxenc::host_to_little(registration.fee));
+    append(buffer, tools::span_guts<unsigned char>(oxenc::host_to_little(registration.fee)));
     for (const auto& [addr, amount] : registration.reserved) {
-        buffer += tools::view_guts<unsigned char>(addr);
-        buffer += tools::view_guts<unsigned char>(oxenc::host_to_little(amount));
+        append(buffer, tools::span_guts<unsigned char>(addr));
+        append(buffer, tools::span_guts<unsigned char>(oxenc::host_to_little(amount)));
     }
-    buffer += tools::view_guts<unsigned char>(oxenc::host_to_little(registration.hf));
+    append(buffer, tools::span_guts<unsigned char>(oxenc::host_to_little(registration.hf)));
     assert(buffer.size() == size);
     return crypto::cn_fast_hash(buffer.data(), buffer.size());
 }
@@ -4879,14 +4884,25 @@ static void serialize_service_node_infos_directly(
     size_t count = sn_infos.size();
     auto array = ar.begin_array(count);
     if (Archive::is_serializer) {
-        for (auto it : sn_infos) {
-            field(ar, "pubkey", const_cast<crypto::public_key&>(it.first));
-            field(ar, "info", const_cast<service_node_info&>(*it.second));
+        // Serialize in sorted order because it makes the resulting data considerably more
+        // compressible when multiple states in a serialization have data in the same order
+        std::vector<const service_nodes_infos_t::value_type*> sni;
+        sni.reserve(sn_infos.size());
+        for (const auto& i : sn_infos)
+            sni.push_back(&i);
+        std::sort(sni.begin(), sni.end(), [](const auto* a, const auto* b) {
+            return a->first < b->first;
+        });
+        for (const auto& it : sni) {
+            auto o = ar.begin_object();
+            field(ar, "pubkey", const_cast<crypto::public_key&>(it->first));
+            field(ar, "info", const_cast<service_node_info&>(*it->second));
         }
     } else {
         for (size_t index = 0; index < count; index++) {
             crypto::public_key key = {};
             service_node_info info = {};
+            auto o = ar.begin_object();
             field(ar, "pubkey", key);
             field(ar, "info", info);
             sn_infos[key] = std::make_shared<service_node_info>(std::move(info));
@@ -4940,6 +4956,71 @@ static std::string serialize_snl_directly(Archive& ar, service_node_list::state_
         result = ar.str();
     return result;
 }
+
+namespace {
+    struct zstd_decomp_freer {
+        void operator()(ZSTD_DStream* z) const { ZSTD_freeDStream(z); }
+    };
+
+    using zstd_decomp_ptr = std::unique_ptr<ZSTD_DStream, zstd_decomp_freer>;
+
+    std::string zstd_compress(std::string_view data, int level, std::string_view prefix = {}) {
+        std::string compressed;
+        compressed.resize(ZSTD_compressBound(data.size()) + prefix.size());
+        auto size = ZSTD_compress(
+                compressed.data() + prefix.size(),
+                compressed.size() - prefix.size(),
+                data.data(),
+                data.size(),
+                level);
+        if (ZSTD_isError(size))
+            throw std::runtime_error{"Compression failed: {}"_format(ZSTD_getErrorName(size))};
+
+        compressed.resize(prefix.size() + size);
+        std::copy(prefix.begin(), prefix.end(), compressed.begin());
+        return compressed;
+    }
+
+    std::optional<std::string> zstd_decompress(std::string_view data) {
+        zstd_decomp_ptr z_decompressor{ZSTD_createDStream()};
+        auto* zds = z_decompressor.get();
+
+        ZSTD_initDStream(zds);
+        ZSTD_inBuffer input{.src = data.data(), .size = data.size(), .pos = 0};
+        std::array<char, 4096> out_buf;
+        ZSTD_outBuffer output{.dst = out_buf.data(), .size = out_buf.size(), .pos = 0};
+
+        uint64_t decompressed_size = ZSTD_getFrameContentSize(data.data(), data.size());
+        if (decompressed_size == ZSTD_CONTENTSIZE_UNKNOWN ||
+            decompressed_size == ZSTD_CONTENTSIZE_ERROR)
+            return std::nullopt;
+
+        std::string decompressed;
+        decompressed.reserve(decompressed_size);
+
+        size_t ret;
+        do {
+            output.pos = 0;
+            if (ret = ZSTD_decompressStream(zds, &output, &input); ZSTD_isError(ret))
+                return std::nullopt;
+            decompressed.append(out_buf.data(), output.pos);
+        } while (ret > 0 || input.pos < input.size);
+
+        return decompressed;
+    }
+
+    // Magic byte we prepend to distinguish between compressed data and uncompressed data in earlier
+    // releases.  (All stored data begins with a version value that never gets this high and so
+    // can't false-trigger the magic byte detection).
+    constexpr auto MAGIC_COMPRESSED_BLOB_PREFIX = "\x7f"sv;
+
+    // In mainnet testing there are big gains until 5, but above that gains are very small:
+    constexpr int ARCHIVE_STATE_COMPRESS_LEVEL = 5;
+    // The short term state is significantly more compressible (since most states in it are nearly
+    // identical) and has decent compression improvements up until 10 or so.
+    constexpr int SHORT_TERM_STATE_COMPRESS_LEVEL = 10;
+
+}  // namespace
 
 bool service_node_list::store(uint64_t state_height) {
     ZoneScoped;
@@ -5036,9 +5117,14 @@ bool service_node_list::store(uint64_t state_height) {
         cryptonote::db_wtxn_guard txn_guard{db};
 
         if (m_transient->long_term_data_dirty) {
-            TracyCZoneN(serialize_step, "Serialize archive array of blobs", true);
+            TracyCZoneN(serialize_step, "Serialize and compress archive array of blobs", true);
             serialization::binary_string_archiver ar;
-            std::string db_blob = serialize_db_blob(ar, archive_blob_list, nullptr);
+
+            auto db_blob = zstd_compress(
+                    serialize_db_blob(ar, archive_blob_list, nullptr),
+                    ARCHIVE_STATE_COMPRESS_LEVEL,
+                    MAGIC_COMPRESSED_BLOB_PREFIX);
+
             TracyCZoneEnd(serialize_step);
             db.set_service_node_data(db_blob, /*long_term = */ true);
             log::debug(logcat, "SNL store, finished storing long term state");
@@ -5046,10 +5132,13 @@ bool service_node_list::store(uint64_t state_height) {
         }
 
         {
-            TracyCZoneN(serialize_step, "Serialize history array of blobs", true);
+            TracyCZoneN(serialize_step, "Serialize and compress history array of blobs", true);
             serialization::binary_string_archiver ar;
-            std::string db_blob =
-                    serialize_db_blob(ar, history_blob_list, &m_transient->old_quorum_states);
+            auto db_blob = zstd_compress(
+                    serialize_db_blob(ar, history_blob_list, &m_transient->old_quorum_states),
+                    SHORT_TERM_STATE_COMPRESS_LEVEL,
+                    MAGIC_COMPRESSED_BLOB_PREFIX);
+
             TracyCZoneEnd(serialize_step);
             db.set_service_node_data(db_blob, /*long_term = */ false);
             log::debug(logcat, "SNL store, finished storing short term state");
@@ -6047,13 +6136,13 @@ static try_load_blobs_result try_load_as_new_style_blobs(
     // to marshall the massive SNL state into an intermediate format which
     // is then marshalled to binary, then memcopied into LMDB.
     //
-    // Now it just marshalls the massive SNL state to binary, then copy the
-    // binary to LMDB. Each state is stored as a separate blob, this is
-    // intentional to eliminate the dependency chain we had with serialising the
-    // blobs as a singular binary stream where you can't jump ahead unless you
-    // know how much bytes the previous SNL state occupied. Instead storing SNL
-    // blobs as independent binary streams allows us to run the
-    // de/serialising step with multiple threads.
+    // Now it just marshalls the massive SNL state to binary, compresses it,
+    // then copies the binary to LMDB. Each state is stored as a separate blob,
+    // this is intentional to eliminate the dependency chain we had with
+    // serialising the blobs as a singular binary stream where you can't jump
+    // ahead unless you know how much bytes the previous SNL state occupied.
+    // Instead storing SNL blobs as independent binary streams allows us to run
+    // the de/serialising step with multiple threads.
     //
     // Serialising is compute and memory unfriendly. There are many RAII
     // structures to compute and the work of processing through these structures
@@ -6078,7 +6167,29 @@ static try_load_blobs_result try_load_as_new_style_blobs(
     // Storing deltas would most likely eliminate the pipeline stalls
     // entirely removing the need to multithread as well as also getting rid
     // of the intermediate formats as this change has also done.
-    if (blockchain.db().get_service_node_data(db_blob, true /*long_term*/)) {
+
+    auto get_and_decompress_state = [&blockchain, &db_blob](bool long_term) -> bool {
+        bool found = blockchain.db().get_service_node_data(db_blob, long_term);
+
+        if (found && db_blob.starts_with(MAGIC_COMPRESSED_BLOB_PREFIX)) {
+            size_t orig_size = db_blob.size();
+            std::string_view compressed{db_blob};
+            compressed.remove_prefix(MAGIC_COMPRESSED_BLOB_PREFIX.size());
+            if (auto inflated = zstd_decompress(compressed))
+                db_blob = std::move(*inflated);
+            else {
+                db_blob.clear();
+                log::warning(
+                        logcat,
+                        "Failed to decompress {} state data",
+                        long_term ? "archive" : "recent");
+                found = false;
+            }
+        }
+        return found;
+    };
+
+    if (get_and_decompress_state(true /*long_term*/)) {
         serialization::binary_string_unarchiver ar{db_blob};
         std::vector<std::string> sn_blob_list;
         serialize_db_blob(ar, sn_blob_list, nullptr);
@@ -6101,7 +6212,7 @@ static try_load_blobs_result try_load_as_new_style_blobs(
     }
     result.bytes_loaded += db_blob.size();
 
-    if (!blockchain.db().get_service_node_data(db_blob, false /*long_term*/))
+    if (!get_and_decompress_state(false /*long_term*/))
         return result;
 
     serialization::binary_string_unarchiver ar{db_blob};

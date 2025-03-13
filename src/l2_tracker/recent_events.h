@@ -12,7 +12,7 @@ namespace eth {
 template <std::derived_from<event::L2StateChange> Event>
 struct RecentEvents {
   private:
-    std::map<Event, uint64_t> events;  // Event -> expiry
+    std::map<Event, uint64_t> events;  // Event -> l2 height where it occured
 
   public:
     // Adds an event into the container.  If the event is already present and has an older l2_height
@@ -57,6 +57,16 @@ struct RecentEvents {
         }
         return removed;
     }
+
+    template <std::invocable<const Event&> Callable>
+    void for_each(Callable& c) {
+        for (const auto& [ev, exp] : events)
+            c(ev);
+    }
+
+    // defined in l2_tracker_proxy.h
+    template <class Archive>
+    void serialize_value(Archive& ar);
 };
 
 }  // namespace eth

@@ -29,7 +29,8 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
-#include <boost/asio/io_service.hpp>
+#include <boost/asio/executor_work_guard.hpp>
+#include <boost/asio/io_context.hpp>
 #include <boost/serialization/serialization.hpp>
 #include <boost/serialization/version.hpp>
 
@@ -39,6 +40,10 @@
 #if BOOST_VERSION == 107400
 #include <boost/serialization/library_version_type.hpp>
 #endif
+
+namespace boost::asio {
+using io_service = io_context;
+}
 
 #include <atomic>
 #include <boost/multi_index/global_fun.hpp>
@@ -1376,7 +1381,8 @@ class Blockchain {
 
     boost::asio::io_service m_async_service;
     std::thread m_async_thread;
-    std::unique_ptr<boost::asio::io_service::work> m_async_work_idle;
+    using work_type = boost::asio::executor_work_guard<decltype(m_async_service.get_executor())>;
+    std::unique_ptr<work_type> m_async_work_idle;
 
     // some invalid blocks
     std::set<crypto::hash> m_invalid_blocks;

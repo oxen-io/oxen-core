@@ -179,7 +179,7 @@ public:
     {
       if(m_con.start_outer_call())
       {
-        m_timer.expires_from_now(std::chrono::milliseconds(timeout));
+        m_timer.expires_after(std::chrono::milliseconds(timeout));
         m_timer.async_wait([&con, cb](const boost::system::error_code& ec)
         {
           if(ec == boost::asio::error::operation_aborted)
@@ -228,19 +228,17 @@ public:
       if(!m_cancel_timer_called)
       {
         m_cancel_timer_called = true;
-        boost::system::error_code ignored_ec;
-        m_timer_cancelled = 1 == m_timer.cancel(ignored_ec);
+        m_timer_cancelled = 1 == m_timer.cancel();
       }
       return m_timer_cancelled;
     }
     virtual void reset_timer()
     {
-      boost::system::error_code ignored_ec;
-      if (!m_cancel_timer_called && m_timer.cancel(ignored_ec) > 0)
+      if (!m_cancel_timer_called && m_timer.cancel() > 0)
       {
         callback_t& cb = m_cb;
         async_protocol_handler& con = m_con;
-        m_timer.expires_from_now(m_timeout);
+        m_timer.expires_after(m_timeout);
         m_timer.async_wait([&con, cb](const boost::system::error_code& ec)
         {
           if(ec == boost::asio::error::operation_aborted)
