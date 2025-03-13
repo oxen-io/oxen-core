@@ -5,12 +5,12 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(BOOST_VERSION 1.86.0 CACHE STRING "boost version")
+set(BOOST_VERSION 1.87.0 CACHE STRING "boost version")
 set(BOOST_MIRROR ${LOCAL_MIRROR} https://archives.boost.io/release/${BOOST_VERSION}/source
     CACHE STRING "boost download mirror(s)")
 string(REPLACE "." "_" BOOST_VERSION_ ${BOOST_VERSION})
 set(BOOST_SOURCE boost_${BOOST_VERSION_}.tar.bz2)
-set(BOOST_HASH SHA256=1bed88e40401b2cb7a1f76d4bab499e352fa4d0c5f31c0dbae64e24d34d7513b
+set(BOOST_HASH SHA256=af57be25cb4c4f4b413ed692fe378affb4352ea50fbe294a11ef548f4d527d89
     CACHE STRING "boost source hash")
 
 set(NCURSES_VERSION 6.3 CACHE STRING "ncurses version")
@@ -142,6 +142,13 @@ set(GMP_MIRROR ${LOCAL_MIRROR} https://gmplib.org/download/gmp
 set(GMP_SOURCE gmp-${GMP_VERSION}.tar.xz)
 set(GMP_HASH SHA512=e85a0dab5195889948a3462189f0e0598d331d3457612e2d3350799dba2e244316d256f8161df5219538eb003e4b5343f989aaa00f96321559063ed8c8f29fd2
     CACHE STRING "gmp source hash")
+
+set(ZSTD_VERSION 1.5.7 CACHE STRING "zstd version")
+set(ZSTD_MIRROR ${LOCAL_MIRROR} https://github.com/facebook/zstd/releases/download/v${ZSTD_VERSION}
+    CACHE STRING "zstd mirror(s)")
+set(ZSTD_SOURCE zstd-1.5.7.tar.gz)
+set(ZSTD_HASH SHA512=b4de208f179b68d4c6454139ca60d66ed3ef3893a560d6159a056640f83d3ee67cdf6ffb88971cdba35449dba4b597eaa8b4ae908127ef7fd58c89f40bf9a705
+    CACHE STRING "zstd source hash")
 
 
 include(ExternalProject)
@@ -722,6 +729,28 @@ build_external(gmp
 )
 add_static_target(gmp::gmp gmp_external libgmp.a libidn2::libidn2 libtasn1::libtasn1)
 
+
+expand_urls(zstd_urls ${ZSTD_SOURCE} ${ZSTD_MIRROR})
+set(zstd_cmake_extra)
+if(CMAKE_C_COMPILER_LAUNCHER)
+    list(APPEND zstd_cmake_extra "-DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}")
+endif()
+if(CMAKE_TOOLCHAIN_FILE)
+    list(APPEND zstd_cmake_extra "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
+endif()
+ExternalProject_Add(zstd_external
+    SOURCE_SUBDIR build/cmake
+    URL ${zstd_urls}
+    URL_HASH ${ZSTD_HASH}
+    DOWNLOAD_NO_PROGRESS ON
+    CMAKE_ARGS -DZSTD_BUILD_PROGRAMS=OFF -DZSTD_BUILD_TESTS=OFF -DZSTD_BUILD_CONTRIB=OFF
+      -DZSTD_BUILD_SHARED=OFF -DZSTD_BUILD_STATIC=ON
+      ${zstd_cmake_extra}
+      -DCMAKE_INSTALL_PREFIX=${DEPS_DESTDIR}
+    BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libzstd.a ${DEPS_DESTDIR}/include/zstd.h)
+add_static_target(zstd::zstd zstd_external libzstd.a)
+
+
 set(curl_extra)
 set(curl_ssl_backend)
 if(WIN32)
@@ -766,7 +795,7 @@ foreach(curl_arch ${curl_arches})
 
   build_external(curl
     TARGET_SUFFIX ${curl_target_suffix}
-    DEPENDS ${maybe_openssl} zlib_external
+    DEPENDS ${maybe_openssl} zlib_external zstd_external
     CONFIGURE_COMMAND ./configure ${cross_host} ${cross_extra} --prefix=${curl_prefix} --disable-shared
     --enable-static --disable-ares --disable-ftp --disable-ldap --disable-laps --disable-rtsp
     --disable-dict --disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smb
@@ -776,7 +805,7 @@ foreach(curl_arch ${curl_arches})
     --enable-http-auth --enable-doh --disable-mime --enable-dateparse --disable-netrc --with-libidn2
     --disable-progress-meter --without-brotli --with-zlib=${DEPS_DESTDIR} ${curl_ssl_opts}
     --without-librtmp --disable-versioned-symbols --enable-hidden-symbols
-    --without-zsh-functions-dir --without-fish-functions-dir --without-zstd --without-libpsl
+    --without-zsh-functions-dir --without-fish-functions-dir --with-zstd --without-libpsl
     --without-nghttp2 --without-nghttp3 --without-ngtcp2 --without-quiche
     "CC=${deps_cc}" "CFLAGS=${deps_noarch_CFLAGS}${cflags_extra}" ${curl_extra}
     BUILD_COMMAND true

@@ -29,14 +29,46 @@
 #pragma once
 
 #include <set>
+#include <unordered_set>
 
 #include "container.h"
 
 namespace serialization {
 
+namespace detail {
+
+    template <serializing Archive, typename Set>
+    void serialize_set(Archive& ar, Set& set) {
+        size_t cnt = set.size();
+        auto arr = ar.begin_array(cnt);
+        for (auto& v : set) {
+            // We're serializing so this won't actually change v, despite casting away the
+            // const, but the serialization code is a bit inflexible with const types.
+            serialize_container_element(ar, const_cast<typename Set::value_type&>(v));
+        }
+    }
+
+    template <deserializing Archive, typename Set>
+    void serialize_set(Archive& ar, Set& set) {
+        size_t cnt;
+        auto arr = ar.begin_array(cnt);
+        set.clear();
+        for (size_t i = 0; i < cnt; i++) {
+            typename Set::value_type v;
+            serialize_container_element(ar, v);
+            set.insert(std::move(v));
+        }
+    }
+
+}  // namespace detail
+
 template <class Archive, class T>
 void serialize_value(Archive& ar, std::set<T>& v) {
-    detail::serialize_container(ar, v);
+    detail::serialize_set(ar, v);
+}
+template <class Archive, class T>
+void serialize_value(Archive& ar, std::unordered_set<T>& v) {
+    detail::serialize_set(ar, v);
 }
 
 }  // namespace serialization

@@ -88,9 +88,9 @@ enum struct mapping_record_column {
 };
 
 static constexpr unsigned char OLD_ENCRYPTION_NONCE[crypto_secretbox_NONCEBYTES] = {};
-std::pair<std::basic_string_view<unsigned char>, std::basic_string_view<unsigned char>>
+std::pair<std::span<const unsigned char>, std::span<const unsigned char>>
 ons::mapping_value::value_nonce(mapping_type type) const {
-    std::pair<std::basic_string_view<unsigned char>, std::basic_string_view<unsigned char>> result;
+    std::pair<std::span<const unsigned char>, std::span<const unsigned char>> result;
     auto& [head, tail] = result;
     head = {buffer.data(), len};
     if ((type == mapping_type::session &&
@@ -99,8 +99,8 @@ ons::mapping_value::value_nonce(mapping_type type) const {
         len < crypto_aead_xchacha20poly1305_ietf_NPUBBYTES /* shouldn't occur, but just in case */)
         tail = {OLD_ENCRYPTION_NONCE, sizeof(OLD_ENCRYPTION_NONCE)};
     else {
-        tail = head.substr(len - crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
-        head.remove_suffix(crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
+        tail = head.last(crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
+        head = head.first(len - crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
     }
     return result;
 }
@@ -637,7 +637,7 @@ sqlite3* init_oxen_name_system(const fs::path& file_path, bool read_only) {
     }
 
     int const flags = read_only ? SQLITE_OPEN_READONLY : SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE;
-    auto utf8_path = tools::convert_str<char>(file_path.u8string());
+    auto utf8_path = tools::path_to_str(file_path);
     int sql_open = sqlite3_open_v2(utf8_path.c_str(), &result, flags, nullptr);
     if (sql_open != SQLITE_OK) {
         log::error(

@@ -72,8 +72,8 @@ struct mapping_value {
     // older session values the nonce will be all 0 bytes *if* the encrypted value is not the proper
     // length for an including-the-nonce value.  For newer session and all others the nonce is
     // always present.
-    std::pair<std::basic_string_view<unsigned char>, std::basic_string_view<unsigned char>>
-    value_nonce(mapping_type type) const;
+    std::pair<std::span<const unsigned char>, std::span<const unsigned char>> value_nonce(
+            mapping_type type) const;
     bool operator==(mapping_value const& other) const {
         return encrypted == other.encrypted && other.to_view() == to_view();
     }

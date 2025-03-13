@@ -941,7 +941,7 @@ std::string WalletImpl::publicMultisigSignerKey() const {
 
 EXPORT
 std::string WalletImpl::path() const {
-    return tools::convert_str<char>(wallet()->path().u8string());
+    return tools::path_to_str(wallet()->path());
 }
 
 EXPORT
@@ -965,12 +965,12 @@ bool WalletImpl::store(std::string_view path_) {
 
 EXPORT
 std::string WalletImpl::filename() const {
-    return tools::convert_str<char>(wallet()->get_wallet_file().u8string());
+    return tools::path_to_str(wallet()->get_wallet_file());
 }
 
 EXPORT
 std::string WalletImpl::keysFilename() const {
-    return tools::convert_str<char>(wallet()->get_keys_file().u8string());
+    return tools::path_to_str(wallet()->get_keys_file());
 }
 
 EXPORT
