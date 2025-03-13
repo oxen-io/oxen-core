@@ -221,7 +221,7 @@ protected:
 
   void set_prefix(std::string_view prefix)
   {
-    m_prefix = fs::path(tools::convert_sv<char8_t>(prefix));
+    m_prefix = tools::utf8_path(prefix);
   }
 };
 

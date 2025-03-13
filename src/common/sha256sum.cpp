@@ -10,10 +10,15 @@
 
 namespace tools {
 
-bool sha256sum_str(std::string_view data, crypto::hash& hash) {
-    crypto_hash_sha256(
-            hash.data(), reinterpret_cast<const unsigned char*>(data.data()), data.size());
+bool sha256sum_str(std::span<const unsigned char> data, crypto::hash& hash) {
+    crypto_hash_sha256(hash.data(), data.data(), data.size());
     return true;
+}
+bool sha256sum_str(std::span<const char> data, crypto::hash& hash) {
+    return sha256sum_str({reinterpret_cast<const unsigned char*>(data.data()), data.size()}, hash);
+}
+bool sha256sum_str(std::span<const std::byte> data, crypto::hash& hash) {
+    return sha256sum_str({reinterpret_cast<const unsigned char*>(data.data()), data.size()}, hash);
 }
 
 bool sha256sum_file(const fs::path& filename, crypto::hash& hash) {

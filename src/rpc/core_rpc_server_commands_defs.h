@@ -2561,6 +2561,45 @@ struct GET_SN_STATE_CHANGES : RPC_COMMAND {
     } request;
 };
 
+/// RPC: service_node/l2_tracker_state
+///
+/// Queries the detailed current L2 tracker state of this service node.
+///
+/// Inputs:
+/// - `include_purge_state` -- If provided and true, include the most recently purge state,
+///   containing fetched contract pubkeys.  Note that this list is only updated about once/hour by
+///   oxend and so can be somewhat out of date, and is usually less useful than the bls pubkeys
+///   included in the get_service_node calls.  The primary purpose of this list is for the oxen
+///   network to identify and self-correct service nodes that for some unknown reason are on the
+///   oxend chain but not the L2 contract (such as could occur after a significant Oxen or L2
+///   reorg).
+///
+/// Outputs:
+///
+/// - `status` -- RPC status code. "OK" is the success value.
+/// - `chain_id` -- the configured chain_id of the L2 provider
+/// - `rewards_contract` -- the rewards contract address being queried
+/// - `latest_height` -- the latest L2 height retrieved
+/// - `synced_height` -- the L2 height up to which L2 events have been processed.
+/// - `registrations` -- recently observed L2 registration events
+/// - `unlocks` -- recently observed L2 unlock events
+/// - `exits` -- recently observed L2 exit events (both regular and liquidations)
+/// - `req_changes` -- recently objected L2 staking requirement changes.  This is typically empty,
+///   but in the event of a staking requirement change initated by the contract owner, this will
+///   contain the details of that update.
+/// - `purge_state` -- only included if requested.  Contains contract pubkeys of the most recent
+///   purge list update.
+/// - `reward_rate` -- the contract reward rate expressed as a per-block payout, calculated for
+///   periodic recent L2 heights.  This is a list of values such as {"height": 12345600,
+///   "block_reward": 22983257229} indicating the L2 reward pool payout rate at that height.
+struct GET_L2_TRACKER_STATE : RPC_COMMAND {
+    static constexpr auto names() { return NAMES("get_l2_tracker_state"); }
+
+    struct request_parameters {
+        bool include_purge_state;
+    } request;
+};
+
 /// Dev-RPC: service_node/report_peer_status
 ///
 /// Reports service node peer status (success/fail) from lokinet and storage server.
@@ -2873,6 +2912,7 @@ using core_rpc_types = tools::type_list<
         GET_HEIGHT,
         GET_INFO,
         GET_LAST_BLOCK_HEADER,
+        GET_L2_TRACKER_STATE,
         GET_LIMIT,
         GET_NET_STATS,
         GET_OUTPUTS,
