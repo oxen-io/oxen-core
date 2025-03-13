@@ -73,6 +73,7 @@
 #include "epee/net/network_throttle.hpp"
 #include "epee/string_tools.h"
 #include "l2_tracker/events.h"
+#include "l2_tracker/l2_tracker_proxy.h"
 #include "logging/oxen_logger.h"
 #include "net/parse.h"
 #include "oxen/log.hpp"
@@ -2791,11 +2792,11 @@ void core_rpc_server::invoke(GET_SERVICE_PRIVKEYS& get_service_privkeys, rpc_con
     const auto& keys = m_core.get_service_keys();
     if (keys.key)
         get_service_privkeys.response_hex["service_node_privkey"] =
-                tools::view_guts<std::byte>(keys.key);
+                tools::span_guts<const std::byte>(keys.key);
     get_service_privkeys.response_hex["service_node_ed25519_privkey"] =
-            tools::view_guts<std::byte>(keys.key_ed25519);
+            tools::span_guts<const std::byte>(keys.key_ed25519);
     get_service_privkeys.response_hex["service_node_x25519_privkey"] =
-            tools::view_guts<std::byte>(keys.key_x25519);
+            tools::span_guts<const std::byte>(keys.key_x25519);
     get_service_privkeys.response["status"] = STATUS_OK;
 }
 
@@ -3593,6 +3594,42 @@ void core_rpc_server::invoke(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_con
     get_sn_state_changes.response["total_unlock"] = total_unlock;
     get_sn_state_changes.response["status"] = STATUS_OK;
 }
+
+void core_rpc_server::invoke(GET_L2_TRACKER_STATE& req, rpc_context) {
+    if (!m_core.have_l2_tracker())
+        throw rpc_error{
+                ERROR_NO_L2_TRACKER, "This oxend does not currently have an active L2 tracker"};
+
+    auto state = m_core.l2_tracker().get_state();
+    serialization::json_archiver ja{
+            req.is_bt() ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex};
+
+    serialize(ja, state);
+    req.response.update(std::move(ja).json());
+    if (auto rit = req.response.find("reward_rate");
+        rit != req.response.end() && rit->size() % 2 == 0) {
+        json reward_rate = json::array();
+        for (auto it = rit->begin(); it != rit->end(); it += 2)
+            reward_rate.push_back(
+                    json{{"height", it->get<uint64_t>()},
+                         {"block_reward", std::next(it)->get<uint64_t>()}});
+        *rit = std::move(reward_rate);
+    }
+    req.response.erase("#");
+
+    if (req.request.include_purge_state) {
+        serialization::json_archiver ja_p{
+                req.is_bt() ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex};
+        auto pstate = m_core.l2_tracker().get_purge_state();
+        serialize(ja_p, pstate);
+        auto pjson = std::move(ja_p).json();
+        pjson.erase("#");
+        req.response["purge_state"] = std::move(pjson);
+    }
+
+    req.response["status"] = STATUS_OK;
+}
+
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(REPORT_PEER_STATUS& report_peer_status, rpc_context) {
     crypto::public_key pubkey;

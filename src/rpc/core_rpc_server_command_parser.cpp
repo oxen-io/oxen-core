@@ -312,6 +312,10 @@ void parse_request(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_input in) {
             required{get_sn_state_changes.request.start_height});
 }
 
+void parse_request(GET_L2_TRACKER_STATE& l2, rpc_input in) {
+    get_values(in, "include_purge_state", l2.request.include_purge_state);
+}
+
 void parse_request(REPORT_PEER_STATUS& report_peer_status, rpc_input in) {
     get_values(
             in,
