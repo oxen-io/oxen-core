@@ -28,19 +28,20 @@ concept byte_spannable = std::convertible_to<T, std::span<const typename T::valu
 /// do unless the struct is specifically design to be used this way.  The value must be a standard
 /// layout type; it should really require is_trivial, too, but we have classes (like crypto keys)
 /// that aren't C++-trivial but are still designed to be accessed this way.
-template <oxenc::basic_char Char = char, safe_to_memcpy T>
-std::basic_string_view<Char> view_guts(const T& val) {
-    return {reinterpret_cast<const Char*>(&val), sizeof(val)};
+template <safe_to_memcpy T>
+std::string_view view_guts(const T& val) {
+    return {reinterpret_cast<const char*>(&val), sizeof(val)};
 }
 
 /// Convenience wrapper around the above that also copies the result into a new string
-template <oxenc::basic_char Char = char, safe_to_memcpy T>
-std::basic_string<Char> copy_guts(const T& val) {
-    return std::basic_string<Char>{view_guts<Char>(val)};
+template <safe_to_memcpy T>
+std::string copy_guts(const T& val) {
+    return std::string{view_guts(val)};
 }
 
 /// Multi-input version of copy/view_guts that returns an std::array with all of the `view_guts()`
-/// values of the given inputs concatenated together into the returned array.
+/// values of the given inputs concatenated together into the returned array, and optionally
+/// reinterpreted as a different 1-byte type.
 template <oxenc::basic_char Char = char, safe_to_memcpy... T>
 std::array<Char, (0 + ... + sizeof(T))> concat_guts(const T&... vals) {
     std::array<Char, (0 + ... + sizeof(T))> result;
@@ -153,9 +154,11 @@ namespace detail {
     constexpr bool is_skip<skip<N>> = true;
 
     template <typename T>
-    constexpr bool is_basic_sv = false;
+    constexpr bool is_basic_view = false;
+    template <>
+    inline constexpr bool is_basic_view<std::string_view> = true;
     template <oxenc::basic_char Char>
-    constexpr bool is_basic_sv<std::basic_string_view<Char>> = true;
+    constexpr bool is_basic_view<std::span<const Char>> = true;
 
     template <size_t I, typename Next, typename... More, typename Tuple>
     void load_split_tuple(Tuple& t, std::string_view from) {
@@ -165,7 +168,7 @@ namespace detail {
             from = {};
         } else {
             auto& e = std::get<I>(t);
-            if constexpr (is_basic_sv<Next>) {
+            if constexpr (is_basic_view<Next>) {
                 static_assert(I == std::tuple_size_v<Tuple> - 1);
                 e = {reinterpret_cast<Next::const_pointer>(from.data()), from.size()};
                 from = {};
@@ -187,7 +190,7 @@ namespace detail {
             from = {};
         } else {
             auto& e = std::get<I>(t);
-            if constexpr (is_basic_sv<Next>) {
+            if constexpr (is_basic_view<Next>) {
                 static_assert(I == std::tuple_size_v<Tuple> - 1);
                 e = {reinterpret_cast<Next::const_pointer>(from.data()), from.size()};
                 from = {};
@@ -212,18 +215,20 @@ namespace detail {
     constexpr size_t split_guts_piece_size() {
         if constexpr (is_skip<T>)
             return T::size;
-        else if constexpr (is_basic_sv<T>)
+        else if constexpr (is_basic_view<T>)
             return 0;
         else
             return sizeof(T);
     }
 
     template <typename... More>
-    constexpr bool final_is_string_view = false;
+    constexpr bool final_is_view = false;
+    template <>
+    inline constexpr bool final_is_view<std::string_view> = true;
     template <oxenc::basic_char Char>
-    constexpr bool final_is_string_view<std::basic_string_view<Char>> = true;
+    constexpr bool final_is_view<std::span<const Char>> = true;
     template <typename T1, typename T2, typename... More>
-    constexpr bool final_is_string_view<T1, T2, More...> = final_is_string_view<T2, More...>;
+    constexpr bool final_is_view<T1, T2, More...> = final_is_view<T2, More...>;
 
     template <typename... More>
     constexpr bool final_is_ignore = false;
@@ -232,11 +237,11 @@ namespace detail {
     template <typename T1, typename T2, typename... More>
     constexpr bool final_is_ignore<T1, T2, More...> = final_is_ignore<T2, More...>;
 
-    // Used below to check that either no string view is supplied at all, or exactly one is supplied
-    // as the very last argument.
+    // Used below to check that either no string view or span is supplied at all, or exactly one is
+    // supplied as the very last argument.
     template <typename... T>
-    constexpr bool valid_sv_arg = (is_basic_sv<T> + ...) == 0 ||
-                                  ((is_basic_sv<T> + ...) == 1 && final_is_string_view<T...>);
+    constexpr bool valid_view_arg =
+            (is_basic_view<T> + ...) == 0 || ((is_basic_view<T> + ...) == 1 && final_is_view<T...>);
 
     // Used below to check that either no ignore is supplied at all, or exactly one is supplied as
     // the very last argument.
@@ -253,15 +258,15 @@ namespace detail {
 }  // namespace detail
 
 template <typename T>
-concept splittable_into = safe_to_memcpy<T> || detail::is_skip<T> || detail::is_basic_sv<T>;
+concept splittable_into = safe_to_memcpy<T> || detail::is_skip<T> || detail::is_basic_view<T>;
 
 // Splits bytes into a tuple of primitive types, copying the size of each primitive object from
 // consecutive locations in the string.  The given string must exactly match the sum of the sizes of
 // the primitive inputs.  You may also include `skip<N>` (or `skip_t<T>`) as a type, in which case
 // `N` bytes (for skip_t: N=sizeof(T)) will be skipped (the `skip<N>` type is not included in the
-// returned tuple).  The *final* type may optionally be a basic_string_view<Char>, in which case the
-// final element of the tuple will be such a string view containing any unconsumed characters, or
-// `ignore` which simply ignores any unconsumed trailing data.
+// returned tuple).  The *final* type may optionally be a std::string_view or std::span<const Char>,
+// in which case the final element of the tuple will be such a string view containing any unconsumed
+// characters, or `ignore` which simply ignores any unconsumed trailing data.
 //
 // For example:
 //
@@ -281,14 +286,13 @@ concept splittable_into = safe_to_memcpy<T> || detail::is_skip<T> || detail::is_
 //     e == "omg"sv
 //
 template <splittable_into... T, byte_spannable Spannable>
-    requires(sizeof...(T) > 0 && detail::valid_sv_arg<T...> && detail::valid_ignore_arg<T...>)
+    requires(sizeof...(T) > 0 && detail::valid_view_arg<T...> && detail::valid_ignore_arg<T...>)
 constexpr detail::tuple_without_skips<T...> split_guts_into(const Spannable& s) {
     using Char = typename Spannable::value_type;
     std::span<const Char> span{s};
     constexpr auto min_size = (detail::split_guts_piece_size<T>() + ...);
-    if ((detail::final_is_string_view<T...> || detail::final_is_ignore<T...>)
-                ? span.size() < min_size
-                : span.size() != min_size)
+    if ((detail::final_is_view<T...> || detail::final_is_ignore<T...>) ? span.size() < min_size
+                                                                       : span.size() != min_size)
         throw oxen::traced<std::runtime_error>{"Invalid split_guts_into string size"};
 
     detail::tuple_without_skips<T...> result;
@@ -301,17 +305,16 @@ constexpr detail::tuple_without_skips<T...> split_guts_into(const Spannable& s) 
 // prefix.  If using a `skip<N>` type the `N` refers to bytes skipped, not hex characters (i.e.
 // skip<2> skips 4 hex characters of input).
 //
-// If a trailing std::basic_string_view type is specified then that string view will contain all
-// unconsumed *hex* digits, not *byte* values.
+// If a trailing std::string_view or std::span<const Char> type is specified then that view will
+// contain all unconsumed *hex* digits, not *byte* values.
 template <splittable_into... T>
-    requires(sizeof...(T) > 0 && detail::valid_sv_arg<T...> && detail::valid_ignore_arg<T...>)
+    requires(sizeof...(T) > 0 && detail::valid_view_arg<T...> && detail::valid_ignore_arg<T...>)
 constexpr detail::tuple_without_skips<T...> split_hex_into(std::string_view hex_in) {
     if (hex_in.starts_with("0x") || hex_in.starts_with("0X"))
         hex_in.remove_prefix(2);
 
     constexpr auto min_size = 2 * (detail::split_guts_piece_size<T>() + ...);
-    if ((detail::final_is_string_view<T...> ? hex_in.size() < min_size
-                                            : hex_in.size() != min_size)) {
+    if ((detail::final_is_view<T...> ? hex_in.size() < min_size : hex_in.size() != min_size)) {
         throw oxen::traced<std::runtime_error>{
                 "Invalid split_hex_into string input: incorrect hex string size (hex_in {}, min_size {})"_format(
                         hex_in.size(), min_size)};

@@ -330,7 +330,7 @@ namespace {
             zone->connection_count = zone->map.size();
             for (auto id = zone->map.begin(); id != zone->map.end(); ++id) {
                 const std::size_t i = id - zone->map.begin();
-                zone->channels[i].strand.post(update_channel{zone, i, *id});
+                zone->channels[i].strand.post(update_channel{zone, i, *id}, std::allocator<void>{});
             }
         }
 
@@ -426,7 +426,8 @@ namespace {
                                 "Lost all outbound connections to anonymity network - currently "
                                 "unable to send transaction(s)");
 
-                    zone_->strand.post(update_channels{zone_, std::move(connections)});
+                    zone_->strand.post(
+                            update_channels{zone_, std::move(connections)}, std::allocator<void>{});
                 }
             }
 
@@ -451,9 +452,12 @@ namespace {
                 throw boost::system::system_error{error, "start_epoch timer failed"};
 
             const auto start = std::chrono::steady_clock::now();
-            zone_->strand.dispatch(change_channels{
-                    zone_,
-                    net::dandelionpp::connection_map{get_out_connections(*(zone_->p2p)), count_}});
+            zone_->strand.dispatch(
+                    change_channels{
+                            zone_,
+                            net::dandelionpp::connection_map{
+                                    get_out_connections(*(zone_->p2p)), count_}},
+                    std::allocator<void>{});
 
             detail::zone& alias = *zone_;
             alias.next_epoch.expires_at(start + min_epoch_ + random_duration(epoch_range_));
@@ -494,7 +498,8 @@ void notify::new_out_connection() {
     if (!zone_ || zone_->noise.view.empty() || NOISE_CHANNELS <= zone_->connection_count)
         return;
 
-    zone_->strand.dispatch(update_channels{zone_, get_out_connections(*(zone_->p2p))});
+    zone_->strand.dispatch(
+            update_channels{zone_, get_out_connections(*(zone_->p2p))}, std::allocator<void>{});
 }
 
 void notify::run_epoch() {
@@ -537,7 +542,8 @@ bool notify::send_txs(
         }
 
         for (std::size_t channel = 0; channel < zone_->channels.size(); ++channel) {
-            zone_->channels[channel].strand.dispatch(queue_covert_notify{zone_, message, channel});
+            zone_->channels[channel].strand.dispatch(
+                    queue_covert_notify{zone_, message, channel}, std::allocator<void>{});
         }
     } else {
         const std::string payload = make_tx_payload(std::move(txs), pad_txs);
@@ -545,7 +551,8 @@ bool notify::send_txs(
                 NOTIFY_NEW_TRANSACTIONS::ID, epee::strspan<std::uint8_t>(payload))};
 
         // traditional monero send technique
-        zone_->strand.dispatch(flood_notify{zone_, std::move(message), source});
+        zone_->strand.dispatch(
+                flood_notify{zone_, std::move(message), source}, std::allocator<void>{});
     }
 
     return true;

@@ -141,7 +141,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
         throw std::runtime_error("Only IPv4 and IPv6 are supported here");
     if (remote_ep.address().is_v4())
     {
-      const unsigned long ip_ = boost::asio::detail::socket_ops::host_to_network_long(remote_ep.address().to_v4().to_ulong());
+      const unsigned long ip_ = boost::asio::detail::socket_ops::host_to_network_long(remote_ep.address().to_v4().to_uint());
       return start(is_income, is_multithreaded, ipv4_network_address{uint32_t(ip_), remote_ep.port()});
     }
     else
@@ -214,7 +214,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     if(!self)
       return false;
 
-    strand_.post(boost::bind(&connection<t_protocol_handler>::call_back_starter, self));
+    strand_.post(boost::bind(&connection<t_protocol_handler>::call_back_starter, self), std::allocator<void>{});
     CATCH_ENTRY("connection<t_protocol_handler>::request_callback()", false);
     return true;
   }
@@ -566,7 +566,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
   std::chrono::milliseconds connection<t_protocol_handler>::get_timeout_from_bytes_read(size_t bytes)
   {
     std::chrono::milliseconds ms{(unsigned)(bytes * TIMEOUT_EXTRA_MS_PER_BYTE)};
-    if (auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(m_timer.expires_at() - std::chrono::steady_clock::now());
+    if (auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(m_timer.expiry() - std::chrono::steady_clock::now());
         remaining > 0ms)
       ms += remaining;
     if (ms > get_default_timeout())
@@ -605,11 +605,11 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     }
     if (add)
     {
-      if (const auto cur = std::chrono::duration_cast<std::chrono::milliseconds>(m_timer.expires_at() - std::chrono::steady_clock::now());
+      if (const auto cur = std::chrono::duration_cast<std::chrono::milliseconds>(m_timer.expiry() - std::chrono::steady_clock::now());
           cur > 0s)
         ms += cur;
     }
-    m_timer.expires_from_now(ms);
+    m_timer.expires_after(ms);
     m_timer.async_wait([=](const boost::system::error_code& ec)
     {
       if(ec == boost::asio::error::operation_aborted)
@@ -818,8 +818,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     try
     {
       boost::asio::ip::tcp::resolver resolver(io_service_);
-      boost::asio::ip::tcp::resolver::query query(address, boost::lexical_cast<std::string>(port), boost::asio::ip::tcp::resolver::query::canonical_name);
-      boost::asio::ip::tcp::endpoint endpoint = *resolver.resolve(query);
+      boost::asio::ip::tcp::endpoint endpoint = *resolver.resolve(address, boost::lexical_cast<std::string>(port), boost::asio::ip::tcp::resolver::canonical_name).begin();
       acceptor_.open(endpoint.protocol());
 #if !defined(_WIN32)
       acceptor_.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
@@ -852,8 +851,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
       {
         if (port_ipv6 == 0) port_ipv6 = port; // default arg means bind to same port as ipv4
         boost::asio::ip::tcp::resolver resolver(io_service_);
-        boost::asio::ip::tcp::resolver::query query(address_ipv6, boost::lexical_cast<std::string>(port_ipv6), boost::asio::ip::tcp::resolver::query::canonical_name);
-        boost::asio::ip::tcp::endpoint endpoint = *resolver.resolve(query);
+        boost::asio::ip::tcp::endpoint endpoint = *resolver.resolve(address_ipv6, boost::lexical_cast<std::string>(port_ipv6), boost::asio::ip::tcp::resolver::canonical_name).begin();
         acceptor_ipv6.open(endpoint.protocol());
 #if !defined(_WIN32)
         acceptor_ipv6.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
@@ -1129,7 +1127,7 @@ POP_WARNINGS
     sock_.open(remote_endpoint.protocol());
     if(bind_ip != "0.0.0.0" && bind_ip != "0" && bind_ip != "" )
     {
-      boost::asio::ip::tcp::endpoint local_endpoint(boost::asio::ip::address::from_string(bind_ip.c_str()), 0);
+      boost::asio::ip::tcp::endpoint local_endpoint(boost::asio::ip::make_address_v4(bind_ip.c_str()), 0);
       boost::system::error_code ec;
       sock_.bind(local_endpoint, ec);
       if (ec)
@@ -1212,13 +1210,12 @@ POP_WARNINGS
     bool try_ipv6 = false;
 
     boost::asio::ip::tcp::resolver resolver(io_service_);
-    boost::asio::ip::tcp::resolver::query query(boost::asio::ip::tcp::v4(), adr, port, boost::asio::ip::tcp::resolver::query::canonical_name);
     boost::system::error_code resolve_error;
-    boost::asio::ip::tcp::resolver::iterator iterator;
+    boost::asio::ip::tcp::resolver::results_type results;
     try
     {
       //resolving ipv4 address as ipv6 throws, catch here and move on
-      iterator = resolver.resolve(query, resolve_error);
+      results = resolver.resolve(boost::asio::ip::tcp::v4(), adr, port, boost::asio::ip::tcp::resolver::canonical_name, resolve_error);
     }
     catch (const boost::system::system_error& e)
     {
@@ -1236,8 +1233,7 @@ POP_WARNINGS
 
     std::string bind_ip_to_use;
 
-    boost::asio::ip::tcp::resolver::iterator end;
-    if(iterator == end)
+    if(!results.size())
     {
       if (!m_use_ipv6)
       {
@@ -1255,11 +1251,9 @@ POP_WARNINGS
 
     if (try_ipv6)
     {
-      boost::asio::ip::tcp::resolver::query query6(boost::asio::ip::tcp::v6(), adr, port, boost::asio::ip::tcp::resolver::query::canonical_name);
+      results = resolver.resolve(boost::asio::ip::tcp::v6(), adr, port, boost::asio::ip::tcp::resolver::canonical_name, resolve_error);
 
-      iterator = resolver.resolve(query6, resolve_error);
-
-      if(iterator == end)
+      if(!results.size())
       {
         return false;
       }
@@ -1278,7 +1272,7 @@ POP_WARNINGS
 
     }
 
-    boost::asio::ip::tcp::endpoint remote_endpoint(*iterator);
+    boost::asio::ip::tcp::endpoint remote_endpoint(*(results.begin()));
 
     auto try_connect_result = try_connect(new_connection_l, adr, port, sock_, remote_endpoint, bind_ip_to_use, conn_timeout);
     if (try_connect_result == CONNECT_FAILURE)
@@ -1322,13 +1316,12 @@ POP_WARNINGS
     bool try_ipv6 = false;
 
     boost::asio::ip::tcp::resolver resolver(io_service_);
-    boost::asio::ip::tcp::resolver::query query(boost::asio::ip::tcp::v4(), adr, port, boost::asio::ip::tcp::resolver::query::canonical_name);
     boost::system::error_code resolve_error;
-    boost::asio::ip::tcp::resolver::iterator iterator;
+    boost::asio::ip::tcp::resolver::results_type results;
     try
     {
       //resolving ipv4 address as ipv6 throws, catch here and move on
-      iterator = resolver.resolve(query, resolve_error);
+      results = resolver.resolve(boost::asio::ip::tcp::v4(), adr, port, boost::asio::ip::tcp::resolver::canonical_name, resolve_error);
     }
     catch (const boost::system::system_error& e)
     {
@@ -1344,9 +1337,7 @@ POP_WARNINGS
       throw;
     }
 
-    boost::asio::ip::tcp::resolver::iterator end;
-
-    if(iterator == end)
+    if(!results.size())
     {
       if (!try_ipv6)
       {
@@ -1356,23 +1347,21 @@ POP_WARNINGS
 
     if (try_ipv6)
     {
-      boost::asio::ip::tcp::resolver::query query6(boost::asio::ip::tcp::v6(), adr, port, boost::asio::ip::tcp::resolver::query::canonical_name);
+      results = resolver.resolve(boost::asio::ip::tcp::v6(), adr, port, boost::asio::ip::tcp::resolver::canonical_name, resolve_error);
 
-      iterator = resolver.resolve(query6, resolve_error);
-
-      if(iterator == end)
+      if(!results.size())
       {
         return false;
       }
     }
 
 
-    boost::asio::ip::tcp::endpoint remote_endpoint(*iterator);
+    boost::asio::ip::tcp::endpoint remote_endpoint(*(results.begin()));
      
     sock_.open(remote_endpoint.protocol());
     if(bind_ip != "0.0.0.0" && bind_ip != "0" && bind_ip != "" )
     {
-      boost::asio::ip::tcp::endpoint local_endpoint(boost::asio::ip::address::from_string(bind_ip.c_str()), 0);
+      boost::asio::ip::tcp::endpoint local_endpoint(boost::asio::ip::make_address(bind_ip.c_str()), 0);
       boost::system::error_code ec;
       sock_.bind(local_endpoint, ec);
       if (ec)
@@ -1385,7 +1374,7 @@ POP_WARNINGS
     
     std::shared_ptr<boost::asio::steady_timer> sh_deadline(new boost::asio::steady_timer(io_service_));
     //start deadline
-    sh_deadline->expires_from_now(std::chrono::milliseconds(conn_timeout));
+    sh_deadline->expires_after(std::chrono::milliseconds(conn_timeout));
     sh_deadline->async_wait([=](const boost::system::error_code& error)
       {
           if(error != boost::asio::error::operation_aborted) 

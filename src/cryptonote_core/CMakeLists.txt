@@ -61,7 +61,8 @@ target_link_libraries(cryptonote_core
     SQLiteCpp
     systemd
     logging
-    extra)
+    extra
+    zstd::zstd)
 
 if (PER_BLOCK_CHECKPOINT)
   target_compile_definitions(cryptonote_core PUBLIC PER_BLOCK_CHECKPOINT)
