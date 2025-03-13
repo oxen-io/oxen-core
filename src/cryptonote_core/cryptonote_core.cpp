@@ -100,7 +100,7 @@ const command_line::arg_descriptor<std::string> arg_data_dir{
             fs::path base = tools::get_default_data_dir();
             if (auto subdir = cryptonote::network_config_subdir(nettype); !subdir.empty())
                 base /= subdir;
-            return tools::convert_str<char>(base.u8string());
+            return tools::path_to_str(base);
         }};
 const command_line::arg_flag arg_offline = {
         "offline", "Do not listen for peers, nor connect to any"};
@@ -199,6 +199,23 @@ static const command_line::arg_flag arg_l2_skip_proof_check = {
         "Skips the requirement in HF20 that we have heard from the L2 provider recently before "
         "sending an uptime proof.  This is a temporary option that will be removed after the HF20 "
         "transition period."};
+static const command_line::arg_descriptor<std::string> arg_l2_proxy = {
+        "l2-proxy",
+        "Enables this node to act as an L2 state proxy.  This option takes a filename containing "
+        "service node Ed25519 pubkeys (one per line) that are allowed to access this node's L2 "
+        "state.  Listed service nodes can then use l2-provider=oxend://IP:PORT/PUBKEY to "
+        "retrieve information from this oxend as their L2 provider. If this node is running in "
+        "service node mode, PORT will be the quorumnet port (22025 by default on mainnet); for "
+        "non-service the --lmq-curve option should be used to configure the listening address.",
+        ""};
+static const command_line::arg_descriptor<std::vector<std::string>> arg_l2_oxend = {
+        "l2-oxend",
+        "Specify the address (\"IP:PORT/PUBKEY\", or \"ipc://PATH.sock\") of another oxend to use "
+        "as an L2 information proxy.  The remote oxend must be running with the `--l2-proxy` "
+        "option and must have listed this node's pubkey in its allowed pubkey file. Can be "
+        "specified multiple times to add redundant oxend L2 information sources. This option "
+        "cannot be used with --l2-provider or --l2-proxy options and other --l2-... options are "
+        "ignored when this option is enabled."};
 
 static const command_line::arg_descriptor<std::string> arg_block_notify = {
         "block-notify",
@@ -344,6 +361,8 @@ void core::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_l2_check_threshold);
     command_line::add_arg(desc, arg_l2_skip_chainid);
     command_line::add_arg(desc, arg_l2_skip_proof_check);
+    command_line::add_arg(desc, arg_l2_proxy);
+    command_line::add_arg(desc, arg_l2_oxend);
     command_line::add_arg(desc, arg_storage_server_port);
     command_line::add_arg(desc, arg_quorumnet_port);
 
@@ -382,6 +401,13 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
         service_node_list.debug_allow_local_ips = true;
 
     m_service_node = command_line::get_arg(vm, arg_service_node);
+
+    if (!command_line::get_arg(vm, arg_l2_oxend).empty() &&
+        (!command_line::get_arg(vm, arg_l2_provider).empty() ||
+         !command_line::get_arg(vm, arg_l2_proxy).empty())) {
+        log::error(globallogcat, "--l2-oxend cannot be used with --l2-provider or --l2-proxy");
+        return false;
+    }
 
     if (m_service_node) {
         /// TODO: parse these options early, before we start p2p server etc?
@@ -428,19 +454,21 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
             args_okay = false;
         }
 
-        if (command_line::get_arg(vm, arg_l2_provider).empty()) {
+        if (command_line::get_arg(vm, arg_l2_provider).empty() &&
+            command_line::get_arg(vm, arg_l2_oxend).empty()) {
             auto latest_hf_known = get_latest_hard_fork(m_nettype);
             if (latest_hf_known.version < hf::hf20_eth_transition) {
                 // If HF20 is not yet scheduled on this chain then only warn but don't error.
                 log::warning(globallogcat, "No L2 provider URL was given.");
                 log::warning(
                         globallogcat,
-                        "At least one L2 provider URL will be REQUIRED starting with the "
-                        "HF20/Anchor release");
+                        "At least one L2 provider URL (or L2 oxend proxy) will be REQUIRED "
+                        "starting with the HF20/Anchor release");
             } else {
                 log::error(
                         logcat,
-                        "At least one ethereum L2 provider must be specified for a service node");
+                        "At least one ethereum L2 provider (or L2 oxend proxy) must be specified "
+                        "for a service node");
                 args_okay = false;
             }
         }
@@ -681,8 +709,7 @@ bool core::init(
     init_oxenmq(vm);
     m_bls_aggregator = std::make_unique<eth::bls_aggregator>(*this);
 
-    const auto l2_provider = command_line::get_arg(vm, arg_l2_provider);
-    if (!l2_provider.empty()) {
+    if (const auto l2_provider = command_line::get_arg(vm, arg_l2_provider); !l2_provider.empty()) {
         // We support both multiple --l2-provider options, each of which can be a delimited list, so
         // go extract all the actual values (and skip any empty ones, so that `--l2-provider ''` is
         // treat as not specifying the value at all).
@@ -693,49 +720,131 @@ bool core::init(
         }
 
         if (provider_urls.empty()) {
-            if (m_service_node) {
-                log::error(
-                        globallogcat,
-                        "At least one ethereum L2 provider must be specified for a service node");
+            log::error(globallogcat, "--l2-provider value cannot be empty");
+            return false;
+        }
+
+        std::chrono::milliseconds l2_refresh;
+
+        // If this node is acting as a proxy and no explicit l2 refresh period is set then use
+        // half the default (because the default is really meant for a single node and is too
+        // long if other nodes are relying on results loaded into this node).
+        if (command_line::is_arg_defaulted(vm, arg_l2_refresh) &&
+            !command_line::get_arg(vm, arg_l2_proxy).empty())
+            l2_refresh = ETH_L2_DEFAULT_REFRESH / 2;
+        else
+            l2_refresh = as_duration<std::chrono::milliseconds>(
+                    command_line::get_arg(vm, arg_l2_refresh));
+
+        m_l2_tracker = std::make_unique<eth::L2Tracker>(*this, l2_refresh);
+
+        m_l2_tracker->provider->setTimeout(as_duration<std::chrono::milliseconds>(
+                1000 * command_line::get_arg(vm, arg_l2_timeout)));
+        m_l2_tracker->GETLOGS_MAX_BLOCKS = command_line::get_arg(vm, arg_l2_max_logs);
+        m_l2_tracker->PROVIDERS_CHECK_INTERVAL = as_duration<std::chrono::milliseconds>(
+                command_line::get_arg(vm, arg_l2_check_interval));
+        m_l2_tracker->PROVIDERS_CHECK_THRESHOLD = command_line::get_arg(vm, arg_l2_check_threshold);
+
+        if (auto whitelist = command_line::get_arg(vm, arg_l2_proxy); !whitelist.empty()) {
+            try {
+                m_l2_tracker->enable_proxy(*m_omq, tools::utf8_path(whitelist));
+            } catch (const std::exception& e) {
+                log::critical(globallogcat, "Failed to initialize L2 proxy: {}", e.what());
                 return false;
             }
-        } else {
-            m_l2_tracker = std::make_unique<eth::L2Tracker>(
-                    *this,
-                    as_duration<std::chrono::milliseconds>(
-                            command_line::get_arg(vm, arg_l2_refresh)));
-            m_l2_tracker->provider.setTimeout(as_duration<std::chrono::milliseconds>(
-                    1000 * command_line::get_arg(vm, arg_l2_timeout)));
-            m_l2_tracker->GETLOGS_MAX_BLOCKS = command_line::get_arg(vm, arg_l2_max_logs);
-            m_l2_tracker->PROVIDERS_CHECK_INTERVAL = as_duration<std::chrono::milliseconds>(
-                    command_line::get_arg(vm, arg_l2_check_interval));
-            m_l2_tracker->PROVIDERS_CHECK_THRESHOLD =
-                    command_line::get_arg(vm, arg_l2_check_threshold);
 
-            size_t provider_count = 0;
-            for (const auto& url : provider_urls) {
-                try {
-                    m_l2_tracker->provider.addClient(
-                            provider_count == 0 ? "Primary L2 provider"s
-                                                : "Backup L2 provider #{}"_format(provider_count),
-                            std::string{url});
-                    provider_count++;
-                } catch (const std::exception& e) {
-                    log::critical(
-                            globallogcat,
-                            "Invalid l2-provider URL '{}': {}",
-                            tools::trim_url(url),
-                            e.what());
-                    return false;
-                }
-            }
+            if (m_service_node)
+                log::info(
+                        globallogcat,
+                        fg(fmt::terminal_color::green) | fmt::emphasis::bold,
+                        "Running as an L2 proxy reachable at:\n\t{}:{}/{}",
+                        epee::string_tools::get_ip_string_from_int32(m_sn_public_ip),
+                        m_quorumnet_port,
+                        m_service_keys.pub_ed25519);
+            else
+                log::info(
+                        globallogcat,
+                        fg(fmt::terminal_color::green) | fmt::emphasis::bold,
+                        "Running as an L2 proxy with pubkey {}",
+                        m_service_keys.pub_ed25519);
+        }
 
-            if (!command_line::get_arg(vm, arg_l2_skip_chainid)) {
-                log::info(globallogcat, "Verifying L2 provider chain-id");
-                if (!m_l2_tracker->check_chain_id())
-                    return false;  // the above already logs critical on failure
+        size_t provider_count = 0;
+        for (const auto& url : provider_urls) {
+            try {
+                m_l2_tracker->provider->addClient(
+                        provider_count == 0 ? "Primary L2 provider"s
+                                            : "Backup L2 provider #{}"_format(provider_count),
+                        std::string{url});
+                provider_count++;
+            } catch (const std::exception& e) {
+                log::critical(
+                        globallogcat,
+                        "Invalid l2-provider URL '{}': {}",
+                        tools::trim_url(url),
+                        e.what());
+                return false;
             }
         }
+
+        if (!command_line::get_arg(vm, arg_l2_skip_chainid)) {
+            log::info(globallogcat, "Verifying L2 provider chain-id");
+            if (!m_l2_tracker->check_chain_id())
+                return false;  // the above already logs critical on failure
+        }
+    } else if (const auto l2_oxend = command_line::get_arg(vm, arg_l2_oxend); !l2_oxend.empty()) {
+
+        // Allow both comma- or whitespace-separated values, and multiple config values:
+        std::vector<std::string_view> proxy_addrs;
+        for (const auto& proxy : l2_oxend) {
+            auto urls = tools::split_any(proxy, ", \t\n", /*trim=*/true);
+            proxy_addrs.insert(proxy_addrs.end(), urls.begin(), urls.end());
+        }
+
+        if (proxy_addrs.empty()) {
+            log::error(globallogcat, "--l2-oxend value cannot be empty");
+            return false;
+        }
+
+        // Take inputs as either:
+        // IP:PORT/PUBKEY
+        // ipc://PATH
+        // For the latter, pubkey auth is not used and we'll just set the pubkey (for log
+        // statements) to a dummy value such as "01000000000...00" where the "01" signifies the
+        // 1st listed oxend proxy.
+
+        std::vector<std::pair<oxenmq::address, crypto::ed25519_public_key>> proxies;
+        for (const auto& addr : proxy_addrs) {
+            try {
+                if (addr.starts_with("ipc://"sv)) {
+                    proxies.emplace_back(
+                            oxenmq::address{addr}, crypto::null<crypto::ed25519_public_key>);
+                } else {
+                    // Let oxenmq parse the host:port/pubkey value (which can be hex, base32z,
+                    // base64):
+                    oxenmq::address a{"tcp+curve://{}"_format(addr)};
+
+                    // We expect an *Ed* pubkey here (for convenience) but oxenmq takes a curve
+                    // pubkey, so after parsing it we need to extract, convert, and replace it
+                    // with the converted X pubkey.
+                    assert(a.pubkey.size() == 32);
+                    crypto::ed25519_public_key edpk;
+                    std::memcpy(edpk.data(), a.pubkey.data(), 32);
+
+                    if (0 !=
+                        crypto_sign_ed25519_pk_to_curve25519(
+                                reinterpret_cast<unsigned char*>(a.pubkey.data()), edpk.data()))
+                        throw std::invalid_argument{"Invalid Ed25519 pubkey"};
+
+                    proxies.emplace_back(std::move(a), std::move(edpk));
+                }
+            } catch (const std::invalid_argument& e) {
+                log::error(globallogcat, "Invalid l2-oxend proxy address '{}': {}", addr, e.what());
+                return false;
+            }
+        }
+
+        m_l2_tracker = std::make_unique<eth::L2Tracker>(*this, proxies);
     }
 
     // NOTE: Provide a stub L2 tracker for fakechain. This is acceptable because our unit tests
@@ -1104,22 +1213,21 @@ bool core::init_service_keys() {
     }
 
     auto style = fg(fmt::terminal_color::yellow) | fmt::emphasis::bold;
-    if (m_service_node) {
-        log::info(
-                globallogcat,
-                fg(fmt::terminal_color::cyan) | fmt::emphasis::bold,
-                "Service node public keys:");
-        log::info(globallogcat, style, "- primary: {:x}", keys.pub);
+    log::info(
+            globallogcat,
+            fg(fmt::terminal_color::cyan) | fmt::emphasis::bold,
+            "{} public keys:",
+            m_service_node ? "Service node" : "Node");
+    bool unified_pk = std::memcmp(keys.pub.data(), keys.pub_ed25519.data(), 32) == 0;
+    if (m_service_node)
+        log::info(globallogcat, style, "- primary{}: {:x}", unified_pk ? "/ed25519" : "", keys.pub);
+    if (!m_service_node || !unified_pk)
         log::info(globallogcat, style, "- ed25519: {:x}", keys.pub_ed25519);
-        // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
-        log::info(globallogcat, style, "- lokinet: {:a}.snode", keys.pub_ed25519);
-        log::info(globallogcat, style, "- x25519: {:x}", keys.pub_x25519);
+    log::info(globallogcat, style, "- x25519: {:x}", keys.pub_x25519);
+    // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
+    if (m_service_node) {
         log::info(globallogcat, style, "- bls: {:x}", keys.pub_bls);
-
-    } else {
-        // Only print the x25519 version because it's the only thing useful for a non-SN (for
-        // encrypted OMQ RPC connections).
-        log::info(globallogcat, style, "x25519 public key: {:x}", keys.pub_x25519);
+        log::info(globallogcat, style, "- lokinet: {:a}.snode", keys.pub_ed25519);
     }
 
     return true;
@@ -1200,7 +1308,7 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
         std::string listen_ip = vm["p2p-bind-ip"].as<std::string>();
         if (listen_ip.empty())
             listen_ip = "0.0.0.0";
-        std::string qnet_listen = "tcp://" + listen_ip + ":" + std::to_string(m_quorumnet_port);
+        std::string qnet_listen = "tcp://{}:{}"_format(listen_ip, m_quorumnet_port);
         log::info(globallogcat, "OxenMQ/quorumnet listening on {} (quorumnet)", qnet_listen);
         m_omq->listen_curve(
                 qnet_listen,

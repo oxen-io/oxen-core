@@ -176,6 +176,7 @@ class core_rpc_server {
     void invoke(STORAGE_SERVER_PING& storage_server_ping, rpc_context context);
     void invoke(PRUNE_BLOCKCHAIN& prune_blockchain, rpc_context context);
     void invoke(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_context context);
+    void invoke(GET_L2_TRACKER_STATE& req, rpc_context context);
     void invoke(TEST_TRIGGER_P2P_RESYNC& test_trigger_p2p_resync, rpc_context context);
     void invoke(TEST_TRIGGER_UPTIME_PROOF& test_trigger_uptime_proof, rpc_context context);
     void invoke(REPORT_PEER_STATUS& report_peer_status, rpc_context context);

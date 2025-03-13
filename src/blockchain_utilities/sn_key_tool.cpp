@@ -11,6 +11,7 @@
 #include <iostream>
 #include <list>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -85,10 +86,9 @@ restore-legacy [--overwrite] FILENAME
     return exit_code;
 }
 
-using ustring = std::basic_string<unsigned char>;
-using ustring_view = std::basic_string_view<unsigned char>;
-
-crypto::ed25519_public_key pubkey_from_privkey(ustring_view privkey) {
+crypto::ed25519_public_key pubkey_from_privkey(std::span<const unsigned char> privkey) {
+    if (privkey.size() < 32)
+        throw std::logic_error{"invalid key: too small for privkey"};
     crypto::ed25519_public_key pubkey;
     // noclamp because Monero keys are not clamped at all, and because sodium keys are pre-clamped.
     crypto_scalarmult_ed25519_base_noclamp(pubkey.data(), privkey.data());
@@ -97,7 +97,7 @@ crypto::ed25519_public_key pubkey_from_privkey(ustring_view privkey) {
 template <size_t N>
     requires(N >= 32)
 crypto::ed25519_public_key pubkey_from_privkey(const std::array<unsigned char, N>& privkey) {
-    return pubkey_from_privkey(ustring_view{privkey.data(), 32});
+    return pubkey_from_privkey(std::span{privkey}.template first<N>());
 }
 
 std::string display_ed(
@@ -170,7 +170,7 @@ int generate(key_type type, std::list<std::string_view> args) {
         privkey_signhash[31] &= 63;
         privkey_signhash[31] |= 64;
 
-        ustring_view privkey{privkey_signhash.data(), 32};
+        auto privkey = std::span{privkey_signhash}.first<32>();
 
         // Double-check that we did it properly:
         if (pubkey_from_privkey(privkey) != pubkey)
@@ -304,7 +304,7 @@ int show(std::list<std::string_view> args) {
     if (bls && key_data.size() != 32)
         return error(2, fmt::format("File size ({} bytes) is invalid for a BLS secret key", size));
 
-    ustring_view seckey{reinterpret_cast<const unsigned char*>(key_data.data()), key_data.size()};
+    std::span seckey{reinterpret_cast<const unsigned char*>(key_data.data()), key_data.size()};
 
     if (legacy) {
         auto pubkey = pubkey_from_privkey(seckey);
@@ -330,10 +330,9 @@ Public key:  {}
         privkey_signhash[31] &= 63;
         privkey_signhash[31] |= 64;
 
-        ustring_view privkey{privkey_signhash.data(), 32};
+        auto privkey = std::span{privkey_signhash}.first<32>();
         auto pubkey = pubkey_from_privkey(privkey);
-        if (size >= 64 &&
-            ustring_view{pubkey.data(), pubkey.size()} != ustring_view{seckey.data() + 32, 32})
+        if (size >= 64 && !std::equal(pubkey.begin(), pubkey.end(), seckey.begin() + 32))
             return error(
                     13,
                     "Error: derived pubkey (" + oxenc::to_hex(pubkey.begin(), pubkey.end()) +
