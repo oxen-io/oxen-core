@@ -85,8 +85,8 @@ bool PendingTransactionImpl::commit(std::string_view filename_, bool overwrite, 
                 m_status = {
                         Status_Error,
                         "Attempting to save transaction to file, but specified file(s) exist. "
-                        "Exiting to not risk overwriting. File:" +
-                                tools::convert_str<char>(filename.u8string())};
+                        "Exiting to not risk overwriting. File: " +
+                                tools::path_to_str(filename)};
                 log::error(logcat, "{}", m_status.second);
                 return false;
             }

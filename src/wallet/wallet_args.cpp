@@ -165,7 +165,7 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
         }
 
         if (!command_line::is_arg_defaulted(vm, arg_config_file)) {
-            fs::path config{tools::convert_sv<char8_t>(command_line::get_arg(vm, arg_config_file))};
+            auto config = tools::utf8_path(command_line::get_arg(vm, arg_config_file));
             if (std::error_code ec; fs::exists(config, ec)) {
                 std::ifstream cfg{config};
                 if (!cfg.is_open())

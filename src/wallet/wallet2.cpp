@@ -386,7 +386,7 @@ namespace {
                     auto dir = get_default_ringdb_path();
                     if (auto subdir = network_config_subdir(nettype); !subdir.empty())
                         dir /= subdir;
-                    return tools::convert_str<char>(dir.u8string());
+                    return tools::path_to_str(dir);
                 }};
         const command_line::arg_descriptor<uint64_t> kdf_rounds = {
                 "kdf-rounds",
@@ -690,8 +690,9 @@ namespace {
             if (!tools::slurp_file(json_file, buf)) {
                 THROW_WALLET_EXCEPTION(
                         tools::error::wallet_internal_error,
-                        std::string(tools::wallet2::tr("Failed to load file ")) +
-                                tools::convert_str<char>(json_file.u8string()));
+                        "{}{}"_format(
+                                tools::wallet2::tr("Failed to load file "),
+                                tools::path_to_str(json_file)));
                 return false;
             }
 
@@ -15640,8 +15641,7 @@ uint64_t wallet2::import_key_images_from_file(
     THROW_WALLET_EXCEPTION_IF(
             !r,
             error::wallet_internal_error,
-            std::string(tr("failed to read file ")) +
-                    tools::convert_str<char>(filename.u8string()));
+            "{}{}"_format(tr("failed to read file "), tools::path_to_str(filename)));
 
     if (!data.starts_with(KEY_IMAGE_EXPORT_FILE_MAGIC)) {
         THROW_WALLET_EXCEPTION(

@@ -302,7 +302,7 @@ namespace net_utils
       {
         auto ptr = std::make_shared<idle_callback_conext<t_handler>>(io_service_, std::move(callback), timeout);
         //needed call handler here ?...
-        ptr->m_timer.expires_from_now(ptr->m_period);
+        ptr->m_timer.expires_after(ptr->m_period);
         ptr->m_timer.async_wait([this, ptr] (const boost::system::error_code&) { global_timer_handler<t_handler>(ptr); });
         return true;
       }
@@ -313,14 +313,14 @@ namespace net_utils
       //if handler return false - he don't want to be called anymore
       if(!ptr->call_handler())
         return;
-      ptr->m_timer.expires_from_now(ptr->m_period);
+      ptr->m_timer.expires_after(ptr->m_period);
       ptr->m_timer.async_wait([this, ptr] (const boost::system::error_code&) { global_timer_handler<t_handler>(ptr); });
     }
 
     template<class t_handler>
     bool async_call(t_handler t_callback)
     {
-      io_service_.post(std::move(t_callback));
+      boost::asio::post(io_service_, std::move(t_callback));
       return true;
     }
 
@@ -340,11 +340,11 @@ namespace net_utils
     struct worker
     {
       worker()
-        : io_service(), work(io_service)
+        : io_service(), work(io_service.get_executor())
       {}
 
       boost::asio::io_service io_service;
-      boost::asio::io_service::work work;
+      boost::asio::executor_work_guard<decltype(io_service.get_executor())> work;
     };
     std::unique_ptr<worker> m_io_service_local_instance;
     boost::asio::io_service& io_service_;    
