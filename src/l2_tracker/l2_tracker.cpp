@@ -37,8 +37,8 @@ L2Tracker::L2Tracker(
         // hasn't happened yet at the point this L2Tracker object gets constructed:
         update_thread_id{core.omq().add_tagged_thread("L2-updater", std::move(on_startup))} {
 
-    if (provider)
-        rewards_contract.emplace(core.get_nettype(), *provider);
+    if (this->provider)
+        rewards_contract.emplace(core.get_nettype(), *this->provider);
 
     state.chain_id = core.get_net_config().ETHEREUM_CHAIN_ID;
     state.rewards_contract = core.get_net_config().ETHEREUM_REWARDS_CONTRACT;
