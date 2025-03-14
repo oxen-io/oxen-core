@@ -1,3 +1,13 @@
+oxen (11.1.2-3~deb11) bullseye; urgency=medium
+
+  * fix missing header
+  * Fixed constructor arg/member bug
+  * Bump oxenmq to 1.2.19 for fixes
+  * Require oxenmq >=1.2.19
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Fri, 14 Mar 2025 15:03:42 -0300
+
 oxen (11.1.2-2~deb11) bullseye; urgency=medium
 
   * add libzstd-dev build dep
