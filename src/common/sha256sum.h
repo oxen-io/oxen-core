@@ -1,9 +1,7 @@
 #pragma once
 #include <oxenc/common.h>
 
-#include <string>
-#include <string_view>
-#include <type_traits>
+#include <span>
 
 #include "fs.h"
 
