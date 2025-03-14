@@ -28,10 +28,10 @@ static auto logcat = log::Cat("l2_tracker");
 
 L2Tracker::L2Tracker(
         cryptonote::core& core,
-        std::shared_ptr<ethyl::Provider> provider,
+        std::shared_ptr<ethyl::Provider> provider_,
         std::function<void()> on_startup) :
         core{core},
-        provider{std::move(provider)},
+        provider{std::move(provider_)},
         // Set up a dedicated thread for updates, kick off an initial update, and then start the
         // timer for further updates.  Note that all of this happens when oxenmq starts, which
         // hasn't happened yet at the point this L2Tracker object gets constructed:
