@@ -1,3 +1,13 @@
+oxen (11.1.2-3~ubuntu2404) noble; urgency=medium
+
+  * fix missing header
+  * Fixed constructor arg/member bug
+  * Bump oxenmq to 1.2.19 for fixes
+  * Require oxenmq >=1.2.19
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Fri, 14 Mar 2025 15:04:20 -0300
+
 oxen (11.1.2-2~ubuntu2404) noble; urgency=medium
 
   * add libzstd-dev build dep
