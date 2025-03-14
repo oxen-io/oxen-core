@@ -10,7 +10,7 @@ Build-Depends: debhelper (>= 11), cmake (>= 3.10), ninja-build, g++, qttools5-de
     libssl-dev,
     libfmt-dev, libspdlog-dev,
     libreadline-dev, libhidapi-dev, libusb-1.0-0-dev, libprotobuf-dev, protobuf-compiler, python3, pkg-config,
-    libsystemd-dev, libsqlite3-dev, liboxenmq-dev (>= 1.2.13-2~), libcurl4-dev
+    libsystemd-dev, libsqlite3-dev, liboxenmq-dev (>= 1.2.19), libcurl4-dev
 Standards-Version: 4.1.3
 Homepage: https://oxen.io
 
@@ -129,7 +129,7 @@ Multi-Arch: same
 Section: libdevel
 Depends: liboxen-wallet11.1.2 (= ${binary:Version}), liboxen11.1.2 (= ${binary:Version}),
  libboost-dev (>= 1.58), libboost-thread-dev, libboost-serialization-dev, libboost-program-options-dev,
- libsodium-dev, libreadline-dev, libhidapi-dev, liboxenmq-dev (>= 1.2.13-2~),
+ libsodium-dev, libreadline-dev, libhidapi-dev, liboxenmq-dev (>= 1.2.19),
  libsqlite3-dev, libcurl4-dev, ${misc:Depends}
 Replaces: libloki-core-dev (<< 8.1.5-1~)
 Breaks: libloki-core-dev (<< 8.1.5-1~)
