@@ -609,11 +609,20 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                         auto quorum = m_core.service_node_list.get_quorum(
                                 quorum_type::checkpointing, m_last_checkpointed_height);
                         if (!quorum) {
-                            // TODO(oxen): Fatal error
-                            log::error(
-                                    logcat,
-                                    "Checkpoint quorum for height: {} was not cached in daemon!",
-                                    m_last_checkpointed_height);
+                            if (height > m_last_checkpointed_height + (VOTE_LIFETIME / 2))
+                                log::debug(
+                                        logcat,
+                                        "Checkpoint quorum for height {} was not found in SNL, but "
+                                        "it is old enough our votes on it shouldn't matter anyway, "
+                                        "if we even missed voting from being offline.",
+                                        m_last_checkpointed_height);
+                            else
+                                // TODO(oxen): Fatal error
+                                log::error(
+                                        logcat,
+                                        "Checkpoint quorum for height: {} was not cached in "
+                                        "daemon!",
+                                        m_last_checkpointed_height);
                             continue;
                         }
 
