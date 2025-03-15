@@ -1,9 +1,10 @@
 #pragma once
 
+#include <oxenmq/oxenmq.h>
+
 #include "crypto/crypto.h"
 #include "l2_tracker.h"
 #include "l2_tracker/events.h"
-#include "oxenmq/oxenmq.h"
 #include "serialization/crypto.h"
 #include "serialization/map.h"
 #include "serialization/serialization.h"
@@ -125,8 +126,9 @@ class L2Proxy {
 
     uint64_t last_notify_height = 0, last_notify_purge_height = 0;
 
-    // Called by the other endpoints.  If the connection is allowed, return true; otherwise replies
-    // with ["FORBIDDEN"] and returns false.
+    // Called by the proxy's endpoints when a proxying node attempts to subscribe or obtain L2
+    // state.  If the connection is allowed, return true; otherwise replies with ["FORBIDDEN"] and
+    // returns false.
     bool authorize(std::string_view endpoint, oxenmq::Message& msg);
 
     // l2_proxy.state, .purge_state, and json variation handler
