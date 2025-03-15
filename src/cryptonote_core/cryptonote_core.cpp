@@ -2654,7 +2654,7 @@ void core::do_uptime_proof_call() {
                     log::error(
                             globallogcat,
                             fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                            "Failed to submit uptime proof: the L2 RPC provider has not responsed "
+                            "Failed to submit uptime proof: the L2 RPC provider has not responded "
                             "since {}.  Make sure the L2 RPC provider configuration is correct, "
                             "and consider adding a backup provider for redundancy.",
                             l2_update_age
