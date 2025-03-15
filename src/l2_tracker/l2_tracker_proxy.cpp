@@ -514,19 +514,27 @@ void L2Tracker::proxy_disconnect(oxenmq::ConnectionID conn, bool clear_only) {
     }
 }
 
-void L2Tracker::l2_notify_state(oxenmq::Message& msg, bool purge) {
-    // Only process this notification if it arrived on one of our outgoing proxy conns so that we
-    // can't be tricked into requesting state from someone other than the proxy we configured.
-    bool proxy_conn = false;
-    {
-        std::shared_lock lock{mutex};
-        for (auto& oxend : l2_oxend_proxies) {
-            if (msg.conn == oxend.connid) {
-                proxy_conn = true;
-                break;
-            }
-        }
+std::optional<std::string_view> L2Tracker::find_proxy(const oxenmq::ConnectionID& conn) const {
+    std::shared_lock lock{mutex};
+
+    for (auto& oxend : l2_oxend_proxies) {
+        if (conn == oxend.connid)
+            return oxend.id;
+        // When both local and remote are SNs, the remote may fire the notification by SN pubkey
+        // rather than the specific connection id, which means it is possible for it to arrive via
+        // some other connection we have with that same SN (e.g. a connection that it established to
+        // us), and so we also want to allow an incoming request with a remote pubkey that matches
+        // even if it didn't arrive on the same connection that we use to subscribe.
+        if (oxend.address.curve() && !conn.pubkey().empty() &&
+            oxend.address.pubkey == conn.pubkey())
+            return oxend.id;
     }
+
+    return std::nullopt;
+}
+
+void L2Tracker::l2_notify_state(oxenmq::Message& msg, bool purge) {
+    auto proxy_conn = find_proxy(msg.conn);
     if (!proxy_conn) {
         log::warning(
                 logcat,
@@ -543,7 +551,7 @@ void L2Tracker::l2_notify_state(oxenmq::Message& msg, bool purge) {
                 logcat,
                 "Invalid incoming {}state notification from {}: did not include a valid l2 height",
                 purge ? "purge " : "",
-                msg.remote);
+                *proxy_conn);
         return;
     }
 
@@ -553,15 +561,7 @@ void L2Tracker::l2_notify_state(oxenmq::Message& msg, bool purge) {
 }
 
 void L2Tracker::proxy_request_state(oxenmq::ConnectionID conn, bool purge_state) {
-    std::string_view id = "(unknown remote)"sv;
-    {
-        std::shared_lock lock{mutex};
-        for (const auto& oxend : l2_oxend_proxies)
-            if (oxend.connid == conn) {
-                id = oxend.id;
-                break;
-            }
-    }
+    std::string_view id = find_proxy(conn).value_or("(unknown remote)"sv);
 
     proxy_request_generic(
             conn,
@@ -658,6 +658,8 @@ void L2Tracker::proxy_update_state(L2State&& new_state, std::string_view from) {
     state.recent_exits.for_each(add_to_pool);
     state.recent_unlocks.for_each(add_to_pool);
     state.recent_req_changes.for_each(add_to_pool);
+
+    latest_height_ts = std::chrono::steady_clock::now();
 }
 
 void L2Tracker::proxy_update_state(L2PurgeState&& new_state, std::string_view from) {

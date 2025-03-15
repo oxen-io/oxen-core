@@ -100,6 +100,10 @@ class L2Tracker {
     };
     std::vector<l2_oxend_proxy> l2_oxend_proxies;
 
+    // Called by a proxying node when it receives a notification of new L2 state.  Returns the
+    // proxy's `l2_oxen_proxy` `id` value if it matched a configured proxy, std::nullopt otherwise.
+    std::optional<std::string_view> find_proxy(const oxenmq::ConnectionID& conn) const;
+
     // Provider state updating: `update_state()` starts a chain of updates, each one triggering the
     // next step in the chain when its response is received.  While such an update is in progress
     // any call to `update_state()` will do nothing.
