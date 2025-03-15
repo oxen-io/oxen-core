@@ -1,3 +1,17 @@
+oxen (11.1.2-4~ubuntu2204) jammy; urgency=medium
+
+  [ Thomas Winget ]
+  * adjust log level for missing quorum
+
+  [ Jason Rhinelander ]
+  * Allow notifications on alternative SN conns
+  * fix static zmq missing curve support
+  * Fix latest update timestamp not being set in proxy mode
+  * Fix "from" value in logs
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Sat, 15 Mar 2025 13:25:18 -0300
+
 oxen (11.1.2-3~ubuntu2204) jammy; urgency=medium
 
   * fix missing header
