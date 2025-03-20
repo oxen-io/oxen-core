@@ -40,6 +40,15 @@ void parse_request(GET_SERVICE_NODES& sns, rpc_input in) {
                     sns.request.fields.insert(k);
                 }
             }
+            // Compatibility fix for Oxen 10 wallets: Oxen 10 did not support asking for
+            // locked_contributions at all, so never sends it, but expects to get them back, so if
+            // locked_contributions (nor the -locked_contributions negated version, for Oxen 11+
+            // aware requestors) is in the input but contributors *is* asked for then implicitly set
+            // locked_contributions.
+            if (!sns.request.fields.empty() && !fit->count("locked_contributions") &&
+                !sns.request.fields.count("-locked_contributions") &&
+                sns.request.fields.count("contributors"))
+                sns.request.fields.insert("locked_contributions");
         }
     }
     if (!fields_dict) {
