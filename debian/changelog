@@ -1,3 +1,9 @@
+oxen (11.1.2-5) sid; urgency=medium
+
+  * Compatibility fix for oxen 10 wallets
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 20 Mar 2025 12:01:20 -0300
+
 oxen (11.1.2-4) sid; urgency=medium
 
   [ Thomas Winget ]
