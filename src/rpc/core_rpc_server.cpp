@@ -3856,6 +3856,19 @@ void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, rpc_context) {
         }
     }
 
+    if (rpc.request.oxen10_compat) {
+        // Oxen 10.x wallets expect `"addresses": [...], "amounts": [...]` because old Monero
+        // serialization didn't support dicts, so rewrite it if this came through the old endpoint
+        // name to maintain compatibility.
+        auto& addrs = rpc.response["addresses"];
+        auto& amts = rpc.response["amounts"];
+        for (auto& [addr, amt] : balances.items()) {
+            addrs.emplace_back(std::move(addr));
+            amts.emplace_back(std::move(amt));
+        }
+        rpc.response.erase("balances");
+    }
+
     rpc.response["status"] = STATUS_OK;
 }
 
