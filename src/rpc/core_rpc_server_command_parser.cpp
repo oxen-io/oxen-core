@@ -434,6 +434,11 @@ void parse_request(GET_ACCRUED_REWARDS& rpc, rpc_input in) {
     get_values(in, "addresses", rpc.request.addresses);
 }
 
+void parse_request(GET_ACCRUED_BATCHED_EARNINGS& rpc, rpc_input in) {
+    rpc.request.oxen10_compat = true;
+    get_values(in, "addresses", rpc.request.addresses);
+}
+
 void parse_request(ONS_OWNERS_TO_NAMES& ons_owners_to_names, rpc_input in) {
     get_values(
             in,

@@ -2248,12 +2248,31 @@ struct GET_PENDING_EVENTS : PUBLIC {
 ///  - `balances` -- a dict where keys are the wallet addresses and values are the balance (in
 ///    atomic SENT units).
 struct GET_ACCRUED_REWARDS : PUBLIC {
-    static constexpr auto names() {
-        return NAMES("get_accrued_rewards", "get_accrued_batched_earnings");
-    }
+    static constexpr auto names() { return NAMES("get_accrued_rewards"); }
     struct request_parameters {
         std::vector<std::string> addresses;
+        bool oxen10_compat = false;
     } request;
+};
+
+/// RPC: blockchain/get_accrued_batched_earnings
+///
+/// Deprecated version of GET_ACCRUED_REWARDS that returns results as two lists where element `[i]`
+/// of the "addresses" array maps to element [i] of the "amounts" array.
+///
+/// Do not use: this is only provided for Oxen 10.x wallet compatibility, and will be removed once
+/// all supported wallets are upgraded to use the Oxen 11.x code base.
+///
+/// Inputs:
+///  - `addresses` -- a set of addresses about which to query.  If omitted/empty then all addresses
+///    with balances are returned.
+///
+/// Outputs:
+///  - `addresses` -- the resulting array of addresses.
+///  - `amounts` -- the resulting array of amounts indicating the pending (unpaid) reward amount in
+///    atomic OXEN units.
+struct GET_ACCRUED_BATCHED_EARNINGS : GET_ACCRUED_REWARDS {
+    static constexpr auto names() { return NAMES("get_accrued_batched_earnings"); }
 };
 
 /// Dev-RPC: service_node/storage_server_ping
@@ -2897,6 +2916,7 @@ using core_rpc_types = tools::type_list<
         FLUSH_CACHE,
         FLUSH_TRANSACTION_POOL,
         GET_ACCRUED_REWARDS,
+        GET_ACCRUED_BATCHED_EARNINGS,
         GET_ALTERNATE_CHAINS,
         GET_BANS,
         GET_FEE_ESTIMATE,
