@@ -1,3 +1,9 @@
+oxen (11.1.2-6~deb12) bookworm; urgency=medium
+
+  * Wallet 10 pending rewards compatibility fix
+
+ -- Jason Rhinelander <jason@session.foundation>  Fri, 21 Mar 2025 14:07:30 -0300
+
 oxen (11.1.2-5~deb12) bookworm; urgency=medium
 
   * Compatibility fix for oxen 10 wallets
