@@ -144,7 +144,7 @@ class SNNetwork:
         with open(eth_sn_contracts_dir / 'artifacts/contracts/RewardRatePool.sol/RewardRatePool.json', 'r') as file:
             reward_rate_pool_json = json.load(file)
 
-        with open(eth_sn_contracts_dir / 'artifacts/contracts/SENT.sol/SENT.json', 'r') as file:
+        with open(eth_sn_contracts_dir / 'artifacts/contracts/SESH.sol/SESH.json', 'r') as file:
             erc20_contract_json = json.load(file)
 
         # NOTE: Connect proxy contracts to on-chain instances

@@ -11,6 +11,7 @@ from hexbytes import (
 
 import urllib.request
 import json
+import time
 from eth_typing import (
     ChecksumAddress as EthChecksumAddress,
     HexStr as EthHexStr,
@@ -392,6 +393,7 @@ class SNRewardsContract:
                     'X': int(item.bls_pubkey[:64],    16),
                     'Y': int(item.bls_pubkey[64:128], 16),
                 },
+                'addedTimestamp': int(time.time()),
                 'ed25519Pubkey': int(item.ed25519_pubkey[:32], 16),
                 'contributors': [],
             }
