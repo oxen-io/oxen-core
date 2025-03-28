@@ -5,6 +5,7 @@ import random
 import requests
 import subprocess
 import time
+import eth_typing.evm
 
 # On linux we can pick a random 127.x.y.z IP which is highly likely to not have anything listening
 # on it (so we make bind conflicts highly unlikely).  On most other OSes we have to listen on
@@ -284,18 +285,18 @@ class Daemon(RPCDaemon):
     def get_ethereum_registration_args(self, address):
         return self.json_rpc("contract_registration", {"operator_address": address}).json()["result"]
 
-    def get_bls_rewards(self, address):
+    def get_bls_rewards(self, address: eth_typing.evm.ChecksumAddress) -> dict:
         return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
 
     def get_exit_liquidation_request(self, ed25519_pubkey, liquidate=False):
         return self.json_rpc("bls_exit_liquidation_request", {"pubkey": ed25519_pubkey, "liquidate": liquidate}, timeout=1000).json()
 
-    def get_accrued_rewards(self, addresses) -> list[AccruedRewards]:
+    def get_accrued_rewards(self, addresses: list[eth_typing.evm.ChecksumAddress]) -> list[AccruedRewards]:
         json                         = self.json_rpc("get_accrued_rewards", {"addresses": addresses}).json()
         balance_array                = json['result']['balances']
         result: list[AccruedRewards] = []
         for address, balance in balance_array.items():
-            item = AccruedRewards()
+            item         = AccruedRewards()
             item.address = address
             item.balance = balance
             result.append(item)

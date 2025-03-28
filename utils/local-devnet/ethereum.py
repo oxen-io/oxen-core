@@ -5,6 +5,9 @@ from web3.types import (
     TxData as EthTxData,
 )
 
+import web3.types
+import typing
+
 from hexbytes import (
     HexBytes,
 )
@@ -185,12 +188,14 @@ class SNContribFactoryContract:
                reserved:        list[ReservedContributor],
                manual_finalize: bool) -> EthChecksumAddress:
 
+        # Build deploy parameters
         reserved_array: list[tuple[EthHexAddress, int]] = []
         for item in reserved:
             reserved_array.append(
                 (item.addr, int(item.amount))
             )
 
+        # Execute 'deploy'
         unsent_tx = self.contract.functions.deploy(
             (key.X, key.Y),
             (sig.sigs0, sig.sigs1, sig.sigs2, sig.sigs3),
@@ -199,17 +204,25 @@ class SNContribFactoryContract:
             manual_finalize
         ).build_transaction(basic_build_tx_params(account=account, gas=6000000));
 
-        tx_hash    = submit_unsigned_tx("Deploy multi-contribution contract", account, unsent_tx)
-        tx_receipt = web3_client.eth.wait_for_transaction_receipt(tx_hash)
-        event_logs = self.contract.events.NewServiceNodeContributionContract().process_receipt(tx_receipt)
+        tx_hash: HexBytes = submit_unsigned_tx("Deploy multi-contribution contract", account, unsent_tx)
 
+        # Parse events
+        tx_receipt: web3.types.TxReceipt              = web3_client.eth.wait_for_transaction_receipt(tx_hash)
+        event_logs: typing.List[web3.types.EventData] = self.contract.events.NewServiceNodeContributionContract().process_receipt(tx_receipt)
         assert len(event_logs) == 1, "Deploy generated {} events, {}".format(len(event_logs), tx_receipt)
-        for event in event_logs:
-            print("New event found! ".format(event))
-            print(f"  Contract Address: {event['args']['contributorContract']}")
-            print(f"  Service Node Public Key: {event['args']['serviceNodePubkey']}")
 
-        result = web3_client.to_checksum_address(event_logs[0]['args']['contributorContract'])
+        event: web3.types.EventData = event_logs[0]
+        assert 'contributorContract' in event['args']
+        assert 'serviceNodePubkey'   in event['args']
+        assert 'operator'            in event['args']
+
+        contributorContract: EthChecksumAddress = event['args']['contributorContract']
+        print("New event found! ".format(event))
+        print(f"  Contract Address: {contributorContract}")
+        print(f"  Service Node Public Key: {event['args']['serviceNodePubkey']:032x}")
+        print(f"  Operator: {event['args']['operator']}")
+
+        result = web3_client.to_checksum_address(contributorContract)
         self.deployedContracts.append(result)
         return result
 

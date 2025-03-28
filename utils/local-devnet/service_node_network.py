@@ -20,6 +20,9 @@ import enum
 import json
 import sqlite3
 
+import eth_typing.evm
+import eth_account.signers.local
+
 import pathlib
 import argparse
 import time
@@ -34,6 +37,11 @@ import random
 from typing import List
 
 datadirectory="testdata"
+
+class SNExitMode(enum.Enum):
+    AfterWaitTime = 0
+    WithSignature = 1
+    Liquidation   = 2
 
 def coins(*args):
     if len(args) != 1:
@@ -78,14 +86,392 @@ def node_index_is_solo_node(index: int, num_nodes: int):
     result: bool = index > (num_nodes / 2)
     return result
 
-class SNExitMode(enum.Enum):
-    AfterWaitTime = 0
-    WithSignature = 1
-    Liquidation   = 2
+def test_bls_claim_rewards(eth_sns:       list[Daemon],
+                           sn_contract:   SNRewardsContract,
+                           sent_contract: SENTContract,
+                           staker:        eth_account.signers.local.LocalAccount,
+                           beneficiary:   eth_account.signers.local.LocalAccount):
+    # NOTE: BLS rewards claim ##################################################################
+    # Claim rewards for beneficiary
+    rewards_response = eth_sns[0].get_bls_rewards(address=beneficiary.address)
+    vprint(rewards_response)
+    rewardsAccount = rewards_response["result"]["address"]
+    assert rewardsAccount.lower() == beneficiary.address.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match beneficiary's account '{beneficiary.address.lower()}'. We have the private key for the account and use it to claim rewards from the contract"
+
+    vprint("Beneficiary rewards before updating has ['available', 'claimed'] respectively: ",
+           sn_contract.recipients(beneficiary.address),
+           " for ",
+           beneficiary.address)
+
+    vprint("Foundation pool balance: {}".format(sent_contract.balanceOf(sn_contract.foundation_pool_address)))
+    vprint("Rewards contract balance: {}".format(sent_contract.balanceOf(sn_contract.contract.address)))
+    aggregate_pubkey = sn_contract.aggregatePubkey()
+    vprint("Aggregate Public Key: {}, {}".format(hex(aggregate_pubkey[0]), hex(aggregate_pubkey[1])))
+
+    # Extract binary parameters
+    sig_str: str = rewards_response['result']['signature'];
+
+    # Convert binary params to contract representation
+    sig = BLSSignatureParams(
+        sigs0=int(sig_str[   :64],  16),
+        sigs1=int(sig_str[64 :128], 16),
+        sigs2=int(sig_str[128:192], 16),
+        sigs3=int(sig_str[192:256], 16),
+    )
+
+    # NOTE: Then update the rewards blaance
+    sn_contract.updateRewardsBalance(
+            recipientAddress=beneficiary.address,
+            recipientAmount=rewards_response["result"]["amount"],
+            blsSignature=sig,
+            ids=rewards_response["result"]["non_signer_indices"])
+
+    vprint("Beneficiary rewards update executed, has ['available', 'claimed'] now respectively: ",
+           sn_contract.recipients(address=beneficiary.address),
+           " for ",
+           beneficiary.address)
+
+    beneficiary_balance_before_claim = sent_contract.balanceOf(address=beneficiary.address)
+    vprint("Balance for '{}' before claim {}".format(beneficiary.address, beneficiary_balance_before_claim))
+
+    # NOTE: Now claim the rewards
+    sn_contract.claimRewards(account=beneficiary)
+    vprint("Beneficiary rewards after claim is now ['available', 'claimed'] respectively: ",
+           sn_contract.recipients(address=beneficiary.address),
+           " for ",
+           beneficiary.address)
+
+    beneficiary_balance_after_claim = sent_contract.balanceOf(address=beneficiary.address)
+    vprint("Balance for '{}' after claim {}".format(beneficiary.address, beneficiary_balance_after_claim))
+
+    assert beneficiary_balance_before_claim < beneficiary_balance_after_claim, "Beneficiary's balance did not increase after claim, claim failed (balance was {}, after {})".format(beneficiary_balance_before_claim, beneficiary_balance_after_claim)
+
+    # NOTE: BLS rewards claim ##################################################################
+    # Claim rewards for staker
+    rewards_response = eth_sns[0].get_accrued_rewards([staker.address])[0]
+    vprint(vars(rewards_response))
+    assert rewards_response.balance == 0, "Staker's rewards amount ({}) should be 0 because funds are being paid out to the beneficiary".format(rewards_response.balance)
+
+def test_sn_exits_by_request_signature_and_liquidation(eth_sns: list[Daemon], sn_contract: SNRewardsContract, staker: eth_account.signers.local.LocalAccount):
+    # Make a list of all the nodes, shuffle them and select 3 to exit (exit w/ wait time,
+    # exit with signature and liquidate).
+    sn_to_exit_indexes = []
+    for i in range(len(eth_sns)):
+        sn_to_exit_indexes.append(i)
+    random.shuffle(sn_to_exit_indexes)
+    sn_to_exit_indexes = sn_to_exit_indexes[:len(SNExitMode)] # First 3 (1 for each test)
+
+    # Initiate the exit, this will put the node into a mode where it will eventually enter
+    # the expired list when the L2 transaction is witnessed. (If we make the node wait long
+    # enough it will also enter the liquidatable list!).
+    for mode in SNExitMode:
+        sn_to_exit_bls_pubkey  = eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().bls_pubkey
+        sn_to_exit_contract_id = sn_contract.getServiceNodeID(sn_to_exit_bls_pubkey)
+
+        # Initiate the exit, this will put the node into a mode where it will eventually enter
+        # the expired list when the L2 transaction is witnessed. (If we make the node wait long
+        # enough it will also enter the liquidatable list!).
+        vprint("Initiating exit for node w/ BLS key {} (id {})".format(sn_to_exit_bls_pubkey, sn_to_exit_contract_id))
+        sn_contract.initiateExitBLSPublicKey(sn_to_exit_contract_id)
+
+        # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags
+        # behind the tip for safety! In localdev this is configured to 1 block of lag).
+        ethereum.evm_mine();
+
+    # Wait for confirmation of event(s)
+    unlocks_confirmed = []
+    for i in range(len(SNExitMode)):
+        unlocks_confirmed.append(False)
+
+    vprint(f"Sleeping now, waiting for confirmation of voluntary exit on Oxen, blockchain height is {eth_sns[0].height()}")
+    total_sleep_time            = 0
+    sleep_time                  = 8
+    current_height              = 0
+    max_requested_unlock_height = 0
+    while True:
+        height = eth_sns[0].height()
+        if current_height != height:
+            current_height = height
+
+            unlocks_confirmed_count = 0
+            for index in SNExitMode:
+                if unlocks_confirmed[index.value] == False:
+                    status_json = eth_sns[sn_to_exit_indexes[index.value]].sn_status()
+                    if status_json['service_node_state']['requested_unlock_height'] != 0:
+                        max_requested_unlock_height = max(max_requested_unlock_height, status_json['service_node_state']['requested_unlock_height'])
+                        unlocks_confirmed[index.value] = True
+
+                if unlocks_confirmed[index.value] == True:
+                    unlocks_confirmed_count += 1
+
+            if unlocks_confirmed_count >= len(SNExitMode):
+                break
+
+        total_sleep_time += sleep_time
+        time.sleep(sleep_time)
+
+    vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {eth_sns[0].height()}, the latest requested unlock height is {max_requested_unlock_height}")
+
+    # Sleep until we reach the desired unlock height ###########################################
+    vprint(f"Sleeping again until height {max_requested_unlock_height + 1} where all nodes are unlocked")
+    total_sleep_time = 0
+    while current_height <= max_requested_unlock_height + 1:
+        current_height = eth_sns[0].height()
+        total_sleep_time += sleep_time
+        time.sleep(sleep_time)
+    vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {eth_sns[0].height()}, unlocks are complete")
+
+    # Do exit via signature and liquidation, aggregate signature from network and apply it on
+    # the smart contract
+    for mode in SNExitMode:
+        sn_to_exit_pubkey      = eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().pubkey
+        sn_to_exit_bls_pubkey  = eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().bls_pubkey
+        sn_to_exit_contract_id = sn_contract.getServiceNodeID(sn_to_exit_bls_pubkey)
+        if mode == SNExitMode.WithSignature:
+            exit_request = eth_sns[0].get_exit_liquidation_request(sn_to_exit_pubkey, liquidate=False)
+            vprint("Exit request aggregated: {}".format(exit_request))
+            vprint("Exit request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
+
+            # Extract binary parameters
+            key_str: str = exit_request['result']['bls_pubkey'];
+            sig_str: str = exit_request['result']['signature'];
+
+            # Convert binary params to contract representation
+            key = BLSPubkey(X=int(key_str[:64], 16), Y=int(key_str[64:128], 16))
+            sig = BLSSignatureParams(
+                sigs0=int(sig_str[   :64],  16),
+                sigs1=int(sig_str[64 :128], 16),
+                sigs2=int(sig_str[128:192], 16),
+                sigs3=int(sig_str[192:256], 16),
+            )
+
+            # Invoke contract
+            assert sn_contract.serviceNodes(sn_to_exit_contract_id).operator == staker.address
+            contract_sn_count_before = sn_contract.totalNodes()
+            ethereum.evm_increaseTime(60 * 60 * 3)
+            sn_contract.exitBLSPublicKeyWithSignature(key=key,
+                                                             timestamp=exit_request["result"]["timestamp"],
+                                                             sig=sig,
+                                                             ids=exit_request["result"]["non_signer_indices"])
+
+            contract_sn_count_after = sn_contract.totalNodes()
+            vprint("Node count in contract after exit with signature, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
+
+            zero_account = "0x0000000000000000000000000000000000000000";
+            assert sn_contract.serviceNodes(sn_to_exit_contract_id).operator == zero_account
+            assert contract_sn_count_after  == contract_sn_count_before - 1
+
+        elif mode == SNExitMode.Liquidation:
+            # This node has initiated a voluntary leave, however if the node does not leave
+            # itself, after some time period (7 days on mainnet, 1 block on localdev) the node
+            # can be liquidated. This is permitted because maintaining an up-to-date SNL is
+            # important for the functioning of the network.
+            #
+            # Hence we penalise stragglers that they should not be in the list longer than
+            # necessary.
+            vprint(f"Sleeping now, waiting for exit buffer to elapse to qualify node for liqudation, blockchain height is {eth_sns[0].height()}")
+            target_height    = eth_sns[0].height() + 5;
+            total_sleep_time = 0
+            sleep_time       = 8
+            while eth_sns[0].height() < target_height:
+                total_sleep_time += sleep_time
+                time.sleep(sleep_time)
+            vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {eth_sns[0].height()}")
+
+            # Now node was supposed to exit but hasn't in a timely fashion, it can be liquidated
+            exit_request = eth_sns[0].get_exit_liquidation_request(sn_to_exit_pubkey, liquidate=True)
+            vprint("Liquidate request aggregated: {}".format(exit_request))
+            vprint("Liquidate request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
+
+            # Extract binary parameters
+            key_str: str = exit_request['result']['bls_pubkey'];
+            sig_str: str = exit_request['result']['signature'];
+
+            # Convert binary params to contract representation
+            key = BLSPubkey(X=int(key_str[:64], 16), Y=int(key_str[64:128], 16))
+            sig = BLSSignatureParams(
+                sigs0=int(sig_str[   :64],  16),
+                sigs1=int(sig_str[64 :128], 16),
+                sigs2=int(sig_str[128:192], 16),
+                sigs3=int(sig_str[192:256], 16),
+            )
+
+            # Advance time by 3 hrs, this is neede in the liquidation test later
+            # where there's a min wait time before liquidation can occur
+            ethereum.evm_increaseTime(60 * 60 * 3)
+            ethereum.evm_mine();
+
+            assert sn_contract.serviceNodes(sn_to_exit_contract_id).operator == staker.address
+            contract_sn_count_before = sn_contract.totalNodes()
+            sn_contract.liquidateBLSPublicKeyWithSignature(key=key,
+                                                                timestamp=exit_request["result"]["timestamp"],
+                                                                sig=sig,
+                                                                ids=exit_request["result"]["non_signer_indices"])
+            contract_sn_count_after = sn_contract.totalNodes()
+            vprint("Node count in contract after liquidation, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
+
+            zero_account = "0x0000000000000000000000000000000000000000";
+            assert sn_contract.serviceNodes(sn_to_exit_contract_id).operator == zero_account
+            assert contract_sn_count_after  == contract_sn_count_before - 1
+
+        # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags
+        # behind the tip for safety! In localdev this is configured to 1 block of lag).
+        ethereum.evm_mine();
+
+    #  Open SQL DB to monitor delayed payments table ###########################################
+    sql_path   = eth_sns[0].datadir + '/sqlite.db'
+    vprint("Reading SQL DB at {}".format(os.path.abspath(sql_path)))
+    sql        = sqlite3.connect(sql_path)
+    sql_cursor = sql.cursor();
+
+    vprint(f"Sleeping until dereg stake is confirmed into SQL DB")
+
+    total_sleep_time = 0
+    height_delayed_payments_row_was_added = 0
+    sql_db_height = 0
+
+    delayed_payment_last_payout_height     = 0 # The latest payout  height in the DB detected
+    delayed_payment_last_height            = 0 # The latest [entry] height in the DB detected
+    while True:
+        total_sleep_time += sleep_time
+        time.sleep(sleep_time)
+
+        sql_db_height_row = sql_cursor.execute("SELECT height FROM batch_db_info").fetchone()
+        if sql_db_height_row[0] != sql_db_height:
+            vprint("... SQL DB height changed from {}->{}".format(sql_db_height, sql_db_height_row[0]))
+            sql_db_height = sql_db_height_row[0]
+
+        row_result        = sql_cursor.execute("SELECT COUNT(*) FROM delayed_payments").fetchone()
+        row_count         = row_result[0] if row_result else 0
+        if row_count > 0:
+            delayed_payment_row                   = sql_cursor.execute("SELECT height FROM delayed_payments").fetchone()
+            height_delayed_payments_row_was_added = delayed_payment_row[0]
+            vprint("Found {} delayed payments @ height {} in SQL DB".format(row_count, height_delayed_payments_row_was_added));
+            for row in sql_cursor.execute("SELECT * FROM delayed_payments").fetchall():
+                vprint("  {}".format(row))
+
+            # The highest payout height should be a delayed payment for a deregistration to
+            # which a penalty has been applied.
+            last_delayed_payment_row           = sql_cursor.execute("SELECT height, payout_height FROM delayed_payments ORDER BY payout_height DESC LIMIT 1").fetchone()
+            delayed_payment_last_height        = last_delayed_payment_row[0]
+            delayed_payment_last_payout_height = last_delayed_payment_row[1]
+
+            # Verify that the delay is more than 1 block. It should be more
+            # than one due to it being a deregistration. The actual amount
+            # depends on what is configured for devnet which will be shorter
+            # than mainnet.
+            delayed_payment_block_delay = delayed_payment_last_payout_height - delayed_payment_last_height
+            assert delayed_payment_block_delay > 0, "Delayed payment for deregistration must be greater than 0 blocks, payout height: {}, height: {}".format(delayed_payment_last_payout_height, delayed_payment_last_height)
+            break
+
+    # Pop blocks to a height such that (delayed_payments_last_height <= x <= delayed_payment_last_payout_height)
+    assert (delayed_payment_last_payout_height - delayed_payment_last_height) > 0; # Must be more than 0 block apart, is deregister
+    sns0_height_before_pop_blocks = eth_sns[0].height()
+    target_pop_height             = int((delayed_payment_last_payout_height + delayed_payment_last_height) / 2); # Middle of the range
+
+    num_blocks_to_pop = (sns0_height_before_pop_blocks - target_pop_height)
+    eth_sns[0].json_rpc(method="pop_blocks", params={'nblocks': num_blocks_to_pop})
+
+    # General purpose, "large" pop blocks to undo the exits ###################################/
+    sns0_height_before_pop_blocks = eth_sns[0].height()
+    num_blocks_to_pop             = (sns0_height_before_pop_blocks - height_delayed_payments_row_was_added) + 50 # for good measure
+    eth_sns[0].json_rpc(method="pop_blocks", params={'nblocks': num_blocks_to_pop})
+    vprint("Large pop blocks ({}) from SNS[0], height was {}, is {}".format(num_blocks_to_pop, sns0_height_before_pop_blocks, eth_sns[0].height()))
+
+    # Verify that the delayed payment was removed ##############################################
+    row_result = sql_cursor.execute("SELECT COUNT(*) FROM delayed_payments").fetchone()
+    row_count  = row_result[0] if row_result else 0
+    assert row_count == 0, "Expected the delayed payments row to be undone on pop_blocks @ height {}, found {}".format(eth_sns[0].height(), row_count)
+
+    # Verify batch_db_info height rewinded #####################################################
+    row_result           = sql_cursor.execute("SELECT height FROM batch_db_info").fetchone()
+    sql_db_height        = row_result[0] if row_result else 0
+    assert sql_db_height == eth_sns[0].height() - 1, "Expected batch_db_info table 'height' ({}) to be undone as well. Oxen block index is {}".format(sql_db_height, eth_sns[0].height() - 1)
+
+    # Verify that deregistration stake is claimable ############################################
+    vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {eth_sns[0].height()} (after popping, we will resync the chain)")
+    total_sleep_time = 0
+    stakers_reward_balance_before = eth_sns[0].get_accrued_rewards([staker.address])[0].balance
+
+    # Calculate the upper bound on how much stake should be expected to be
+    # returned to the staker. It's an upper bound because a liquidated
+    # node has a penalty applied to it that we don't care to _exactly_
+    # calculate precisely.
+    #
+    # NOTE: At this point we only exit 2 nodes (exit after 30 days is done after this step).
+    staking_requirement              = sn_contract.stakingRequirement()
+    staker_upperbound_returned_stake = 0
+    staker_upperbound_returned_stake += staking_requirement if node_index_is_solo_node(sn_to_exit_indexes[SNExitMode.WithSignature.value], len(eth_sns)) else staking_requirement / 2
+    staker_upperbound_returned_stake += staking_requirement if node_index_is_solo_node(sn_to_exit_indexes[SNExitMode.Liquidation.value],   len(eth_sns)) else staking_requirement / 2
+    staker_lowerbound_returned_stake = staker_upperbound_returned_stake - coins(10)
+
+    vprint("Expecting between {} and {} $SENT to be returned to {}".format(staker_lowerbound_returned_stake, staker_upperbound_returned_stake, staker.address))
+    sns0_height = 0
+    while True:
+        total_sleep_time += sleep_time
+        time.sleep(sleep_time)
+
+        # In this test we exit 3 nodes,
+        #
+        # - by signature
+        # - by 30 day timeout
+        # - by liquidation
+        #
+        # At this point we will have exited by signature and liquidation,
+        # (30 day timeout happens after this block of code). The 3 nodes we exit are randomly
+        # selected, so, we may exit a multi-contrib or solo node.
+
+        balance_after     = eth_sns[0].get_accrued_rewards([staker.address])[0].balance
+        change_in_balance = balance_after - stakers_reward_balance_before
+
+        curr_height = eth_sns[0].height()
+        if sns0_height != eth_sns[0].height():
+            vprint("Staking address {} before {}, after {} (change {}, height {})".format(staker.address, stakers_reward_balance_before, balance_after, change_in_balance, curr_height))
+            sns0_height = curr_height
+
+        if change_in_balance >= staker_lowerbound_returned_stake and change_in_balance <= staker_upperbound_returned_stake:
+            vprint("Staking address had a stake-like in balance")
+            break
+
+    vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {eth_sns[0].height()}")
+
+    # Do exit 'after wait time' ################################################################
+    # IMPORTANT: This test must be run last because it advances the L2 blockchain by 31 days.
+    # This method of exit does _not_ require a signature. The other methods require a
+    # timestamp embedded in the signature. We don't have a way to manipulate timestamps on the
+    # Oxen blockchain hence the signature tests are run before this test.
+    #
+    # This test will advance time by 31 days. A signature that is then generated by the Session
+    # node will be generated but failed to be applied because the node will generate a signature
+    # with the OS clock (which has _not_ been advanced by 31 days).
+    days_30_in_seconds = (60 * 60 * 24 * 31)
+    ethereum.evm_increaseTime(days_30_in_seconds)
+    ethereum.evm_mine()
+
+    # Exit the node from the smart contract (after 31 days has elapsed)
+    for mode in SNExitMode:
+        if mode == SNExitMode.AfterWaitTime:
+            sn_to_exit_pubkey      = eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().pubkey
+            sn_to_exit_bls_pubkey  = eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().bls_pubkey
+            sn_to_exit_contract_id = sn_contract.getServiceNodeID(sn_to_exit_bls_pubkey)
+
+            assert sn_contract.serviceNodes(sn_to_exit_contract_id).operator == staker.address
+            contract_sn_count_before = sn_contract.totalNodes()
+            sn_contract.exitBLSPublicKeyAfterWaitTime(sn_to_exit_contract_id)
+            contract_sn_count_after = sn_contract.totalNodes()
+            vprint("Node count in contract after wait time exit, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
+
+            zero_account = "0x0000000000000000000000000000000000000000";
+            assert sn_contract.serviceNodes(sn_to_exit_contract_id).operator == zero_account
+            assert contract_sn_count_after  == contract_sn_count_before - 1
+
+            # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags
+            # behind the tip for safety! In localdev this is configured to 1 block of lag).
+            ethereum.evm_mine();
 
 class SNNetwork:
-    all_nodes = []
-    wallets   = []
+    all_nodes: list[Daemon] = []
+    wallets                 = []
 
     def __init__(self, datadir, *, oxen_bin_dir, anvil_path, eth_sn_contracts_dir, sns=12, nodes=3):
         begin_time = time.perf_counter()
@@ -346,15 +732,9 @@ class SNNetwork:
             wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
         vprint(timestamp=False)
 
-        # Pull out some useful keys to local variables
-        staker_eth_addr       = self.sn_contract.hardhat_account0.address
-        staker_eth_addr_no_0x = self.sn_contract.hardhat_account0.address[2:42]
-        assert len(staker_eth_addr) == 42, "Expected Eth address w/ 0x prefix + 40 hex characters. Account was {} ({} chars)".format(staker_eth_addr, len(staker_eth_addr))
-
-        beneficiary_account        = self.sn_contract.hardhat_account1
-        beneficiary_eth_addr       = beneficiary_account.address
-        beneficiary_eth_addr_no_0x = beneficiary_account.address[2:42]
-        assert len(beneficiary_eth_addr) == 42, "Expected Eth address w/ 0x prefix + 40 hex characters. Account was {} ({} chars)".format(beneficiary_eth_addr, len(beneficiary_eth_addr))
+        # Key accounts for bootstrapping the network
+        staker      = self.sn_contract.hardhat_account0
+        beneficiary = self.sn_contract.hardhat_account1
 
         # Construct the seed list for initiating the smart contract.
         # Note all SNs up to this point (HF < feature::ETH_BLS) had a 100 OXEN staking requirement
@@ -366,7 +746,7 @@ class SNNetwork:
             total_staked = 0
 
             for entry in contributors:
-                contributor = ContractServiceNodeContributor(ContractServiceNodeStaker(staker_eth_addr, beneficiary_eth_addr),
+                contributor = ContractServiceNodeContributor(ContractServiceNodeStaker(staker.address, beneficiary.address),
                                                              int((entry["amount"] / oxen_staking_requirement * contract_staking_requirement)))
                 # Use the oxen amount proportionally as the SENT amount
                 total_staked += contributor.stakedAmount
@@ -394,7 +774,7 @@ class SNNetwork:
         for index, sn in enumerate(self.eth_sns):
 
             sn_pubkey = sn.get_service_keys().pubkey
-            reg_json  = sn.get_ethereum_registration_args(staker_eth_addr_no_0x)
+            reg_json  = sn.get_ethereum_registration_args(staker.address)
 
             key = BLSPubkey(
                 X=int(reg_json["bls_pubkey"][:64], 16),
@@ -420,12 +800,12 @@ class SNNetwork:
                 # Staker provides collateral, all rewards go to the beneficiary
                 contributors: list[ContractServiceNodeContributor] = [
                     ContractServiceNodeContributor(
-                        ContractServiceNodeStaker(addr=staker_eth_addr, beneficiary=beneficiary_eth_addr),
+                        ContractServiceNodeStaker(addr=staker.address, beneficiary=beneficiary.address),
                         stakedAmount=contract_staking_requirement,
                     )
                 ]
 
-                vprint("Preparing to submit registration to Eth w/ address {} for SN {} ({})\nContributors {}".format(staker_eth_addr, sn_pubkey, reg_json, contributors))
+                vprint("Preparing to submit registration to Eth w/ address {} for SN {} ({})\nContributors {}".format(staker.address, sn_pubkey, reg_json, contributors))
                 self.sn_contract.addBLSPublicKey(sender=self.sn_contract.hardhat_account0,
                                                  key=key,
                                                  sig=sig,
@@ -434,8 +814,8 @@ class SNNetwork:
             else:
                 # Second half is multi-contrib nodes
                 reserved: list[ReservedContributor] = [
-                    ReservedContributor(addr=staker_eth_addr, amount=int(contract_staking_requirement / 2)),
-                    ReservedContributor(addr=beneficiary_eth_addr, amount=int(contract_staking_requirement / 2)),
+                    ReservedContributor(addr=staker.address, amount=int(contract_staking_requirement / 2)),
+                    ReservedContributor(addr=beneficiary.address, amount=int(contract_staking_requirement / 2)),
                 ]
 
                 self.sn_contrib_factory.deploy(account=self.sn_contract.hardhat_account0,
@@ -474,7 +854,7 @@ class SNNetwork:
                                        value=int(contract_staking_requirement / 2));
             contract.contributeFunds(account=self.sn_contract.hardhat_account0,
                                      amount=int(contract_staking_requirement / 2),
-                                     beneficiary=beneficiary_eth_addr)
+                                     beneficiary=beneficiary.address)
 
             # NOTE: Hardhat account 1 funds the multi-contrib
             self.sent_contract.approve(sender=self.sn_contract.hardhat_account1,
@@ -482,7 +862,7 @@ class SNNetwork:
                                        value=int(contract_staking_requirement / 2));
             contract.contributeFunds(account=self.sn_contract.hardhat_account1,
                                      amount=int(contract_staking_requirement / 2),
-                                     beneficiary=beneficiary_eth_addr)
+                                     beneficiary=beneficiary.address)
 
 
         # Advance the Arbitrum blockchain so that the SN registration is observed in oxen
@@ -524,391 +904,11 @@ class SNNetwork:
 
         vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.eth_sns[0].height()}");
 
-        # NOTE: BLS rewards claim ##################################################################
-        # Claim rewards for beneficiary
-        rewards_response = self.eth_sns[0].get_bls_rewards(beneficiary_eth_addr_no_0x)
-        vprint(rewards_response)
-        rewardsAccount = rewards_response["result"]["address"]
-        assert rewardsAccount.lower() == beneficiary_eth_addr.lower(), f"Rewards account '{rewardsAccount.lower()}' does not match beneficiary's account '{beneficiary_eth_addr_no_0x.lower()}'. We have the private key for the account and use it to claim rewards from the contract"
-
-        vprint("Beneficiary rewards before updating has ['available', 'claimed'] respectively: ",
-               self.sn_contract.recipients(beneficiary_eth_addr),
-               " for ",
-               beneficiary_eth_addr_no_0x)
-
-        vprint("Foundation pool balance: {}".format(self.sent_contract.balanceOf(self.sn_contract.foundation_pool_address)))
-        vprint("Rewards contract balance: {}".format(self.sent_contract.balanceOf(self.sn_contract.contract.address)))
-        aggregate_pubkey = self.sn_contract.aggregatePubkey()
-        vprint("Aggregate Public Key: {}, {}".format(hex(aggregate_pubkey[0]), hex(aggregate_pubkey[1])))
-
-        # Extract binary parameters
-        sig_str: str = rewards_response['result']['signature'];
-
-        # Convert binary params to contract representation
-        sig = BLSSignatureParams(
-            sigs0=int(sig_str[   :64],  16),
-            sigs1=int(sig_str[64 :128], 16),
-            sigs2=int(sig_str[128:192], 16),
-            sigs3=int(sig_str[192:256], 16),
-        )
-
-        # NOTE: Then update the rewards blaance
-        self.sn_contract.updateRewardsBalance(
-                recipientAddress=beneficiary_eth_addr,
-                recipientAmount=rewards_response["result"]["amount"],
-                blsSignature=sig,
-                ids=rewards_response["result"]["non_signer_indices"])
-
-        vprint("Beneficiary rewards update executed, has ['available', 'claimed'] now respectively: ",
-               self.sn_contract.recipients(beneficiary_eth_addr),
-               " for ",
-               beneficiary_eth_addr_no_0x)
-
-        beneficiary_balance_before_claim = self.sent_contract.balanceOf(beneficiary_eth_addr)
-        vprint("Balance for '{}' before claim {}".format(beneficiary_eth_addr, beneficiary_balance_before_claim))
-
-        # NOTE: Now claim the rewards
-        self.sn_contract.claimRewards(account=beneficiary_account)
-        vprint("Beneficiary rewards after claim is now ['available', 'claimed'] respectively: ",
-               self.sn_contract.recipients(beneficiary_eth_addr),
-               " for ",
-               beneficiary_eth_addr)
-
-        beneficiary_balance_after_claim = self.sent_contract.balanceOf(beneficiary_eth_addr)
-        vprint("Balance for '{}' after claim {}".format(beneficiary_eth_addr, beneficiary_balance_after_claim))
-
-        assert beneficiary_balance_before_claim < beneficiary_balance_after_claim, "Beneficiary's balance did not increase after claim, claim failed (balance was {}, after {})".format(beneficiary_balance_before_claim, beneficiary_balance_after_claim)
-
-        # NOTE: BLS rewards claim ##################################################################
-        # Claim rewards for staker
-        rewards_response = self.eth_sns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0]
-        vprint(vars(rewards_response))
-        assert rewards_response.balance == 0, "Staker's rewards amount ({}) should be 0 because funds are being paid out to the beneficiary".format(rewards_response.balance)
-
-        # Begin exit tests ######################################################################
-        # Make a list of all the nodes, shuffle them and select 3 to exit (exit w/ wait time,
-        # exit with signature and liquidate).
-        sn_to_exit_indexes = []
-        for i in range(len(self.eth_sns)):
-            sn_to_exit_indexes.append(i)
-        random.shuffle(sn_to_exit_indexes)
-        sn_to_exit_indexes = sn_to_exit_indexes[:len(SNExitMode)] # First 3 (1 for each test)
-
-        # Initiate the exit, this will put the node into a mode where it will eventually enter
-        # the expired list when the L2 transaction is witnessed. (If we make the node wait long
-        # enough it will also enter the liquidatable list!).
-        for mode in SNExitMode:
-            sn_to_exit_bls_pubkey  = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().bls_pubkey
-            sn_to_exit_contract_id = self.sn_contract.getServiceNodeID(sn_to_exit_bls_pubkey)
-
-            # Initiate the exit, this will put the node into a mode where it will eventually enter
-            # the expired list when the L2 transaction is witnessed. (If we make the node wait long
-            # enough it will also enter the liquidatable list!).
-            vprint("Initiating exit for node w/ BLS key {} (id {})".format(sn_to_exit_bls_pubkey, sn_to_exit_contract_id))
-            self.sn_contract.initiateExitBLSPublicKey(sn_to_exit_contract_id)
-
-            # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags
-            # behind the tip for safety! In localdev this is configured to 1 block of lag).
-            ethereum.evm_mine();
-
-        # Wait for confirmation of event(s)
-        unlocks_confirmed = []
-        for i in range(len(SNExitMode)):
-            unlocks_confirmed.append(False)
-
-        vprint(f"Sleeping now, waiting for confirmation of voluntary exit on Oxen, blockchain height is {self.sns[0].height()}")
-        total_sleep_time            = 0
-        sleep_time                  = 8
-        current_height              = 0
-        max_requested_unlock_height = 0
-        while True:
-            height = self.sns[0].height()
-            if current_height != height:
-                current_height = height
-
-                unlocks_confirmed_count = 0
-                for index in SNExitMode:
-                    if unlocks_confirmed[index.value] == False:
-                        status_json = self.eth_sns[sn_to_exit_indexes[index.value]].sn_status()
-                        if status_json['service_node_state']['requested_unlock_height'] != 0:
-                            max_requested_unlock_height = max(max_requested_unlock_height, status_json['service_node_state']['requested_unlock_height'])
-                            unlocks_confirmed[index.value] = True
-
-                    if unlocks_confirmed[index.value] == True:
-                        unlocks_confirmed_count += 1
-
-                if unlocks_confirmed_count >= len(SNExitMode):
-                    break
-
-            total_sleep_time += sleep_time
-            time.sleep(sleep_time)
-
-        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}, the latest requested unlock height is {max_requested_unlock_height}")
-
-        # Sleep until we reach the desired unlock height ###########################################
-        vprint(f"Sleeping again until height {max_requested_unlock_height + 1} where all nodes are unlocked")
-        total_sleep_time = 0
-        while current_height <= max_requested_unlock_height + 1:
-            current_height = self.sns[0].height()
-            total_sleep_time += sleep_time
-            time.sleep(sleep_time)
-        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}, unlocks are complete")
-
-        # Do exit via signature and liquidation, aggregate signature from network and apply it on
-        # the smart contract
-        for mode in SNExitMode:
-            sn_to_exit_pubkey      = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().pubkey
-            sn_to_exit_bls_pubkey  = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().bls_pubkey
-            sn_to_exit_contract_id = self.sn_contract.getServiceNodeID(sn_to_exit_bls_pubkey)
-            if mode == SNExitMode.WithSignature:
-                exit_request = self.eth_sns[0].get_exit_liquidation_request(sn_to_exit_pubkey, liquidate=False)
-                vprint("Exit request aggregated: {}".format(exit_request))
-                vprint("Exit request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
-
-                # Extract binary parameters
-                key_str: str = exit_request['result']['bls_pubkey'];
-                sig_str: str = exit_request['result']['signature'];
-
-                # Convert binary params to contract representation
-                key = BLSPubkey(X=int(key_str[:64], 16), Y=int(key_str[64:128], 16))
-                sig = BLSSignatureParams(
-                    sigs0=int(sig_str[   :64],  16),
-                    sigs1=int(sig_str[64 :128], 16),
-                    sigs2=int(sig_str[128:192], 16),
-                    sigs3=int(sig_str[192:256], 16),
-                )
-
-                # Invoke contract
-                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == staker_eth_addr
-                contract_sn_count_before = self.sn_contract.totalNodes()
-                ethereum.evm_increaseTime(60 * 60 * 3)
-                self.sn_contract.exitBLSPublicKeyWithSignature(key=key,
-                                                                 timestamp=exit_request["result"]["timestamp"],
-                                                                 sig=sig,
-                                                                 ids=exit_request["result"]["non_signer_indices"])
-
-                contract_sn_count_after = self.sn_contract.totalNodes()
-                vprint("Node count in contract after exit with signature, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
-
-                zero_account = "0x0000000000000000000000000000000000000000";
-                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == zero_account
-                assert contract_sn_count_after  == contract_sn_count_before - 1
-
-            elif mode == SNExitMode.Liquidation:
-                # This node has initiated a voluntary leave, however if the node does not leave
-                # itself, after some time period (7 days on mainnet, 1 block on localdev) the node
-                # can be liquidated. This is permitted because maintaining an up-to-date SNL is
-                # important for the functioning of the network.
-                #
-                # Hence we penalise stragglers that they should not be in the list longer than
-                # necessary.
-                vprint(f"Sleeping now, waiting for exit buffer to elapse to qualify node for liqudation, blockchain height is {self.sns[0].height()}")
-                target_height = self.all_nodes[0].height() + 5;
-                total_sleep_time = 0
-                sleep_time       = 8
-                while self.sns[0].height() < target_height:
-                    total_sleep_time += sleep_time
-                    time.sleep(sleep_time)
-                vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}")
-
-                # Now node was supposed to exit but hasn't in a timely fashion, it can be liquidated
-                exit_request = self.eth_sns[0].get_exit_liquidation_request(sn_to_exit_pubkey, liquidate=True)
-                vprint("Liquidate request aggregated: {}".format(exit_request))
-                vprint("Liquidate request msg to sign: {}".format(exit_request["result"]["msg_to_sign"]))
-
-                # Extract binary parameters
-                key_str: str = exit_request['result']['bls_pubkey'];
-                sig_str: str = exit_request['result']['signature'];
-
-                # Convert binary params to contract representation
-                key = BLSPubkey(X=int(key_str[:64], 16), Y=int(key_str[64:128], 16))
-                sig = BLSSignatureParams(
-                    sigs0=int(sig_str[   :64],  16),
-                    sigs1=int(sig_str[64 :128], 16),
-                    sigs2=int(sig_str[128:192], 16),
-                    sigs3=int(sig_str[192:256], 16),
-                )
-
-                # Advance time by 3 hrs, this is neede in the liquidation test later
-                # where there's a min wait time before liquidation can occur
-                ethereum.evm_increaseTime(60 * 60 * 3)
-                ethereum.evm_mine();
-
-                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == staker_eth_addr
-                contract_sn_count_before = self.sn_contract.totalNodes()
-                self.sn_contract.liquidateBLSPublicKeyWithSignature(key=key,
-                                                                    timestamp=exit_request["result"]["timestamp"],
-                                                                    sig=sig,
-                                                                    ids=exit_request["result"]["non_signer_indices"])
-                contract_sn_count_after = self.sn_contract.totalNodes()
-                vprint("Node count in contract after liquidation, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
-
-                zero_account = "0x0000000000000000000000000000000000000000";
-                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == zero_account
-                assert contract_sn_count_after  == contract_sn_count_before - 1
-
-            # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags
-            # behind the tip for safety! In localdev this is configured to 1 block of lag).
-            ethereum.evm_mine();
-
-        #  Open SQL DB to monitor delayed payments table ###########################################
-        sql_path   = self.sns[0].datadir + '/sqlite.db'
-        vprint("Reading SQL DB at {}".format(os.path.abspath(sql_path)))
-        sql        = sqlite3.connect(sql_path)
-        sql_cursor = sql.cursor();
-
-        vprint(f"Sleeping until dereg stake is confirmed into SQL DB")
-
-        total_sleep_time = 0
-        height_delayed_payments_row_was_added = 0
-        sql_db_height = 0
-
-        delayed_payment_last_payout_height     = 0 # The latest payout  height in the DB detected
-        delayed_payment_last_height            = 0 # The latest [entry] height in the DB detected
-        delayed_payment_last_block_height      = 0
-        delayed_payment_last_block_tx_index    = 0
-        delayed_payment_last_contributor_index = 0
-        while True:
-            total_sleep_time += sleep_time
-            time.sleep(sleep_time)
-
-            sql_db_height_row = sql_cursor.execute("SELECT height FROM batch_db_info").fetchone()
-            if sql_db_height_row[0] != sql_db_height:
-                vprint("... SQL DB height changed from {}->{}".format(sql_db_height, sql_db_height_row[0]))
-                sql_db_height = sql_db_height_row[0]
-
-            row_result        = sql_cursor.execute("SELECT COUNT(*) FROM delayed_payments").fetchone()
-            row_count         = row_result[0] if row_result else 0
-            if row_count > 0:
-                delayed_payment_row                   = sql_cursor.execute("SELECT height FROM delayed_payments").fetchone()
-                height_delayed_payments_row_was_added = delayed_payment_row[0]
-                vprint("Found {} delayed payments @ height {} in SQL DB".format(row_count, height_delayed_payments_row_was_added));
-                for row in sql_cursor.execute("SELECT * FROM delayed_payments").fetchall():
-                    vprint("  {}".format(row))
-
-                # The highest payout height should be a delayed payment for a deregistration to
-                # which a penalty has been applied.
-                last_delayed_payment_row               = sql_cursor.execute("SELECT height, payout_height, block_height, block_tx_index, contributor_index FROM delayed_payments ORDER BY payout_height DESC LIMIT 1").fetchone()
-                delayed_payment_last_height            = last_delayed_payment_row[0]
-                delayed_payment_last_payout_height     = last_delayed_payment_row[1]
-                delayed_payment_last_block_height      = last_delayed_payment_row[2]
-                delayed_payment_last_block_tx_index    = last_delayed_payment_row[3]
-                delayed_payment_last_contributor_index = last_delayed_payment_row[4]
-
-                # Verify that the delay is more than 1 block. It should be more
-                # than one due to it being a deregistration. The actual amount
-                # depends on what is configured for devnet which will be shorter
-                # than mainnet.
-                delayed_payment_block_delay = delayed_payment_last_payout_height - delayed_payment_last_height
-                assert delayed_payment_block_delay > 0, "Delayed payment for deregistration must be greater than 0 blocks, payout height: {}, height: {}".format(delayed_payment_last_payout_height, delayed_payment_last_height)
-                break
-
-        # Pop blocks to a height such that (delayed_payments_last_height <= x <= delayed_payment_last_payout_height)
-        assert (delayed_payment_last_payout_height - delayed_payment_last_height) > 0; # Must be more than 0 block apart, is deregister
-        sns0_height_before_pop_blocks = self.sns[0].height()
-        target_pop_height             = int((delayed_payment_last_payout_height + delayed_payment_last_height) / 2); # Middle of the range
-
-        num_blocks_to_pop = (sns0_height_before_pop_blocks - target_pop_height)
-        self.sns[0].json_rpc(method="pop_blocks", params={'nblocks': num_blocks_to_pop})
-
-        # General purpose, "large" pop blocks to undo the exits ###################################/
-        sns0_height_before_pop_blocks = self.sns[0].height()
-        num_blocks_to_pop             = (sns0_height_before_pop_blocks - height_delayed_payments_row_was_added) + 50 # for good measure
-        self.sns[0].json_rpc(method="pop_blocks", params={'nblocks': num_blocks_to_pop})
-        vprint("Large pop blocks ({}) from SNS[0], height was {}, is {}".format(num_blocks_to_pop, sns0_height_before_pop_blocks, self.sns[0].height()))
-
-        # Verify that the delayed payment was removed ##############################################
-        row_result = sql_cursor.execute("SELECT COUNT(*) FROM delayed_payments").fetchone()
-        row_count  = row_result[0] if row_result else 0
-        assert row_count == 0, "Expected the delayed payments row to be undone on pop_blocks @ height {}, found {}".format(self.sns[0].height(), row_count)
-
-        # Verify batch_db_info height rewinded #####################################################
-        row_result           = sql_cursor.execute("SELECT height FROM batch_db_info").fetchone()
-        sql_db_height        = row_result[0] if row_result else 0
-        assert sql_db_height == self.sns[0].height() - 1, "Expected batch_db_info table 'height' ({}) to be undone as well. Oxen block index is {}".format(sql_db_height, self.sns[0].height() - 1)
-
-        # Verify that deregistration stake is claimable ############################################
-        vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {self.sns[0].height()} (after popping, we will resync the chain)")
-        total_sleep_time = 0
-        stakers_reward_balance_before = self.sns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0].balance
-
-        # Calculate the upper bound on how much stake should be expected to be
-        # returned to the staker. It's an upper bound because a liquidated
-        # node has a penalty applied to it that we don't care to _exactly_
-        # calculate precisely.
-        #
-        # NOTE: At this point we only exit 2 nodes (exit after 30 days is done after this step).
-        staker_upperbound_returned_stake = 0
-        staker_upperbound_returned_stake += contract_staking_requirement if node_index_is_solo_node(sn_to_exit_indexes[SNExitMode.WithSignature.value], len(self.eth_sns)) else contract_staking_requirement / 2
-        staker_upperbound_returned_stake += contract_staking_requirement if node_index_is_solo_node(sn_to_exit_indexes[SNExitMode.Liquidation.value],   len(self.eth_sns)) else contract_staking_requirement / 2
-        staker_lowerbound_returned_stake = staker_upperbound_returned_stake - coins(10)
-
-        vprint("Expecting between {} and {} $SENT to be returned to {}".format(staker_lowerbound_returned_stake, staker_upperbound_returned_stake, staker_eth_addr))
-        sns0_height = 0
-        while True:
-            total_sleep_time += sleep_time
-            time.sleep(sleep_time)
-
-            # In this test we exit 3 nodes,
-            #
-            # - by signature
-            # - by 30 day timeout
-            # - by liquidation
-            #
-            # At this point we will have exited by signature and liquidation,
-            # (30 day timeout happens after this block of code). The 3 nodes we exit are randomly
-            # selected, so, we may exit a multi-contrib or solo node.
-
-            balance_after     = self.sns[0].get_accrued_rewards([staker_eth_addr_no_0x])[0].balance
-            change_in_balance = balance_after - stakers_reward_balance_before
-
-            curr_height = self.sns[0].height()
-            if sns0_height != self.sns[0].height():
-                vprint("Staking address {} before {}, after {} (change {}, height {})".format(staker_eth_addr, stakers_reward_balance_before, balance_after, change_in_balance, curr_height))
-                sns0_height = curr_height
-
-            if change_in_balance >= staker_lowerbound_returned_stake and change_in_balance <= staker_upperbound_returned_stake:
-                vprint("Staking address had a stake-like in balance")
-                break
-
-        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.sns[0].height()}")
-
-        # Do exit 'after wait time' ################################################################
-        # IMPORTANT: This test must be run last because it advances the L2 blockchain by 31 days.
-        # This method of exit does _not_ require a signature. The other methods require a
-        # timestamp embedded in the signature. We don't have a way to manipulate timestamps on the
-        # Oxen blockchain hence the signature tests are run before this test.
-        #
-        # This test will advance time by 31 days. A signature that is then generated by the Session
-        # node will be generated but failed to be applied because the node will generate a signature
-        # with the OS clock (which has _not_ been advanced by 31 days).
-        days_30_in_seconds = (60 * 60 * 24 * 31)
-        ethereum.evm_increaseTime(days_30_in_seconds)
-        ethereum.evm_mine()
-
-        # Exit the node from the smart contract (after 31 days has elapsed)
-        for mode in SNExitMode:
-            if mode == SNExitMode.AfterWaitTime:
-                sn_to_exit_pubkey      = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().pubkey
-                sn_to_exit_bls_pubkey  = self.eth_sns[sn_to_exit_indexes[mode.value]].get_service_keys().bls_pubkey
-                sn_to_exit_contract_id = self.sn_contract.getServiceNodeID(sn_to_exit_bls_pubkey)
-
-                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == staker_eth_addr
-                contract_sn_count_before = self.sn_contract.totalNodes()
-                self.sn_contract.exitBLSPublicKeyAfterWaitTime(sn_to_exit_contract_id)
-                contract_sn_count_after = self.sn_contract.totalNodes()
-                vprint("Node count in contract after wait time exit, {} SNs (was {})".format(contract_sn_count_after, contract_sn_count_before))
-
-                zero_account = "0x0000000000000000000000000000000000000000";
-                assert self.sn_contract.serviceNodes(sn_to_exit_contract_id).operator == zero_account
-                assert contract_sn_count_after  == contract_sn_count_before - 1
-
-                # Advance the Arbitrum blockchain so that Oxen witnesses it (remember that Oxen lags
-                # behind the tip for safety! In localdev this is configured to 1 block of lag).
-                ethereum.evm_mine();
-
-
-        # Tests complete ###########################################################################
+        # NOTE: Do tests
+        test_bls_claim_rewards(eth_sns=self.eth_sns, sn_contract=self.sn_contract, sent_contract=self.sent_contract, staker=staker, beneficiary=beneficiary);
+        test_sn_exits_by_request_signature_and_liquidation(eth_sns=self.eth_sns, sn_contract=self.sn_contract, staker=staker);
+
+        # NOTE: Tests complete
         elapsed_time = time.perf_counter() - begin_time
         vprint("Local Devnet SN network setup complete in {}s!".format(elapsed_time))
         vprint("Communicate with daemon on ip: {} port: {}".format(self.sns[0].listen_ip,self.sns[0].rpc_port))
