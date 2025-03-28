@@ -6,6 +6,7 @@ import requests
 import subprocess
 import time
 import eth_typing.evm
+import pathlib
 
 # On linux we can pick a random 127.x.y.z IP which is highly likely to not have anything listening
 # on it (so we make bind conflicts highly unlikely).  On most other OSes we have to listen on
@@ -21,9 +22,10 @@ verbose = False
 def next_port():
     global NEXT_PORT
     port = NEXT_PORT
-    NEXT_PORT += 1
+    # TODO: For some reason having this at 1 makes storage server complain about failing to bind the
+    # HTTPS and OMQ server, is there some port overlap somewhere?
+    NEXT_PORT += 5
     return port
-
 
 class ProcessExited(RuntimeError):
     pass
@@ -47,11 +49,11 @@ class AccruedRewards:
         self.balance = 0
 
 class RPCDaemon:
+    proc: subprocess.Popen | None = None
+
     def __init__(self, name):
         self.name = name
-        self.proc = None
         self.terminated = False
-
 
     def __del__(self):
         self.stop()
@@ -77,7 +79,6 @@ class RPCDaemon:
                 stdin=subprocess.DEVNULL, stdout=sout, stderr=sys.stderr)
         self.terminated = False
 
-
     def stop(self):
         """Tries stopping with a term at first, then a kill if the term hasn't worked after 10s"""
         print(f"RPCDaemon::stop called on {self.name}")
@@ -90,11 +91,9 @@ class RPCDaemon:
                 self.proc.kill()
             self.proc = None
 
-
     def arguments(self):
         """Returns the startup arguments; default is just self.args, but subclasses can override."""
         return self.args
-
 
     def json_rpc(self, method, params=None, *, timeout=100, try_count=0):
         """Sends a json_rpc request to the rpc port.  Returns the response object."""
@@ -163,27 +162,32 @@ class DaemonKeys:
 
 class Daemon(RPCDaemon):
     base_args = ('--dev-allow-local-ips', '--fixed-difficulty=1', '--localdev', '--non-interactive')
+    storage_server_proc: subprocess.Popen | None = None
+    storage_server_omq_port: int
+    storage_server_https_port: int
 
     def __init__(self, *,
             oxend='oxend',
-            listen_ip=None, p2p_port=None, rpc_port=None, zmq_port=None, qnet_port=None, ss_port=None,
+            listen_ip=None, p2p_port=None, rpc_port=None, zmq_port=None, qnet_port=None,
             name=None,
             datadir=None,
             service_node=False,
+            storage_server_path: pathlib.Path | None,
             log_level=3,
             peers=()):
+
         self.rpc_port = rpc_port or next_port()
         if name is None:
             name = 'oxend@{}'.format(self.rpc_port)
         super().__init__(name)
-        self.listen_ip = listen_ip or LISTEN_IP
-        self.p2p_port  = p2p_port or next_port()
-        self.zmq_port  = zmq_port or next_port()
-        self.qnet_port = qnet_port or next_port()
-        self.ss_port   = ss_port or next_port()
-        self.peers     = []
-        self.keys      = None
-        self.datadir   = '{}/oxen-{}'.format(datadir or '.', self.rpc_port)
+        self.listen_ip           = listen_ip or LISTEN_IP
+        self.p2p_port            = p2p_port or next_port()
+        self.zmq_port            = zmq_port or next_port()
+        self.qnet_port           = qnet_port or next_port()
+        self.peers               = []
+        self.keys                = None
+        self.datadir             = '{}/oxen-{}'.format(datadir or '.', self.rpc_port)
+        self.storage_server_path = storage_server_path
 
         self.args = [oxend] + list(self.__class__.base_args)
         self.args += (
@@ -201,18 +205,41 @@ class Daemon(RPCDaemon):
         for d in peers:
             self.add_peer(d)
 
+        self.service_node = service_node
         if service_node:
             self.args += (
                     '--service-node',
                     '--service-node-public-ip={}'.format(self.listen_ip),
-                    '--storage-server-port={}'.format(self.ss_port),
                     )
 
+        self.storage_server_https_port = next_port()
+        self.storage_server_omq_port = next_port()
 
     def arguments(self):
         return self.args + [
             '--add-exclusive-node={}:{}'.format(node.listen_ip, node.p2p_port) for node in self.peers]
 
+    def start_storage_server(self, storage_server_path: pathlib.Path):
+        if storage_server_path:
+            self.storage_server_proc = subprocess.Popen([
+                str(self.storage_server_path),
+                "--data-dir={}/storage".format(self.datadir),
+                "--oxend-rpc=ipc://{}/oxend.sock".format(self.datadir),
+                "--omq-port={}".format(self.storage_server_omq_port),
+                "--https-port={}".format(self.storage_server_https_port),
+            ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+    def stop(self):
+        super().stop()
+        if self.storage_server_proc:
+            self.storage_server_proc.terminate()
+            try:
+                self.storage_server_proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                print("{} storage server took more than 10s to exit, killing it".format(self.name))
+                self.storage_server_proc.kill()
+            self.storage_server_proc = None
 
     def ready(self):
         """Waits for the daemon to get ready, i.e. for it to start returning something to a
@@ -300,7 +327,7 @@ class Daemon(RPCDaemon):
     def get_ethereum_registration_args(self, address):
         return self.json_rpc("contract_registration", {"operator_address": address}).json()["result"]
 
-    def get_bls_rewards(self, address: eth_typing.evm.ChecksumAddress) -> dict:
+    def get_bls_rewards(self, address: eth_typing.evm.ChecksumAddress):
         return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
 
     def get_exit_liquidation_request(self, ed25519_pubkey, liquidate=False):

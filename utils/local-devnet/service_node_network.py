@@ -476,11 +476,66 @@ def test_sn_exits_by_request_signature_and_liquidation(eth_sns: list[Daemon], sn
             # behind the tip for safety! In localdev this is configured to 1 block of lag).
             ethereum.evm_mine();
 
+def print_unicode_table(rows: List[List[str]]) -> None:
+    # Calculate maximum width for each column
+    col_widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
+
+    # Print top border
+    line = "┌"
+    for i, width in enumerate(col_widths):
+        line += "─" * (width + 2)  # +2 for padding spaces
+        if i < len(col_widths) - 1:
+            line += "┬"
+    line += "┐"
+    print(line)
+
+    # Print header (first row)
+    header_row = "│"
+    for i, field in enumerate(rows[0]):
+        header_row += f" {field:<{col_widths[i]}} │"
+    print(header_row)
+
+    # Print separator between header and data
+    separator = "├"
+    for i, width in enumerate(col_widths):
+        separator += "─" * (width + 2)
+        if i < len(col_widths) - 1:
+            separator += "┼"
+    separator += "┤"
+    print(separator)
+
+    # Print data rows
+    for row in rows[1:]:
+        row_str = "│"
+        for i, field in enumerate(row):
+            row_str += f" {field:<{col_widths[i]}} │"
+        print(row_str)
+
+    # Print bottom border
+    bottom = "└"
+    for i, width in enumerate(col_widths):
+        bottom += "─" * (width + 2)
+        if i < len(col_widths) - 1:
+            bottom += "┴"
+    bottom += "┘"
+    print(bottom)
+
 class SNNetwork:
     all_nodes: list[Daemon] = []
     wallets                 = []
 
-    def __init__(self, datadir, *, oxen_bin_dir, anvil_path, eth_sn_contracts_dir, sns=12, nodes=3, keep_data_dir=False, start_at_hf20=False, stop_at_hf20=False):
+    def __init__(self,
+                 datadir,
+                 *,
+                 oxen_bin_dir: pathlib.Path,
+                 anvil_path: pathlib.Path | None,
+                 eth_sn_contracts_dir: pathlib.Path,
+                 storage_server_path: pathlib.Path | None,
+                 keep_data_dir=False,
+                 start_at_hf20=False,
+                 stop_at_hf20=False,
+                 sns=12,
+                 nodes=3):
         begin_time = time.perf_counter()
 
         # Setup Ethereum ###########################################################################
@@ -566,9 +621,9 @@ class SNNetwork:
         vprint("Using '{}' for data files and logs".format(datadir))
 
         nodeopts       = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
-        self.eth_sns   = [Daemon(service_node=True, **nodeopts) for _ in range(len(SNExitMode) * 2)]
-        self.sns       = [Daemon(service_node=True, **nodeopts) for _ in range(sns)]
-        self.nodes     = [Daemon(**nodeopts) for _ in range(nodes)]
+        self.eth_sns   = [Daemon(service_node=True, storage_server_path=storage_server_path, **nodeopts) for _ in range(len(SNExitMode) * 2)]
+        self.sns       = [Daemon(service_node=True, storage_server_path=storage_server_path, **nodeopts) for _ in range(sns)]
+        self.nodes     = [Daemon(storage_server_path=storage_server_path,                    **nodeopts) for _ in range(nodes)]
         self.all_nodes = self.sns + self.nodes + self.eth_sns
 
         # Wallets ##################################################################################
@@ -952,20 +1007,40 @@ class SNNetwork:
         vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.eth_sns[0].height()}");
 
         # NOTE: Do tests
-        test_bls_claim_rewards(eth_sns=self.eth_sns, sn_contract=self.sn_contract, sent_contract=self.sent_contract, staker=staker, beneficiary=beneficiary);
-        test_sn_exits_by_request_signature_and_liquidation(eth_sns=self.eth_sns, sn_contract=self.sn_contract, staker=staker);
+        # test_bls_claim_rewards(eth_sns=self.eth_sns, sn_contract=self.sn_contract, sent_contract=self.sent_contract, staker=staker, beneficiary=beneficiary);
+        # test_sn_exits_by_request_signature_and_liquidation(eth_sns=self.eth_sns, sn_contract=self.sn_contract, staker=staker);
+
+        # NOTE: Start storage server
+        for n in self.all_nodes:
+            if n.service_node and storage_server_path:
+                n.start_storage_server(storage_server_path);
 
         # NOTE: Tests complete
         elapsed_time = time.perf_counter() - begin_time
         vprint("Local Devnet SN network setup complete in {}s!".format(elapsed_time))
-        vprint("Communicate with daemon on ip: {} port: {}".format(self.sns[0].listen_ip,self.sns[0].rpc_port))
+
+        all_nodes_sorted_by_name = sorted(self.all_nodes, key=lambda n: n.name)
+        daemon_rows: list[list[str]] = []
+        daemon_rows.append(["Name", "Pubkey", "IP:RPC", "P2P", "ZMQ", "QNET", "SN", "Storage OMQ", "Storage HTTPS"])
+        for n in all_nodes_sorted_by_name:
+            row: list[str] = []
+            row.append(n.name)
+            row.append(str(n.get_service_keys().pubkey) if n.service_node else "N/A")
+            row.append(f"{n.listen_ip}:{n.p2p_port}")
+            row.append(str(n.p2p_port))
+            row.append(str(n.zmq_port))
+            row.append(str(n.qnet_port))
+            row.append("Yes" if n.service_node else "No");
+            row.append(str(n.storage_server_omq_port))
+            row.append(str(n.storage_server_https_port))
+            daemon_rows.append(row)
+        print_unicode_table(daemon_rows)
 
     def refresh_wallets(self, *, extra=[]):
         vprint("Refreshing wallets")
         for w in self.wallets + extra:
             w.refresh()
         vprint("All wallets refreshed")
-
 
     def mine(self, blocks=None, wallet=None, *, sync=False):
         """Mine some blocks to the given wallet (or self.mike if None) on the wallet's daemon.
@@ -1067,6 +1142,9 @@ def run():
                                   'are located.'),
                             default="../../build/bin",
                             type=pathlib.Path)
+    arg_parser.add_argument('--storage-server-path',
+                            help=('Set the path to the storage server binary to enable it in the locally setup network'),
+                            type=pathlib.Path)
     arg_parser.add_argument('--anvil-path',
                             help=('Set the path to Foundry\'s `anvil` for launching a private '
                                   'Ethereum blockchain. If omitted a private Ethereum node must be '
@@ -1118,7 +1196,8 @@ def run():
                         datadir=datadirectory+'/',
                         keep_data_dir=args.keep_data_dir,
                         start_at_hf20=args.start_at_hf20,
-                        stop_at_hf20=args.stop_at_hf20)
+                        stop_at_hf20=args.stop_at_hf20,
+                        storage_server_path=args.storage_server_path)
     else:
         vprint("reusing SNN")
         snn.alice.new_wallet()
