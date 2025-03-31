@@ -91,6 +91,36 @@ def test_bls_claim_rewards(eth_sns:       list[Daemon],
                            sent_contract: SENTContract,
                            staker:        eth_account.signers.local.LocalAccount,
                            beneficiary:   eth_account.signers.local.LocalAccount):
+
+    # Sleep and let pulse quorum do work
+    vprint(f"Sleeping now, awaiting pulse quorum to generate blocks (& rewards for node), blockchain height is {self.eth_sns[0].height()}");
+
+    # Wait until all contract-registered nodes are eligible to receive rewards
+    total_sleep_time = 0
+    sleep_time       = 4
+    reward_eligible = [False for _ in range(len(self.eth_sns))]
+    reward_eligible_counter = 0
+    while reward_eligible_counter < len(reward_eligible):
+        for i in range(len(self.eth_sns)):
+            if reward_eligible[i]:
+                continue
+            if self.eth_sns[i].sn_is_payable():
+                reward_eligible_counter += 1
+                reward_eligible[i] = True
+
+        total_sleep_time += sleep_time
+        if reward_eligible_counter < len(self.eth_sns):
+            vprint(f"Still waiting, height = {self.eth_sns[0].height()}, {reward_eligible_counter} of {len(self.eth_sns)} nodes reward eligible");
+            time.sleep(sleep_time)
+
+    # Wait 1 block to receive rewards
+    target_height = self.eth_sns[0].height() + 1;
+    while self.eth_sns[0].height() < target_height:
+        total_sleep_time += sleep_time
+        time.sleep(sleep_time)
+
+    vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.eth_sns[0].height()}");
+
     # NOTE: BLS rewards claim ##################################################################
     # Claim rewards for beneficiary
     rewards_response = eth_sns[0].get_bls_rewards(address=beneficiary.address)
@@ -522,6 +552,7 @@ def print_unicode_table(rows: List[List[str]]) -> None:
 
 class SNNetwork:
     all_nodes: list[Daemon] = []
+    eth_sns:   list[Daemon] = []
     wallets                 = []
 
     def __init__(self,
@@ -622,7 +653,8 @@ class SNNetwork:
         vprint("Using '{}' for data files and logs".format(datadir))
 
         nodeopts       = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
-        self.eth_sns   = [Daemon(service_node=True, storage_server_path=storage_server_path, **nodeopts) for _ in range(len(SNExitMode) * 2)]
+        if integration_tests:
+            self.eth_sns = [Daemon(service_node=True, storage_server_path=storage_server_path, **nodeopts) for _ in range(len(SNExitMode) * 2)]
         self.sns       = [Daemon(service_node=True, storage_server_path=storage_server_path, **nodeopts) for _ in range(sns)]
         self.nodes     = [Daemon(storage_server_path=storage_server_path,                    **nodeopts) for _ in range(nodes)]
         self.all_nodes = self.sns + self.nodes + self.eth_sns
@@ -977,35 +1009,6 @@ class SNNetwork:
         expected_contract_sn_count = prev_contract_sn_count + len(self.eth_sns)
         vprint("Added node via Eth. Contract has {} SNs\n{}".format(contract_sn_count, contract_sn_dump))
         assert contract_sn_count == expected_contract_sn_count, f"Expected {contract_sn_count} service nodes, received {expected_contract_sn_count}"
-
-        # Sleep and let pulse quorum do work
-        vprint(f"Sleeping now, awaiting pulse quorum to generate blocks (& rewards for node), blockchain height is {self.eth_sns[0].height()}");
-
-        # Wait until all contract-registered nodes are eligible to receive rewards
-        total_sleep_time = 0
-        sleep_time       = 4
-        reward_eligible = [False for _ in range(len(self.eth_sns))]
-        reward_eligible_counter = 0
-        while reward_eligible_counter < len(reward_eligible):
-            for i in range(len(self.eth_sns)):
-                if reward_eligible[i]:
-                    continue
-                if self.eth_sns[i].sn_is_payable():
-                    reward_eligible_counter += 1
-                    reward_eligible[i] = True
-
-            total_sleep_time += sleep_time
-            if reward_eligible_counter < len(self.eth_sns):
-                vprint(f"Still waiting, height = {self.eth_sns[0].height()}, {reward_eligible_counter} of {len(self.eth_sns)} nodes reward eligible");
-                time.sleep(sleep_time)
-
-        # Wait 1 block to receive rewards
-        target_height = self.eth_sns[0].height() + 1;
-        while self.eth_sns[0].height() < target_height:
-            total_sleep_time += sleep_time
-            time.sleep(sleep_time)
-
-        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.eth_sns[0].height()}");
 
         # NOTE: Do tests
         if integration_tests:
