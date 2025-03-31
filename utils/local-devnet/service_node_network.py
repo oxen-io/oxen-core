@@ -534,6 +534,7 @@ class SNNetwork:
                  keep_data_dir=False,
                  start_at_hf20=False,
                  stop_at_hf20=False,
+                 integration_tests: bool,
                  sns=12,
                  nodes=3):
         begin_time = time.perf_counter()
@@ -1007,8 +1008,9 @@ class SNNetwork:
         vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.eth_sns[0].height()}");
 
         # NOTE: Do tests
-        # test_bls_claim_rewards(eth_sns=self.eth_sns, sn_contract=self.sn_contract, sent_contract=self.sent_contract, staker=staker, beneficiary=beneficiary);
-        # test_sn_exits_by_request_signature_and_liquidation(eth_sns=self.eth_sns, sn_contract=self.sn_contract, staker=staker);
+        if integration_tests:
+            test_bls_claim_rewards(eth_sns=self.eth_sns, sn_contract=self.sn_contract, sent_contract=self.sent_contract, staker=staker, beneficiary=beneficiary);
+            test_sn_exits_by_request_signature_and_liquidation(eth_sns=self.eth_sns, sn_contract=self.sn_contract, staker=staker);
 
         # NOTE: Start storage server
         for n in self.all_nodes:
@@ -1021,20 +1023,26 @@ class SNNetwork:
 
         all_nodes_sorted_by_name = sorted(self.all_nodes, key=lambda n: n.name)
         daemon_rows: list[list[str]] = []
-        daemon_rows.append(["Name", "Pubkey", "IP:RPC", "P2P", "ZMQ", "QNET", "SN", "Storage OMQ", "Storage HTTPS"])
+        daemon_rows.append(["Name", "SN", "Pubkey", "IP:RPC", "P2P", "ZMQ", "QNET", "Storage OMQ", "Storage HTTPS"])
         for n in all_nodes_sorted_by_name:
             row: list[str] = []
             row.append(n.name)
-            row.append(str(n.get_service_keys().pubkey) if n.service_node else "N/A")
-            row.append(f"{n.listen_ip}:{n.p2p_port}")
+            row.append("Yes" if n.service_node else "No");
+            row.append(str(n.get_service_keys().pubkey) if n.service_node else "-")
+            row.append(f"{n.listen_ip}:{n.rpc_port}")
             row.append(str(n.p2p_port))
             row.append(str(n.zmq_port))
             row.append(str(n.qnet_port))
-            row.append("Yes" if n.service_node else "No");
-            row.append(str(n.storage_server_omq_port))
-            row.append(str(n.storage_server_https_port))
+            row.append(str(n.storage_server_omq_port) if n.service_node else "-")
+            row.append(str(n.storage_server_https_port) if n.service_node else "-")
             daemon_rows.append(row)
         print_unicode_table(daemon_rows)
+
+        first_node = self.sns[0]
+        vprint("""You can send a command over RPC like
+
+  curl {}:{}/json_rpc -X POST -H "Content-Type: application/json" --data '{{"method": "get_info", "params": {{}}, "id": 1, "jsonrpc": 2.0}}'
+""".format(first_node.listen_ip, first_node.rpc_port))
 
     def refresh_wallets(self, *, extra=[]):
         vprint("Refreshing wallets")
@@ -1174,6 +1182,9 @@ def run():
                                   'This is to set the chain up for --start-at-hf20 later.'),
                             default=False,
                             action='store_true')
+    arg_parser.add_argument('--integration-tests',
+                            help=('Run the integration tests after setting up the network'),
+                            action="store_true")
     args = arg_parser.parse_args()
 
     if args.start_at_hf20 and args.stop_at_hf20:
@@ -1197,6 +1208,7 @@ def run():
                         keep_data_dir=args.keep_data_dir,
                         start_at_hf20=args.start_at_hf20,
                         stop_at_hf20=args.stop_at_hf20,
+                        integration_tests=args.integration_tests,
                         storage_server_path=args.storage_server_path)
     else:
         vprint("reusing SNN")
