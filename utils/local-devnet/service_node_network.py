@@ -1044,8 +1044,12 @@ class SNNetwork:
         first_node = self.sns[0]
         vprint("""You can send a command over RPC like
 
-  curl {}:{}/json_rpc -X POST -H "Content-Type: application/json" --data '{{"method": "get_info", "params": {{}}, "id": 1, "jsonrpc": 2.0}}'
-""".format(first_node.listen_ip, first_node.rpc_port))
+  Node           JSON-RPC => curl {}:{}/json_rpc -X POST -H "Content-Type: application/json" --data '{{"method": "get_info", "params": {{}}, "id": 1, "jsonrpc": 2.0}}'
+  Storage Server HTTPS    => curl --insecure https://{}:{}/storage_rpc/v1 -X POST -H "Content-Type: application/json" --data '{{"method": "info", "params": {{}}}}'
+""".format(first_node.listen_ip,
+           first_node.rpc_port,
+           first_node.listen_ip,
+           first_node.storage_server_https_port))
 
     def refresh_wallets(self, *, extra=[]):
         vprint("Refreshing wallets")
