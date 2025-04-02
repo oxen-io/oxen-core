@@ -1036,8 +1036,10 @@ class SNNetwork:
             row.append(str(n.p2p_port))
             row.append(str(n.zmq_port))
             row.append(str(n.qnet_port))
-            row.append(str(n.storage_server_omq_port) if n.service_node else "-")
-            row.append(str(n.storage_server_https_port) if n.service_node else "-")
+
+            show_storage_server_ports = n.service_node and storage_server_path
+            row.append(str(n.storage_server_omq_port) if show_storage_server_ports else "-")
+            row.append(str(n.storage_server_https_port) if show_storage_server_ports else "-")
             daemon_rows.append(row)
         print_unicode_table(daemon_rows)
 
@@ -1046,6 +1048,7 @@ class SNNetwork:
 
   Node           JSON-RPC => curl {}:{}/json_rpc -X POST -H "Content-Type: application/json" --data '{{"method": "get_info", "params": {{}}, "id": 1, "jsonrpc": 2.0}}'
   Storage Server HTTPS    => curl --insecure https://{}:{}/storage_rpc/v1 -X POST -H "Content-Type: application/json" --data '{{"method": "info", "params": {{}}}}'
+  (If --storage-server-path is specified)
 """.format(first_node.listen_ip,
            first_node.rpc_port,
            first_node.listen_ip,
