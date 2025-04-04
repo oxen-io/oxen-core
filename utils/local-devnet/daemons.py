@@ -227,6 +227,8 @@ class Daemon(RPCDaemon):
                 "--oxend-rpc=ipc://{}/oxend.sock".format(self.datadir),
                 "--omq-port={}".format(self.storage_server_omq_port),
                 "--https-port={}".format(self.storage_server_https_port),
+                "--skip-bootstrap-seed-nodes",
+                "--log-level=trace",
             ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
