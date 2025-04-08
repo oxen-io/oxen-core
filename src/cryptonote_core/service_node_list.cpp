@@ -5965,11 +5965,20 @@ bool service_node_list::handle_uptime_proof(
         // Note that prior to this branch here, the key has been validated to be non-null and that
         // the node has the secret key. This code will only permit an 'early' proof if the
         // receipient has not received the BLS key for the sender yet.
-        bool reject_proof = true;
-        if (netconf.NETWORK_TYPE == cryptonote::network_type::LOCALDEV)
-            reject_proof = it->second->bls_public_key && proof->qnet_port;
+        bool skip_time_check = false;
+        if (netconf.NETWORK_TYPE == cryptonote::network_type::LOCALDEV) {
+            if (!it->second->bls_public_key || proof->qnet_port == 0)
+                skip_time_check = true;
 
-        if (reject_proof) {
+            if (!iproof.proof ||
+                (iproof.proof->storage_https_port == 0 && iproof.proof->storage_omq_port == 0)) {
+                if (proof->storage_omq_port && proof->storage_https_port) {
+                    skip_time_check = true;
+                }
+            }
+        }
+
+        if (!skip_time_check) {
             log::debug(
                     logcat,
                     "Rejecting uptime proof from {}: already received one uptime proof for this "

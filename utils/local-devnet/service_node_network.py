@@ -82,6 +82,16 @@ def all_service_nodes_proofed(sn):
             result = False
     return result
 
+def all_storage_ports_proofed(sn):
+    service_nodes = sn.json_rpc("get_n_service_nodes", {"fields": {"storage_port": True}}).json()['result']['service_node_states']
+    result = True
+    vprint("  {}".format(service_nodes), timestamp=False)
+    for x in service_nodes:
+        if x['storage_port'] <= 0:
+            result = False
+    return result
+
+
 def node_index_is_solo_node(index: int, num_nodes: int):
     result: bool = index > (num_nodes / 2)
     return result
@@ -1016,9 +1026,31 @@ class SNNetwork:
             test_sn_exits_by_request_signature_and_liquidation(eth_sns=self.eth_sns, sn_contract=self.sn_contract, staker=staker);
 
         # NOTE: Start storage server
-        for n in self.all_nodes:
-            if n.service_node and storage_server_path:
-                n.start_storage_server(storage_server_path);
+        if storage_server_path:
+            for n in self.all_nodes:
+                if n.service_node:
+                    n.start_storage_server(storage_server_path);
+
+            vprint("Waiting for proofs with storage ports to propagate:", flush=True)
+            while True:
+                for sn in self.sns:
+                    sn.send_uptime_proof()
+
+                all_ports_received = True
+                for sn in self.sns:
+                    response = sn.json_rpc("get_n_service_nodes", {"fields": {"storage_port": True}}).json()['result']['service_node_states']
+                    for obj in response:
+                        if obj['storage_port'] <= 0:
+                            all_ports_received = False
+                            break
+
+                    if all_ports_received == False:
+                        break
+
+                if all_ports_received == True:
+                    break
+
+                time.sleep(5)
 
         # NOTE: Tests complete
         elapsed_time = time.perf_counter() - begin_time
