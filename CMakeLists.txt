@@ -51,7 +51,7 @@ message(STATUS "CMake version ${CMAKE_VERSION}")
 set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "macOS deployment target (Apple clang only)")
 
 project(oxen
-    VERSION 11.1.2
+    VERSION 11.1.3
     LANGUAGES CXX C)
 set(OXEN_RELEASE_CODENAME "Wistful Wagyu")
 # Version update notes:
