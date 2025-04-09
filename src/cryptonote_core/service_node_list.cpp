@@ -5970,6 +5970,9 @@ bool service_node_list::handle_uptime_proof(
             if (!it->second->bls_public_key || proof->qnet_port == 0)
                 skip_time_check = true;
 
+            // NOTE: Allow uptime proofs that initialise the storage server ports to be passed
+            // through. In the integration tests, storage server is spun up at the end, at that
+            // point we trigger an uptime proof and this allows the allocated ports to be proofed.
             if (!iproof.proof ||
                 (iproof.proof->storage_https_port == 0 && iproof.proof->storage_omq_port == 0)) {
                 if (proof->storage_omq_port && proof->storage_https_port) {
