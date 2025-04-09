@@ -1,3 +1,11 @@
+oxen (11.1.3-1~ubuntu2410) oracular; urgency=medium
+
+  * Add missing mainnet mandatory upgrades
+  * 10.1.3 release
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 09 Apr 2025 14:43:54 -0300
+
 oxen (11.1.2-6~ubuntu2410) oracular; urgency=medium
 
   * Wallet 10 pending rewards compatibility fix
