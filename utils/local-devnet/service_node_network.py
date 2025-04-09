@@ -576,6 +576,7 @@ class SNNetwork:
                  start_at_hf20=False,
                  stop_at_hf20=False,
                  integration_tests: bool,
+                 listen_ip: str | None,
                  sns=12,
                  nodes=3):
         begin_time = time.perf_counter()
@@ -664,9 +665,9 @@ class SNNetwork:
 
         nodeopts       = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
         if integration_tests:
-            self.eth_sns = [Daemon(service_node=True, storage_server_path=storage_server_path, **nodeopts) for _ in range(len(SNExitMode) * 2)]
-        self.sns       = [Daemon(service_node=True, storage_server_path=storage_server_path, **nodeopts) for _ in range(sns)]
-        self.nodes     = [Daemon(storage_server_path=storage_server_path,                    **nodeopts) for _ in range(nodes)]
+            self.eth_sns = [Daemon(service_node=True, listen_ip=listen_ip, storage_server_path=storage_server_path, **nodeopts) for _ in range(len(SNExitMode) * 2)]
+        self.sns       = [Daemon(service_node=True,   listen_ip=listen_ip, storage_server_path=storage_server_path, **nodeopts) for _ in range(sns)]
+        self.nodes     = [Daemon(service_node=False,  listen_ip=listen_ip, storage_server_path=None, **nodeopts) for _ in range(nodes)]
         self.all_nodes = self.sns + self.nodes + self.eth_sns
 
         # Wallets ##################################################################################
@@ -1227,6 +1228,9 @@ def run():
     arg_parser.add_argument('--integration-tests',
                             help=('Run the integration tests after setting up the network'),
                             action="store_true")
+    arg_parser.add_argument('--listen-ip',
+                            help=('Set the IP address of the spawned daemons'),
+                            type=str)
     args = arg_parser.parse_args()
 
     if args.start_at_hf20 and args.stop_at_hf20:
@@ -1242,7 +1246,6 @@ def run():
         if os.path.isdir(datadirectory+'/') and not args.keep_data_dir:
             vprint("Removing existing directory at " + datadirectory + "/")
             shutil.rmtree(datadirectory+'/')
-        vprint("new SNN")
         snn = SNNetwork(oxen_bin_dir=args.oxen_bin_dir,
                         anvil_path=args.anvil_path,
                         eth_sn_contracts_dir=args.eth_sn_contracts_dir,
@@ -1251,7 +1254,8 @@ def run():
                         start_at_hf20=args.start_at_hf20,
                         stop_at_hf20=args.stop_at_hf20,
                         integration_tests=args.integration_tests,
-                        storage_server_path=args.storage_server_path)
+                        storage_server_path=args.storage_server_path,
+                        listen_ip=args.listen_ip)
     else:
         vprint("reusing SNN")
         snn.alice.new_wallet()

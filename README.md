@@ -464,8 +464,9 @@ for testing. There are several arguments, some optional that are to be passed to
 the script for setup of the network. See the script's help menu for more
 information (`--help`).
 
-A sample invocation of the script with all features (a network with storage
-server enabled and private Ethereum blockchain) looks like:
+A sample invocation of the script with all features (a network running on
+127.171.63.108 with storage server enabled and private Ethereum blockchain)
+looks like:
 
 ```bash
 python3 ./utils/local-devnet/service_node_network.py \
@@ -473,6 +474,7 @@ python3 ./utils/local-devnet/service_node_network.py \
     --anvil-path ~/2024-06-11/anvil \
     --eth-sn-contracts-dir ~/eth-sn-contracts \
     --storage-server-path ~/oxen-storage-server/Build/gcc-debug-static/oxen-storage \
+    --listen-ip 127.171.63.108 \
     --integration-tests
 ```
 
