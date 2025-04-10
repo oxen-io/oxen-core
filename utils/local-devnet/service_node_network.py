@@ -36,8 +36,6 @@ import concurrent.futures
 import random
 from typing import List
 
-datadirectory="testdata"
-
 class SNExitMode(enum.Enum):
     AfterWaitTime = 0
     WithSignature = 1
@@ -1030,7 +1028,7 @@ class SNNetwork:
         if storage_server_path:
             for n in self.all_nodes:
                 if n.service_node:
-                    n.start_storage_server(storage_server_path);
+                    n.start_storage_server();
 
             vprint("Waiting for proofs with storage ports to propagate:", flush=True)
             while True:
@@ -1240,21 +1238,23 @@ def run():
         if args.eth_sn_contracts_dir is None:
             raise RuntimeError('--eth-sn-contracts-dir must be specified when --anvil-path is set')
 
+    data_directory = os.getcwd() + "/testdata"
+
     atexit.register(cleanup)
     global snn, verbose
     if not snn:
-        if os.path.isdir(datadirectory+'/') and not args.keep_data_dir:
-            vprint("Removing existing directory at " + datadirectory + "/")
-            shutil.rmtree(datadirectory+'/')
-        snn = SNNetwork(oxen_bin_dir=args.oxen_bin_dir,
+        if os.path.isdir(data_directory+'/') and not args.keep_data_dir:
+            vprint("Removing existing directory at " + data_directory + "/")
+            shutil.rmtree(data_directory+'/')
+        snn = SNNetwork(datadir=data_directory +'/',
+                        oxen_bin_dir=args.oxen_bin_dir,
                         anvil_path=args.anvil_path,
                         eth_sn_contracts_dir=args.eth_sn_contracts_dir,
-                        datadir=datadirectory+'/',
+                        storage_server_path=args.storage_server_path,
                         keep_data_dir=args.keep_data_dir,
                         start_at_hf20=args.start_at_hf20,
                         stop_at_hf20=args.stop_at_hf20,
                         integration_tests=args.integration_tests,
-                        storage_server_path=args.storage_server_path,
                         listen_ip=args.listen_ip)
     else:
         vprint("reusing SNN")

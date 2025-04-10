@@ -219,18 +219,19 @@ class Daemon(RPCDaemon):
         return self.args + [
             '--add-exclusive-node={}:{}'.format(node.listen_ip, node.p2p_port) for node in self.peers]
 
-    def start_storage_server(self, storage_server_path: pathlib.Path):
-        if storage_server_path:
-            self.storage_server_proc = subprocess.Popen([
+    def start_storage_server(self):
+        if self.storage_server_path:
+            args = [
                 str(self.storage_server_path),
                 "--data-dir={}/storage".format(self.datadir),
                 "--oxend-rpc=ipc://{}/oxend.sock".format(self.datadir),
                 "--omq-port={}".format(self.storage_server_omq_port),
                 "--https-port={}".format(self.storage_server_https_port),
-                "--skip-bootstrap-seed-nodes",
+                "--skip-bootstrap-nodes",
                 "--log-level=trace",
-            ], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
+            ]
+            print("Starting storage server: ", args)
+            self.storage_server_proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def stop(self):
         super().stop()
