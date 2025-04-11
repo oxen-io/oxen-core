@@ -605,10 +605,6 @@ class SNNetwork:
             else:
                 break
 
-        # Deploy smart contracts from eth-sn-contracts (if specified)
-        if eth_sn_contracts_dir is None:
-            raise RuntimeError('eth-sn-contracts directory required')
-
         eth_sn_contracts_makefile_path = eth_sn_contracts_dir / 'Makefile'
         if os.path.exists(eth_sn_contracts_makefile_path):
             subprocess.run(['make', 'deploy-local'],
@@ -1205,7 +1201,8 @@ def run():
                                   'contracts specified via `make deploy-local`. If omitted, the '
                                   'private Ethereum blockchain must already be deployed with the '
                                   'smart contracts prior to invoking this script.'),
-                            type=pathlib.Path)
+                            type=pathlib.Path,
+                            required=True)
     arg_parser.add_argument('--keep-data-dir',
                             help=('If unset (default) and global snn is not set up, '
                                   'delete the existing datadir if present.  If set, '
