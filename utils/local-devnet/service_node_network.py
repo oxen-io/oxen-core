@@ -80,16 +80,6 @@ def all_service_nodes_proofed(sn):
             result = False
     return result
 
-def all_storage_ports_proofed(sn):
-    service_nodes = sn.json_rpc("get_n_service_nodes", {"fields": {"storage_port": True}}).json()['result']['service_node_states']
-    result = True
-    vprint("  {}".format(service_nodes), timestamp=False)
-    for x in service_nodes:
-        if x['storage_port'] <= 0:
-            result = False
-    return result
-
-
 def node_index_is_solo_node(index: int, num_nodes: int):
     result: bool = index > (num_nodes / 2)
     return result
