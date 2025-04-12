@@ -185,6 +185,11 @@ struct network_config final {
     // the `register 0x....` command.  This address should have the staking backend API available at
     // DEFAULT_STAKING_URL + "/api/store/PUBKEY" for accepting registrations.
     const std::string_view DEFAULT_STAKING_URL;
+
+    std::string_view SNAPSHOT_URL;
+    // How old (in seconds) the local blockchain must be compared to a snapshot timestamp before
+    // we apply the snapshot. This is used to determine if a snapshot should be applied.
+    const std::chrono::seconds SNAPSHOT_AGE_THRESHOLD;
 };
 
 }  // namespace cryptonote

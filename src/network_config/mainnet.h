@@ -86,5 +86,7 @@ inline constexpr network_config config{
         .L2_NODE_LIST_PURGE_BLOCKS = 1h / L2_BLOCK_TIME,
         .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = 24h / TARGET_BLOCK_TIME,
         .DEFAULT_STAKING_URL = "https://stake.getsession.org"sv,
+        .SNAPSHOT_URL = "https://public-eu.optf.ngo/oxen"sv,
+        .SNAPSHOT_AGE_THRESHOLD = 30 * 24h,  // One month
 };
 }  // namespace cryptonote::config::mainnet

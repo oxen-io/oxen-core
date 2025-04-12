@@ -73,6 +73,7 @@ extern "C" {
 #include "logging/oxen_logger.h"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
+#include "snapshot.h"
 #include "uptime_proof.h"
 #include "version.h"
 
@@ -104,6 +105,10 @@ const command_line::arg_descriptor<std::string> arg_data_dir{
         }};
 const command_line::arg_flag arg_offline = {
         "offline", "Do not listen for peers, nor connect to any"};
+const command_line::arg_descriptor<std::string> arg_sync_mode = {
+        "sync-mode",
+        "Specify synchronization mode. Available options: 'normal' (default), 'snapshot'.",
+        "normal"};
 const command_line::arg_descriptor<size_t> arg_block_download_max_size = {
         "block-download-max-size",
         "Set maximum size of block download queue in bytes (0 for default)",
@@ -363,6 +368,7 @@ void core::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_l2_skip_proof_check);
     command_line::add_arg(desc, arg_l2_proxy);
     command_line::add_arg(desc, arg_l2_oxend);
+    command_line::add_arg(desc, arg_sync_mode);
     command_line::add_arg(desc, arg_storage_server_port);
     command_line::add_arg(desc, arg_quorumnet_port);
 
@@ -606,6 +612,73 @@ bool core::init(
     auto sqlite_db_file_path = folder / "sqlite.db";
     if (m_nettype == network_type::FAKECHAIN) {
         sqlite_db_file_path = ":memory:";
+    }
+
+    // Parse --sync-mode
+    std::string sync_mode = command_line::get_arg(vm, arg_sync_mode);
+    if (sync_mode != "normal" && sync_mode != "snapshot") {
+        log::error(
+                logcat,
+                "Invalid sync mode: {}. Supported modes are 'normal' and 'snapshot'.",
+                sync_mode);
+        return false;
+    }
+
+    if (sync_mode == "snapshot") {
+        cryptonote::Snapshot snap{m_nettype};
+        auto local_height = db->height();
+        bool should_apply_snapshot = false;
+
+        // Apply snapshot if blockchain is empty
+        uint64_t local_timestamp = 0;
+        if (local_height == 0) {
+            log::info(logcat, "Empty blockchain, applying snapshot");
+            should_apply_snapshot = true;
+        } else {
+            try {
+                local_timestamp = db->get_block_timestamp(local_height - 1);
+            } catch (const std::exception& e) {
+                log::error(logcat, "Failed to get local blockchain timestamp: {}", e.what());
+                should_apply_snapshot = true;
+            }
+        }
+
+        // Calculate if our local blockchain is old enough to warrant a snapshot
+        if (!should_apply_snapshot) {
+            const auto& config = get_config(m_nettype);
+            const uint64_t current_time = std::time(nullptr);
+            if (current_time > local_timestamp + config.SNAPSHOT_AGE_THRESHOLD.count()) {
+                log::info(
+                        logcat,
+                        "Local blockchain timestamp {} is older than threshold ({} seconds), "
+                        "applying snapshot",
+                        local_timestamp,
+                        config.SNAPSHOT_AGE_THRESHOLD.count());
+                should_apply_snapshot = true;
+            } else {
+                log::info(
+                        logcat,
+                        "Local blockchain timestamp {} is recent enough, skipping snapshot load",
+                        local_timestamp);
+            }
+        }
+
+        if (should_apply_snapshot) {
+            log::info(logcat, "Snapshot replacing databases");
+            std::string db_name = db->get_db_name();
+            db->close();
+            db.reset();
+            if (!snap.replace_databases(
+                        m_config_folder / db_name, sqlite_db_file_path, ons_db_file_path)) {
+                log::error(logcat, "Snapshot replace_databases() failed!");
+                return false;
+            }
+            db = init_blockchain_db(folder, vm);
+            if (!db) {
+                log::error(logcat, "Snapshot reloading of blockchain db failed");
+                return false;
+            }
+        }
     }
 
     if (m_nettype == network_type::STAGENET && db->height() > 1) {

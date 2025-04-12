@@ -82,5 +82,7 @@ inline constexpr network_config config{
         .L2_NODE_LIST_PURGE_BLOCKS = mainnet::config.L2_NODE_LIST_PURGE_BLOCKS / 2,
         .L2_NODE_LIST_PURGE_MIN_OXEN_AGE = mainnet::config.L2_NODE_LIST_PURGE_MIN_OXEN_AGE,
         .DEFAULT_STAKING_URL = ""sv,
+        .SNAPSHOT_URL = ""sv,                // Empty URL for testnet
+        .SNAPSHOT_AGE_THRESHOLD = 30 * 24h,  // One month
 };
 }  // namespace cryptonote::config::testnet
