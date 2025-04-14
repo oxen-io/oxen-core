@@ -872,18 +872,19 @@ class SNNetwork:
             # pulse quorum will have timed out
             self.sync_nodes(self.mine(1), timeout=10)
 
-        # Wait for pulse to make block to enter BLS hardfork (height 171 (172 "length", ugh)) ##########################
+        # Wait for pulse to make block to enter BLS hardfork (height 171 or length 172)
         # Wait for one specific node to hit HF21 and check post-fork eth balance
-        h = self.eth_sns[0].height()
+        h = self.sns[0].height()
         while h < 172:
             time.sleep(0.25)
-            h = self.eth_sns[0].height()
+            h = self.sns[0].height()
 
-        rewards_response = self.eth_sns[0].get_accrued_rewards([transition_eth_addr_no_0x])[0]
         # FIXME: this expected value needs to be recomputed with respect to changes made in preparation for HF21
-        #transition_balance_expected = 40840330916 # 40840330916520 but RPC divides by 1000
-        #assert rewards_response.address == transition_eth_addr_no_0x, "Expected one SENT address with a balance, {}".format(transition_eth_addr_no_0x)
-        #assert rewards_response.balance == transition_balance_expected, "Expected {} to have balance {}, not {}".format(transition_eth_addr_no_0x, transition_balance_expected, rewards_response.balance)
+        # if integration_tests:
+            # rewards_response = self.eth_sns[0].get_accrued_rewards([transition_eth_addr_no_0x])[0]
+            #transition_balance_expected = 40840330916 # 40840330916520 but RPC divides by 1000
+            #assert rewards_response.address == transition_eth_addr_no_0x, "Expected one SENT address with a balance, {}".format(transition_eth_addr_no_0x)
+            #assert rewards_response.balance == transition_balance_expected, "Expected {} to have balance {}, not {}".format(transition_eth_addr_no_0x, transition_balance_expected, rewards_response.balance)
 
         # Wait for all nodes to sync up
         self.sync_nodes(172, timeout=120)
