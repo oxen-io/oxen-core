@@ -53,6 +53,7 @@
 #include "common/random.h"
 #include "common/lock.h"
 #include "common/util.h"
+#include "network_config/mocknet.h"
 #include <fmt/format.h>
 #include <fmt/color.h>
 
@@ -1456,7 +1457,16 @@ namespace cryptonote
               auto block_process_start = std::chrono::steady_clock::now();
               block_verification_context bvc{};
 
-              m_core.handle_incoming_block(block_entry.block, pblocks.empty() ? NULL : &pblocks[blockidx], bvc, checkpoint, false); // <--- process block
+              if (mocknet_has_forked(m_core.blockchain.get_current_blockchain_height() - 1)) {
+                  bvc.m_marked_as_orphaned = true;
+              } else {
+                  m_core.handle_incoming_block(
+                          block_entry.block,
+                          pblocks.empty() ? NULL : &pblocks[blockidx],
+                          bvc,
+                          checkpoint,
+                          false);  // <--- process block
+              }
 
               if (bvc.m_verifivation_failed || bvc.m_marked_as_orphaned)
               {

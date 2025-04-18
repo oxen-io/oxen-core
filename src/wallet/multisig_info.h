@@ -67,15 +67,15 @@ namespace boost::serialization {
 
 template <class Archive>
 void serialize(Archive& a, wallet::multisig_info::LR& x, const unsigned int /*ver*/) {
-    a& x.m_L;
-    a& x.m_R;
+    a & x.m_L;
+    a & x.m_R;
 }
 
 template <class Archive>
 void serialize(Archive& a, wallet::multisig_info& x, const unsigned int /*ver*/) {
-    a& x.m_signer;
-    a& x.m_LR;
-    a& x.m_partial_key_images;
+    a & x.m_signer;
+    a & x.m_LR;
+    a & x.m_partial_key_images;
 }
 
 }  // namespace boost::serialization

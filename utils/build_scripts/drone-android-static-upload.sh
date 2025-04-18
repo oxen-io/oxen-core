@@ -29,12 +29,7 @@ cp src/wallet/api/wallet2_api.h $tmpdir/include
 
 for android_abi in "$@"; do
     mkdir -p $tmpdir/lib/${android_abi}
-    strip_arch=$android_abi-linux-android
-    if [ "$android_abi" = "armeabi-v7a" ]; then strip_arch=arm-linux-androideabi
-    elif [ "$android_abi" = "arm64-v8a" ]; then strip_arch=aarch64-linux-android
-    elif [ "$android_abi" = "x86" ]; then strip_arch=i686-linux-android
-    fi
-    /usr/lib/android-sdk/ndk-bundle/toolchains/llvm/prebuilt/linux-x86_64/$strip_arch/bin/strip --strip-debug build-${android_abi}/src/wallet/api/libwallet_merged.a
+    /usr/lib/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip --strip-debug build-${android_abi}/src/wallet/api/libwallet_merged.a
     ln -s ../../../build-${android_abi}/src/wallet/api/libwallet_merged.a $tmpdir/lib/${android_abi}/libwallet_api.a
 done
 

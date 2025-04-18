@@ -60,7 +60,7 @@ public:
     if (!construct_tx(this->m_miners[this->real_source_idx].get_keys(), this->m_sources, destinations, std::nullopt, std::vector<uint8_t>(), m_tx, 0))
       return false;
     
-    const auto& txin = var::get<cryptonote::txin_to_key>(m_tx.vin[0]);
+    const auto& txin = std::get<cryptonote::txin_to_key>(m_tx.vin[0]);
     if (ge_frombytes_vartime(&m_p3, (const unsigned char*) &txin.k_image) != 0)
       return false;
 

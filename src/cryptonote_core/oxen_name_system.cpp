@@ -235,7 +235,7 @@ namespace {
     // Binds a variant of bindable types; calls one of the above according to the contained type
     template <typename... T>
     bool bind(sql_compiled_statement& s, int index, const std::variant<T...>& v) {
-        return var::visit([&](const auto& val) { return ons::bind(s, index, val); }, v);
+        return std::visit([&](const auto& val) { return ons::bind(s, index, val); }, v);
     }
 
     template <typename T>

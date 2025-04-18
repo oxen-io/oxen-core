@@ -722,9 +722,7 @@ class BlockchainDB {
      *
      * If the subclass implements a batching method of caching blocks in RAM to
      * be added to a backing store in groups, it should start a batch which will
-     * end either when <batch_num_blocks> has been added or batch_stop() has
-     * been called.  In either case, it should end the batch and write to its
-     * backing store.
+     * end when batch_stop() has been called and write to its backing store.
      *
      * If a batch is already in-progress, this function must return false.
      * If a batch was started by this call, it must return true.
@@ -732,11 +730,12 @@ class BlockchainDB {
      * If any of this cannot be done, the subclass should throw the corresponding
      * subclass of DB_EXCEPTION
      *
-     * @param batch_num_blocks number of blocks to batch together
+     * @params bytes_required Amount of bytes that the DB must guarantee be
+     * available for storing (can be set to 0).
      *
      * @return true if we started the batch, false if already started
      */
-    virtual bool batch_start(uint64_t batch_num_blocks = 0, uint64_t batch_bytes = 0) = 0;
+    virtual bool batch_start(uint64_t bytes_required = 0) = 0;
 
     /**
      * @brief ends a batch transaction

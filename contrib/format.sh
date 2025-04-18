@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 
-CLANG_FORMAT_DESIRED_VERSION=16
+CLANG_FORMAT_DESIRED_VERSION=19
 
 TARGET_DIRS=(src pybind)
-
-set -e
 
 binary=$(which clang-format-$CLANG_FORMAT_DESIRED_VERSION 2>/dev/null)
 if [ $? -ne 0 ]; then
@@ -22,6 +20,8 @@ if [ $? -ne 0 ]; then
         exit 1
     fi
 fi
+
+set -e
 
 cd "$(dirname $0)/../"
 if [ "$1" = "verify" ] ; then
