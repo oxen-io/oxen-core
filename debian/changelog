@@ -1,3 +1,150 @@
+oxen (11.2.0-1~ubuntu2204) jammy; urgency=medium
+
+  [ Jason Rhinelander ]
+  * WIP oxen->sent transition code
+
+  [ Thomas Winget ]
+  * HF21 transition code mostly finished
+  * Post-hf21 purge and deactivation limit
+  * Final HF20 block payout
+  * correct removal of nodes which did not go past hf21
+  * HF21 fixes and debug logging
+  * rough-but-complete script for hf21 transition info
+  * change localdev initial staking req to match contract
+  * testnet hf21 height
+  * change testnet netid for chain restart
+  * Don't apply HF dereg grace period to zombie nodes
+  * make hf21 zombies not payable
+  * remove erroneous hf21 transition change
+  * add hf21 dry run rpc method
+  * local devnet retry on json-rpc 'error'
+  * hf21 transition: always set bls key if present, even if node fails transition
+  * devnet restart for hf21 testing
+  * add devnet reset old block hashes
+  * fix inverted condition in daemon command
+  * devnet temp hf heights, double staking req
+  * devnet timings underflow fix (and slow it down a little)
+  * devnet hf20 height
+  * (reverted later) devnet hf21 height and stop chain before
+  * redo/fix pre-hf21 bulk payout for non-registrants
+  * push devnet hf21 back a little
+  * devnet hf21 parameters
+  * fix uptime proofs using hf rules one block too early
+  * stop using old monero-style keys altogether at HF21
+  * fix stake scaling for hf21 transition for over-funded nodes
+  * fix hf21_info stake scaling for over-funded nodes
+  * change devnet l2 tracker parameters
+  * remove devnet stall-before-hf21 code
+  * devnet hf dereg grace period 100 blocks
+  * devnet reboot for testing mainnet test contracts
+  * cleanup
+  * clang format
+  * hf21 ensure 'zombies' do not linger in recently removed
+  * fix sent transition circular dependency
+
+  [ doylet ]
+  * Enforce LMDB 'ENABLE_AUTO_RESIZE' branches
+  * Remove unused headers in ringct
+  * Remove unused typedef and comments in rcttypes
+  * Inline LMDB default map size and remove ARM specific map size
+  * Replace LMDB resize-logic w/ +1GiB on full-ness
+  * Fix incorrect rounding up of DB size to LMDB page size
+  * Remove unused running block size/count in LMDB
+  * Linting pass for simplify LMDB resize
+  * Move resize back to when the batch starts
+  * Move network config args into command_line.cpp
+  * Rmove unused offline field in Blockchain
+  * Move network config args into command_line.cpp
+  * Remove unused macro BINARY_ARCHIVE_STREAM
+  * Optimize/remove unused headers in command_line.h
+  * Remove unused headers from core
+  * Remove unused headers in blockchain
+  * Make stacktrace a cmake build option, WITH_STACKTRACE
+  * Add mocknet support via --fork-to-mocknet
+  * Enable mocknet through CMake option WITH_MOCKNET
+  * Mocknet changes to work on mainnet
+  * Final HF21 payments must not payout 0 OXEN when truncated from DB OXEN
+  * Gen data for making transition CSVs, block purging in mocknet
+  * Allow money printing to take custom decimal places
+  * Add more detail to the CSV dumps of the token transition
+  * Hide mocknet impl, pull transition parameters into struct
+  * Pass the transition context into the transition function
+  * Remove unused parse_oxen/eth_address from sent_transition.h
+  * Calc transition STAKING_RATIO at runtime, make conversion ratio 64bits
+  * Simplify mocknet construction of the transition parameters
+  * Revert some incorrect transition stat calculations
+  * Add sanity check of HF transition code when producing CSV reports
+  * Add option to dump the transition CSVs, fix incorrect mocknet conversion ratio
+  * SESH rewards need to be stored in DB units
+  * Remove debugging hardforks for testing mocknet
+  * Adjust mocknet to fork at chain height to follow codebase convention
+  * Add braces around no-op macro when mocknet is disabled
+  * Fix mocknet comment, use oxen::array_count
+  * Linting pass
+  * Avoid querying block height before miner_tx is instantiated
+  * Use constexpr bitset size in bytes to avoid clang-format bug
+  * Fix build w/ sent_transition moved to cryptonote_core
+  * Linting pass for simplify LMDB resize code
+
+  [ Jason Rhinelander ]
+  * Remove check for daemon-side "untrusted"
+
+  [ Thomas Winget ]
+  * fix wallet api include
+  * fix static build sqlite download URL
+  * Dep bump libiconv, libunistring
+
+  [ Jason Rhinelander ]
+  * Reenable android/ios builds
+  * Fix ios wallet_api build
+  * Remove unused leftover _usv helper struct
+  * modernize urls
+  * Fix android build
+
+  [ doylet ]
+  * Handle token rename to SESH and new addedTimestamp field
+  * Separate transition tests into separate functions in localdevnet
+
+  [ Jason Rhinelander ]
+  * Add missing mainnet mandatory upgrades
+  * Add snode address change OMQ subscription
+  * oxend status: show pending registration mempool & confirmations
+  * Make version changes trigger a contact update
+  * Fix circular dependency
+  * clang-format 19
+  * Bump oxen-logging
+
+  [ doylet ]
+  * Cross compile windows has a lowercase windows.h
+
+  [ Jason Rhinelander ]
+  * Avoid fmt::output_file
+
+  [ doylet ]
+  * Fix null-pointer deref in uninitialised MDB read TX
+  * Add mocknet support via --fork-to-mocknet
+  * Gen data for making transition CSVs, block purging in mocknet
+  * Add more detail to the CSV dumps of the token transition
+  * Hide mocknet impl, pull transition parameters into struct
+  * Linting pass
+  * Use strong-typed reward_money in DB SQLite
+  * Linting pass for reward_money change
+  * Fix unit test for SQLite.CalculateRewards to use reward_money correctly
+  * Handle N = 0 for reward handler
+  * Fix wallet RPC crashing and/or returning null ID
+  * Fix the wallet crashing when requesting TXs that aren't pruned
+  * Linting pass for JSON RPC id string/int fix
+
+  [ Jason Rhinelander ]
+  * Add hardfork block&timestamp calculator
+  * Reformat mainnet hard forks
+  * hardfork-calc tweaks
+  * Add HF20 mainnet hard fork
+  * Update oxen-encoding, oxen-mq to latest tagged releases
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 17 Apr 2025 21:50:09 -0300
+
 oxen (11.1.3-1~ubuntu2204) jammy; urgency=medium
 
   * Add missing mainnet mandatory upgrades
