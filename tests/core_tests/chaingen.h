@@ -956,7 +956,7 @@ inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::ve
   if (reinit) {
     CHECK_AND_ASSERT_MES(std::holds_alternative<cryptonote::block>(events[0]), false,
                          "First event must be genesis block creation");
-    cr.blockchain.reset_and_set_genesis_block(var::get<cryptonote::block>(events[0]));
+    cr.blockchain.reset_and_set_genesis_block(std::get<cryptonote::block>(events[0]));
   }
 
   bool r = true;
@@ -964,7 +964,7 @@ inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::ve
   for(size_t i = 1; i < events.size() && r; ++i)
   {
     visitor.event_index(i);
-    r = var::visit(visitor, events[i]);
+    r = std::visit(visitor, events[i]);
   }
 
   return r;

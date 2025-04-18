@@ -18,8 +18,8 @@ Public domain.
 /*
  * The following macros are used to obtain exact-width results.
  */
-#define U8V(v) ((uint8_t)(v)&UINT8_C(0xFF))
-#define U32V(v) ((uint32_t)(v)&UINT32_C(0xFFFFFFFF))
+#define U8V(v) ((uint8_t)(v) & UINT8_C(0xFF))
+#define U32V(v) ((uint32_t)(v) & UINT32_C(0xFFFFFFFF))
 
 /*
  * The following macros load words from an array of bytes with

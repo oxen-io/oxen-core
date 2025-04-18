@@ -60,6 +60,7 @@
 #include "crypto/eth.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/account.h"
+#include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"
@@ -818,7 +819,7 @@ namespace {
         extra_extractor visitor{
                 e, nettype, is_bt ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex};
         for (const auto& extra : extras)
-            var::visit(visitor, extra);
+            std::visit(visitor, extra);
     }
 }  // namespace
 
@@ -2449,7 +2450,8 @@ void core_rpc_server::invoke(GET_QUORUM_STATE& get_quorum_state, rpc_context con
                     hf_version,
                     sn_list.active_service_nodes_infos(),
                     entropy,
-                    pulse_round);
+                    pulse_round,
+                    curr_height - 1);
             if (verify_pulse_quorum_sizes(quorum)) {
                 auto& entry = quorums.emplace_back();
                 entry.height = curr_height;
@@ -3201,6 +3203,56 @@ void core_rpc_server::invoke(GET_SERVICE_NODES& sns, rpc_context) {
                 &removable);
 }
 
+void core_rpc_server::invoke(HF21_DRY_RUN& req, rpc_context) {
+    req.response["status"] = STATUS_OK;
+
+    auto sn_infos_before = m_core.service_node_list.get_service_node_list_state();
+    auto [top_height, top_hash] = m_core.blockchain.get_tail_id();
+    const auto removable = m_core.blockchain.get_removable_nodes();
+
+    auto transition_result = m_core.service_node_list.hf21_dry_run(m_core.get_nettype());
+
+    req.response["before"] = json::object();
+    req.response["after"] = json::object();
+    auto& sns_before = (req.response["before"]["sns"] = json::array());
+    auto& sns_after = (req.response["after"]["sns"] = json::array());
+    auto& rewards_before = (req.response["before"]["rewards"] = json::object());
+    auto& rewards_after = (req.response["after"]["rewards"] = json::object());
+
+    auto rewards_before_pair = m_core.blockchain.sqlite_db().get_all_accrued_rewards();
+    for (size_t i = 0; i < rewards_before_pair.first.size(); i++) {
+        const auto& addr = rewards_before_pair.first[i];
+        const auto& amt = rewards_before_pair.second[i];
+        rewards_before[addr] = amt.to_coin();
+    }
+    for (size_t i = 0; i < transition_result.rewards_after.first.size(); i++) {
+        const auto& addr = transition_result.rewards_after.first[i];
+        const auto& amt = transition_result.rewards_after.second[i];
+        rewards_after[addr] = amt.to_coin();
+    }
+
+    std::unordered_set<std::string> reqed;
+    reqed.insert("all");
+    for (const auto& pubkey_info : sn_infos_before)
+        fill_sn_response_entry(
+                sns_before.emplace_back(json::object()),
+                req.is_bt(),
+                reqed,
+                pubkey_info.pubkey,
+                *pubkey_info.info,
+                top_height,
+                &removable);
+    for (const auto& [pubkey, info] : transition_result.sns_after)
+        fill_sn_response_entry(
+                sns_after.emplace_back(json::object()),
+                req.is_bt(),
+                reqed,
+                pubkey,
+                *info,
+                top_height,
+                &removable);
+}
+
 // Sets the "registered" or "recently_removed" key to the SN info or recently removed info,
 // respectively, if the BLS pubkey was found.  Note that it is possible (if unusual) for the bls
 // pubkey to be found in both lists, and thus have both fields populated.
@@ -3839,7 +3891,7 @@ void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, rpc_context) {
 
     if (req.addresses.size() > 0) {
         for (const auto& address : req.addresses) {
-            uint64_t amount = 0;
+            cryptonote::reward_money amount = {};
             if (eth::address eth_address{};
                 tools::try_load_from_hex_guts<eth::address>(address, eth_address)) {
                 std::tie(std::ignore, amount) = sql_db.get_accrued_rewards(eth_address);
@@ -3847,12 +3899,12 @@ void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, rpc_context) {
                        get_account_address_from_str(parse_info, net, address)) {
                 std::tie(std::ignore, amount) = sql_db.get_accrued_rewards(parse_info.address);
             }
-            balances[address] = amount;
+            balances[address] = amount.to_coin();
         }
     } else {
         auto [addresses, amounts] = sql_db.get_all_accrued_rewards();
         for (size_t i = 0; i < addresses.size(); i++) {
-            balances[addresses[i]] = amounts[i];
+            balances[addresses[i]] = amounts[i].to_coin();
         }
     }
 

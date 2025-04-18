@@ -13,6 +13,8 @@ if [ -z "$SSH_KEY" ]; then
     exit 0
 fi
 
+build_type="$1"
+
 echo "$SSH_KEY" >ssh_key
 
 set -o xtrace  # Don't start tracing until *after* we write the ssh key
@@ -23,17 +25,15 @@ branch_or_tag=${DRONE_BRANCH:-${DRONE_TAG:-unknown}}
 
 upload_to="oxen.rocks/${DRONE_REPO// /_}/${branch_or_tag// /_}"
 
-tmpdir=ios-deps-${DRONE_COMMIT}
+tmpdir=${build_type}-deps-${DRONE_COMMIT}
 mkdir -p $tmpdir/lib
 mkdir -p $tmpdir/include
 
-# Merge the arm64 and simulator libs into a single multi-arch merged lib:
-lipo -create build/{arm64,sim64}/src/wallet/api/libwallet_merged.a -o $tmpdir/lib/libwallet_api.a
+ln -s ../../src/wallet/api/wallet2_api.h $tmpdir/include
+ln -s ../../build/src/wallet/api/libwallet_merged.a $tmpdir/lib
 
-cp src/wallet/api/wallet2_api.h $tmpdir/include
-
-filename=ios-deps-${DRONE_COMMIT}.tar.xz
-XZ_OPTS="--threads=6" tar --dereference -cJvf $filename $tmpdir
+filename=${tmpdir}.tar.xz
+XZ_OPTS="--threads=6" tar --dereference --disable-copyfile -cJvf $filename $tmpdir
 
 # sftp doesn't have any equivalent to mkdir -p, so we have to split the above up into a chain of
 # -mkdir a/, -mkdir a/b/, -mkdir a/b/c/, ... commands.  The leading `-` allows the command to fail

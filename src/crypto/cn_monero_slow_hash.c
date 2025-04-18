@@ -359,9 +359,12 @@ static THREADV int hp_allocated = 0;
 #define cpuid(info, x) __cpuidex(info, x, 0)
 #else
 static void cpuid(int CPUInfo[4], int InfoType) {
-    ASM __volatile__("cpuid"
-                     : "=a"(CPUInfo[0]), "=b"(CPUInfo[1]), "=c"(CPUInfo[2]), "=d"(CPUInfo[3])
-                     : "a"(InfoType), "c"(0));
+    ASM __volatile__(
+            "cpuid" : "=a"(CPUInfo[0]),
+            "=b"(CPUInfo[1]),
+            "=c"(CPUInfo[2]),
+            "=d"(CPUInfo[3]) : "a"(InfoType),
+            "c"(0));
 }
 #endif
 

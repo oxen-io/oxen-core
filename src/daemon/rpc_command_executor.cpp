@@ -36,7 +36,6 @@
 #include <fmt/color.h>
 #include <fmt/core.h>
 #include <oxenc/base32z.h>
-#include <oxenc/variant.h>
 #include <oxenmq/connections.h>
 
 #include <chrono>
@@ -230,7 +229,7 @@ rpc_command_executor::rpc_command_executor(
         std::string http_url, const std::optional<tools::login>& login) :
         m_rpc{std::in_place_type<cryptonote::rpc::http_client>, http_url} {
     if (login)
-        var::get<cryptonote::rpc::http_client>(m_rpc).set_auth(
+        std::get<cryptonote::rpc::http_client>(m_rpc).set_auth(
                 login->username, std::string{login->password.password().view()});
 }
 
@@ -260,7 +259,7 @@ json rpc_command_executor::invoke(
         result = rpc_client->json_rpc(method, std::move(params).value_or(nullptr));
     } else {
         assert(m_omq);
-        auto conn = var::get<oxenmq::ConnectionID>(m_rpc);
+        auto conn = std::get<oxenmq::ConnectionID>(m_rpc);
         auto endpoint = (public_method ? "rpc." : "admin.") + std::string{method};
         std::promise<json> result_p;
         m_omq->request(
@@ -544,7 +543,9 @@ bool rpc_command_executor::show_status() {
     std::string my_sn_key, my_bls;
     int64_t my_decomm_remaining = 0;
     uint64_t my_sn_last_uptime = 0;
-    bool my_sn_registered = false, my_sn_staked = false, my_sn_active = false;
+    bool my_sn_registered = false, my_sn_staked = false, my_sn_active = false,
+         my_reg_in_mempool = false, my_reg_confirming = false;
+    double my_reg_conf = 0, my_reg_conf_required = 0;
     uint16_t my_reason_all = 0, my_reason_any = 0;
     if (info["service_node"].get<bool>()) {
         auto maybe_service_keys = try_running(
@@ -574,6 +575,23 @@ bool rpc_command_executor::show_status() {
                 my_sn_last_uptime = state["last_uptime_proof"].get<uint64_t>();
                 my_reason_all = state.value<uint16_t>("last_decommission_reason_consensus_all", 0);
                 my_reason_any = state.value<uint16_t>("last_decommission_reason_consensus_any", 0);
+            }
+        }
+        if (!my_sn_registered) {
+            if (auto maybe_pending = try_running(
+                        [this] {
+                            return invoke<GET_PENDING_EVENTS>(json{{"include_mempool", true}});
+                        },
+                        "Failed to retrieve pending L2 events")) {
+                for (const auto& reg : maybe_pending->at("registrations")) {
+                    if (reg.at("sn_pubkey") != my_sn_key)
+                        continue;
+
+                    auto reg_height = reg.value<uint64_t>("height", 0);
+                    (reg_height == 0 ? my_reg_in_mempool : my_reg_confirming) = true;
+                    my_reg_conf = reg.value<double>("confirmations", 0);
+                    my_reg_conf_required = reg.value<double>("required", 0);
+                }
             }
         }
     }
@@ -628,9 +646,15 @@ bool rpc_command_executor::show_status() {
 
     if (!my_sn_key.empty()) {
         msg.flush().append("SN: {} ", my_sn_key);
-        if (!my_sn_registered)
-            msg += "not registered";
-        else if (!my_sn_staked)
+        if (!my_sn_registered) {
+            if (my_reg_in_mempool)
+                msg += "incoming reg";
+            else if (my_reg_confirming)
+                msg += "confirming reg ({}/{})"_format(
+                        my_reg_conf, my_reg_conf + my_reg_conf_required);
+            else
+                msg += "not registered";
+        } else if (!my_sn_staked)
             msg += "awaiting";
         else if (my_sn_active)
             msg += "active";
@@ -1346,9 +1370,7 @@ bool rpc_command_executor::unban(const std::string& address) {
 
 bool rpc_command_executor::banned(const std::string& address) {
     auto maybe_banned = try_running(
-            [this, &address] {
-                return invoke<BANNED>(json{{"address", std::move(address)}});
-            },
+            [this, &address] { return invoke<BANNED>(json{{"address", std::move(address)}}); },
             "Failed to retrieve ban information");
     if (!maybe_banned)
         return false;
@@ -1634,10 +1656,7 @@ bool rpc_command_executor::print_blockchain_dynamic_stats(uint64_t nblocks) {
 
 bool rpc_command_executor::relay_tx(const std::string& txid) {
     auto maybe_relay = try_running(
-            [&] {
-                return invoke<RELAY_TX>(json{{"txid", txid}});
-            },
-            "Failed to relay tx");
+            [&] { return invoke<RELAY_TX>(json{{"txid", txid}}); }, "Failed to relay tx");
     if (!maybe_relay)
         return false;
 
@@ -2055,9 +2074,7 @@ bool rpc_command_executor::print_sn(const std::vector<std::string>& args, bool s
     std::string my_sn_pk;
     if (!self) {
         auto maybe_sns = try_running(
-                [&] {
-                    return invoke<GET_SERVICE_NODES>(json{{"service_node_pubkeys", pubkeys}});
-                },
+                [&] { return invoke<GET_SERVICE_NODES>(json{{"service_node_pubkeys", pubkeys}}); },
                 "Failed to retrieve service node data");
         if (!maybe_sns)
             return false;
@@ -2171,9 +2188,7 @@ bool rpc_command_executor::claim_rewards(std::string_view address) {
     if (address.starts_with("0x"))
         address.remove_prefix(2);
     auto maybe_withdrawal_response = try_running(
-            [this, address] {
-                return invoke<BLS_REWARDS_REQUEST>(json{{"address", address}});
-            },
+            [this, address] { return invoke<BLS_REWARDS_REQUEST>(json{{"address", address}}); },
             "Failed to get withdrawal rewards");
     if (!maybe_withdrawal_response)
         return false;
@@ -2194,9 +2209,7 @@ bool rpc_command_executor::print_sn_status(std::vector<std::string> args) {
 
 bool rpc_command_executor::print_sr(uint64_t height) {
     auto maybe_staking_requirement = try_running(
-            [this, height] {
-                return invoke<GET_STAKING_REQUIREMENT>(json{{"height", height}});
-            },
+            [this, height] { return invoke<GET_STAKING_REQUIREMENT>(json{{"height", height}}); },
             "Failed to retrieve staking requirements");
     if (!maybe_staking_requirement)
         return false;
@@ -2210,9 +2223,7 @@ bool rpc_command_executor::print_sr(uint64_t height) {
 
 bool rpc_command_executor::pop_blocks(uint64_t num_blocks) {
     auto maybe_pop_blocks = try_running(
-            [this, num_blocks] {
-                return invoke<POP_BLOCKS>(json{{"nblocks", num_blocks}});
-            },
+            [this, num_blocks] { return invoke<POP_BLOCKS>(json{{"nblocks", num_blocks}}); },
             "Failed to pop blocks");
     if (!maybe_pop_blocks)
         return false;
@@ -2371,7 +2382,7 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
     auto nettype = cryptonote::network_type_from_string(info["nettype"].get<std::string_view>());
     auto& netconf = get_config(nettype);
 
-    if (!netconf.HAVE_STORAGE_AND_LOKINET)  // Devnet/stagenet don't run storage-server / lokinet
+    if (netconf.HAVE_STORAGE_AND_LOKINET)  // Devnet/stagenet don't run storage-server / lokinet
     {
         auto now = std::chrono::system_clock::now();
         auto last_lokinet_ping_timet = info.value<std::time_t>("last_lokinet_ping", 0);
@@ -2875,9 +2886,7 @@ bool rpc_command_executor::prune_blockchain() {
 
 bool rpc_command_executor::check_blockchain_pruning() {
     auto maybe_pruning = try_running(
-            [this] {
-                return invoke<PRUNE_BLOCKCHAIN>(json{{"check", true}});
-            },
+            [this] { return invoke<PRUNE_BLOCKCHAIN>(json{{"check", true}}); },
             "Failed to check blockchain pruning status");
     if (!maybe_pruning)
         return false;

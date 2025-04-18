@@ -142,7 +142,7 @@ static int  Skein1024_Output   (Skein1024_Ctxt_t *ctx, u08b_t * hashVal);
 ******************************************************************/
 
 /* tweak word T[1]: bit field starting positions */
-#define SKEIN_T1_BIT(BIT) ((BIT)-64) /* offset 64 because it's the second word  */
+#define SKEIN_T1_BIT(BIT) ((BIT) - 64) /* offset 64 because it's the second word  */
 
 #define SKEIN_T1_POS_TREE_LVL SKEIN_T1_BIT(112) /* bits 112..118: level in hash tree       */
 #define SKEIN_T1_POS_BIT_PAD SKEIN_T1_BIT(119)  /* bit  119     : partial final input byte */
@@ -221,7 +221,9 @@ static int  Skein1024_Output   (Skein1024_Ctxt_t *ctx, u08b_t * hashVal);
 **/
 #define Skein_Get_Tweak(ctxPtr, TWK_NUM) ((ctxPtr)->h.T[TWK_NUM])
 #define Skein_Set_Tweak(ctxPtr, TWK_NUM, tVal) \
-    { (ctxPtr)->h.T[TWK_NUM] = (tVal); }
+    {                                          \
+        (ctxPtr)->h.T[TWK_NUM] = (tVal);       \
+    }
 
 #define Skein_Get_T0(ctxPtr) Skein_Get_Tweak(ctxPtr, 0)
 #define Skein_Get_T1(ctxPtr) Skein_Get_Tweak(ctxPtr, 1)
@@ -244,13 +246,19 @@ static int  Skein1024_Output   (Skein1024_Ctxt_t *ctx, u08b_t * hashVal);
         (ctxPtr)->h.bCnt = 0;                                                           \
     }
 
-#define Skein_Clear_First_Flag(hdr) \
-    { (hdr).T[1] &= ~SKEIN_T1_FLAG_FIRST; }
-#define Skein_Set_Bit_Pad_Flag(hdr) \
-    { (hdr).T[1] |= SKEIN_T1_FLAG_BIT_PAD; }
+#define Skein_Clear_First_Flag(hdr)         \
+    {                                       \
+        (hdr).T[1] &= ~SKEIN_T1_FLAG_FIRST; \
+    }
+#define Skein_Set_Bit_Pad_Flag(hdr)          \
+    {                                        \
+        (hdr).T[1] |= SKEIN_T1_FLAG_BIT_PAD; \
+    }
 
-#define Skein_Set_Tree_Level(hdr, height) \
-    { (hdr).T[1] |= SKEIN_T1_TREE_LEVEL(height); }
+#define Skein_Set_Tree_Level(hdr, height)          \
+    {                                              \
+        (hdr).T[1] |= SKEIN_T1_TREE_LEVEL(height); \
+    }
 
 /*****************************************************************
 ** "Internal" Skein definitions for debugging and error checking
@@ -274,7 +282,7 @@ static int  Skein1024_Output   (Skein1024_Ctxt_t *ctx, u08b_t * hashVal);
     {                            \
         if (!(x))                \
             return retCode;      \
-    }                             /*  caller  error */
+    } /*  caller  error */
 #define Skein_assert(x) assert(x) /* internal error */
 #endif
 
@@ -692,13 +700,13 @@ static void Skein_256_Process_Block(
     Round256(p0, p1, p2, p3, ROT, rNum) \
             Skein_Show_R_Ptr(BLK_BITS, &ctx->h, 4 * (r - 1) + rNum, Xptr);
 
-#define I256(R)                                                \
-    X0 += ks[r + (R) + 0]; /* inject the key schedule value */ \
-    X1 += ks[r + (R) + 1] + ts[r + (R) + 0];                   \
-    X2 += ks[r + (R) + 2] + ts[r + (R) + 1];                   \
-    X3 += ks[r + (R) + 3] + r + (R);                           \
-    ks[r + (R) + 4] = ks[r + (R)-1]; /* rotate key schedule */ \
-    ts[r + (R) + 2] = ts[r + (R)-1];                           \
+#define I256(R)                                                  \
+    X0 += ks[r + (R) + 0]; /* inject the key schedule value */   \
+    X1 += ks[r + (R) + 1] + ts[r + (R) + 0];                     \
+    X2 += ks[r + (R) + 2] + ts[r + (R) + 1];                     \
+    X3 += ks[r + (R) + 3] + r + (R);                             \
+    ks[r + (R) + 4] = ks[r + (R) - 1]; /* rotate key schedule */ \
+    ts[r + (R) + 2] = ts[r + (R) - 1];                           \
     Skein_Show_R_Ptr(BLK_BITS, &ctx->h, SKEIN_RND_KEY_INJECT, Xptr);
 
         for (r = 1; r < 2 * RCNT; r += 2 * SKEIN_UNROLL_256) /* loop thru it */
@@ -902,17 +910,17 @@ static void Skein_512_Process_Block(
     Round512(p0, p1, p2, p3, p4, p5, p6, p7, ROT, rNum) \
             Skein_Show_R_Ptr(BLK_BITS, &ctx->h, 4 * (r - 1) + rNum, Xptr);
 
-#define I512(R)                                                \
-    X0 += ks[r + (R) + 0]; /* inject the key schedule value */ \
-    X1 += ks[r + (R) + 1];                                     \
-    X2 += ks[r + (R) + 2];                                     \
-    X3 += ks[r + (R) + 3];                                     \
-    X4 += ks[r + (R) + 4];                                     \
-    X5 += ks[r + (R) + 5] + ts[r + (R) + 0];                   \
-    X6 += ks[r + (R) + 6] + ts[r + (R) + 1];                   \
-    X7 += ks[r + (R) + 7] + r + (R);                           \
-    ks[r + (R) + 8] = ks[r + (R)-1]; /* rotate key schedule */ \
-    ts[r + (R) + 2] = ts[r + (R)-1];                           \
+#define I512(R)                                                  \
+    X0 += ks[r + (R) + 0]; /* inject the key schedule value */   \
+    X1 += ks[r + (R) + 1];                                       \
+    X2 += ks[r + (R) + 2];                                       \
+    X3 += ks[r + (R) + 3];                                       \
+    X4 += ks[r + (R) + 4];                                       \
+    X5 += ks[r + (R) + 5] + ts[r + (R) + 0];                     \
+    X6 += ks[r + (R) + 6] + ts[r + (R) + 1];                     \
+    X7 += ks[r + (R) + 7] + r + (R);                             \
+    ks[r + (R) + 8] = ks[r + (R) - 1]; /* rotate key schedule */ \
+    ts[r + (R) + 2] = ts[r + (R) - 1];                           \
     Skein_Show_R_Ptr(BLK_BITS, &ctx->h, SKEIN_RND_KEY_INJECT, Xptr);
 
         for (r = 1; r < 2 * RCNT; r += 2 * SKEIN_UNROLL_512) /* loop thru it */
@@ -1165,25 +1173,25 @@ static void Skein1024_Process_Block(
     Round1024(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, pA, pB, pC, pD, pE, pF, ROT, rn) \
             Skein_Show_R_Ptr(BLK_BITS, &ctx->h, 4 * (r - 1) + rn, Xptr);
 
-#define I1024(R)                                                \
-    X00 += ks[r + (R) + 0]; /* inject the key schedule value */ \
-    X01 += ks[r + (R) + 1];                                     \
-    X02 += ks[r + (R) + 2];                                     \
-    X03 += ks[r + (R) + 3];                                     \
-    X04 += ks[r + (R) + 4];                                     \
-    X05 += ks[r + (R) + 5];                                     \
-    X06 += ks[r + (R) + 6];                                     \
-    X07 += ks[r + (R) + 7];                                     \
-    X08 += ks[r + (R) + 8];                                     \
-    X09 += ks[r + (R) + 9];                                     \
-    X10 += ks[r + (R) + 10];                                    \
-    X11 += ks[r + (R) + 11];                                    \
-    X12 += ks[r + (R) + 12];                                    \
-    X13 += ks[r + (R) + 13] + ts[r + (R) + 0];                  \
-    X14 += ks[r + (R) + 14] + ts[r + (R) + 1];                  \
-    X15 += ks[r + (R) + 15] + r + (R);                          \
-    ks[r + (R) + 16] = ks[r + (R)-1]; /* rotate key schedule */ \
-    ts[r + (R) + 2] = ts[r + (R)-1];                            \
+#define I1024(R)                                                  \
+    X00 += ks[r + (R) + 0]; /* inject the key schedule value */   \
+    X01 += ks[r + (R) + 1];                                       \
+    X02 += ks[r + (R) + 2];                                       \
+    X03 += ks[r + (R) + 3];                                       \
+    X04 += ks[r + (R) + 4];                                       \
+    X05 += ks[r + (R) + 5];                                       \
+    X06 += ks[r + (R) + 6];                                       \
+    X07 += ks[r + (R) + 7];                                       \
+    X08 += ks[r + (R) + 8];                                       \
+    X09 += ks[r + (R) + 9];                                       \
+    X10 += ks[r + (R) + 10];                                      \
+    X11 += ks[r + (R) + 11];                                      \
+    X12 += ks[r + (R) + 12];                                      \
+    X13 += ks[r + (R) + 13] + ts[r + (R) + 0];                    \
+    X14 += ks[r + (R) + 14] + ts[r + (R) + 1];                    \
+    X15 += ks[r + (R) + 15] + r + (R);                            \
+    ks[r + (R) + 16] = ks[r + (R) - 1]; /* rotate key schedule */ \
+    ts[r + (R) + 2] = ts[r + (R) - 1];                            \
     Skein_Show_R_Ptr(BLK_BITS, &ctx->h, SKEIN_RND_KEY_INJECT, Xptr);
 
         for (r = 1; r <= 2 * RCNT; r += 2 * SKEIN_UNROLL_1024) /* loop thru it */

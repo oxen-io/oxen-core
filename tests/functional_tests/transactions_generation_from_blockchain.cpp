@@ -50,7 +50,7 @@ tx_source_entry::output_entry make_outptu_entr_for_gindex(size_t i, std::map<cry
 {
   tx_source_entry::output_entry oe;
   oe = i;
-  oe.second = txs[v[i].first].var::get<txout_to_key>(vout[v[i].second].target).key;
+  oe.second = txs[v[i].first].std::get<txout_to_key>(vout[v[i].second].target).key;
   return oe;
 }
 
@@ -106,7 +106,7 @@ bool make_tx(blockchain_storage& bch)
     //size_t real_index = src.outputs.size() ? (rand() % src.outputs.size() ):0;
     tx_output_entry real_oe;
     real_oe.first = td.m_global_output_index;
-    real_oe.second = var::get<txout_to_key>(td.m_tx.vout[td.m_internal_output_index].target).key;
+    real_oe.second = std::get<txout_to_key>(td.m_tx.vout[td.m_internal_output_index].target).key;
     auto interted_it = src.outputs.insert(it_to_insert, real_oe);
     src.real_out_tx_key = td.m_tx.tx_pub_key;
     src.real_output = interted_it - src.outputs.begin();

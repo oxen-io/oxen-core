@@ -30,7 +30,7 @@ inline constexpr network_config config{
                 0x61,
                 0x64,
                 0x15,
-                0xbe,
+                0xbf,
         }},
         .GENESIS_TX =
                 "04011e1e01ff00018080c9db97f4fb2702fa27e905f604faa4eb084ee675faca77b0cfea9adec152"
@@ -49,6 +49,7 @@ inline constexpr network_config config{
         // Testnet uptime proofs are 6x faster than mainnet (devnet config also uses these)
         .UPTIME_PROOF_FREQUENCY = 10min,
         .UPTIME_PROOF_VALIDITY = 21min,
+        .MAX_DEACTIVATE_PER_BLOCK = 1,
         .HAVE_STORAGE_AND_LOKINET = true,  // storage & lokinet
         .TARGET_BLOCK_TIME = mainnet::config.TARGET_BLOCK_TIME,
         .PULSE_STAGE_TIMEOUT = mainnet::config.PULSE_STAGE_TIMEOUT,
@@ -71,8 +72,8 @@ inline constexpr network_config config{
         .ETH_DEREG_BUFFER = 1h / mainnet::config.TARGET_BLOCK_TIME,
         // FIXME!
         .ETHEREUM_CHAIN_ID = 421614,  // Arbitrum Sepolia
-        .ETHEREUM_REWARDS_CONTRACT = "",
-        .ETHEREUM_POOL_CONTRACT = "",
+        .ETHEREUM_REWARDS_CONTRACT = "0x0B5C58A27A41D5fE3FF83d74060d761D7dDDc1D2",
+        .ETHEREUM_POOL_CONTRACT = "0x8D69Bb9D7b03993234bfd221aCB391Db597a920a",
         // Sepolia arbitrum sometimes slows down below the typical 250ms seen on mainnet, so for
         // testnet/devnet we shorten this to a quarter compared to mainnet:
         .L2_REWARD_POOL_UPDATE_BLOCKS = mainnet::config.L2_REWARD_POOL_UPDATE_BLOCKS / 4,

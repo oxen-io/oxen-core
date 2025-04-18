@@ -31,7 +31,6 @@
 
 #include <fmt/color.h>
 #include <fmt/std.h>
-#include <oxenc/base32z.h>
 #include <oxenmq/fmt.h>
 #include <sodium.h>
 #include <sqlite3.h>
@@ -44,19 +43,16 @@ extern "C" {
 
 #include <boost/algorithm/string.hpp>
 #include <csignal>
-#include <iomanip>
 #include <unordered_set>
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
 #include "bls/bls_crypto.h"
 #include "checkpoints/checkpoints.h"
-#include "common/base58.h"
 #include "common/command_line.h"
 #include "common/exception.h"
 #include "common/file.h"
 #include "common/guts.h"
-#include "common/i18n.h"
 #include "common/notify.h"
 #include "common/sha256sum.h"
 #include "common/threadpool.h"
@@ -69,8 +65,8 @@ extern "C" {
 #include "epee/net/local_ip.h"
 #include "epee/string_tools.h"
 #include "epee/warnings.h"
-#include "ethyl/utils.hpp"
 #include "logging/oxen_logger.h"
+#include "network_config/mocknet.h"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
 #include "uptime_proof.h"
@@ -378,6 +374,7 @@ void core::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_omq_quorumnet_public);
     command_line::add_arg(desc, arg_disable_ip_check);
 
+    mocknet_add_cli_arg(desc);
     miner::init_options(desc);
     BlockchainDB::init_options(desc);
 }
@@ -482,6 +479,8 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
         }
     }
 
+    if (!mocknet_read_cli_for_mocknet_arg(vm, m_service_node))
+        return false;
     return true;
 }
 //-----------------------------------------------------------------------------------------------
@@ -608,22 +607,32 @@ bool core::init(
         sqlite_db_file_path = ":memory:";
     }
 
-    if (m_nettype == network_type::STAGENET && db->height() > 1) {
-        // Hack to handle stagenet reboot by seeing if we have the old stagenet block at height 1:
+    if ((m_nettype == network_type::STAGENET || m_nettype == network_type::DEVNET) &&
+        db->height() > 1) {
+        // Hack to handle stage/devnet reboot by seeing if we have an old block at height 1:
         // if we do, we need to delete the blockchain database files and reinitialize the database.
         // (We can't properly pop blocks in such a case because the reboot changed the serialized
         // blockchain format, and even if we could, it's not worth the time because it'll pop all
         // the way back to empty anyway).
         auto block1_hash = get_block_hash(db->get_block_from_height(1));
-        constexpr std::array STAGENET_OLD_BLOCK1_HASHES = {
+        const std::vector<std::string_view> STAGENET_OLD_BLOCK1_HASHES = {
                 "13633f8335998fe174f12752ea86d25636c9f777f441e9fa205ae4b8868e1f03"sv,
                 "11597c2be5719701d8d1000cfccf46ef7b52a3d80573300d38aa5bf283b43b6a"sv,
                 "efd64cb09bd3cadb127731d2919769314100d85e6d09fdcd022327e65d43e9f2"sv};
-        if (std::find(
-                    STAGENET_OLD_BLOCK1_HASHES.begin(),
-                    STAGENET_OLD_BLOCK1_HASHES.end(),
-                    tools::hex_guts(block1_hash)) != STAGENET_OLD_BLOCK1_HASHES.end()) {
-            log::warning(globallogcat, "Detected old stagenet data; resetting databases...");
+        const std::vector<std::string_view> DEVNET_OLD_BLOCK1_HASHES = {
+                "a9ef652d2867cc663388136c2e18c6d7f3bcaccd3c8615e8d8bc838aa8aae191"sv,
+                "2fc566f435bb0f70fd8d10eac54b229150470b3aaa02ca81104f1c7467a0d3a8"sv};
+
+        auto* hashes = m_nettype == network_type::STAGENET ? &STAGENET_OLD_BLOCK1_HASHES
+                     : m_nettype == network_type::DEVNET   ? &DEVNET_OLD_BLOCK1_HASHES
+                                                           : nullptr;
+
+        if (!hashes)
+            return false;
+
+        if (std::find(hashes->begin(), hashes->end(), tools::hex_guts(block1_hash)) !=
+            hashes->end()) {
+            log::warning(globallogcat, "Detected old stage/devnet data; resetting databases...");
 
             db->close();
             log::warning(globallogcat, "Removing blockchain database");
@@ -862,7 +871,6 @@ bool core::init(
             ons_db,
             sqliteDB.release(),
             m_l2_tracker.get(),
-            m_offline,
             (m_nettype == network_type::FAKECHAIN && !test_options) ? &regtest_test_options
                                                                     : test_options,
             command_line::get_arg(vm, arg_fixed_difficulty),
@@ -876,6 +884,15 @@ bool core::init(
     // now that we have a valid `blockchain`, we can clean out any
     // transactions in the pool that do not conform to the current fork
     mempool.validate(blockchain.get_network_version());
+
+    // if loading after HF21 and monero key was still present, fix here
+    auto height = blockchain.get_current_blockchain_height();
+    if (height > 0) {
+        auto hf21_height = hard_fork_begins(m_nettype, hf::hf21_eth);
+        if (hf21_height && height > *hf21_height) {
+            service_node_list.while_locked([this]() { init_service_keys(true); });
+        }
+    }
 
     bool show_time_stats = command_line::get_arg(vm, arg_show_time_stats) != 0;
     blockchain.set_show_time_stats(show_time_stats);
@@ -1110,7 +1127,7 @@ bool init_key(
 }
 
 //-----------------------------------------------------------------------------------------------
-bool core::init_service_keys() {
+bool core::init_service_keys(bool fixup_monero_ed) {
     auto& keys = m_service_keys;
 
     static_assert(
@@ -1120,6 +1137,11 @@ bool core::init_service_keys() {
                     sizeof(crypto::x25519_public_key) == crypto_scalarmult_curve25519_BYTES &&
                     sizeof(crypto::x25519_secret_key) == crypto_scalarmult_curve25519_BYTES,
             "Invalid ed25519/x25519 sizes");
+
+    // clang-format off
+    // at HF21 (and on load if after HF21), we need to ignore the old monero-style key
+    // and just use the proper ed25519 as if it doesn't exist
+    if (!fixup_monero_ed) {
 
     // <data>/key_ed25519: Standard ed25519 secret key.  We always have this, and generate one if it
     // doesn't exist.
@@ -1166,28 +1188,17 @@ bool core::init_service_keys() {
                                   }))
         return false;
 
+    }
+    // clang-format on
+
     // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
     // for the primary SN keypair.  (This key predates the Ed25519 keys and so is needed for
     // backwards compatibility with existing active service nodes.)  The legacy key consists of
     // *just* the private point, but not the seed, and so cannot be used for full Ed25519 signatures
     // (which rely on the seed for signing).
     if (m_service_node) {
-        if (std::error_code ec; !fs::exists(m_config_folder / "key", ec)) {
-            epee::wipeable_string privkey_signhash;
-            privkey_signhash.resize(crypto_hash_sha512_BYTES);
-            unsigned char* pk_sh_data = reinterpret_cast<unsigned char*>(privkey_signhash.data());
-            crypto_hash_sha512(pk_sh_data, keys.key_ed25519.data(), 32 /* first 32 bytes are the seed to be SHA512 hashed (the last 32 are just the pubkey) */);
-            // Clamp private key (as libsodium does and expects -- see
-            // https://www.jcraige.com/an-explainer-on-ed25519-clamping if you want the broader
-            // reasons)
-            pk_sh_data[0] &= 248;
-            pk_sh_data[31] &= 63;  // (some implementations put 127 here, but with the |64 in the
-                                   // next line it is the same thing)
-            pk_sh_data[31] |= 64;
-            // Monero crypto requires a pointless check that the secret key is < basepoint, so
-            // calculate it mod basepoint to make it happy:
-            sc_reduce32(pk_sh_data);
-            std::memcpy(keys.key.data(), pk_sh_data, 32);
+        if (std::error_code ec; fixup_monero_ed || !fs::exists(m_config_folder / "key", ec)) {
+            keys.key = crypto::ed25519_to_monero_secret_key(keys.key_ed25519);
             if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
                 throw oxen::traced<std::runtime_error>{
                         "Failed to derive primary key from ed25519 key"};
@@ -2245,7 +2256,8 @@ bool core::submit_uptime_proof() {
     try {
         cryptonote_connection_context fake_context{};
         bool relayed;
-        auto height = blockchain.get_current_blockchain_height();
+        auto height = blockchain.get_current_blockchain_height() -
+                      1;  // -1 or would use new rules 1 block too early
         auto hf_version = get_network_version(m_nettype, height);
 
         auto proof = service_node_list.generate_uptime_proof(
@@ -2277,8 +2289,9 @@ bool core::handle_uptime_proof(
     ZoneScoped;
     std::unique_ptr<uptime_proof::Proof> proof;
     try {
+        // height -1 or would use new rules 1 block too early
         proof = std::make_unique<uptime_proof::Proof>(
-                get_network_version(m_nettype, blockchain.get_current_blockchain_height()),
+                get_network_version(m_nettype, blockchain.get_current_blockchain_height() - 1),
                 m_nettype,
                 req.proof);
 
@@ -2440,10 +2453,16 @@ void core::safesyncmode(const bool onoff) {
 //-----------------------------------------------------------------------------------------------
 bool core::add_new_block(
         const block& b, block_verification_context& bvc, checkpoint_t const* checkpoint) {
+
     bool result = blockchain.add_new_block(b, bvc, checkpoint);
-    if (result)
+    if (result) {
         relay_service_node_votes();  // NOTE: nop if synchronising due to not accepting votes whilst
                                      // syncing
+        auto hf21_height = hard_fork_begins(m_nettype, hf::hf21_eth);
+        if (hf21_height && b.get_height() == *hf21_height) {
+            service_node_list.while_locked([this]() { init_service_keys(true); });
+        }
+    }
     return result;
 }
 //-----------------------------------------------------------------------------------------------
