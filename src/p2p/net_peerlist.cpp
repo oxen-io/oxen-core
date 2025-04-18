@@ -74,14 +74,14 @@ namespace {
             return {};
 
         uint64_t size = 0;
-        a& size;
+        a & size;
 
         Elem ple{};
 
         std::vector<Elem> elems{};
         elems.reserve(size);
         while (size--) {
-            a& ple;
+            a & ple;
             elems.push_back(std::move(ple));
         }
 
@@ -91,9 +91,9 @@ namespace {
     template <typename Archive, typename Range>
     void save_peers(Archive& a, const Range& elems) {
         const uint64_t size = elems.size();
-        a& size;
+        a & size;
         for (const auto& elem : elems)
-            a& elem;
+            a & elem;
     }
 
     template <typename T>
@@ -132,7 +132,7 @@ void serialize(Archive& a, peerlist_types& elem, unsigned ver) {
     if (ver == 0) {
         // from v1, we do not store the peer id anymore
         peerid_type peer_id{};
-        a& peer_id;
+        a & peer_id;
     }
 }
 

@@ -369,7 +369,7 @@ void Keyring::sign_transaction(PendingTransaction& ptx) {
 
     // Zero amounts in tx.vin and tx.vout before ringct step
     for (auto& i : ptx.tx.vin)
-        var::get<cryptonote::txin_to_key>(i).amount = 0;
+        std::get<cryptonote::txin_to_key>(i).amount = 0;
     for (auto& o : ptx.tx.vout)
         o.amount = 0;
 

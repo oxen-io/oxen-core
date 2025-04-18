@@ -114,8 +114,8 @@ class account_base {
 
     template <class t_archive>
     inline void serialize(t_archive& a, const unsigned int /*ver*/) {
-        a& m_keys;
-        a& m_creation_timestamp;
+        a & m_keys;
+        a & m_creation_timestamp;
     }
 
     BEGIN_KV_SERIALIZE_MAP()

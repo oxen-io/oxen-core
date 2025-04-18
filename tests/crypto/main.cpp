@@ -258,7 +258,7 @@ int main(int argc, char *argv[]) {
         pubs.push_back(&vpub);
 
       secret_key sec;
-      size_t sec_index;
+      size_t sec_index = 0;
       if (generate) {
         std::tie(sec, sec_index) = extract<secret_key, size_t>(test_args, skip);
         skip += 2;

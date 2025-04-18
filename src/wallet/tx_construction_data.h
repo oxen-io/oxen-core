@@ -75,27 +75,27 @@ namespace boost::serialization {
 
 template <class Archive>
 void serialize(Archive& a, wallet::tx_construction_data& x, const unsigned int ver) {
-    a& x.sources;
-    a& x.change_dts;
-    a& x.splitted_dsts;
+    a & x.sources;
+    a & x.change_dts;
+    a & x.splitted_dsts;
     if (ver < 2) {
         // load list to vector
         std::list<size_t> selected_transfers;
-        a& selected_transfers;
+        a & selected_transfers;
         x.selected_transfers.clear();
         x.selected_transfers.reserve(selected_transfers.size());
         for (size_t t : selected_transfers)
             x.selected_transfers.push_back(t);
     }
-    a& x.extra;
-    a& x.unlock_time;
-    a& x.dests;
+    a & x.extra;
+    a & x.unlock_time;
+    a & x.dests;
     if (ver < 1) {
         x.subaddr_account = 0;
         return;
     }
-    a& x.subaddr_account;
-    a& x.subaddr_indices;
+    a & x.subaddr_account;
+    a & x.subaddr_indices;
     if (!typename Archive::is_saving()) {
         x.rct_config = {rct::RangeProofType::Borromean, 0};
         if (ver < 6) {
@@ -106,12 +106,12 @@ void serialize(Archive& a, wallet::tx_construction_data& x, const unsigned int v
 
     if (ver < 2)
         return;
-    a& x.selected_transfers;
+    a & x.selected_transfers;
     if (ver < 3)
         return;
     if (ver < 5) {
         bool use_bulletproofs = x.rct_config.range_proof_type != rct::RangeProofType::Borromean;
-        a& use_bulletproofs;
+        a & use_bulletproofs;
         if (!typename Archive::is_saving())
             x.rct_config = {
                     use_bulletproofs ? rct::RangeProofType::Bulletproof
@@ -119,12 +119,12 @@ void serialize(Archive& a, wallet::tx_construction_data& x, const unsigned int v
                     0};
         return;
     }
-    a& x.rct_config;
+    a & x.rct_config;
 
     if (ver < 6)
         return;
-    a& x.tx_type;
-    a& x.hf_version;
+    a & x.tx_type;
+    a & x.hf_version;
 }
 
 }  // namespace boost::serialization

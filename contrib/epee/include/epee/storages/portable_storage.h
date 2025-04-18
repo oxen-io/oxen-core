@@ -70,12 +70,12 @@ namespace epee
         explicit converting_array_iterator(array_entry& array) : array{array} {}
         converting_array_iterator(array_entry& array, bool end) : array{array} {
           if (end)
-            index = var::visit([](auto& a) { return a.size(); }, array);
+            index = std::visit([](auto& a) { return a.size(); }, array);
         }
         // Converting dereference operator.  Returns the converted value.  Note that this can throw
         // if the requested conversion fails.
         T operator*() const {
-          return var::visit([this](auto& a) { T val; convert_t(a[index], val); return val; }, array);
+          return std::visit([this](auto& a) { T val; convert_t(a[index], val); return val; }, array);
         }
         bool operator==(const converting_array_iterator& other) const { return &array == &other.array && index == other.index; }
         bool operator!=(const converting_array_iterator& other) const { return !(*this == other); }
@@ -101,7 +101,7 @@ namespace epee
         storage_entry* pentry = find_storage_entry(value_name, parent_section);
         if (!pentry)
           throw std::out_of_range{value_name + " does not exist"};
-        auto& ar_entry = var::get<array_entry>(*pentry);
+        auto& ar_entry = std::get<array_entry>(*pentry);
         return {converting_array_iterator<T>{ar_entry}, converting_array_iterator<T>{ar_entry, true}};
       }
 
@@ -180,15 +180,18 @@ namespace epee
     bool portable_storage::get_value(const std::string& value_name, T& val, section* parent_section)
     {
       static_assert(variant_contains<T, storage_entry>);
-      //TRY_ENTRY();
-      if(!parent_section) parent_section = &m_root;
+      if (!parent_section)
+          parent_section = &m_root;
       storage_entry* pentry = find_storage_entry(value_name, parent_section);
-      if(!pentry)
-        return false;
+      if (!pentry)
+          return false;
 
-      var::visit([&val](const auto& v) { convert_t(v, val); }, *pentry);
-      return true;
-      //CATCH_ENTRY("portable_storage::template<>get_value", false);
+      try {
+          std::visit([&val](const auto& v) { convert_t(v, val); }, *pentry);
+          return true;
+      } catch (const std::exception&) {
+          return false;
+      }
     }
     //---------------------------------------------------------------------------------------------------------------
     template <typename T>
@@ -236,7 +239,7 @@ namespace epee
       if (!std::holds_alternative<array_entry>(*pentry))
         *pentry = array_entry(std::in_place_type<array_t<T>>);
 
-      auto& arr = var::get<array_entry>(*pentry);
+      auto& arr = std::get<array_entry>(*pentry);
       if (auto* arr_t = std::get_if<array_t<T>>(&arr))
         arr_t->clear();
       else
