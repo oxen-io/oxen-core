@@ -47,6 +47,7 @@
 #include "common/exception.h"
 #include "common/varint.h"
 #include "epee/warnings.h"
+#include "epee/wipeable_string.h"
 extern "C" {
 #include "crypto-ops.h"
 #include "keccak.h"
@@ -752,6 +753,27 @@ bool check_key_image_signature(
     ec_scalar h = rs.hash_to_scalar();
     sc_sub(h.data(), h.data(), sig.c());
     return sc_isnonzero(h.data()) == 0;
+}
+
+secret_key ed25519_to_monero_secret_key(const ed25519_secret_key& skey) {
+    epee::wipeable_string privkey_signhash;
+    privkey_signhash.resize(crypto_hash_sha512_BYTES);
+    unsigned char* pk_sh_data = reinterpret_cast<unsigned char*>(privkey_signhash.data());
+    crypto_hash_sha512(pk_sh_data, skey.data(), 32 /* first 32 bytes are the seed to be SHA512 hashed (the last 32 are just the pubkey) */);
+    // Clamp private key (as libsodium does and expects -- see
+    // https://www.jcraige.com/an-explainer-on-ed25519-clamping if you want the broader
+    // reasons)
+    pk_sh_data[0] &= 248;
+    pk_sh_data[31] &= 63;  // (some implementations put 127 here, but with the |64 in the
+                           // next line it is the same thing)
+    pk_sh_data[31] |= 64;
+    // Monero crypto requires a pointless check that the secret key is < basepoint, so
+    // calculate it mod basepoint to make it happy:
+    sc_reduce32(pk_sh_data);
+
+    secret_key result;
+    std::memcpy(result.data(), pk_sh_data, 32);
+    return result;
 }
 
 }  // namespace crypto

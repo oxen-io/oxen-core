@@ -2100,6 +2100,10 @@ struct GET_SERVICE_NODES : PUBLIC {
     } request;
 };
 
+struct HF21_DRY_RUN : PUBLIC, NO_ARGS {
+    static constexpr auto names() { return NAMES("hf21_dry_run"); }
+};
+
 /// RPC: service_node/get_service_node_status
 ///
 /// Retrieves information on the current daemon's Service Node state.  The returned information is
@@ -2942,6 +2946,7 @@ using core_rpc_types = tools::type_list<
         GET_QUORUM_STATE,
         GET_SERVICE_KEYS,
         GET_SERVICE_NODES,
+        HF21_DRY_RUN,
         GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES,
         BLS_REWARDS_REQUEST,
         BLS_EXIT_LIQUIDATION_LIST,

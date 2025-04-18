@@ -30,6 +30,7 @@
 #pragma once
 
 #include "core_rpc_server.h"
+#include "crypto/crypto.h"
 #include "cryptonote_core/blockchain.h"
 #include "oxenmq/connections.h"
 
@@ -48,21 +49,22 @@ void init_omq_options(boost::program_options::options_description& desc);
  */
 class omq_rpc final {
 
+    struct basic_sub {
+        std::chrono::steady_clock::time_point expiry;
+    };
+
     enum class mempool_sub_type { all, blink };
     struct mempool_sub {
         std::chrono::steady_clock::time_point expiry;
         mempool_sub_type type;
     };
 
-    struct block_sub {
-        std::chrono::steady_clock::time_point expiry;
-    };
-
     cryptonote::core& core_;
     core_rpc_server& rpc_;
     std::shared_timed_mutex subs_mutex_;
     std::unordered_map<oxenmq::ConnectionID, mempool_sub> mempool_subs_;
-    std::unordered_map<oxenmq::ConnectionID, block_sub> block_subs_;
+    std::unordered_map<oxenmq::ConnectionID, basic_sub> block_subs_;
+    std::unordered_map<oxenmq::ConnectionID, basic_sub> snode_addr_subs_;
 
   public:
     omq_rpc(cryptonote::core& core,
@@ -77,12 +79,17 @@ class omq_rpc final {
             const std::string& blob,
             const tx_pool_options& opts);
 
+    void send_snode_addr_notifications(
+            const uptime_proof::Proof& proof, const crypto::x25519_public_key& x_pk);
+
   private:
     void on_get_blocks(oxenmq::Message& m);
 
     void on_mempool_sub_request(oxenmq::Message& m);
 
     void on_block_sub_request(oxenmq::Message& m);
+
+    void on_snode_addr_sub_request(oxenmq::Message& m);
 };
 
 }  // namespace cryptonote::rpc

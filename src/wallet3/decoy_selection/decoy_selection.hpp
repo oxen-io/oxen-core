@@ -14,7 +14,7 @@ class DecoySelector {
   public:
     virtual std::vector<int64_t> operator()(const Output& selected_output);
 
-    DecoySelector(int64_t min, int64_t max) : min_output_index(min), max_output_index(max){};
+    DecoySelector(int64_t min, int64_t max) : min_output_index(min), max_output_index(max) {};
 
     int64_t min_output_index = 0;
     int64_t max_output_index = 0;
