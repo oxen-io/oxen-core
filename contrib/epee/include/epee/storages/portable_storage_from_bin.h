@@ -30,7 +30,7 @@
 
 #include "portable_storage_base.h"
 #include <oxenc/endian.h>
-#include <oxenc/variant.h>
+#include <variant>
 
 namespace epee
 {
@@ -128,7 +128,7 @@ namespace epee
       size_t size = read_varint();
       CHECK_AND_ASSERT_THROW_MES(size <= m_count, "Size sanity check failed");
       storage_entry se{std::in_place_type<array_entry>, std::in_place_type<array_t<T>>};
-      auto& arr = var::get<array_t<T>>(var::get<array_entry>(se));
+      auto& arr = std::get<array_t<T>>(std::get<array_entry>(se));
       if constexpr (!std::is_same_v<T, bool>) // bool uses a std::deque, which isn't reserveable
         arr.reserve(std::min<size_t>(size, 4096));
 
@@ -183,7 +183,7 @@ namespace epee
     storage_entry throwable_buffer_reader::read_se()
     {
       storage_entry e{std::in_place_type<T>};
-      read(var::get<T>(e));
+      read(std::get<T>(e));
       return e;
     }
 

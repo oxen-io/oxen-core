@@ -36,8 +36,6 @@
 #include "common/fs.h"
 #include "ringct/rctTypes.h"
 
-#define ENABLE_AUTO_RESIZE
-
 namespace cryptonote {
 
 struct mdb_block_info;
@@ -356,7 +354,7 @@ class BlockchainLMDB : public BlockchainDB {
             size_t num_desired_checkpoints = GET_ALL_CHECKPOINTS) const override;
 
     void set_batch_transactions(bool batch_transactions) override;
-    bool batch_start(uint64_t batch_num_blocks = 0, uint64_t batch_bytes = 0) override;
+    bool batch_start(uint64_t bytes_required = 0) override;
     void batch_commit();
     void batch_stop() override;
     void batch_abort() override;
@@ -405,11 +403,11 @@ class BlockchainLMDB : public BlockchainDB {
     static int compare_string(const MDB_val* a, const MDB_val* b);
 
   private:
-    void do_resize(uint64_t size_increase = 0);
+    // The minimum amount the DB should grow by
+    constexpr static uint64_t MIN_GROW_SIZE = 1 * 1024 * 1024 * 1024;  // 1 GiB
 
-    bool need_resize(uint64_t threshold_size = 0) const;
-    void check_and_resize_for_batch(uint64_t batch_num_blocks, uint64_t batch_bytes);
-    uint64_t get_estimated_batch_size(uint64_t batch_num_blocks, uint64_t batch_bytes) const;
+    // Resize the DB by `max(MIN_GROW_SIZE, bytes_required)`
+    void do_resize(uint64_t bytes_required);
 
     void add_block(
             const block& blk,
@@ -536,8 +534,6 @@ class BlockchainLMDB : public BlockchainDB {
 
     MDB_dbi m_properties;
 
-    mutable uint64_t m_cum_size;  // used in batch size estimation
-    mutable unsigned int m_cum_count;
     fs::path m_folder;
     mdb_txn_safe* m_write_txn;        // may point to either a short-lived txn or a batch txn
     mdb_txn_safe* m_write_batch_txn;  // persist batch txn outside of BlockchainLMDB
@@ -549,21 +545,8 @@ class BlockchainLMDB : public BlockchainDB {
     mdb_txn_cursors m_wcursors;
     mutable boost::thread_specific_ptr<mdb_threadinfo> m_tinfo;
 
-#if defined(__arm__)
-    // force a value so it can compile with 32-bit ARM
-    constexpr static uint64_t DEFAULT_MAPSIZE = 1LL << 31;
-#else
-#if defined(ENABLE_AUTO_RESIZE)
-    constexpr static uint64_t DEFAULT_MAPSIZE = 1LL << 30;
-#else
-    constexpr static uint64_t DEFAULT_MAPSIZE = 1LL << 33;
-#endif
-#endif
-
     // Guards LMDB resize
     std::mutex m_synchronization_lock;
-
-    constexpr static float RESIZE_PERCENT = 0.9f;
 };
 
 }  // namespace cryptonote

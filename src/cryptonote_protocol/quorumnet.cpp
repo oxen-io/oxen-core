@@ -145,9 +145,9 @@ namespace {
 
     template <typename E>
 #ifdef __GNUG__
-[[gnu::warn_unused_result]]
+    [[gnu::warn_unused_result]]
 #endif
-E get_enum(const bt_dict &d, const std::string &key) {
+    E get_enum(const bt_dict& d, const std::string& key) {
         E result = static_cast<E>(get_int<std::underlying_type_t<E>>(d.at(key)));
         if (result < E::_count)
             return result;
@@ -588,12 +588,12 @@ E get_enum(const bt_dict &d, const std::string &key) {
         if (vote.group == quorum_group::invalid)
             throw oxen::traced<std::invalid_argument>("invalid vote group");
         vote.index_in_group = get_int<uint16_t>(d.at("i"));
-        auto& sig = var::get<std::string>(d.at("s"));
+        auto& sig = std::get<std::string>(d.at("s"));
         if (sig.size() != sizeof(vote.signature))
             throw oxen::traced<std::invalid_argument>("invalid vote signature size");
         std::memcpy(&vote.signature, sig.data(), sizeof(vote.signature));
         if (vote.type == quorum_type::checkpointing) {
-            auto& bh = var::get<std::string>(d.at("bh"));
+            auto& bh = std::get<std::string>(d.at("bh"));
             if (bh.size() != vote.checkpoint.block_hash.size())
                 throw oxen::traced<std::invalid_argument>("invalid vote checkpoint block hash");
             std::memcpy(vote.checkpoint.block_hash.data(), bh.data(), bh.size());
@@ -1115,7 +1115,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
                                 {"!", tag}, {"e", "No transaction included in blink request"sv}}));
             return;
         }
-        const std::string& tx_data = var::get<std::string>(t_it->second);
+        const std::string& tx_data = std::get<std::string>(t_it->second);
         log::trace(logcat, "Blink tx data is {} bytes", tx_data.size());
 
         // "hash" is optional -- it lets us short-circuit processing the tx if we've already seen
@@ -1123,7 +1123,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         // don't trust the hash if we haven't seen it before -- this is only used to skip
         // propagation and validation.
         crypto::hash tx_hash;
-        auto& tx_hash_str = var::get<std::string>(data.at("#"));
+        auto& tx_hash_str = std::get<std::string>(data.at("#"));
         bool already_approved = false, already_rejected = false;
         if (tx_hash_str.size() == sizeof(crypto::hash)) {
             std::memcpy(tx_hash.data(), tx_hash_str.data(), tx_hash_str.size());
@@ -1222,7 +1222,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
 
         auto btxptr = std::make_shared<blink_tx>(blink_height);
         auto& btx = *btxptr;
-        auto& tx = var::get<cryptonote::transaction>(btx.tx);
+        auto& tx = std::get<cryptonote::transaction>(btx.tx);
         // If any quorums are too small set the extra spaces to rejected (this also checks that no
         // quorums are too big).
         for (size_t qi = 0; qi < blink_quorums.size(); qi++)
@@ -1729,7 +1729,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         }
         auto data = bt_deserialize<bt_dict>(m.data[0]);
         auto tag = get_int<uint64_t>(data.at("!"));
-        auto& error = var::get<std::string>(data.at("e"));
+        auto& error = std::get<std::string>(data.at("e"));
 
         log::info(logcat, "Received no-start blink response: {}", error);
 
@@ -1757,7 +1757,7 @@ E get_enum(const bt_dict &d, const std::string &key) {
         // remotes we sent it to rejected it then that remote can reply with a message.  That gets a
         // bit complicated, though, in terms of maintaining internal state (since the bl.bad is sent
         // on signature receipt, not at rejection time), so for now we don't include it.
-        // auto &error = var::get<std::string>(data.at("e"));
+        // auto &error = std::get<std::string>(data.at("e"));
 
         log::info(logcat, "Received blink failure response");
 

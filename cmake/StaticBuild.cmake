@@ -28,7 +28,7 @@ set(READLINE_HASH SHA512=27790d0461da3093a7fee6e89a51dcab5dc61928ec42e9228ab3649
     CACHE STRING "readline source hash")
 
 set(SQLITE3_VERSION 3490100 CACHE STRING "sqlite3 version")
-set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2024
+set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2025
     CACHE STRING "sqlite3 download mirror(s)")
 set(SQLITE3_SOURCE sqlite-autoconf-${SQLITE3_VERSION}.tar.gz)
 set(SQLITE3_HASH SHA512=ace92f20fb13a28a8be0eb3560ebf79e71e882611108179b45abba6e77ec0964d75a96c1e187c0e5f883b83896fd44074ef244e1f589288b6354bc9db85223ca
@@ -108,18 +108,18 @@ set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
 set(OPENSSL_HASH SHA256=57e03c50feab5d31b152af2b764f10379aecd8ee92f16c985983ce4a99f7ef86
     CACHE STRING "openssl source hash")
 
-set(LIBICONV_VERSION 1.17 CACHE STRING "libiconv version")
+set(LIBICONV_VERSION 1.18 CACHE STRING "libiconv version")
 set(LIBICONV_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libiconv
     CACHE STRING "libiconv mirror(s)")
 set(LIBICONV_SOURCE libiconv-${LIBICONV_VERSION}.tar.gz)
-set(LIBICONV_HASH SHA512=18a09de2d026da4f2d8b858517b0f26d853b21179cf4fa9a41070b2d140030ad9525637dc4f34fc7f27abca8acdc84c6751dfb1d426e78bf92af4040603ced86
+set(LIBICONV_HASH SHA512=a55eb3b7b785a78ab8918db8af541c9e11deb5ff4f89d54483287711ed797d87848ce0eafffa7ce26d9a7adb4b5a9891cb484f94bd4f51d3ce97a6a47b4c719a
     CACHE STRING "libiconv source hash")
 
-set(LIBUNISTRING_VERSION 1.1 CACHE STRING "libunistring version")
+set(LIBUNISTRING_VERSION 1.3 CACHE STRING "libunistring version")
 set(LIBUNISTRING_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libunistring
     CACHE STRING "libunistring mirror(s)")
 set(LIBUNISTRING_SOURCE libunistring-${LIBUNISTRING_VERSION}.tar.xz)
-set(LIBUNISTRING_HASH SHA512=01a4267bbd301ea5c389b17ee918ae5b7d645da8b2c6c6f0f004ff2dead9f8e50cda2c6047358890a5fceadc8820ffc5154879193b9bb8970f3fb1fea1f411d6
+set(LIBUNISTRING_HASH SHA512=864d42b1d4ae4941fe5c8327d6726ab8e3a35d2d5f9d25ce4859a72ab2f549a7b68f58638cf8767d863f58161d1a4053495d185860964a942d6750e42facf931
     CACHE STRING "libunistring source hash")
 
 set(LIBIDN2_VERSION 2.3.4 CACHE STRING "libidn2 version")
@@ -168,16 +168,12 @@ if (ANDROID)
   endif()
   if(CMAKE_ANDROID_ARCH_ABI MATCHES x86_64)
     set(android_clang x86_64-linux-android${ANDROID_PLATFORM_LEVEL}-clang)
-    set(android_machine x86_64)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES x86)
     set(android_clang i686-linux-android${ANDROID_PLATFORM_LEVEL}-clang)
-    set(android_machine i686)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES armeabi-v7a)
     set(android_clang armv7a-linux-androideabi${ANDROID_PLATFORM_LEVEL}-clang)
-    set(android_machine armv7)
   elseif(CMAKE_ANDROID_ARCH_ABI MATCHES arm64-v8a)
     set(android_clang aarch64-linux-android${ANDROID_PLATFORM_LEVEL}-clang)
-    set(android_machine aarch64)
   else()
     message(FATAL_ERROR "Don't know how to build for android arch abi ${CMAKE_ANDROID_ARCH_ABI}")
   endif()
@@ -237,13 +233,13 @@ endif()
 set(apple_cflags_arch)
 set(apple_cxxflags_arch)
 set(apple_ldflags_arch)
-set(gmp_build_host "${cross_host}")
+set(sane_cross_host "${cross_host}")
 if(APPLE AND CMAKE_CROSSCOMPILING)
-    if(build_host MATCHES "^(.*-.*-)ios([0-9.]+)(-.*)?$")
-        set(gmp_build_host "${CMAKE_MATCH_1}darwin${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
+    if(sane_cross_host MATCHES "^(.*-)ios([0-9.]+)(-.*)?$")
+        set(sane_cross_host "${CMAKE_MATCH_1}darwin${CMAKE_MATCH_2}${CMAKE_MATCH_3}")
     endif()
-    if(gmp_build_host MATCHES "^(.*-.*-.*)-simulator$")
-        set(gmp_build_host "${CMAKE_MATCH_1}")
+    if(sane_cross_host MATCHES "^(.*)-simulator$")
+        set(sane_cross_host "${CMAKE_MATCH_1}")
     endif()
 
     set(apple_arch)
@@ -271,7 +267,7 @@ if(APPLE AND CMAKE_CROSSCOMPILING)
         set(apple_${f}flags_arch "${apple_${f}flags_arch} -isysroot ${CMAKE_OSX_SYSROOT}")
       endforeach()
     endif()
-elseif(build_host STREQUAL "" AND CMAKE_LIBRARY_ARCHITECTURE)
+elseif(cross_host STREQUAL "" AND CMAKE_LIBRARY_ARCHITECTURE)
     set(build_host "--build=${CMAKE_LIBRARY_ARCHITECTURE}")
 endif()
 
@@ -300,7 +296,7 @@ endif()
 # ExternalProject_Add if specified.  If omitted, these defaults are used:
 set(build_def_DEPENDS "")
 set(build_def_PATCH_COMMAND "")
-set(build_def_CONFIGURE_COMMAND ./configure ${cross_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+set(build_def_CONFIGURE_COMMAND ./configure ${sane_cross_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
     "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}" "CXXFLAGS=${deps_CXXFLAGS}" ${cross_extra})
 set(build_def_BUILD_COMMAND make)
 set(build_def_INSTALL_COMMAND make install)
@@ -417,6 +413,10 @@ elseif(APPLE)
   set(boost_buildflags "cxxflags=-fPIC -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}" "cflags=-mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
 
+if(ANDROID)
+  set(boost_buildflags ${boost_buildflags} target-os=android)
+endif()
+
 build_external(boost
   #  PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam tools/build/src/user-config.jam
   ${boost_patch_commands}
@@ -452,8 +452,8 @@ set(Boost_VERSION ${BOOST_VERSION})
 
 
 build_external(sqlite3
-  CONFIGURE_COMMAND ./configure ${cross_host} --disable-shared --prefix=${DEPS_DESTDIR}
-    "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS}" ${cross_extra}
+  CONFIGURE_COMMAND ./configure --disable-shared --prefix=${DEPS_DESTDIR}
+    "CC=${deps_cc}" "CFLAGS=${deps_CFLAGS}" ${sane_cross_host} ${cross_extra}
   BUILD_COMMAND true
   INSTALL_COMMAND make install-headers install-lib)
 add_static_target( SQLite::SQLite3 sqlite3_external libsqlite3.a)
@@ -618,15 +618,9 @@ build_external(sodium)
 add_static_target(sodium sodium_external libsodium.a)
 
 
-set(zmq_cross_host "${cross_host}")
-if(IOS AND cross_host MATCHES "-ios$")
-  # zmq doesn't like "-ios" for the host, so replace it with -darwin
-  string(REGEX REPLACE "-ios$" "-darwin" zmq_cross_host ${cross_host})
-endif()
-
 build_external(zmq
   DEPENDS sodium_external
-  CONFIGURE_COMMAND ./configure ${zmq_cross_host} --prefix=${DEPS_DESTDIR} --enable-static --disable-shared
+  CONFIGURE_COMMAND ./configure ${sane_cross_host} --prefix=${DEPS_DESTDIR} --enable-static --disable-shared
     --disable-curve-keygen --enable-curve --disable-drafts --disable-libunwind --with-libsodium
     --disable-libbsd --disable-perf
     --without-pgm --without-norm --without-vmci --without-docs --with-pic --disable-Werror
@@ -687,42 +681,47 @@ if(CMAKE_C_COMPILER_ID STREQUAL GNU)
 endif()
 
 build_external(libtasn1
-    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}"
         "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}${libtasn_extra_cflags}"
         "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}${libtasn_extra_cflags}"
         "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
-        ${cross_host} ${cross_extra}
+        ${sane_cross_host} ${cross_extra}
     BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libtasn1.a ${DEPS_DESTDIR}/include/libtasn1.h)
 add_static_target(libtasn1::libtasn1 libtasn1_external libtasn1.a)
 
-build_external(libiconv
-    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
-        "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
-        "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
-        ${cross_host} ${cross_extra}
-    BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libiconv.a ${DEPS_DESTDIR}/include/iconv.h)
-add_static_target(libiconv::libiconv libiconv_external libiconv.a)
+if (WIN32)
+    build_external(libiconv
+        CONFIGURE_COMMAND ./configure --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+            "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
+            "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
+            ${sane_cross_host} ${cross_extra}
+        BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libiconv.a ${DEPS_DESTDIR}/include/iconv.h)
+    add_static_target(libiconv::libiconv libiconv_external libiconv.a)
+else()
+    add_library(libiconv_external INTERFACE)
+    add_library(libiconv::libiconv ALIAS libiconv_external)
+endif()
 
 build_external(libunistring
-    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
         "CPPFLAGS=-I${DEPS_DESTDIR}/include" "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}"
-        ${cross_host} ${cross_extra}
+        ${sane_cross_host} ${cross_extra}
     DEPENDS libiconv_external
     BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libunistring.a ${DEPS_DESTDIR}/include/unistr.h)
 add_static_target(libunistring::libunistring libunistring_external libunistring.a libiconv::libiconv)
 
 build_external(libidn2
-    CONFIGURE_COMMAND ./configure ${build_host} --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
-        ${cross_host} ${cross_extra}
+        ${sane_cross_host} ${cross_extra}
     DEPENDS libunistring_external
     BUILD_BYPRODUCTS ${DEPS_DESTDIR}/lib/libidn2.a ${DEPS_DESTDIR}/include/idn2.h)
 add_static_target(libidn2::libidn2 libidn2_external libidn2.a libunistring::libunistring)
 
 build_external(gmp
-    CONFIGURE_COMMAND ./configure ${gmp_build_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
+    CONFIGURE_COMMAND ./configure ${sane_cross_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
         "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
     DEPENDS libidn2_external libtasn1_external
@@ -732,12 +731,11 @@ add_static_target(gmp::gmp gmp_external libgmp.a libidn2::libidn2 libtasn1::libt
 
 expand_urls(zstd_urls ${ZSTD_SOURCE} ${ZSTD_MIRROR})
 set(zstd_cmake_extra)
-if(CMAKE_C_COMPILER_LAUNCHER)
-    list(APPEND zstd_cmake_extra "-DCMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}")
-endif()
-if(CMAKE_TOOLCHAIN_FILE)
-    list(APPEND zstd_cmake_extra "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}")
-endif()
+foreach(opt IN ITEMS CMAKE_C_COMPILER_LAUNCHER CMAKE_TOOLCHAIN_FILE PLATFORM DEPLOYMENT_TARGET ENABLE_VISIBILITY ENABLE_BITCODE)
+    if(${opt})
+        list(APPEND zstd_cmake_extra "-D${opt}=${${opt}}")
+    endif()
+endforeach()
 ExternalProject_Add(zstd_external
     SOURCE_SUBDIR build/cmake
     URL ${zstd_urls}
@@ -796,7 +794,7 @@ foreach(curl_arch ${curl_arches})
   build_external(curl
     TARGET_SUFFIX ${curl_target_suffix}
     DEPENDS ${maybe_openssl} zlib_external zstd_external
-    CONFIGURE_COMMAND ./configure ${cross_host} ${cross_extra} --prefix=${curl_prefix} --disable-shared
+    CONFIGURE_COMMAND ./configure ${sane_cross_host} ${cross_extra} --prefix=${curl_prefix} --disable-shared
     --enable-static --disable-ares --disable-ftp --disable-ldap --disable-laps --disable-rtsp
     --disable-dict --disable-telnet --disable-tftp --disable-pop3 --disable-imap --disable-smb
     --disable-smtp --disable-gopher --disable-manual --disable-libcurl-option --enable-http

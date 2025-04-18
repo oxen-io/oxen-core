@@ -128,18 +128,6 @@ bool parse_int(const std::string_view str, T& value, int base = 10) {
 std::string lowercase_ascii_string(std::string_view src);
 std::string uppercase_ascii_string(std::string_view src);
 
-namespace detail {
-    template <size_t N>
-    struct usv_literal {
-        consteval usv_literal(const char (&s)[N]) {
-            for (size_t i = 0; i < N; i++)
-                str[i] = static_cast<unsigned char>(s[i]);
-        }
-        unsigned char str[N];  // we keep the null on the end, in case you pass .data() to a C func
-        using size = std::integral_constant<size_t, N - 1>;
-    };
-}  // namespace detail
-
 /// Converts a duration into a human friendlier string, such as "3d7d47m12s" or "347µs"
 std::string friendly_duration(std::chrono::nanoseconds dur);
 

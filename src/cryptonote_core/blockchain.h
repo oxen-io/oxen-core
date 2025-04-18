@@ -36,7 +36,6 @@
 
 // Workaround for boost::serialization issue #219
 #include <boost/version.hpp>
-#include <type_traits>
 #if BOOST_VERSION == 107400
 #include <boost/serialization/library_version_type.hpp>
 #endif
@@ -46,20 +45,16 @@ using io_service = io_context;
 }
 
 #include <atomic>
-#include <boost/multi_index/global_fun.hpp>
-#include <boost/multi_index/hashed_index.hpp>
-#include <boost/multi_index/member.hpp>
-#include <boost/multi_index_container.hpp>
 #include <boost/serialization/list.hpp>
-#include <ethyl/provider.hpp>
 #include <functional>
+#include <set>
+#include <span>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
 #include "blockchain_db/blockchain_db.h"
 #include "checkpoints/checkpoints.h"
-#include "common/util.h"
 #include "crypto/eth.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -69,12 +64,9 @@ using io_service = io_context;
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "cryptonote_tx_utils.h"
 #include "epee/rolling_median.h"
-#include "epee/span.h"
-#include "epee/string_tools.h"
 #include "l2_tracker/l2_tracker.h"
 #include "pulse.h"
 #include "rpc/core_rpc_server_binary_commands.h"
-#include "rpc/core_rpc_server_commands_defs.h"
 
 struct sqlite3;
 namespace service_nodes {
@@ -170,7 +162,6 @@ class Blockchain {
      * @param l2_tracker a pointer to the L2Tracker instance; this pointer is *not* managed by the
      * Blockchain object, but must remain alive at least as long as the Blockchain object does.
      * Should be nullptr if this node does not track L2 state.
-     * @param offline true if running offline, else false
      * @param test_options test parameters
      * @param fixed_difficulty fixed difficulty for testing purposes; 0 means disabled
      * @param get_checkpoints if set, will be called to get checkpoints data
@@ -185,7 +176,6 @@ class Blockchain {
             sqlite3* ons_db = nullptr,
             cryptonote::BlockchainSQLite* sqlite_db = nullptr,
             eth::L2Tracker* l2_tracker = nullptr,
-            bool offline = false,
             const cryptonote::test_options* test_options = nullptr,
             difficulty_type fixed_difficulty = 0,
             const GetCheckpointsCallback& get_checkpoints = nullptr,
@@ -197,13 +187,7 @@ class Blockchain {
             const cryptonote::test_options& test_options,
             cryptonote::BlockchainSQLite* sqlite_db = nullptr) {
         return init(
-                std::move(db),
-                network_type::FAKECHAIN,
-                nullptr,
-                sqlite_db,
-                nullptr,
-                true,
-                &test_options);
+                std::move(db), network_type::FAKECHAIN, nullptr, sqlite_db, nullptr, &test_options);
     }
 
     /**
@@ -1091,7 +1075,7 @@ class Blockchain {
      */
     void block_longhash_worker(
             uint64_t height,
-            const epee::span<const block>& blocks,
+            const std::span<const block>& blocks,
             std::unordered_map<crypto::hash, crypto::hash>& map) const;
 
     /**
@@ -1398,7 +1382,6 @@ class Blockchain {
 
     eth::L2Tracker* m_l2_tracker;
     network_type m_nettype;
-    bool m_offline;
     difficulty_type m_fixed_difficulty;
 
     std::atomic<bool> m_cancel;

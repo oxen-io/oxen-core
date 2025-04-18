@@ -795,7 +795,7 @@ bool oxen_core_test_deregister_preferred::generate(std::vector<test_event_entry>
       map_hash2tx_t mtx;
       {
       std::vector<cryptonote::block> chain;
-      CHECK_TEST_CONDITION(find_block_chain(events, chain, mtx, get_block_hash(var::get<cryptonote::block>(events[0]))));
+      CHECK_TEST_CONDITION(find_block_chain(events, chain, mtx, get_block_hash(std::get<cryptonote::block>(events[0]))));
       }
 
       const auto deregister_count =
@@ -2799,7 +2799,7 @@ bool oxen_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
       /// obtain public key of node A
       const auto event_a = events.at(deregister_index);
       CHECK_TEST_CONDITION(std::holds_alternative<oxen_blockchain_addable<oxen_transaction>>(event_a));
-      const auto dereg_tx = var::get<oxen_blockchain_addable<oxen_transaction>>(event_a);
+      const auto dereg_tx = std::get<oxen_blockchain_addable<oxen_transaction>>(event_a);
       CHECK_TEST_CONDITION(dereg_tx.data.tx.type == cryptonote::txtype::state_change);
 
       cryptonote::tx_extra_service_node_state_change deregistration;
@@ -2820,7 +2820,7 @@ bool oxen_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
       /// obtain public key of node B
       const auto event_b = events.at(reg_evnt_idx);
       CHECK_TEST_CONDITION(std::holds_alternative<oxen_blockchain_addable<oxen_transaction>>(event_b));
-      const auto reg_tx = var::get<oxen_blockchain_addable<oxen_transaction>>(event_b);
+      const auto reg_tx = std::get<oxen_blockchain_addable<oxen_transaction>>(event_b);
 
       crypto::public_key pk_b;
       if (!cryptonote::get_service_node_pubkey_from_tx_extra(reg_tx.data.tx.extra, pk_b)) {
@@ -3327,7 +3327,7 @@ bool oxen_pulse_non_participating_validator::generate(std::vector<test_event_ent
     {
       std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
       std::vector<crypto::hash> entropy = service_nodes::get_pulse_entropy_for_next_block(gen.db_, params.prev.block, entry.block.pulse.round);
-      quorum = generate_pulse_quorum(cryptonote::network_type::FAKECHAIN, params.block_leader.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round);
+      quorum = generate_pulse_quorum(cryptonote::network_type::FAKECHAIN, params.block_leader.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round, entry.block.get_height());
       assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
       assert(quorum.workers.size() == 1);
     }

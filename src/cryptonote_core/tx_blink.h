@@ -66,7 +66,7 @@ class blink_tx {
     std::variant<transaction, crypto::hash> tx;
 
     /// Returns the transaction hash
-    crypto::hash get_txhash() const { return var::visit(tx_hash_visitor{}, tx); }
+    crypto::hash get_txhash() const { return std::visit(tx_hash_visitor{}, tx); }
 
     class signature_verification_error : public std::runtime_error {
         using std::runtime_error::runtime_error;

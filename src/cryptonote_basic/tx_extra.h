@@ -460,6 +460,7 @@ enum Decommission_Reason : uint16_t {
     timesync_status_out_of_sync = 1 << 5,
     lokinet_unreachable = 1 << 6,
     l2_height_out_of_sync = 1 << 7,
+    failed_transition = 1 << 8,
 };
 
 // Returns human-readable reason strings (e.g. "Missed Uptime Proofs") for the given reason bits

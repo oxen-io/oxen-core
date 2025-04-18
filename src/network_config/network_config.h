@@ -52,6 +52,10 @@ struct network_config final {
     // last proof we consider the SN to be down)
     const std::chrono::seconds UPTIME_PROOF_VALIDITY;
 
+    // We only want to deactivate (active -> dereg/decom) a maximum number of nodes, even if more
+    // failed testing, as deactivating too many at once can cause swarm issues.
+    const size_t MAX_DEACTIVATE_PER_BLOCK;
+
     // True if this network requires storage server and lokinet.
     const bool HAVE_STORAGE_AND_LOKINET;
 

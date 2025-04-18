@@ -131,8 +131,8 @@ class device {
     virtual type get_type() const = 0;
 
     virtual protocol device_protocol() const { return protocol::DEFAULT; };
-    virtual void set_callback(i_device_callback* callback){};
-    virtual void set_derivation_path(const std::string& derivation_path){};
+    virtual void set_callback(i_device_callback* callback) {};
+    virtual void set_derivation_path(const std::string& derivation_path) {};
 
     virtual void set_pin(const epee::wipeable_string& pin) {}
     virtual void set_passphrase(const epee::wipeable_string& passphrase) {}
@@ -348,7 +348,7 @@ class device {
             crypto::key_image& ki) {
         return false;
     }
-    virtual void computing_key_images(bool started){};
+    virtual void computing_key_images(bool started) {};
     virtual void set_network_type(cryptonote::network_type network_type) {}
     virtual void display_address(
             const cryptonote::subaddress_index& index,

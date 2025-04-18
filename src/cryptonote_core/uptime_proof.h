@@ -45,6 +45,11 @@ class Proof {
     uint16_t storage_omq_port{};
     uint16_t qnet_port{};
 
+    // Returns true if this Proof and the given Proof value have different contact-dependent fields:
+    // that is, if oxend/lokinet/SS version, the ed/X pubkeys, IP, or ports of various services are
+    // different across the two proofs.
+    bool contact_info_changed(const Proof& other) const;
+
     // Non-consensus field: stores the current git version or release tag to assist debugging.
     std::string version_tag;
 

@@ -8,6 +8,7 @@
 #include "epee/memwipe.h"
 #include "epee/wipeable_string.h"
 #include "ethereum_transactions.h"
+#include "network_config/mocknet.h"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
 #include "service_node_rules.h"
@@ -236,8 +237,9 @@ namespace {
                 round_state_string(context.state));
     }
 
-    std::bitset<sizeof(uint16_t) * 8> bitset_view16(uint16_t val) {
-        std::bitset<sizeof(uint16_t)* 8> result = val;
+    constexpr size_t BITSET_VIEW16_SIZE = sizeof(uint16_t) * 8;
+    std::bitset<BITSET_VIEW16_SIZE> bitset_view16(uint16_t val) {
+        std::bitset<BITSET_VIEW16_SIZE> result = val;
         return result;
     }
 
@@ -1244,7 +1246,8 @@ namespace {
                 hf_version,
                 active_node_list,
                 entropy,
-                context.prepare_for_round.round);
+                context.prepare_for_round.round,
+                context.wait_for_next_block.height);
 
         if (!service_nodes::verify_pulse_quorum_sizes(context.prepare_for_round.quorum)) {
             log::info(
@@ -2084,6 +2087,8 @@ void main(void* quorumnet_state, cryptonote::core& core) {
                         context, node_list, quorumnet_state, key, core);
                 break;
         }
+
+        mocknet_push_mock_pulse_block(core);
     }
 }
 
