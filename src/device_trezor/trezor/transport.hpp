@@ -82,8 +82,8 @@ class Protocol {
   public:
     Protocol() = default;
     virtual ~Protocol() = default;
-    virtual void session_begin(Transport& transport){};
-    virtual void session_end(Transport& transport){};
+    virtual void session_begin(Transport& transport) {};
+    virtual void session_end(Transport& transport) {};
     virtual void write(Transport& transport, const google::protobuf::Message& req) = 0;
     virtual void read(
             Transport& transport,
@@ -113,16 +113,16 @@ class Transport {
 
     virtual bool ping() { return false; };
     virtual std::string get_path() const { return ""; };
-    virtual void enumerate(t_transport_vect& res){};
-    virtual void open(){};
-    virtual void close(){};
+    virtual void enumerate(t_transport_vect& res) {};
+    virtual void open() {};
+    virtual void close() {};
     virtual void write(const google::protobuf::Message& req) = 0;
     virtual void read(
             std::shared_ptr<google::protobuf::Message>& msg,
             messages::MessageType* msg_type = nullptr) = 0;
     virtual std::shared_ptr<Transport> find_debug() { return nullptr; };
 
-    virtual void write_chunk(const void* buff, size_t size){};
+    virtual void write_chunk(const void* buff, size_t size) {};
     virtual size_t read_chunk(void* buff, size_t size) { return 0; };
     virtual std::ostream& dump(std::ostream& o) const { return o << "Transport<>"; }
 
@@ -340,7 +340,7 @@ namespace exc {
 
       public:
         using ProtocolException::ProtocolException;
-        UnexpectedMessageException() : ProtocolException("Trezor returned unexpected message"){};
+        UnexpectedMessageException() : ProtocolException("Trezor returned unexpected message") {};
         UnexpectedMessageException(
                 hw::trezor::messages::MessageType recvType,
                 const std::shared_ptr<google::protobuf::Message>& recvMsg) :

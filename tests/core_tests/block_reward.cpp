@@ -261,17 +261,17 @@ bool gen_block_reward::check_block_rewards(cryptonote::core& /*c*/, size_t /*ev_
 
   for (size_t i = 0; i < 5; ++i)
   {
-    block blk_i = var::get<block>(events[m_checked_blocks_indices[i]]);
+    block blk_i = std::get<block>(events[m_checked_blocks_indices[i]]);
     CHECK_EQ(blk_rewards[i], get_tx_out_amount(blk_i.miner_tx));
   }
 
-  block blk_n1 = var::get<block>(events[m_checked_blocks_indices[5]]);
+  block blk_n1 = std::get<block>(events[m_checked_blocks_indices[5]]);
   CHECK_EQ(blk_rewards[5] + 3 * TESTS_DEFAULT_FEE, get_tx_out_amount(blk_n1.miner_tx));
 
-  block blk_n2 = var::get<block>(events[m_checked_blocks_indices[6]]);
+  block blk_n2 = std::get<block>(events[m_checked_blocks_indices[6]]);
   CHECK_EQ(blk_rewards[6] + (5 + 7) * TESTS_DEFAULT_FEE, get_tx_out_amount(blk_n2.miner_tx));
 
-  block blk_n3 = var::get<block>(events[m_checked_blocks_indices[7]]);
+  block blk_n3 = std::get<block>(events[m_checked_blocks_indices[7]]);
   CHECK_EQ((11 + 13) * TESTS_DEFAULT_FEE, get_tx_out_amount(blk_n3.miner_tx));
 
   return true;

@@ -574,7 +574,7 @@ bool tx_memory_pool::add_new_blink(
     assert((bool)blink_ptr);
     std::unique_lock lock{m_transactions_lock};
     auto& blink = *blink_ptr;
-    auto& tx = var::get<transaction>(blink.tx);  // will throw if just a hash w/o a transaction
+    auto& tx = std::get<transaction>(blink.tx);  // will throw if just a hash w/o a transaction
     auto txhash = get_transaction_hash(tx);
 
     {

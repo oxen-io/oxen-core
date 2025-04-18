@@ -89,7 +89,7 @@ bool find_tx_extra_field_by_type(
         if (!std::holds_alternative<T>(f))
             continue;
         if (skip_fields == 0) {
-            field = var::get<T>(f);
+            field = std::get<T>(f);
             return true;
         }
         skip_fields--;
@@ -298,10 +298,16 @@ constexpr std::string_view get_unit() {
     return "OXEN"sv;
 }
 // Returns a monetary value with a decimal point; optionally strips insignificant trailing 0s.
-std::string print_money(uint64_t amount, bool strip_zeros = false);
+std::string print_money(
+        uint64_t amount,
+        size_t decimal_places = oxen::DISPLAY_DECIMAL_POINT,
+        bool strip_zeros = false);
 // Returns a formatted monetary value including the unit, e.g. "1.234567 OXEN"; strips
 // insignificant trailing 0s by default (unlike the above) but can be overridden to not do that.
-std::string format_money(uint64_t amount, bool strip_zeros = true);
+std::string format_money(
+        uint64_t amount,
+        size_t decimal_places = oxen::DISPLAY_DECIMAL_POINT,
+        bool strip_zeros = true);
 
 std::string print_tx_verification_context(
         tx_verification_context const& tvc, transaction const* tx = nullptr);
@@ -421,7 +427,7 @@ crypto::secret_key decrypt_key(crypto::secret_key key, const epee::wipeable_stri
             "wrong variant type: {}, expected {}",                                               \
             tools::type_name(tools::variant_type(variant_var)),                                  \
             tools::type_name<specific_type>());                                                  \
-    auto& variable_name = var::get<specific_type>(variant_var);
+    auto& variable_name = std::get<specific_type>(variant_var);
 
 // Provide an inline header implementation of this function because device_default needs it (but
 // it doesn't link to us, rather we link to it).

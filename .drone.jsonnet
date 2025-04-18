@@ -86,7 +86,7 @@ local debian_pipeline(name,
         'mkdir build',
         'cd build',
         'cmake .. -G Ninja -DCMAKE_CXX_FLAGS=-fdiagnostics-color=always -DCMAKE_BUILD_TYPE=' + build_type + ' ' +
-        '-DLOCAL_MIRROR=https://builds.lokinet.dev/deps '
+        '-DLOCAL_MIRROR=https://oxen.rocks/deps '
         + cmake_options({ USE_LTO: lto, WARNINGS_AS_ERRORS: werror, BUILD_TESTS: build_tests || run_tests, BUILD_EVERYTHING: build_everything })
         + cmake_extra,
       ] + (
@@ -208,7 +208,7 @@ local mac_builder(name,
         'cd build',
         'cmake .. -G Ninja -DCMAKE_CXX_FLAGS=-fcolor-diagnostics -DCMAKE_BUILD_TYPE=' + build_type + ' ' +
         '-DOXEN_LOGGING_FORCE_SUBMODULES=ON ' +
-        '-DLOCAL_MIRROR=https://builds.lokinet.dev/deps -DUSE_LTO=' + (if lto then 'ON ' else 'OFF ') +
+        '-DLOCAL_MIRROR=https://oxen.rocks/deps -DUSE_LTO=' + (if lto then 'ON ' else 'OFF ') +
         '-DWARNINGS_AS_ERRORS=' + (if werror then 'ON ' else 'OFF ') +
         (if build_tests || run_tests then '-DBUILD_TESTS=ON ' else '') +
         cmake_extra,
@@ -256,7 +256,7 @@ local android_build_steps(android_abi, android_platform=21, jobs=6, cmake_extra=
   '-DCMAKE_TOOLCHAIN_FILE=/usr/lib/android-ndk/build/cmake/android.toolchain.cmake ' +
   '-DANDROID_PLATFORM=' + android_platform + ' -DANDROID_ABI=' + android_abi + ' ' +
   cmake_options({ MONERO_SLOW_HASH: true, WARNINGS_AS_ERRORS: false, BUILD_TESTS: false }) +
-  '-DLOCAL_MIRROR=https://builds.lokinet.dev/deps ' +
+  '-DLOCAL_MIRROR=https://oxen.rocks/deps ' +
   '-DBUILD_STATIC_DEPS=ON -DSTATIC=ON -G Ninja ' + cmake_extra,
   'ninja -j' + jobs + ' -v wallet_merged',
   'cd ..',
@@ -316,7 +316,7 @@ local gui_wallet_step_darwin = {
         'echo "Building on ${DRONE_STAGE_MACHINE}"',
         apt_get_quiet + ' update',
         apt_get_quiet + ' install -y eatmydata',
-        'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git clang-format-16 jsonnet',
+        'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git clang-format-19 jsonnet',
         './contrib/drone-format-verify.sh',
       ],
     }],
@@ -339,7 +339,7 @@ local gui_wallet_step_darwin = {
                   build_tests=false,
                   cmake_extra='-DARCH_ID=armhf'),
 
-  // Static build (on focal) which gets uploaded to builds.lokinet.dev:
+  // Static build (on focal) which gets uploaded to oxen.rocks:
   debian_pipeline(
     'Static (focal amd64)',
     docker_base + 'ubuntu-focal',
@@ -362,7 +362,7 @@ local gui_wallet_step_darwin = {
   snapshot_deb('jammy'),
   snapshot_deb('focal'),
 
-  // Static mingw build (on focal) which gets uploaded to builds.lokinet.dev:
+  // Static mingw build (on focal) which gets uploaded to oxen.rocks:
   debian_pipeline(
     'Static (win64)',
     docker_base + 'debian-win32-cross',
@@ -397,10 +397,7 @@ local gui_wallet_step_darwin = {
               arch='amd64',
               extra_cmds=static_check_and_upload,/*extra_steps=[gui_wallet_step_darwin]*/),
 
-  // Android builds; we do them all in one image because the android NDK is huge
-
-  // TODO FIXME: both android and iOS wallet builds need fixes for recent Oxen 11 changes!
-] + if true then [] else [
+  // Android builds; we do all architecture builds within in one single step because the android NDK is huge
   {
     name: 'Android wallet_api',
     kind: 'pipeline',
@@ -417,7 +414,7 @@ local gui_wallet_step_darwin = {
                     apt_get_quiet + ' install -y eatmydata',
                     'eatmydata ' + apt_get_quiet + ' dist-upgrade -y',
                     'eatmydata ' + apt_get_quiet + ' install -y --no-install-recommends '
-                    + 'cmake g++ git ninja-build ccache tar xz-utils google-android-ndk-r26c-installer '
+                    + 'cmake g++ git ninja-build ccache tar xz-utils google-android-ndk-r28-installer '
                     + std.join(' ', static_build_deps),
                   ]
                   + android_build_steps('armeabi-v7a', cmake_extra='-DARCH=armv7-a -DARCH_ID=arm32')
@@ -441,22 +438,41 @@ local gui_wallet_step_darwin = {
       {
         name: 'build',
         environment: { SSH_KEY: { from_secret: 'SSH_KEY' } },
-        commands: submodules_commands + [
-          'mkdir -p build/{arm64,sim64}',
-          'cd build/arm64',
-          'cmake ../.. -G Ninja ' +
-          '-DCMAKE_TOOLCHAIN_FILE=../../cmake/ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
+        commands: [
+          'mkdir -p build',
+          'cd build',
+          'cmake .. -G Ninja ' +
+          '-DCMAKE_TOOLCHAIN_FILE=../cmake/ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
           '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
-          '-DRANDOMX_ENABLE_JIT=OFF -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
+          '-DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
           'ninja -j6 -v wallet_merged',
-          'cd ../sim64',
-          'cmake ../.. -G Ninja ' +
-          '-DCMAKE_TOOLCHAIN_FILE=../../cmake/ios.toolchain.cmake -DPLATFORM=SIMULATOR64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
+          'cd ..',
+          './utils/build_scripts/drone-ios-static-upload.sh ios',
+        ],
+      },
+    ],
+  },
+  // iOS simulator build
+  {
+    name: 'iOS (sim) wallet_api',
+    kind: 'pipeline',
+    type: 'exec',
+    platform: { os: 'darwin', arch: 'arm64' },
+    steps: [
+      { name: 'submodules', commands: submodules_commands },
+      {
+        name: 'build',
+        environment: { SSH_KEY: { from_secret: 'SSH_KEY' } },
+        commands: [
+          'mkdir -p build',
+          'cd build',
+          'cmake .. -G Ninja ' +
+          '-DCMAKE_TOOLCHAIN_FILE=../cmake/ios.toolchain.cmake -DPLATFORM=SIMULATORARM64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
           '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
-          '-DRANDOMX_ENABLE_JIT=OFF -DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
+          '-DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
           'ninja -j6 -v wallet_merged',
-          'cd ../..',
-          './utils/build_scripts/drone-ios-static-upload.sh',
+          'cd ..',
+          './utils/build_scripts/drone-ios-static-upload.sh ios-sim',
         ],
       },
     ],

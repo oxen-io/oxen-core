@@ -371,9 +371,11 @@ bool verify_quorum_signatures(
         if (unique_vote_set[quorum_signature.voter_index]++) {
             log::warning(
                     globallogcat,
-                    "Voter: {}, quorum index is duplicated: {}, failed verification at height: {}",
+                    "Voter: {}, quorum index is duplicated: {}, failed verification at block {} "
+                    "({})",
                     key,
                     quorum_signature.voter_index,
+                    hash,
                     height);
             return false;
         }
@@ -381,8 +383,9 @@ bool verify_quorum_signatures(
         if (!crypto::check_signature(hash, key, quorum_signature.signature)) {
             log::warning(
                     globallogcat,
-                    "Incorrect signature for vote, failed verification at height: {} for voter: "
+                    "Incorrect signature for vote, failed verification at block {} ({}) for voter: "
                     "{}\n{}",
+                    hash,
                     height,
                     key,
                     quorum);

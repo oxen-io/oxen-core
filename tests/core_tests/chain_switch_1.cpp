@@ -125,7 +125,7 @@ static uint64_t transferred_in_tx(const cryptonote::account_base& account, const
 
   for (auto i = 0u; i < tx.vout.size(); ++i) {
 
-    if(is_out_to_acc(account.get_keys(), var::get<txout_to_key>(tx.vout[i].target), get_tx_pub_key_from_extra(tx), get_additional_tx_pub_keys_from_extra(tx), i)) {
+    if(is_out_to_acc(account.get_keys(), std::get<txout_to_key>(tx.vout[i].target), get_tx_pub_key_from_extra(tx), get_additional_tx_pub_keys_from_extra(tx), i)) {
       total_amount += get_amount(account, tx, i);
     }
   }
@@ -138,16 +138,16 @@ bool gen_chain_switch_1::check_split_not_switched(cryptonote::core& c, size_t ev
 {
   DEFINE_TESTS_ERROR_CONTEXT("gen_chain_switch_1::check_split_not_switched");
 
-  m_recipient_account_1 = var::get<account_base>(events[1]);
-  m_recipient_account_2 = var::get<account_base>(events[2]);
-  m_recipient_account_3 = var::get<account_base>(events[3]);
-  m_recipient_account_4 = var::get<account_base>(events[4]);
+  m_recipient_account_1 = std::get<account_base>(events[1]);
+  m_recipient_account_2 = std::get<account_base>(events[2]);
+  m_recipient_account_3 = std::get<account_base>(events[3]);
+  m_recipient_account_4 = std::get<account_base>(events[4]);
 
   std::vector<block> blocks;
   bool r = c.blockchain.get_blocks(0, 10000, blocks);
   CHECK_TEST_CONDITION(r);
   CHECK_EQ(5 + 3 * MINED_MONEY_UNLOCK_WINDOW, blocks.size());
-  CHECK_TEST_CONDITION(blocks.back() == var::get<block>(events[20 + 3 * MINED_MONEY_UNLOCK_WINDOW]));  // blk_4
+  CHECK_TEST_CONDITION(blocks.back() == std::get<block>(events[20 + 3 * MINED_MONEY_UNLOCK_WINDOW]));  // blk_4
 
   CHECK_EQ(2, c.blockchain.get_alternative_blocks_count());
 
@@ -187,7 +187,7 @@ bool gen_chain_switch_1::check_split_switched(cryptonote::core& c, size_t ev_ind
   auto it = blocks.end();
   --it; --it; --it;
   CHECK_TEST_CONDITION(std::equal(blocks.begin(), it, m_chain_1.begin()));
-  CHECK_TEST_CONDITION(blocks.back() == var::get<block>(events[24 + 3 * MINED_MONEY_UNLOCK_WINDOW]));  // blk_7
+  CHECK_TEST_CONDITION(blocks.back() == std::get<block>(events[24 + 3 * MINED_MONEY_UNLOCK_WINDOW]));  // blk_7
 
   std::vector<block> alt_blocks;
   r = c.blockchain.get_alternative_blocks(alt_blocks);

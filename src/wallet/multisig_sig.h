@@ -51,11 +51,11 @@ namespace boost::serialization {
 
 template <class Archive>
 void serialize(Archive& a, wallet::multisig_sig& x, const unsigned int ver) {
-    a& x.sigs;
-    a& x.ignore;
-    a& x.used_L;
-    a& x.signing_keys;
-    a& x.msout;
+    a & x.sigs;
+    a & x.ignore;
+    a & x.used_L;
+    a & x.signing_keys;
+    a & x.msout;
 }
 
 }  // namespace boost::serialization

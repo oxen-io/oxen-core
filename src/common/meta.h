@@ -1,9 +1,9 @@
 #pragma once
-#include <oxenc/variant.h>
 
 #include <array>
 #include <string>
 #include <typeinfo>
+#include <variant>
 
 #include "common/exception.h"
 #ifdef __GNUG__

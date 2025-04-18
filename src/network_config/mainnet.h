@@ -53,6 +53,7 @@ inline constexpr network_config config{
         .UPTIME_PROOF_CHECK_INTERVAL = 30s,
         .UPTIME_PROOF_FREQUENCY = 1h,
         .UPTIME_PROOF_VALIDITY = 2h + 5min,
+        .MAX_DEACTIVATE_PER_BLOCK = 10,
         .HAVE_STORAGE_AND_LOKINET = true,
         .TARGET_BLOCK_TIME = TARGET_BLOCK_TIME,
         .PULSE_STAGE_TIMEOUT = 10s,

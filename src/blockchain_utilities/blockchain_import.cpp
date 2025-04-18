@@ -288,7 +288,7 @@ int import_from_file(
         if (import_file.eof())
             import_file.clear();
         import_file.seekg(pos);
-        core.blockchain.db().batch_start(db_batch_size, bytes);
+        core.blockchain.db().batch_start(bytes);
     }
     while (!quit) {
         uint32_t chunk_size;
@@ -452,7 +452,7 @@ int import_from_file(
                             pos = import_file.tellg();
                             bytes = bootstrap.count_bytes(import_file, db_batch_size, h2, q2);
                             import_file.seekg(pos);
-                            core.blockchain.db().batch_start(db_batch_size, bytes);
+                            core.blockchain.db().batch_start(bytes);
                             std::cout << "\n";
                             core.blockchain.db().show_stats();
                         }

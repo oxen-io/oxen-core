@@ -38,7 +38,8 @@
 
 #include <common/exception.h>
 #include <common/meta.h>
-#include <oxenc/variant.h>
+
+#include <variant>
 
 #include "serialization.h"
 
@@ -126,7 +127,7 @@ namespace detail {
     /// Writes a variant
     template <class Archive, typename... T>
     void write_variant(Archive& ar, std::variant<T...>& v) {
-        return var::visit(
+        return std::visit(
                 [&ar](auto& rv) {
                     using Type = std::decay_t<decltype(rv)>;
                     auto obj = ar.begin_object();
