@@ -39,8 +39,9 @@
 
 namespace cryptonote {
 
-using block_payments = std::
-        unordered_map<std::variant<eth::address, cryptonote::account_public_address>, uint64_t>;
+using block_payments = std::unordered_map<
+        std::variant<eth::address, cryptonote::account_public_address>,
+        cryptonote::reward_money>;
 
 class BlockchainSQLite : public db::Database {
   public:
@@ -117,34 +118,36 @@ class BlockchainSQLite : public db::Database {
     uint64_t rescan_target{0};
 
   public:
-    // Retrieves the amount (in atomic SENT) that has been accrued to the Ethereum `address`.
-    // Returns the current height and the atomic lifetime value that the address is owed.  (Note
-    // that, unlike Oxen addresses, these rewards never reset to zero; but rather the rewards
-    // contract keeps track of the current paid and current total and pays out the difference).
-    std::pair<uint64_t, uint64_t> get_accrued_rewards(const eth::address& address);
+    // Retrieves the amount that has been accrued to the Ethereum `address`. Returns the current
+    // height and the atomic lifetime value that the address is owed. (Note that, unlike Oxen
+    // addresses, these rewards never reset to zero; but rather the rewards contract keeps track of
+    // the current paid and current total and pays out the difference).
+    std::pair<uint64_t, cryptonote::reward_money> get_accrued_rewards(const eth::address& address);
 
-    // Retrieves the amount (in atomic OXEN) that has been accrued but not yet paid out to the Oxen
-    // wallet `address`.  Returns the current height and the atomic unpaid amount that the address
-    // is owed.
-    std::pair<uint64_t, uint64_t> get_accrued_rewards(const account_public_address& address);
+    // Retrieves the amount that has been accrued but not yet paid out to the Oxen wallet `address`.
+    // Returns the current height and the atomic unpaid amount that the address is owed.
+    std::pair<uint64_t, cryptonote::reward_money> get_accrued_rewards(
+            const account_public_address& address);
 
-    // Returns the amount (in atomic SENT) that has been accrued to the Ethereum `address` as of the
-    // given recent block height `at_height`.  Returns nullopt if `at_height` is higher than the
-    // current block height, or lower than the oldest stored recent height (see network_config's
+    // Returns the amount that has been accrued to the Ethereum `address` as of the given recent
+    // block height `at_height`. Returns nullopt if `at_height` is higher than the current block
+    // height, or lower than the oldest stored recent height (see network_config's
     // STORE_RECENT_REWARDS;, otherwise returns the balance.
-    std::optional<uint64_t> get_accrued_rewards(const eth::address& address, uint64_t at_height);
+    std::optional<cryptonote::reward_money> get_accrued_rewards(
+            const eth::address& address, uint64_t at_height);
 
-    // Returns the amount (in atomic OXEN) that has been accrued to the Oxen wallet `address` as of
-    // the given recent block height `at_height`.  Returns nullopt if `at_height` is higher than the
-    // known height, or lower than the stored recent heights (see network_config's
-    // STORE_RECENT_REWARDS); otherwise returns the balance.
-    std::optional<uint64_t> get_accrued_rewards(
+    // Returns the amount that has been accrued to the Oxen wallet `address` as of the given recent
+    // block height `at_height`. Returns nullopt if `at_height` is higher than the known height, or
+    // lower than the stored recent heights (see network_config's STORE_RECENT_REWARDS); otherwise
+    // returns the balance.
+    std::optional<cryptonote::reward_money> get_accrued_rewards(
             const account_public_address& address, uint64_t height);
 
     // get_all_accrued_rewards -> queries the database for all the amount that has been accrued to
     // service nodes will return 2 vectors corresponding to the addresses and the atomic value in
     // oxen that the service nodes are owed.
-    std::pair<std::vector<std::string>, std::vector<uint64_t>> get_all_accrued_rewards();
+    std::pair<std::vector<std::string>, std::vector<cryptonote::reward_money>>
+    get_all_accrued_rewards();
 
     // get_payments -> passing a block height will return an array of payments that should be
     // created in a coinbase transaction on that block given the current batching DB state.
@@ -159,7 +162,7 @@ class BlockchainSQLite : public db::Database {
     // Note that distribution_amount here is passed as milli-atomic OXEN for extra precision.
     void add_rewards(
             hf hf_version,
-            uint64_t distribution_amount,
+            cryptonote::reward_money distribution_amount,
             const service_nodes::service_node_info& sn_info,
             block_payments& payments) const;
 
@@ -203,6 +206,11 @@ class BlockchainSQLite : public db::Database {
     // to be marked as paid in the paid_amounts vector. Block height will be added to the
     // batched_payments_paid database as height_paid.
     bool save_payments(uint64_t block_height, std::span<const batch_sn_payment> paid_amounts);
+
+    // Just before HF21, all pending oxen rewards for addresses not registered to transition
+    // will be paid out.  At HF21, all pending oxen rewards for addresses which *are*
+    // registered to transition will be converted to SENT.
+    void set_rewards_hf21(const std::unordered_map<eth::address, uint64_t>& rewards);
 
     uint64_t height;
 

@@ -34,7 +34,7 @@ struct Output {
             unlock_time(std::get<3>(row)),
             block_height(std::get<4>(row)),
             spending(static_cast<bool>(std::get<5>(row))),
-            spent_height(std::get<6>(row)){};
+            spent_height(std::get<6>(row)) {};
 
     Output() = default;
 };

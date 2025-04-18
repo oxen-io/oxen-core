@@ -786,7 +786,7 @@ void bls_aggregator::get_rewards(oxenmq::Message& m) const {
         m.send_reply("410", "Balances for height {} are not available"_format(height));
         return;
     }
-    auto amount = *maybe_amount;
+    auto amount = maybe_amount->to_coin();
 
     // We sign H(H(rewardTag || chainid || contract) || recipientAddress ||
     // recipientAmount),
@@ -813,13 +813,13 @@ void bls_aggregator::rewards_request(
         std::function<void(std::shared_ptr<const bls_rewards_response>)> callback) {
     ZoneScoped;
     auto maybe_amount = core.blockchain.sqlite_db().get_accrued_rewards(addr, height);
-    auto amount = maybe_amount.value_or(0);
+    auto amount = maybe_amount.value_or(cryptonote::reward_money::coin_amount(0));
 
     // FIXME: make this async
     oxen::log::trace(
             logcat,
             "Initiating rewards request of {} SENT for {} at height {}",
-            amount,
+            amount.to_coin(),
             addr,
             height);
 
@@ -838,7 +838,7 @@ void bls_aggregator::rewards_request(
                         addr, amount, height, core.service_node_list.height()));
     }
 
-    if (amount == 0) {
+    if (amount.to_coin() == 0) {
         throw oxen::traced<std::invalid_argument>(
                 "Aggregating a rewards request for '{}' for 0 SENT at height {} is invalid because "
                 "no rewards are available. Request rejected."_format(addr, height));
@@ -850,7 +850,7 @@ void bls_aggregator::rewards_request(
         auto cache_it = rewards_response_cache.find(addr);
         if (cache_it != rewards_response_cache.end()) {
             auto cache_response = cache_it->second;
-            if (cache_response->height == height && cache_response->amount == amount) {
+            if (cache_response->height == height && cache_response->amount == amount.to_coin()) {
                 log::trace(
                         logcat,
                         "Serving rewards request from cache for address {} at height {} with "
@@ -867,10 +867,10 @@ void bls_aggregator::rewards_request(
     auto result_data = std::make_shared<aggregate_result<bls_rewards_response>>();
     auto& result = *result_data->result;
     result.addr = std::move(addr);
-    result.amount = amount;
+    result.amount = amount.to_coin();
     result.height = height;
     result.msg_to_sign = get_reward_balance_msg_to_sign(
-            core.get_nettype(), result.addr, tools::encode_integer_be<32>(amount));
+            core.get_nettype(), result.addr, tools::encode_integer_be<32>(amount.to_coin()));
 
     oxenc::bt_dict_producer d;
     d.append("address", tools::view_guts(result.addr));

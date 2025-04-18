@@ -215,7 +215,7 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
   {
     tx_pub_key[n] = get_tx_pub_key_from_extra(blocks[n].miner_tx.value());
     //oxen::log::debug(logcat, "tx_pub_key: {}", tx_pub_key);
-    output_pub_key[n] = var::get<txout_to_key>(blocks[n].miner_tx->vout[0].target).key;
+    output_pub_key[n] = std::get<txout_to_key>(blocks[n].miner_tx->vout[0].target).key;
     //oxen::log::debug(logcat, "output_pub_key: {}", output_pub_key);
   }
 
@@ -344,7 +344,7 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
     for (size_t m = 0; m <= mixin; ++m)
     {
       rct::ctkey ctkey;
-      ctkey.dest = rct::pk2rct(var::get<txout_to_key>(blocks[m].miner_tx.value().vout[0].target).key);
+      ctkey.dest = rct::pk2rct(std::get<txout_to_key>(blocks[m].miner_tx.value().vout[0].target).key);
       //oxen::log::debug(logcat, "using {} input {}", (m == n ? "real" : "fake"), ctkey.dest);
       ctkey.mask = rct::commit(blocks[m].miner_tx.value().vout[0].amount, rct::identity()); // since those are coinbases, the masks are known
       src.outputs.push_back(std::make_pair(m, ctkey));
@@ -455,7 +455,7 @@ bool gen_multisig_tx_validation_base::generate_with(std::vector<test_event_entry
   for (size_t n = 0; n < tx.vout.size(); ++n)
   {
     CHECK_AND_ASSERT_MES(std::holds_alternative<txout_to_key>(tx.vout[n].target), false, "Unexpected tx out type");
-    if (is_out_to_acc_precomp(subaddresses, var::get<txout_to_key>(tx.vout[n].target).key, derivation, additional_derivations, n, hw::get_device(("default"))))
+    if (is_out_to_acc_precomp(subaddresses, std::get<txout_to_key>(tx.vout[n].target).key, derivation, additional_derivations, n, hw::get_device(("default"))))
     {
       ++n_outs;
       CHECK_AND_ASSERT_MES(tx.vout[n].amount == 0, false, "Destination amount is not zero");

@@ -87,7 +87,7 @@ bool gen_v2_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
 
     src.amount = blocks[0].miner_tx.value().vout[out_idx[out_idx_idx]].amount;
     for (int m = 0; m <= mixin; ++m) {
-      src.push_output(0, var::get<txout_to_key>(blocks[m].miner_tx->vout[out_idx[out_idx_idx]].target).key, src.amount);
+      src.push_output(0, std::get<txout_to_key>(blocks[m].miner_tx->vout[out_idx[out_idx_idx]].target).key, src.amount);
     }
     src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(*blocks[0].miner_tx);
     src.real_output = 0;

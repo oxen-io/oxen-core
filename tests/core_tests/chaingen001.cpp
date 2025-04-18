@@ -67,12 +67,12 @@ bool one_block::verify_1(cryptonote::core& c, size_t ev_index, const eventV &eve
 {
     DEFINE_TESTS_ERROR_CONTEXT("one_block::verify_1");
 
-    alice = var::get<cryptonote::account_base>(events[1]);
+    alice = std::get<cryptonote::account_base>(events[1]);
 
     // check balances
     //std::vector<const cryptonote::block*> chain;
     //map_hash2tx_t mtx;
-    //CHECK_TEST_CONDITION(find_block_chain(events, chain, mtx, get_block_hash(var::get<cryptonote::block>(events[1]))));
+    //CHECK_TEST_CONDITION(find_block_chain(events, chain, mtx, get_block_hash(std::get<cryptonote::block>(events[1]))));
     //CHECK_TEST_CONDITION(get_block_reward(0) == get_balance(alice, events, chain, mtx));
 
     // check height
@@ -84,7 +84,7 @@ bool one_block::verify_1(cryptonote::core& c, size_t ev_index, const eventV &eve
     CHECK_TEST_CONDITION(blocks.size() == 1);
     //CHECK_TEST_CONDITION(outs.size() == blocks.size());
     CHECK_TEST_CONDITION(c.blockchain.get_total_transactions() == 1);
-    CHECK_TEST_CONDITION(blocks.back() == var::get<cryptonote::block>(events[0]));
+    CHECK_TEST_CONDITION(blocks.back() == std::get<cryptonote::block>(events[0]));
 
     return true;
 }

@@ -8,10 +8,14 @@
 #include <oxenmq/fmt.h>
 #include <oxenmq/oxenmq.h>
 
+#include <chrono>
+#include <utility>
 #include <variant>
 
 #include "common/string_util.h"
+#include "crypto/crypto.h"
 #include "cryptonote_config.h"
+#include "epee/string_tools.h"
 #include "rpc/common/param_parser.hpp"
 
 namespace cryptonote::rpc {
@@ -331,11 +335,17 @@ omq_rpc::omq_rpc(
     // or anyone on a private RPC node with public access level.
     omq.add_category("sub", AuthLevel::basic);
 
+    // Triggers on mempool additions:
     omq.add_request_command(
             "sub", "mempool", [this](oxenmq::Message& m) { on_mempool_sub_request(m); });
 
+    // Triggers on new blocks:
     omq.add_request_command(
             "sub", "block", [this](oxenmq::Message& m) { on_block_sub_request(m); });
+
+    // Triggers whenever there are IP and/or port changes to the service node list.
+    omq.add_request_command(
+            "sub", "snode_addr", [this](oxenmq::Message& m) { on_snode_addr_sub_request(m); });
 
     core_.blockchain.hook_block_post_add([this](const auto& info) {
         send_block_notifications(info.block);
@@ -347,6 +357,10 @@ omq_rpc::omq_rpc(
                                     const tx_pool_options& opts) {
         send_mempool_notifications(id, tx, blob, opts);
     });
+    core_.service_node_list.snode_addr_change_notifier =
+            [this](const uptime_proof::Proof& proof, const crypto::x25519_public_key& xpk) {
+                send_snode_addr_notifications(proof, xpk);
+            };
 }
 
 template <typename Mutex, typename Subs, typename Call>
@@ -409,6 +423,49 @@ void omq_rpc::send_mempool_notifications(
         if (sub.type == mempool_sub_type::all || opts.approved_blink)
             omq.send(conn, "notify.mempool", tools::view_guts(id), blob);
     });
+}
+
+void omq_rpc::send_snode_addr_notifications(
+        const uptime_proof::Proof& proof, const crypto::x25519_public_key& x_pk) {
+    oxenc::bt_dict_producer addr;
+    // 'l' + 3 '32:...' values +  + 32:...
+    constexpr size_t MAX_RECORD_LENGTH = 2        // de around the dict
+                                       + 3 * 2    // 1:K + 1:v
+                                       + 8 * 4    // 2:.. for the 8 other, length-2 dict keys
+                                       + 3 * 35   // 32:... for the three pubkeys
+                                       + 18       // IP, at longest: 15:AAA.BBB.CCC.DDD
+                                       + 3 * 7    // iXXXXXe port, times 3.
+                                       + 3 * 14;  // 3 versions such as `liAAeiBBeiCCee`
+    addr.reserve(MAX_RECORD_LENGTH);
+
+    // - K -- the snode's primary key (32 bytes).
+    // - Ke -- the server's Ed pubkey, but only if different from K; otherwise this key is omitted.
+    // - Kx -- the server's X pubkey, derived from the Ed pubkey.  32 bytes.
+    // - ip -- the service node public IP address, as a string.
+    // - qn -- the service node oxend OMQ port (AKA "quorumnet" port), integer.
+    // - sh -- the storage server HTTPS port, integer.
+    // - sq -- the storage server QUIC (UDP) and OMQ (TCP) port, integer.
+    // - v -- oxend version triplet
+    // - vl -- lokinet version triplet
+    // - vs -- storage server version triplet
+    addr.append("K", tools::view_guts(proof.pubkey));
+    if (tools::view_guts(proof.pubkey) != tools::view_guts(proof.pubkey_ed25519))
+        addr.append("Ke", tools::view_guts(proof.pubkey_ed25519));
+    addr.append("Kx", tools::view_guts(x_pk));
+    addr.append("ip", epee::string_tools::get_ip_string_from_int32(proof.public_ip));
+    addr.append("qn", proof.qnet_port);
+    addr.append("sh", proof.storage_https_port);
+    addr.append("sq", proof.storage_omq_port);
+    addr.append_list("v", proof.version);
+    addr.append_list("vl", proof.lokinet_version);
+    addr.append_list("vs", proof.storage_server_version);
+    send_notifies(
+            subs_mutex_,
+            snode_addr_subs_,
+            "snode addrs",
+            [this, payload = std::move(addr).str()](auto& conn, auto& sub) {
+                core_.omq().send(conn, "notify.snode_addr", payload);
+            });
 }
 
 /// Get a set of blocks, their transactions, and their created outputs' global indices
@@ -637,6 +694,31 @@ void omq_rpc::on_mempool_sub_request(oxenmq::Message& m) {
     }
 }
 
+template <typename SubType>
+static void process_sub(
+        oxenmq::Message& m,
+        std::string_view type,
+        std::unordered_map<oxenmq::ConnectionID, SubType>& subs) {
+
+    auto expiry = std::chrono::steady_clock::now() + 30min;
+    auto result = subs.emplace(m.conn, expiry);
+
+    if (!result.second) {
+        result.first->second.expiry = expiry;
+        m.send_reply("ALREADY");
+    } else {
+        m.send_reply("OK");
+    }
+
+    log::debug(
+            logcat,
+            "{} {} subscription from conn id {}@{}",
+            result.second ? "New" : "Renewed",
+            type,
+            m.conn.to_string(),
+            m.remote);
+}
+
 // New block subscriptions: [sub.block].  This sends a notification every time a new block is
 // added to the blockchain.
 //
@@ -650,24 +732,35 @@ void omq_rpc::on_mempool_sub_request(oxenmq::Message& m) {
 // encoded block hash).
 void omq_rpc::on_block_sub_request(oxenmq::Message& m) {
     std::unique_lock lock{subs_mutex_};
-    auto expiry = std::chrono::steady_clock::now() + 30min;
-    auto result = block_subs_.emplace(m.conn, block_sub{expiry});
-    if (!result.second) {
-        result.first->second.expiry = expiry;
-        log::trace(
-                logcat,
-                "Renewed block subscription request from conn id {}@{}",
-                m.conn.to_string(),
-                m.remote);
-        m.send_reply("ALREADY");
-    } else {
-        log::debug(
-                logcat,
-                "New block subscription request from conn {}@{}",
-                m.conn.to_string(),
-                m.remote);
-        m.send_reply("OK");
-    }
+    process_sub(m, "block", block_subs_);
+}
+
+// Snode address change subscriptions: [sub.snode_addr].  This sends a notification every time a new
+// IP address and/or ports are accepted for a service snode, including upon initially learning the
+// service node IP/port information.
+//
+// The subscription request itself returns "OK" if this is a new subscription, and "ALREADY" if the
+// request renewed an existing subscription on the same connection.  To keep track of all service
+// node IPs it is suggested that after an "OK" the client should fetch the entire list of snode
+// addresses (via get_service_nodes) as some updates may otherwise be missed.
+//
+// The notification for such changes consists of a message
+// [notify.snode_addr, snode_primary_key, data] where data is a bt-encoded array of updated values.
+// Each value is a dict with keys:
+//
+// - K -- the snode's primary key (32 bytes).
+// - Ke -- the server's Ed pubkey, but only if different from K; otherwise this key is omitted.
+// - Kx -- the server's X pubkey, derived from the Ed pubkey.  32 bytes.
+// - ip -- the service node public IP address, as a string.
+// - qn -- the service node oxend OMQ port (AKA "quorumnet" port), integer.
+// - sh -- the storage server HTTPS port, integer.
+// - sq -- the storage server QUIC (UDP) and OMQ (TCP) port, integer.
+//
+// These notification requests are *not* fired unless at least one of the values has actually
+// changed (i.e. new uptime proofs with the same values do not trigger a notification).
+void omq_rpc::on_snode_addr_sub_request(oxenmq::Message& m) {
+    std::unique_lock lock{subs_mutex_};
+    process_sub(m, "snode address", snode_addr_subs_);
 }
 
 }  // namespace cryptonote::rpc

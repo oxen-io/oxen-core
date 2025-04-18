@@ -92,7 +92,7 @@ void transaction::invalidate_hashes() {
 
 size_t transaction::get_signature_size(const txin_v& tx_in) {
     if (std::holds_alternative<txin_to_key>(tx_in))
-        return var::get<txin_to_key>(tx_in).key_offsets.size();
+        return std::get<txin_to_key>(tx_in).key_offsets.size();
     return 0;
 }
 
@@ -106,7 +106,7 @@ uint64_t block::get_height() const {
         return _height;
     } else {
         assert(miner_tx && miner_tx->is_miner_tx());
-        return var::get<txin_gen>(miner_tx->vin.front()).height;
+        return std::get<txin_gen>(miner_tx->vin.front()).height;
     }
 }
 
