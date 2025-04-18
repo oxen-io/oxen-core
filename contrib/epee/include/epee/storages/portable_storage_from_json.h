@@ -27,7 +27,7 @@
 #pragma once
 #include <string_view>
 #include <charconv>
-#include <oxenc/variant.h>
+#include <variant>
 #include "portable_storage_base.h"
 #include "parserse_base_utils.h"
 
@@ -71,7 +71,7 @@ namespace epee
       {
         auto* array = st.template make_array<T>(value_name, parent_section);
         CHECK_AND_ASSERT_THROW_MES(array, "failed to insert {} array", typeid(T).name());
-        var::get<array_t<T>>(*array).push_back(std::move(value));
+        std::get<array_t<T>>(*array).push_back(std::move(value));
         return array;
       }
 
@@ -204,7 +204,7 @@ namespace epee
             {
               //mean array of sections
               array = make_array_and_insert(stg, name, section{}, current_section);
-              run_handler(&var::get<array_t<section>>(*array).back(), it, buf_end, stg, recursion + 1);
+              run_handler(&std::get<array_t<section>>(*array).back(), it, buf_end, stg, recursion + 1);
               state = match_state_array_after_value;
               array_md = array_mode_sections;
             }else if(*it == '"')

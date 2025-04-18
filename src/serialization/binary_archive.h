@@ -109,7 +109,7 @@ class binary_unarchiver : public deserializer {
 
     // RAII class for `begin_array()`/`begin_object()`.  This particular implementation is a no-op.
     struct nested {
-        ~nested(){};  // Avoids unused variable warnings
+        ~nested() {};  // Avoids unused variable warnings
     };
 
     // Reads array size into s and returns an RAII object to help delimit and end it.
@@ -199,7 +199,7 @@ class binary_archiver : public serializer {
 
     // RAII class for `begin_array()`/`begin_object()`.  This particular implementation is a no-op.
     struct nested {
-        ~nested(){};  // Avoids unused variable warnings
+        ~nested() {};  // Avoids unused variable warnings
     };
 
     // Begins an array and returns an RAII object that is used to delimit array elements.  For

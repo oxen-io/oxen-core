@@ -46,7 +46,6 @@
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/sqlite/db_sqlite.h"
-#include "common/boost_serialization_helper.h"
 #include "common/exception.h"
 #include "common/guts.h"
 #include "common/lock.h"
@@ -60,16 +59,10 @@
 #include "common/util.h"
 #include "common/varint.h"
 #include "crypto/crypto.h"
-#include "crypto/eth.h"
-#include "crypto/hash.h"
-#include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
-#include "cryptonote_basic/cryptonote_boost_serialization.h"
 #include "cryptonote_basic/hardfork.h"
-#include "cryptonote_basic/miner.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
-#include "cryptonote_core/cryptonote_tx_utils.h"
 #include "epee/int-util.h"
 #include "epee/warnings.h"
 #include "ethereum_transactions.h"
@@ -766,7 +759,6 @@ bool Blockchain::init(
         sqlite3* ons_db,
         cryptonote::BlockchainSQLite* sqlite_db,
         eth::L2Tracker* l2_tracker,
-        bool offline,
         const cryptonote::test_options* test_options,
         difficulty_type fixed_difficulty,
         const GetCheckpointsCallback& get_checkpoints /* = nullptr*/,
@@ -807,7 +799,6 @@ bool Blockchain::init(
 
     m_l2_tracker = l2_tracker;
 
-    m_offline = offline;
     m_fixed_difficulty = fixed_difficulty;
 
     if (test_options)  // Fakechain mode
@@ -1830,7 +1821,7 @@ bool Blockchain::validate_block_rewards(
                     m_db->height(),
                     cryptonote::get_config(m_nettype).governance_wallet_address(version),
                     b.miner_tx->vout.size() - 1,
-                    var::get<txout_to_key>(b.miner_tx->vout.back().target).key,
+                    std::get<txout_to_key>(b.miner_tx->vout.back().target).key,
                     m_nettype)) {
             log::error(log::Cat("verify"), "Governance reward public key incorrect.");
             return false;
@@ -3893,7 +3884,7 @@ bool Blockchain::check_for_double_spend(
     };
 
     for (const txin_v& in : tx.vin) {
-        if (!var::visit(add_transaction_input_visitor, in)) {
+        if (!std::visit(add_transaction_input_visitor, in)) {
             log::error(logcat, "Double spend detected!");
             return false;
         }
@@ -3949,7 +3940,7 @@ void Blockchain::on_new_tx_from_block(const cryptonote::transaction& tx) {
         if (m_show_time_stats) {
             size_t ring_size = 0;
             if (!tx.vin.empty() && std::holds_alternative<txin_to_key>(tx.vin[0]))
-                ring_size = var::get<txin_to_key>(tx.vin[0]).key_offsets.size();
+                ring_size = std::get<txin_to_key>(tx.vin[0]).key_offsets.size();
             log::info(
                     logcat,
                     "HASH: - I/M/O: {}/{}/{} H: {} chcktx: {}",
@@ -3995,7 +3986,7 @@ bool Blockchain::check_tx_inputs(
     if (m_show_time_stats) {
         size_t ring_size = 0;
         if (!tx.vin.empty() && std::holds_alternative<txin_to_key>(tx.vin[0]))
-            ring_size = var::get<txin_to_key>(tx.vin[0]).key_offsets.size();
+            ring_size = std::get<txin_to_key>(tx.vin[0]).key_offsets.size();
         log::info(
                 logcat,
                 "HASH: {} I/M/O: {}/{}/{} H: {} ms: {} B: {} W: {}",
@@ -4193,7 +4184,7 @@ bool Blockchain::expand_transaction_2(
         rv.p.MGs.resize(1);
         rv.p.MGs[0].II.resize(tx.vin.size());
         for (size_t n = 0; n < tx.vin.size(); ++n)
-            rv.p.MGs[0].II[n] = rct::ki2rct(var::get<txin_to_key>(tx.vin[n]).k_image);
+            rv.p.MGs[0].II[n] = rct::ki2rct(std::get<txin_to_key>(tx.vin[n]).k_image);
     } else if (tools::equals_any(
                        rv.type,
                        rct::RCTType::Simple,
@@ -4202,13 +4193,13 @@ bool Blockchain::expand_transaction_2(
         CHECK_AND_ASSERT_MES(rv.p.MGs.size() == tx.vin.size(), false, "Bad MGs size");
         for (size_t n = 0; n < tx.vin.size(); ++n) {
             rv.p.MGs[n].II.resize(1);
-            rv.p.MGs[n].II[0] = rct::ki2rct(var::get<txin_to_key>(tx.vin[n]).k_image);
+            rv.p.MGs[n].II[0] = rct::ki2rct(std::get<txin_to_key>(tx.vin[n]).k_image);
         }
     } else if (rv.type == rct::RCTType::CLSAG) {
         if (!tx.pruned) {
             CHECK_AND_ASSERT_MES(rv.p.CLSAGs.size() == tx.vin.size(), false, "Bad CLSAGs size");
             for (size_t n = 0; n < tx.vin.size(); ++n) {
-                rv.p.CLSAGs[n].I = rct::ki2rct(var::get<txin_to_key>(tx.vin[n]).k_image);
+                rv.p.CLSAGs[n].I = rct::ki2rct(std::get<txin_to_key>(tx.vin[n]).k_image);
             }
         }
     } else {
@@ -4298,7 +4289,7 @@ bool Blockchain::check_tx_inputs(
                     std::holds_alternative<txin_to_key>(txin),
                     false,
                     "wrong type id in tx input at Blockchain::check_tx_inputs");
-            const txin_to_key& in_to_key = var::get<txin_to_key>(txin);
+            const txin_to_key& in_to_key = std::get<txin_to_key>(txin);
             {
                 // make sure tx output has key offset(s) (is signed to be used)
                 CHECK_AND_ASSERT_MES(
@@ -4388,15 +4379,17 @@ bool Blockchain::check_tx_inputs(
                     }
                 }
 
-                uint64_t unlock_height = 0;
-                if (service_node_list.is_key_image_locked(in_to_key.k_image, &unlock_height)) {
-                    log::error(
-                            log::Cat("verify"),
-                            "Key image: {} is locked in a stake until height: {}",
-                            in_to_key.k_image,
-                            unlock_height);
-                    tvc.m_key_image_locked_by_snode = true;
-                    return false;
+                if (hf_version < hf::hf21_eth) {
+                    uint64_t unlock_height = 0;
+                    if (service_node_list.is_key_image_locked(in_to_key.k_image, &unlock_height)) {
+                        log::error(
+                                log::Cat("verify"),
+                                "Key image: {} is locked in a stake until height: {}",
+                                in_to_key.k_image,
+                                unlock_height);
+                        tvc.m_key_image_locked_by_snode = true;
+                        return false;
+                    }
                 }
             }
         }
@@ -4485,10 +4478,10 @@ bool Blockchain::check_tx_inputs(
                     bool error;
                     if (rv.type == rct::RCTType::CLSAG)
                         error = memcmp(
-                                &var::get<txin_to_key>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32);
+                                &std::get<txin_to_key>(tx.vin[n]).k_image, &rv.p.CLSAGs[n].I, 32);
                     else
                         error = rv.p.MGs[n].II.empty() ||
-                                memcmp(&var::get<txin_to_key>(tx.vin[n]).k_image,
+                                memcmp(&std::get<txin_to_key>(tx.vin[n]).k_image,
                                        &rv.p.MGs[n].II[0],
                                        32);
                     if (error) {
@@ -4557,7 +4550,7 @@ bool Blockchain::check_tx_inputs(
                     return false;
                 }
                 for (size_t n = 0; n < tx.vin.size(); ++n) {
-                    if (memcmp(&var::get<txin_to_key>(tx.vin[n]).k_image, &rv.p.MGs[0].II[n], 32)) {
+                    if (memcmp(&std::get<txin_to_key>(tx.vin[n]).k_image, &rv.p.MGs[0].II[n], 32)) {
                         log::error(
                                 log::Cat("verify"),
                                 "Failed to check ringct signatures: mismatched II/vin sizes");
@@ -4690,14 +4683,16 @@ bool Blockchain::check_tx_inputs(
 
             service_nodes::service_node_info::contribution_t contribution = {};
             uint64_t unlock_height = 0;
-            if (!service_node_list.is_key_image_locked(
-                        unlock.key_image, &unlock_height, &contribution)) {
-                log::error(
-                        log::Cat("verify"),
-                        "Requested key image: {} to unlock is not locked",
-                        unlock.key_image);
-                tvc.m_invalid_input = true;
-                return false;
+            if (hf_version < hf::hf21_eth) {
+                if (!service_node_list.is_key_image_locked(
+                            unlock.key_image, &unlock_height, &contribution)) {
+                    log::error(
+                            log::Cat("verify"),
+                            "Requested key image: {} to unlock is not locked",
+                            unlock.key_image);
+                    tvc.m_invalid_input = true;
+                    return false;
+                }
             }
 
             if (!crypto::check_signature(
@@ -5943,6 +5938,7 @@ bool Blockchain::add_new_block(
     crypto::hash id = get_block_hash(bl);
     auto lock = tools::unique_locks(tx_pool, *this);
     db_rtxn_guard rtxn_guard{*m_db};
+
     if (have_block(id)) {
         log::trace(logcat, "block with id = {} already exists", id);
         bvc.m_already_exists = true;
@@ -6072,7 +6068,7 @@ bool Blockchain::get_checkpoint(uint64_t height, checkpoint_t& checkpoint) const
 //------------------------------------------------------------------
 void Blockchain::block_longhash_worker(
         uint64_t height,
-        const epee::span<const block>& blocks,
+        const std::span<const block>& blocks,
         std::unordered_map<crypto::hash, crypto::hash>& map) const {
     for (const auto& block : blocks) {
         if (m_cancel)
@@ -6317,8 +6313,6 @@ bool Blockchain::prepare_handle_incoming_blocks(
     ZoneScoped;
     log::trace(logcat, "Blockchain::{}", __func__);
     auto prepare = std::chrono::steady_clock::now();
-    uint64_t bytes = 0;
-    size_t total_txs = 0;
     blocks.clear();
 
     // Order of locking must be:
@@ -6340,16 +6334,17 @@ bool Blockchain::prepare_handle_incoming_blocks(
     if (blocks_entry.size() == 0)
         return false;
 
+    size_t total_txs = 0;
+    uint64_t bytes = 0;
     for (const auto& entry : blocks_entry) {
         bytes += entry.block.size();
         bytes += entry.checkpoint.size();
-        for (const auto& tx_blob : entry.txs) {
+        for (const auto& tx_blob : entry.txs)
             bytes += tx_blob.size();
-        }
         total_txs += entry.txs.size();
     }
     m_bytes_to_sync += bytes;
-    while (!m_db->batch_start(blocks_entry.size(), bytes)) {
+    while (!m_db->batch_start(bytes)) {
         unlock();
         tx_pool.unlock();
         std::this_thread::sleep_for(100ms);
@@ -6519,7 +6514,7 @@ bool Blockchain::prepare_handle_incoming_blocks(
             // check all tx.vin(s)
             if (!tx.is_miner_tx()) {
                 for (const auto& txin : tx.vin) {
-                    const auto& in_to_key = var::get<txin_to_key>(txin);
+                    const auto& in_to_key = std::get<txin_to_key>(txin);
 
                     // check for duplicate
                     auto it = its->second.find(in_to_key.k_image);
@@ -6536,7 +6531,7 @@ bool Blockchain::prepare_handle_incoming_blocks(
                 if (!tx.is_miner_tx())
                     for (const auto& txin : tx.vin)
                         for (auto off : relative_output_offsets_to_absolute(
-                                     var::get<txin_to_key>(txin).key_offsets))
+                                     std::get<txin_to_key>(txin).key_offsets))
                             offsets.push_back(off);
             }
         }
@@ -6580,7 +6575,7 @@ bool Blockchain::prepare_handle_incoming_blocks(
 
             if (!tx.is_miner_tx()) {
                 for (const auto& txin : tx.vin) {
-                    const txin_to_key& in_to_key = var::get<txin_to_key>(txin);
+                    const txin_to_key& in_to_key = std::get<txin_to_key>(txin);
                     auto needed_offsets =
                             relative_output_offsets_to_absolute(in_to_key.key_offsets);
 

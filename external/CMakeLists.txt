@@ -44,7 +44,7 @@ if(BUILD_STATIC_DEPS)
 endif()
 
 if(NOT TARGET oxen::logging)
-    system_or_submodule(OXENLOGGING oxen-logging liboxen-logging>=1.1.0 oxen-logging)
+    system_or_submodule(OXENLOGGING oxen-logging liboxen-logging>=1.1.1 oxen-logging)
     if(OXENLOGGING_FOUND)
         # If we load oxen-logging via system lib then we won't necessarily have fmt/spdlog targets,
         # but this script will give us them:
@@ -56,8 +56,8 @@ if(NOT TARGET oxen::logging)
     endif()
 endif()
 
-system_or_submodule(OXENC oxenc liboxenc>=1.1.0 oxen-encoding)
-system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.19 oxen-mq)
+system_or_submodule(OXENC oxenc liboxenc>=1.4.0 oxen-encoding)
+system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.20 oxen-mq)
 
 add_subdirectory(db_drivers)
 add_subdirectory(randomx EXCLUDE_FROM_ALL)

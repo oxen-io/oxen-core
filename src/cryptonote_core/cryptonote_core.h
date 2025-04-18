@@ -791,7 +791,7 @@ class core final {
      *
      * @return true on success, false otherwise
      */
-    bool init_service_keys();
+    bool init_service_keys(bool fixup_monero_ed = false);
 
     /**
      * Checks the given x25519 pubkey against the configured access lists and, if allowed, returns

@@ -35,6 +35,7 @@ oxen_add_library(blockchain_db
 
 target_link_libraries(blockchain_db
   PUBLIC
+    sent_transition_data
     sqlitedb
   PRIVATE
     common

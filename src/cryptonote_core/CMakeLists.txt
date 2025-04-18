@@ -27,9 +27,12 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+add_subdirectory(sent_transition)
+
 oxen_add_library(cryptonote_core
   blockchain.cpp
   cryptonote_core.cpp
+  sent_transition/sent_transition.cpp
   service_node_rules.cpp
   service_node_list.cpp
   service_node_voting.cpp
@@ -56,7 +59,9 @@ target_link_libraries(cryptonote_core
     SQLite::SQLite3
     bls_aggregator
     l2_tracker
+    sent_transition_data
     ethyl
+    network_config
   PRIVATE
     SQLiteCpp
     systemd

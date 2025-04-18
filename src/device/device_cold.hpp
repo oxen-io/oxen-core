@@ -64,7 +64,7 @@ class device_cold {
 
     class op_progress : public hw::device_progress {
       public:
-        op_progress() : m_progress(0), m_indeterminate(false){};
+        op_progress() : m_progress(0), m_indeterminate(false) {};
         explicit op_progress(double progress, bool indeterminate = false) :
                 m_progress(progress), m_indeterminate(indeterminate) {}
 
@@ -84,7 +84,7 @@ class device_cold {
                 m_cur_step(0),
                 m_max_step(1),
                 m_cur_substep(0),
-                m_max_substep(1){};
+                m_max_substep(1) {};
 
         tx_progress(
                 size_t cur_tx,

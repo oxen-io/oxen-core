@@ -91,6 +91,8 @@ std::vector<std::string> readable_reasons(uint16_t decomm_reason) {
         results.push_back("Lokinet Unreachable");
     if (decomm_reason & l2_height_out_of_sync)
         results.push_back("L2 Out of Sync");
+    if (decomm_reason & failed_transition)
+        results.push_back("Did not transition at HF21");
     return results;
 }
 
@@ -112,6 +114,8 @@ std::vector<std::string> coded_reasons(uint16_t decomm_reason) {
         results.push_back("lokinet");
     if (decomm_reason & l2_height_out_of_sync)
         results.push_back("l2");
+    if (decomm_reason & failed_transition)
+        results.push_back("hf21_transition");
     return results;
 }
 

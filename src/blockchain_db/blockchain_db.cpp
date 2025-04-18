@@ -103,7 +103,7 @@ void BlockchainDB::add_transaction(
     if (!miner_tx) {
         for (const txin_v& tx_input : tx.vin) {
             if (std::holds_alternative<txin_to_key>(tx_input)) {
-                add_spent_key(var::get<txin_to_key>(tx_input).k_image);
+                add_spent_key(std::get<txin_to_key>(tx_input).k_image);
             } else {
                 log::info(
                         logcat,
@@ -111,7 +111,7 @@ void BlockchainDB::add_transaction(
                         "addition");
                 for (const txin_v& tx_input : tx.vin) {
                     if (std::holds_alternative<txin_to_key>(tx_input)) {
-                        remove_spent_key(var::get<txin_to_key>(tx_input).k_image);
+                        remove_spent_key(std::get<txin_to_key>(tx_input).k_image);
                     }
                 }
                 return;
@@ -244,7 +244,7 @@ void BlockchainDB::remove_transaction(const crypto::hash& tx_hash) {
 
     for (const txin_v& tx_input : tx.vin) {
         if (std::holds_alternative<txin_to_key>(tx_input)) {
-            remove_spent_key(var::get<txin_to_key>(tx_input).k_image);
+            remove_spent_key(std::get<txin_to_key>(tx_input).k_image);
         }
     }
 

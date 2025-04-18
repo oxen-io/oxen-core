@@ -30,24 +30,25 @@
 
 #include "command_line.h"
 
-#include <boost/program_options/variables_map.hpp>
-
-#include "common/i18n.h"
-#include "common/string_util.h"
 #include "networks.h"
+
 #ifdef HAVE_READLINE
 #include "epee/readline_buffer.h"
-#endif
-#include <iostream>
+#else
 #ifdef _WIN32
 #include "windows.h"
 #endif
+#endif
+
+#include <iostream>
 
 namespace command_line {
 
 const arg_flag arg_help{"help", "Produce help message"};
 const arg_flag arg_version{"version", "Output version information"};
 
+// Network type arguments; We handle this in one spot here as other options rely
+// on the network type.
 const arg_flag arg_stagenet{"stagenet", "Run on stagenet."};
 const arg_flag arg_testnet{"testnet", "Run on testnet."};
 const arg_flag arg_devnet{"devnet", "Run on devnet."};
@@ -88,7 +89,6 @@ cryptonote::network_type get_network(const boost::program_options::variables_map
 #ifdef __linux__
 
 extern "C" {
-#include <stdio.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
 }
