@@ -156,7 +156,7 @@ bool expand_transaction_1(transaction& tx, bool base_only) {
                 log::info(logcat, "Unsupported output type in tx {}", get_transaction_hash(tx));
                 return false;
             }
-            rv.outPk[n].dest = rct::pk2rct(var::get<txout_to_key>(tx.vout[n].target).key);
+            rv.outPk[n].dest = rct::pk2rct(std::get<txout_to_key>(tx.vout[n].target).key);
         }
 
         if (!base_only) {
@@ -198,19 +198,6 @@ bool expand_transaction_1(transaction& tx, bool base_only) {
     }
     return true;
 }
-
-#if defined(_LIBCPP_VERSION)
-#define BINARY_ARCHIVE_STREAM(stream_name, blob) \
-    std::stringstream stream_name;               \
-    stream_name.write(reinterpret_cast<const char*>(blob.data()), blob.size())
-#else
-#define BINARY_ARCHIVE_STREAM(stream_name, blob)                                                  \
-    auto buf =                                                                                    \
-            tools::one_shot_read_buffer{reinterpret_cast<const char*>(blob.data()), blob.size()}; \
-    std::istream stream_name {                                                                    \
-        &buf                                                                                      \
-    }
-#endif
 
 //---------------------------------------------------------------
 bool parse_and_validate_tx_from_blob(const std::string_view tx_blob, transaction& tx) {
@@ -549,7 +536,7 @@ uint64_t get_pruned_transaction_weight(const transaction& tx) {
     weight += extra;
 
     // calculate deterministic CLSAG/MLSAG data size
-    const size_t ring_size = var::get<cryptonote::txin_to_key>(tx.vin[0]).key_offsets.size();
+    const size_t ring_size = std::get<cryptonote::txin_to_key>(tx.vin[0]).key_offsets.size();
     if (tx.rct_signatures.type == rct::RCTType::CLSAG)
         extra = tx.vin.size() * (ring_size + 2) * 32;
     else
@@ -1088,7 +1075,7 @@ bool check_outs_valid(const transaction& tx) {
             }
         }
 
-        if (!check_key(var::get<txout_to_key>(out.target).key))
+        if (!check_key(std::get<txout_to_key>(out.target).key))
             return false;
     }
     return true;
@@ -1226,7 +1213,7 @@ bool lookup_acc_outs(
                 false,
                 "wrong type id in transaction out");
         if (is_out_to_acc(
-                    acc, var::get<txout_to_key>(o.target), tx_pub_key, additional_tx_pub_keys, i)) {
+                    acc, std::get<txout_to_key>(o.target), tx_pub_key, additional_tx_pub_keys, i)) {
             outs.push_back(i);
             money_transfered += o.amount;
         }
@@ -1239,13 +1226,12 @@ void get_blob_hash(const std::string_view blob, crypto::hash& res) {
     cn_fast_hash(blob.data(), blob.size(), res);
 }
 //---------------------------------------------------------------
-std::string print_money(uint64_t amount, bool strip_zeros) {
-    constexpr unsigned int decimal_point = oxen::DISPLAY_DECIMAL_POINT;
+std::string print_money(uint64_t amount, size_t decimal_places, bool strip_zeros) {
     std::string s = std::to_string(amount);
-    if (s.size() < decimal_point + 1) {
-        s.insert(0, decimal_point + 1 - s.size(), '0');
+    if (s.size() < decimal_places + 1) {
+        s.insert(0, decimal_places + 1 - s.size(), '0');
     }
-    s.insert(s.size() - decimal_point, ".");
+    s.insert(s.size() - decimal_places, ".");
     if (strip_zeros) {
         while (s.back() == '0')
             s.pop_back();
@@ -1255,11 +1241,10 @@ std::string print_money(uint64_t amount, bool strip_zeros) {
     return s;
 }
 //---------------------------------------------------------------
-std::string format_money(uint64_t amount, bool strip_zeros) {
-    auto value = print_money(amount, strip_zeros);
-    value += ' ';
-    value += get_unit();
-    return value;
+std::string format_money(uint64_t amount, size_t decimal_places, bool strip_zeros) {
+    auto value = print_money(amount, strip_zeros, decimal_places);
+    auto result = "{} {}"_format(value, get_unit());
+    return result;
 }
 //---------------------------------------------------------------
 std::string print_tx_verification_context(
@@ -1448,7 +1433,7 @@ bool get_transaction_hash(const transaction& t, crypto::hash& res) {
         serialization::binary_string_archiver ba;
         size_t mixin = 0;
         if (t.vin.size() > 0 && std::holds_alternative<txin_to_key>(t.vin[0]))
-            mixin = var::get<txin_to_key>(t.vin[0]).key_offsets.size() - 1;
+            mixin = std::get<txin_to_key>(t.vin[0]).key_offsets.size() - 1;
         try {
             const_cast<transaction&>(t).rct_signatures.p.serialize_rctsig_prunable(
                     ba, t.rct_signatures.type, t.vin.size(), t.vout.size(), mixin);

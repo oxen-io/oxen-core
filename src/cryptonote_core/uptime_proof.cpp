@@ -151,6 +151,21 @@ Proof::Proof(
     }
 }
 
+bool Proof::contact_info_changed(const Proof& other) const {
+    auto fields = [](const Proof& p) {
+        return std::tie(
+                p.version,
+                p.storage_server_version,
+                p.lokinet_version,
+                p.pubkey_ed25519,
+                p.public_ip,
+                p.storage_https_port,
+                p.storage_omq_port,
+                p.qnet_port);
+    };
+    return fields(*this) != fields(other);
+}
+
 std::string Proof::bt_encode_uptime_proof(hf hardfork, cryptonote::network_type nettype) const {
     // NOTE: After Oxen 11, new fields can be added to the encoded proof without breaking older
     // clients (i.e. no need to hardfork-gate additions): the signature applies over the entire

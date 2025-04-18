@@ -917,8 +917,8 @@ bool construct_tx_with_tx_key(
     for (size_t n = 0; n < sources.size(); ++n)
         ins_order[n] = n;
     std::sort(ins_order.begin(), ins_order.end(), [&](const size_t i0, const size_t i1) {
-        const txin_to_key& tk0 = var::get<txin_to_key>(tx.vin[i0]);
-        const txin_to_key& tk1 = var::get<txin_to_key>(tx.vin[i1]);
+        const txin_to_key& tk0 = std::get<txin_to_key>(tx.vin[i0]);
+        const txin_to_key& tk1 = std::get<txin_to_key>(tx.vin[i1]);
         return memcmp(&tk0.k_image, &tk1.k_image, sizeof(tk0.k_image)) > 0;
     });
     tools::apply_permutation(ins_order, [&](size_t i0, size_t i1) {
@@ -1112,7 +1112,7 @@ bool construct_tx_with_tx_key(
         }
     }
     for (size_t i = 0; i < tx.vout.size(); ++i) {
-        dest_keys.push_back(rct::pk2rct(var::get<txout_to_key>(tx.vout[i].target).key));
+        dest_keys.push_back(rct::pk2rct(std::get<txout_to_key>(tx.vout[i].target).key));
         outamounts.push_back(tx.vout[i].amount);
         amount_out += tx.vout[i].amount;
     }
@@ -1147,7 +1147,7 @@ bool construct_tx_with_tx_key(
     // zero out all amounts to mask rct outputs, real amounts are now encrypted
     for (size_t i = 0; i < tx.vin.size(); ++i) {
         if (sources[i].rct)
-            var::get<txin_to_key>(tx.vin[i]).amount = 0;
+            std::get<txin_to_key>(tx.vin[i]).amount = 0;
     }
     for (size_t i = 0; i < tx.vout.size(); ++i)
         tx.vout[i].amount = 0;

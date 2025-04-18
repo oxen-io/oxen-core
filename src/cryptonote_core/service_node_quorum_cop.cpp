@@ -62,6 +62,12 @@ std::optional<std::vector<std::string_view>> service_node_test_results::why() co
 
     std::vector<std::string_view> results{
             {"Service Node is currently failing the following tests:"sv}};
+
+    if (failed_transition) {
+        results.push_back("Node did not transition with HF21 and must be removed."sv);
+        return results;
+    }
+
     if (!uptime_proved)
         results.push_back("Uptime proof missing."sv);
     if (!checkpoint_participation)
@@ -94,6 +100,9 @@ service_node_test_results quorum_cop::check_service_node(
     decltype(std::declval<proof_info>().public_ips) ips{};
     uint64_t l2_height = 0;
     std::chrono::seconds proof_age = 0s;
+
+    // nodes which did not transition at HF21 will have an empty contributors list
+    result.failed_transition = info.contributors.empty();
 
     participation_history<service_nodes::checkpoint_participation_entry> checkpoint_participation{};
     participation_history<service_nodes::pulse_participation_entry> pulse_participation{};
@@ -385,6 +394,11 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                         auto worker_it = worker_states.begin();
                         std::unique_lock lock{m_lock};
                         int good = 0, total = 0;
+
+                        // only vote to deactivate up to a certain number of nodes, determined
+                        // by config
+                        size_t deactivate_count = 0;
+
                         for (size_t node_index = 0; node_index < quorum->workers.size();
                              ++worker_it, ++node_index) {
                             // If the SN no longer exists then it'll be omitted from the
@@ -452,6 +466,9 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                 if (!test_results.recent_l2_height)
                                     reason |=
                                             cryptonote::Decommission_Reason::l2_height_out_of_sync;
+                                if (test_results.failed_transition)  // FIXME this bool is true bad,
+                                                                     // rest are true good
+                                    reason |= cryptonote::Decommission_Reason::failed_transition;
                                 int64_t credit = calculate_decommission_credit(
                                         m_core.get_nettype(), info, latest_height);
 
@@ -503,7 +520,10 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                 height - *cryptonote::get_hard_fork_heights(
                                                   m_core.get_nettype(), hf_version)
                                                         .first <
-                                        netconf.HARDFORK_DEREGISTRATION_GRACE_PERIOD) {
+                                        netconf.HARDFORK_DEREGISTRATION_GRACE_PERIOD &&
+                                // 0 stake is a HF21 zombie, so don't apply the grace period.  (Can
+                                // remove this after the HF21 is passed and dust settled).
+                                info.staking_requirement) {
                                 log::debug(
                                         logcat,
                                         "Decommissioned service node {} is still not passing "
@@ -512,6 +532,22 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                         "has not been deregistered.",
                                         quorum->workers[node_index]);
                                 continue;
+                            }
+
+                            if (info.is_active() && (vote_for_state == new_state::deregister ||
+                                                     vote_for_state == new_state::decommission)) {
+                                if (++deactivate_count > netconf.MAX_DEACTIVATE_PER_BLOCK) {
+                                    log::debug(
+                                            logcat,
+                                            "Service node {} should be {}, but we have already "
+                                            "voted to deactivate the maximum number of nodes "
+                                            "this block.",
+                                            quorum->workers[node_index],
+                                            vote_for_state == new_state::deregister ? "deregistered"
+                                                                                    : "decommission"
+                                                                                      "ed");
+                                    continue;
+                                }
                             }
 
                             quorum_vote_t vote = service_nodes::make_state_change_vote(

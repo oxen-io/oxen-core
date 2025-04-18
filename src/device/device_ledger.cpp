@@ -65,8 +65,7 @@ namespace {
 
     bool apdu_verbose = true;
 
-#define LEDGER_STATUS(status) \
-    { status, #status##sv }
+#define LEDGER_STATUS(status) {status, #status##sv}
     constexpr std::pair<unsigned int, std::string_view> status_codes[] = {
             LEDGER_STATUS(SW_SECURITY_PIN_LOCKED),
             LEDGER_STATUS(SW_SECURITY_LOAD_KEY),

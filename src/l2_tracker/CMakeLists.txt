@@ -38,6 +38,7 @@ target_link_libraries(l2_tracker
     common
     ethyl
     cryptonote_basic
+    network_config
     bls_crypto
     logging
     extra)

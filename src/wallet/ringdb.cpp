@@ -330,7 +330,7 @@ bool ringdb::add_rings(
     for (const auto& in : tx.vin) {
         if (!std::holds_alternative<cryptonote::txin_to_key>(in))
             continue;
-        const auto& txin = var::get<cryptonote::txin_to_key>(in);
+        const auto& txin = std::get<cryptonote::txin_to_key>(in);
         const uint32_t ring_size = txin.key_offsets.size();
         if (ring_size == 1)
             continue;
@@ -407,7 +407,7 @@ bool ringdb::remove_rings(
     for (const auto& in : tx.vin) {
         if (!std::holds_alternative<cryptonote::txin_to_key>(in))
             continue;
-        const auto& txin = var::get<cryptonote::txin_to_key>(in);
+        const auto& txin = std::get<cryptonote::txin_to_key>(in);
         const uint32_t ring_size = txin.key_offsets.size();
         if (ring_size == 1)
             continue;

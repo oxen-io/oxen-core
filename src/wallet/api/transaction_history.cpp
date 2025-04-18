@@ -33,7 +33,7 @@
 #include <list>
 #include <string>
 
-#include "common/hex.h"
+#include "common/guts.h"
 #include "common_defines.h"
 #include "crypto/hash.h"
 #include "transaction_info.h"

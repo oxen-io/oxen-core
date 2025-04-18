@@ -99,7 +99,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     const size_t index_in_tx = 5;
     src.amount = 30000000000000;
     for (int m = 0; m < 4; ++m) {
-      src.push_output(m, var::get<txout_to_key>(blocks[m].miner_tx.value().vout[index_in_tx].target).key, src.amount);
+      src.push_output(m, std::get<txout_to_key>(blocks[m].miner_tx.value().vout[index_in_tx].target).key, src.amount);
     }
     src.real_out_tx_key = cryptonote::get_tx_pub_key_from_extra(blocks[n].miner_tx.value());
     src.real_output = n;
@@ -186,7 +186,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
       src.rct = true;
       for (int m = 0; m <= mixin; ++m) {
         rct::ctkey ctkey;
-        ctkey.dest = rct::pk2rct(var::get<txout_to_key>(rct_txes[rct_idx/4].vout[rct_idx&3].target).key);
+        ctkey.dest = rct::pk2rct(std::get<txout_to_key>(rct_txes[rct_idx/4].vout[rct_idx&3].target).key);
         ctkey.mask = rct_txes[rct_idx/4].rct_signatures.outPk[rct_idx&3].mask;
         src.outputs.push_back(std::make_pair(global_rct_idx, ctkey));
         ++rct_idx;
@@ -204,7 +204,7 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
       src.mask = rct::identity();
       src.rct = false;
       for (int m = 0; m <= mixin; ++m) {
-        src.push_output(m, var::get<txout_to_key>(blocks[pre_rct_idx].miner_tx.value().vout[4].target).key, src.amount);
+        src.push_output(m, std::get<txout_to_key>(blocks[pre_rct_idx].miner_tx.value().vout[4].target).key, src.amount);
         ++pre_rct_idx;
       }
     }
@@ -369,7 +369,7 @@ bool gen_rct_tx_rct_spend_with_zero_commit::generate(std::vector<test_event_entr
   const uint64_t amount_paid = 10000;
   return generate_with(events, out_idx, mixin, amount_paid, false,
     [](std::vector<tx_source_entry> &sources, std::vector<tx_destination_entry> &destinations) {sources[0].outputs[0].second.mask = rct::zeroCommit(sources[0].amount); sources[0].mask = rct::identity();},
-    [](transaction &tx){var::get<txin_to_key>(tx.vin[0]).amount = 0;});
+    [](transaction &tx){std::get<txin_to_key>(tx.vin[0]).amount = 0;});
 }
 
 bool gen_rct_tx_pre_rct_zero_vin_amount::generate(std::vector<test_event_entry>& events) const
@@ -378,7 +378,7 @@ bool gen_rct_tx_pre_rct_zero_vin_amount::generate(std::vector<test_event_entry>&
   const int out_idx[] = {0, -1};
   const uint64_t amount_paid = 10000;
   return generate_with(events, out_idx, mixin, amount_paid, false,
-    NULL, [](transaction &tx) {var::get<txin_to_key>(tx.vin[0]).amount = 0;});
+    NULL, [](transaction &tx) {std::get<txin_to_key>(tx.vin[0]).amount = 0;});
 }
 
 bool gen_rct_tx_rct_non_zero_vin_amount::generate(std::vector<test_event_entry>& events) const
@@ -387,7 +387,7 @@ bool gen_rct_tx_rct_non_zero_vin_amount::generate(std::vector<test_event_entry>&
   const int out_idx[] = {1, -1};
   const uint64_t amount_paid = 10000;
   return generate_with(events, out_idx, mixin, amount_paid, false,
-    NULL, [](transaction &tx) {var::get<txin_to_key>(tx.vin[0]).amount = 5000000000000;}); // one that we know exists
+    NULL, [](transaction &tx) {std::get<txin_to_key>(tx.vin[0]).amount = 5000000000000;}); // one that we know exists
 }
 
 bool gen_rct_tx_non_zero_vout_amount::generate(std::vector<test_event_entry>& events) const
@@ -405,7 +405,7 @@ bool gen_rct_tx_pre_rct_duplicate_key_image::generate(std::vector<test_event_ent
   const int out_idx[] = {0, -1};
   const uint64_t amount_paid = 10000;
   return generate_with(events, out_idx, mixin, amount_paid, false,
-    NULL, [&events](transaction &tx) {var::get<txin_to_key>(tx.vin[0]).k_image = var::get<txin_to_key>(var::get<transaction>(events[67]).vin[0]).k_image;});
+    NULL, [&events](transaction &tx) {std::get<txin_to_key>(tx.vin[0]).k_image = std::get<txin_to_key>(std::get<transaction>(events[67]).vin[0]).k_image;});
 }
 
 bool gen_rct_tx_rct_duplicate_key_image::generate(std::vector<test_event_entry>& events) const
@@ -414,7 +414,7 @@ bool gen_rct_tx_rct_duplicate_key_image::generate(std::vector<test_event_entry>&
   const int out_idx[] = {1, -1};
   const uint64_t amount_paid = 10000;
   return generate_with(events, out_idx, mixin, amount_paid, false,
-    NULL, [&events](transaction &tx) {var::get<txin_to_key>(tx.vin[0]).k_image = var::get<txin_to_key>(var::get<transaction>(events[67]).vin[0]).k_image;});
+    NULL, [&events](transaction &tx) {std::get<txin_to_key>(tx.vin[0]).k_image = std::get<txin_to_key>(std::get<transaction>(events[67]).vin[0]).k_image;});
 }
 
 bool gen_rct_tx_pre_rct_wrong_key_image::generate(std::vector<test_event_entry>& events) const
@@ -425,7 +425,7 @@ bool gen_rct_tx_pre_rct_wrong_key_image::generate(std::vector<test_event_entry>&
   // some random key image from the monero blockchain, so we get something that is a valid key image
   static const uint8_t k_image[33] = "\x49\x3b\x56\x16\x54\x76\xa8\x75\xb7\xf4\xa8\x51\xf5\x55\xd3\x44\xe7\x3e\xea\x73\xee\xc1\x06\x7c\x7d\xb6\x57\x28\x46\x85\xe1\x07";
   return generate_with(events, out_idx, mixin, amount_paid, false,
-    NULL, [](transaction &tx) {memcpy(&var::get<txin_to_key>(tx.vin[0]).k_image, k_image, 32);});
+    NULL, [](transaction &tx) {memcpy(&std::get<txin_to_key>(tx.vin[0]).k_image, k_image, 32);});
 }
 
 bool gen_rct_tx_rct_wrong_key_image::generate(std::vector<test_event_entry>& events) const
@@ -436,7 +436,7 @@ bool gen_rct_tx_rct_wrong_key_image::generate(std::vector<test_event_entry>& eve
   // some random key image from the monero blockchain, so we get something that is a valid key image
   static const uint8_t k_image[33] = "\x49\x3b\x56\x16\x54\x76\xa8\x75\xb7\xf4\xa8\x51\xf5\x55\xd3\x44\xe7\x3e\xea\x73\xee\xc1\x06\x7c\x7d\xb6\x57\x28\x46\x85\xe1\x07";
   return generate_with(events, out_idx, mixin, amount_paid, false,
-    NULL, [](transaction &tx) {memcpy(&var::get<txin_to_key>(tx.vin[0]).k_image, k_image, 32);});
+    NULL, [](transaction &tx) {memcpy(&std::get<txin_to_key>(tx.vin[0]).k_image, k_image, 32);});
 }
 
 bool gen_rct_tx_pre_rct_wrong_fee::generate(std::vector<test_event_entry>& events) const
@@ -463,7 +463,7 @@ bool gen_rct_tx_pre_rct_increase_vin_and_fee::generate(std::vector<test_event_en
   const int out_idx[] = {0, -1};
   const uint64_t amount_paid = 10000;
   return generate_with(events, out_idx, mixin, amount_paid, false,
-    NULL, [](transaction &tx) {var::get<txin_to_key>(tx.vin[0]).amount++;tx.rct_signatures.txnFee++;});
+    NULL, [](transaction &tx) {std::get<txin_to_key>(tx.vin[0]).amount++;tx.rct_signatures.txnFee++;});
 }
 
 bool gen_rct_tx_pre_rct_remove_vin::generate(std::vector<test_event_entry>& events) const

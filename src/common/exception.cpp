@@ -1,9 +1,9 @@
+#if defined(WITH_STACKTRACE)
 #include "exception.h"
 
 #include <fmt/core.h>
 
 #include <cstdio>
-#include <exception>
 #include <sstream>
 
 namespace oxen {
@@ -43,3 +43,4 @@ void set_terminate_handler() {
     });
 }
 };  // namespace oxen
+#endif

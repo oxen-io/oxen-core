@@ -61,7 +61,7 @@ public:
       if (!r)
         return false;
 
-      txout_to_key tx_out = var::get<txout_to_key>(m_miner_txs[i].vout[0].target);
+      txout_to_key tx_out = std::get<txout_to_key>(m_miner_txs[i].vout[0].target);
       output_entries.push_back(std::make_pair(i, rct::ctkey({rct::pk2rct(tx_out.key), rct::zeroCommit(m_miner_txs[i].vout[0].amount)})));
       m_public_keys[i] = tx_out.key;
       m_public_key_ptrs[i] = &m_public_keys[i];

@@ -43,7 +43,7 @@ public:
 
   bool test()
   {
-    const cryptonote::txout_to_key& tx_out = var::get<cryptonote::txout_to_key>(m_tx.vout[0].target);
+    const cryptonote::txout_to_key& tx_out = std::get<cryptonote::txout_to_key>(m_tx.vout[0].target);
     return cryptonote::is_out_to_acc(m_bob.get_keys(), tx_out, m_tx_pub_key, m_additional_tx_pub_keys, 0);
   }
 };
@@ -62,7 +62,7 @@ public:
   }
   bool test()
   {
-    const cryptonote::txout_to_key& tx_out = var::get<cryptonote::txout_to_key>(m_tx.vout[0].target);
+    const cryptonote::txout_to_key& tx_out = std::get<cryptonote::txout_to_key>(m_tx.vout[0].target);
     std::unordered_map<crypto::public_key, cryptonote::subaddress_index> subaddresses;
     subaddresses[m_bob.get_keys().m_account_address.m_spend_public_key] = {0,0};
     std::vector<crypto::key_derivation> additional_derivations;

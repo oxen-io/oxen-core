@@ -3,21 +3,7 @@
 #include <concepts>
 #include <exception>
 
-#ifdef NDEBUG
-
-namespace oxen {
-
-// For a release build `traced<E>` is just a typedef for `E`:
-template <std::derived_from<std::exception> StdExcept>
-using traced = StdExcept;
-
-// Release build: set_terminate_handler() is a no-op
-inline void set_terminate_handler() {}
-
-}  // namespace oxen
-
-#else
-
+#if defined(WITH_STACKTRACE)
 #include <cpptrace/cpptrace.hpp>
 #include <string>
 #include <string_view>
@@ -68,5 +54,15 @@ template <std::derived_from<std::exception> StdExcept>
 using traced = exception<StdExcept>;
 
 }  // namespace oxen
+#else
+namespace oxen {
 
+// For a release build `traced<E>` is just a typedef for `E`:
+template <std::derived_from<std::exception> StdExcept>
+using traced = StdExcept;
+
+// Release build: set_terminate_handler() is a no-op
+inline void set_terminate_handler() {}
+
+}  // namespace oxen
 #endif

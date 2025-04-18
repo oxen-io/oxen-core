@@ -289,14 +289,14 @@ class message_store {
 
     template <class t_archive>
     inline void serialize(t_archive& a, const unsigned int ver) {
-        a& m_active;
-        a& m_num_authorized_signers;
-        a& m_nettype;
-        a& m_num_required_signers;
-        a& m_signers;
-        a& m_messages;
-        a& m_next_message_id;
-        a& m_auto_send;
+        a & m_active;
+        a & m_num_authorized_signers;
+        a & m_nettype;
+        a & m_num_required_signers;
+        a & m_signers;
+        a & m_messages;
+        a & m_next_message_id;
+        a & m_auto_send;
     }
 
     static const char* message_type_to_string(message_type type);
@@ -358,70 +358,70 @@ BOOST_CLASS_VERSION(mms::auto_config_data, 0)
 namespace boost::serialization {
 template <class Archive>
 inline void serialize(Archive& a, mms::file_data& x, const boost::serialization::version_type ver) {
-    a& x.magic_string;
-    a& x.file_version;
-    a& x.iv;
-    a& x.encrypted_data;
+    a & x.magic_string;
+    a & x.file_version;
+    a & x.iv;
+    a & x.encrypted_data;
 }
 
 template <class Archive>
 inline void serialize(Archive& a, mms::message& x, const boost::serialization::version_type ver) {
-    a& x.id;
-    a& x.type;
-    a& x.direction;
-    a& x.content;
-    a& x.created;
-    a& x.modified;
-    a& x.sent;
-    a& x.signer_index;
-    a& x.hash;
-    a& x.state;
-    a& x.wallet_height;
-    a& x.round;
-    a& x.signature_count;
-    a& x.transport_id;
+    a & x.id;
+    a & x.type;
+    a & x.direction;
+    a & x.content;
+    a & x.created;
+    a & x.modified;
+    a & x.sent;
+    a & x.signer_index;
+    a & x.hash;
+    a & x.state;
+    a & x.wallet_height;
+    a & x.round;
+    a & x.signature_count;
+    a & x.transport_id;
 }
 
 template <class Archive>
 inline void serialize(
         Archive& a, mms::authorized_signer& x, const boost::serialization::version_type ver) {
-    a& x.label;
-    a& x.transport_address;
-    a& x.monero_address_known;
-    a& x.monero_address;
-    a& x.me;
-    a& x.index;
+    a & x.label;
+    a & x.transport_address;
+    a & x.monero_address_known;
+    a & x.monero_address;
+    a & x.me;
+    a & x.index;
     if (ver < 1) {
         return;
     }
-    a& x.auto_config_token;
-    a& x.auto_config_public_key;
-    a& x.auto_config_secret_key;
-    a& x.auto_config_transport_address;
-    a& x.auto_config_running;
+    a & x.auto_config_token;
+    a & x.auto_config_public_key;
+    a & x.auto_config_secret_key;
+    a & x.auto_config_transport_address;
+    a & x.auto_config_running;
 }
 
 template <class Archive>
 inline void serialize(
         Archive& a, mms::auto_config_data& x, const boost::serialization::version_type ver) {
-    a& x.label;
-    a& x.transport_address;
-    a& x.monero_address;
+    a & x.label;
+    a & x.transport_address;
+    a & x.monero_address;
 }
 
 template <class Archive>
 inline void serialize(
         Archive& a, mms::file_transport_message& x, const boost::serialization::version_type ver) {
-    a& x.sender_address;
-    a& x.iv;
-    a& x.encryption_public_key;
-    a& x.internal_message;
+    a & x.sender_address;
+    a & x.iv;
+    a & x.encryption_public_key;
+    a & x.internal_message;
 }
 
 template <class Archive>
 inline void serialize(
         Archive& a, crypto::chacha_iv& x, const boost::serialization::version_type ver) {
-    a& x.data;
+    a & x.data;
 }
 
 }  // namespace boost::serialization

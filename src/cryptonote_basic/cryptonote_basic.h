@@ -345,7 +345,7 @@ class transaction final : public transaction_prefix {
                             vin.size(),
                             vout.size(),
                             vin.size() > 0 && std::holds_alternative<txin_to_key>(vin[0])
-                                    ? var::get<txin_to_key>(vin[0]).key_offsets.size() - 1
+                                    ? std::get<txin_to_key>(vin[0]).key_offsets.size() - 1
                                     : 0);
                 }
             }

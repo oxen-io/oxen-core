@@ -540,7 +540,7 @@ static void expand_tsx(cryptonote::transaction &tx)
     rv.p.MGs.resize(1);
     rv.p.MGs[0].II.resize(tx.vin.size());
     for (size_t n = 0; n < tx.vin.size(); ++n)
-      rv.p.MGs[0].II[n] = rct::ki2rct(var::get<txin_to_key>(tx.vin[n]).k_image);
+      rv.p.MGs[0].II[n] = rct::ki2rct(std::get<txin_to_key>(tx.vin[n]).k_image);
   }
   else if (tools::equals_any(rv.type, rct::RCTType::Simple, rct::RCTType::Bulletproof, rct::RCTType::Bulletproof2))
   {
@@ -548,7 +548,7 @@ static void expand_tsx(cryptonote::transaction &tx)
     for (size_t n = 0; n < tx.vin.size(); ++n)
     {
       rv.p.MGs[n].II.resize(1);
-      rv.p.MGs[n].II[0] = rct::ki2rct(var::get<txin_to_key>(tx.vin[n]).k_image);
+      rv.p.MGs[n].II[0] = rct::ki2rct(std::get<txin_to_key>(tx.vin[n]).k_image);
     }
   }
   else if (rv.type == rct::RCTType::CLSAG)
@@ -881,11 +881,11 @@ void gen_trezor_base::load(std::vector<test_event_entry>& events)
   {
     if (std::holds_alternative<cryptonote::block>(ev))
     {
-      m_head = var::get<cryptonote::block>(ev);
+      m_head = std::get<cryptonote::block>(ev);
     }
     else if (std::holds_alternative<cryptonote::account_base>(ev))  // accounts
     {
-      const auto & acc = var::get<cryptonote::account_base>(ev);
+      const auto & acc = std::get<cryptonote::account_base>(ev);
       if (acc_idx < accounts_num)
       {
         *accounts[acc_idx++] = acc;
@@ -893,7 +893,7 @@ void gen_trezor_base::load(std::vector<test_event_entry>& events)
     }
     else if (std::holds_alternative<event_replay_settings>(ev))  // hard forks
     {
-      const auto & rep_settings = var::get<event_replay_settings>(ev);
+      const auto & rep_settings = std::get<event_replay_settings>(ev);
       if (rep_settings.hard_forks)
       {
         const auto & hf = rep_settings.hard_forks.get();
