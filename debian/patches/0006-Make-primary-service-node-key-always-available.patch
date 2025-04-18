@@ -12,15 +12,15 @@ simplify that greatly.
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/cryptonote_core/cryptonote_core.cpp b/src/cryptonote_core/cryptonote_core.cpp
-index e95287e..6d80ce5 100644
+index 5c58a54..cea919a 100644
 --- a/src/cryptonote_core/cryptonote_core.cpp
 +++ b/src/cryptonote_core/cryptonote_core.cpp
-@@ -1171,7 +1171,7 @@ bool core::init_service_keys() {
+@@ -1196,7 +1196,7 @@ bool core::init_service_keys(bool fixup_monero_ed) {
      // backwards compatibility with existing active service nodes.)  The legacy key consists of
      // *just* the private point, but not the seed, and so cannot be used for full Ed25519 signatures
      // (which rely on the seed for signing).
 -    if (m_service_node) {
 +    if (true || m_service_node) {
-         if (std::error_code ec; !fs::exists(m_config_folder / "key", ec)) {
-             epee::wipeable_string privkey_signhash;
-             privkey_signhash.resize(crypto_hash_sha512_BYTES);
+         if (std::error_code ec; fixup_monero_ed || !fs::exists(m_config_folder / "key", ec)) {
+             keys.key = crypto::ed25519_to_monero_secret_key(keys.key_ed25519);
+             if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
