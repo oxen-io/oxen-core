@@ -30,14 +30,12 @@
 
 #pragma once
 
-#include <array>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/value_semantic.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <concepts>
 #include <functional>
-#include <type_traits>
 #include <variant>
 
 #include "common/format.h"
@@ -237,14 +235,6 @@ std::tuple<typename ArgDescriptor::value_type...> get_args(
 
 extern const arg_flag arg_help;
 extern const arg_flag arg_version;
-
-// Network type arguments; we handle these centrally, here, as various other options defined
-// elsewhere have defaults that depend on the network type.
-extern const arg_flag arg_testnet;
-extern const arg_flag arg_devnet;
-extern const arg_flag arg_regtest;
-extern const arg_flag arg_stagenet;
-extern const arg_flag arg_localdev;
 
 /// Returns the terminal width and height (in characters), if supported on this system and
 /// available.  Returns {0,0} if not available or could not be determined.

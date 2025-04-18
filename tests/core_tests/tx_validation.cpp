@@ -124,7 +124,7 @@ namespace
         m_tx.signatures.push_back(std::vector<crypto::signature>());
         std::vector<crypto::signature>& sigs = m_tx.signatures.back();
         sigs.resize(src_entr.outputs.size());
-        generate_ring_signature(m_tx_prefix_hash, var::get<txin_to_key>(m_tx.vin[i]).k_image, keys_ptrs, m_in_contexts[i].sec, src_entr.real_output, sigs.data());
+        generate_ring_signature(m_tx_prefix_hash, std::get<txin_to_key>(m_tx.vin[i]).k_image, keys_ptrs, m_in_contexts[i].sec, src_entr.real_output, sigs.data());
         i++;
       }
     }
@@ -366,7 +366,7 @@ bool gen_tx_input_wo_key_offsets::generate(std::vector<test_event_entry>& events
 
   transaction tx = {};
   oxen_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::hf::hf7).build();
-  txin_to_key& in_to_key = var::get<txin_to_key>(tx.vin.front());
+  txin_to_key& in_to_key = std::get<txin_to_key>(tx.vin.front());
   while (!in_to_key.key_offsets.empty())
     in_to_key.key_offsets.pop_back();
 
@@ -398,7 +398,7 @@ bool gen_tx_key_offset_points_to_foreign_key::generate(std::vector<test_event_en
   std::vector<tx_destination_entry> destinations_alice;
   fill_tx_sources_and_destinations(events, blk_money_unlocked, alice_account, get_address(miner_account), MK_COINS(15) + 1 - TESTS_DEFAULT_FEE, TESTS_DEFAULT_FEE, TX_OUTPUT_DECOYS, sources_alice, destinations_alice);
 
-  txin_to_key& bob_in_to_key        = var::get<txin_to_key>(bob_tx.vin.front());
+  txin_to_key& bob_in_to_key        = std::get<txin_to_key>(bob_tx.vin.front());
   bob_in_to_key.key_offsets.front() = sources_alice.front().outputs.back().first;
 
   // TODO(oxen): This used to be first(), but in the debugger bob's front() is
@@ -424,7 +424,7 @@ bool gen_tx_sender_key_offset_not_exist::generate(std::vector<test_event_entry>&
 
   transaction tx = {};
   oxen_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::hf::hf7).build();
-  txin_to_key& in_to_key        = var::get<txin_to_key>(tx.vin.front());
+  txin_to_key& in_to_key        = std::get<txin_to_key>(tx.vin.front());
   in_to_key.key_offsets.front() = std::numeric_limits<uint64_t>::max();
 
   DO_CALLBACK(events, "mark_invalid_tx");
@@ -512,7 +512,7 @@ bool gen_tx_key_image_not_derive_from_tx_key::generate(std::vector<test_event_en
 
   transaction tx = {};
   oxen_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::hf::hf7).build();
-  txin_to_key& in_to_key        = var::get<txin_to_key>(tx.vin.front());
+  txin_to_key& in_to_key        = std::get<txin_to_key>(tx.vin.front());
 
   // Use fake key image
   keypair keys{hw::get_device("default")};
@@ -540,7 +540,7 @@ bool gen_tx_key_image_is_invalid::generate(std::vector<test_event_entry>& events
 
   transaction tx = {};
   oxen_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::hf::hf7).build();
-  txin_to_key& in_to_key = var::get<txin_to_key>(tx.vin.front());
+  txin_to_key& in_to_key = std::get<txin_to_key>(tx.vin.front());
   in_to_key.k_image      = generate_invalid_key_image();
 
   // Tx with invalid key image can't be subscribed, so create empty signature
@@ -624,7 +624,7 @@ bool gen_tx_txout_to_key_has_invalid_key::generate(std::vector<test_event_entry>
 
   transaction tx           = {};
   oxen_tx_builder(events, tx, blk_money_unlocked, miner_account, miner_account.get_keys().m_account_address, MK_COINS(1), cryptonote::hf::hf7).build();
-  txout_to_key& out_to_key = var::get<txout_to_key>(tx.vout.front().target);
+  txout_to_key& out_to_key = std::get<txout_to_key>(tx.vout.front().target);
   out_to_key.key           = generate_invalid_pub_key();
 
   DO_CALLBACK(events, "mark_invalid_tx");

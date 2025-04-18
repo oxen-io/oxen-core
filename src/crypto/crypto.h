@@ -304,6 +304,8 @@ void generate_key_image_signature(
         const key_image& image, const public_key& pub, const secret_key& sec, signature& sig);
 bool check_key_image_signature(const key_image& image, const public_key& pub, const signature& sig);
 
+secret_key ed25519_to_monero_secret_key(const ed25519_secret_key& skey);
+
 }  // namespace crypto
 
 template <>

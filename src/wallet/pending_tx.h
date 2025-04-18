@@ -77,33 +77,33 @@ namespace boost::serialization {
 
 template <class Archive>
 void serialize(Archive& a, wallet::pending_tx& x, const unsigned int ver) {
-    a& x.tx;
-    a& x.dust;
-    a& x.fee;
-    a& x.dust_added_to_fee;
-    a& x.change_dts;
+    a & x.tx;
+    a & x.dust;
+    a & x.fee;
+    a & x.dust_added_to_fee;
+    a & x.change_dts;
     if (ver < 2) {
         // load list to vector
         std::list<size_t> selected_transfers;
-        a& selected_transfers;
+        a & selected_transfers;
         x.selected_transfers.clear();
         x.selected_transfers.reserve(selected_transfers.size());
         for (size_t t : selected_transfers)
             x.selected_transfers.push_back(t);
     }
-    a& x.key_images;
-    a& x.tx_key;
-    a& x.dests;
-    a& x.construction_data;
+    a & x.key_images;
+    a & x.tx_key;
+    a & x.dests;
+    a & x.construction_data;
     if (ver < 1)
         return;
-    a& x.additional_tx_keys;
+    a & x.additional_tx_keys;
     if (ver < 2)
         return;
-    a& x.selected_transfers;
+    a & x.selected_transfers;
     if (ver < 3)
         return;
-    a& x.multisig_sigs;
+    a & x.multisig_sigs;
 }
 
 }  // namespace boost::serialization

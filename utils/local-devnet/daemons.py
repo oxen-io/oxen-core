@@ -5,6 +5,7 @@ import random
 import requests
 import subprocess
 import time
+import eth_typing.evm
 
 # On linux we can pick a random 127.x.y.z IP which is highly likely to not have anything listening
 # on it (so we make bind conflicts highly unlikely).  On most other OSes we have to listen on
@@ -79,6 +80,7 @@ class RPCDaemon:
 
     def stop(self):
         """Tries stopping with a term at first, then a kill if the term hasn't worked after 10s"""
+        print(f"RPCDaemon::stop called on {self.name}")
         if self.proc:
             self.terminate()
             try:
@@ -94,19 +96,32 @@ class RPCDaemon:
         return self.args
 
 
-    def json_rpc(self, method, params=None, *, timeout=100):
+    def json_rpc(self, method, params=None, *, timeout=100, try_count=0):
         """Sends a json_rpc request to the rpc port.  Returns the response object."""
         if not self.proc:
             raise RuntimeError("Cannot make rpc request before calling start()")
-        json = {
-                "jsonrpc": "2.0",
-                "id": "0",
-                "method": method,
-                }
-        if params:
-            json["params"] = params
-        print("  {}:{} => {}".format(self.listen_ip, self.rpc_port, json))
-        return requests.post('http://{}:{}/json_rpc'.format(self.listen_ip, self.rpc_port), json=json, timeout=timeout)
+        try:
+            json = {
+                    "jsonrpc": "2.0",
+                    "id": "0",
+                    "method": method,
+                    }
+            if params:
+                json["params"] = params
+            print("  {}:{} => {}".format(self.listen_ip, self.rpc_port, json))
+            r = requests.post('http://{}:{}/json_rpc'.format(self.listen_ip, self.rpc_port), json=json, timeout=timeout)
+            j = r.json()
+            if 'error' in j and try_count < 3:
+                raise RuntimeError(j['error'])
+
+            return r
+        except Exception as e:
+            print(f"json_rpc exception on try {try_count+1}: {e}")
+            if try_count < 3:
+                time.sleep(0.5)
+                return self.json_rpc(method, params, timeout=timeout, try_count=try_count+1)
+            else:
+                raise e
 
 
     def rpc(self, path, params=None, *, timeout=30):
@@ -180,6 +195,7 @@ class Daemon(RPCDaemon):
                 '--rpc-admin={}:{}'.format(self.listen_ip, self.rpc_port),
                 '--quorumnet-port={}'.format(self.qnet_port),
                 '--l2-provider={}'.format("http://127.0.0.1:8545"),
+                '--l2-refresh=1',
                 )
 
         for d in peers:
@@ -284,18 +300,18 @@ class Daemon(RPCDaemon):
     def get_ethereum_registration_args(self, address):
         return self.json_rpc("contract_registration", {"operator_address": address}).json()["result"]
 
-    def get_bls_rewards(self, address):
+    def get_bls_rewards(self, address: eth_typing.evm.ChecksumAddress) -> dict:
         return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
 
     def get_exit_liquidation_request(self, ed25519_pubkey, liquidate=False):
         return self.json_rpc("bls_exit_liquidation_request", {"pubkey": ed25519_pubkey, "liquidate": liquidate}, timeout=1000).json()
 
-    def get_accrued_rewards(self, addresses) -> list[AccruedRewards]:
+    def get_accrued_rewards(self, addresses: list[eth_typing.evm.ChecksumAddress]) -> list[AccruedRewards]:
         json                         = self.json_rpc("get_accrued_rewards", {"addresses": addresses}).json()
         balance_array                = json['result']['balances']
         result: list[AccruedRewards] = []
         for address, balance in balance_array.items():
-            item = AccruedRewards()
+            item         = AccruedRewards()
             item.address = address
             item.balance = balance
             result.append(item)
@@ -318,7 +334,8 @@ class Wallet(RPCDaemon):
             datadir=None,
             listen_ip=None,
             rpc_port=None,
-            log_level=4):
+            log_level=4,
+            existing_wallet=False):
 
         self.listen_ip = listen_ip or LISTEN_IP
         self.rpc_port = rpc_port or next_port()
@@ -339,6 +356,7 @@ class Wallet(RPCDaemon):
                 '--wallet-dir={}'.format(self.walletdir),
                 )
         self.wallet_address = None
+        self.existing_wallet = existing_wallet
 
 
     def ready(self, wallet="wallet", existing=False):
@@ -350,7 +368,7 @@ class Wallet(RPCDaemon):
             self.start()
 
         self.wallet_filename = wallet
-        if existing:
+        if existing or self.existing_wallet:
             r = self.wait_for_json_rpc("open_wallet", {"filename": wallet, "password": ""})
         else:
             r = self.wait_for_json_rpc("create_wallet", {"filename": wallet, "password": "", "language": "English"})
@@ -365,7 +383,19 @@ class Wallet(RPCDaemon):
 
     def address(self):
         if not self.wallet_address:
-            self.wallet_address = self.json_rpc("get_address").json()["result"]["address"]
+            retry_count = 0
+            while True: # loop exits when done or too many retries (raises)
+                retry_count += 1
+                r = self.json_rpc("get_address").json()
+                try:
+                    self.wallet_address = r["result"]["address"]
+                    break
+                except Exception as e:
+                    print(f"wallet {self.name} get_address: wallet not ready yet.  Trying again...")
+                    if retry_count >= 5:
+                        raise
+                    else:
+                        time.sleep(1)
 
         return self.wallet_address
 
@@ -384,13 +414,21 @@ class Wallet(RPCDaemon):
             raise RuntimeError("Cannot create wallet: {}".format(r['error'] if 'error' in r else 'Unexpected response: {}'.format(r)))
 
 
-    def balances(self, refresh=False):
+    def balances(self, refresh=False, try_count=0):
         """Returns (total, unlocked) balances.  Can optionally refresh first."""
         if refresh:
             self.refresh()
-        b = self.json_rpc("get_balance").json()['result']
-        return (b['balance'], b['unlocked_balance'])
-
+        try:
+            resp = self.json_rpc("get_balance").json()
+            b = resp['result']
+            return (b['balance'], b['unlocked_balance'])
+        except Exception as e:
+            print(f"get_balance try {try_count+1} response: {resp}")
+            if try_count < 3:
+                time.sleep(0.5)
+                return self.balances(refresh=False, try_count=try_count+1)
+            else:
+                raise e
 
     def transfer(self, to, amount=None, *, priority=None, sweep=False):
         """Attempts a transfer.  Throws TransferFailed if it gets rejected by the daemon, otherwise
@@ -420,19 +458,28 @@ class Wallet(RPCDaemon):
         return [find_tx(txid) for txid in txids]
 
 
-    def register_sn(self, sn, staking_requirement):
-        r = sn.json_rpc("get_service_node_registration_cmd", {
-            "contributor_addresses": [self.address()],
-            "contributor_amounts": [staking_requirement],
-            "operator_cut": "100",
-            "staking_requirement": staking_requirement
-        }).json()
-        if 'error' in r:
-            raise RuntimeError("Registration cmd generation failed: {}".format(r['error']['message']))
-        cmd = r['result']['registration_cmd']
-        r = self.json_rpc("register_service_node", {"register_service_node_str": cmd}).json()
-        if 'error' in r:
-            raise RuntimeError("Failed to submit service node registration tx: {}".format(r['error']['message']))
+    def register_sn(self, sn, staking_requirement, try_count=0):
+        try:
+            r = sn.json_rpc("get_service_node_registration_cmd", {
+                "contributor_addresses": [self.address()],
+                "contributor_amounts": [staking_requirement],
+                "operator_cut": "100",
+                "staking_requirement": staking_requirement
+            }).json()
+            if 'error' in r:
+                print(f"register_sn try {try_count} failed, response: r")
+                raise RuntimeError("Registration cmd generation failed: {}".format(r['error']['message']))
+            cmd = r['result']['registration_cmd']
+            r = self.json_rpc("register_service_node", {"register_service_node_str": cmd}).json()
+            if 'error' in r:
+                print(f"register_sn try {try_count} failed, response: r")
+                raise RuntimeError("Failed to submit service node registration tx: {}".format(r['error']['message']))
+        except Exception as e:
+            if try_count < 3:
+                time.sleep(0.5)
+                return self.register_sn(sn, staking_requirement, try_count=try_count+1)
+            else:
+                raise e
 
     def register_sn_for_contributions(self, sn, cut, amount, staking_requirement):
         r = sn.json_rpc("get_service_node_registration_cmd", {

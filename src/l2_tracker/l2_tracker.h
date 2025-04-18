@@ -6,7 +6,6 @@
 #include <chrono>
 #include <ethyl/provider.hpp>
 #include <forward_list>
-#include <iterator>
 #include <ranges>
 #include <shared_mutex>
 #include <unordered_set>

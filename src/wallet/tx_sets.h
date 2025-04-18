@@ -69,23 +69,23 @@ namespace boost::serialization {
 
 template <class Archive>
 void serialize(Archive& a, wallet::unsigned_tx_set& x, const unsigned int ver) {
-    a& x.txes;
-    a& x.transfers;
+    a & x.txes;
+    a & x.transfers;
 }
 
 template <class Archive>
 void serialize(Archive& a, wallet::signed_tx_set& x, const unsigned int ver) {
-    a& x.ptx;
-    a& x.key_images;
+    a & x.ptx;
+    a & x.key_images;
     if (ver < 1)
         return;
-    a& x.tx_key_images;
+    a & x.tx_key_images;
 }
 
 template <class Archive>
 void serialize(Archive& a, wallet::multisig_tx_set& x, const unsigned int ver) {
-    a& x.m_ptx;
-    a& x.m_signers;
+    a & x.m_ptx;
+    a & x.m_signers;
 }
 
 }  // namespace boost::serialization

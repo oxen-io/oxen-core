@@ -1,8 +1,6 @@
 
 #include "http_server.h"
 
-#include <oxenc/variant.h>
-
 #include <chrono>
 #include <exception>
 #include <variant>
@@ -308,12 +306,12 @@ namespace {
                     nlohmann::json{
                             {"jsonrpc", "2.0"},
                             {"id", data.jsonrpc_id},
-                            {"result", var::get<nlohmann::json>(std::move(r))}}
+                            {"result", std::get<nlohmann::json>(std::move(r))}}
                             .dump();
         else if (auto* json = std::get_if<nlohmann::json>(&r))
             result = json->dump();
         else
-            result = var::get<std::string>(std::move(r));
+            result = std::get<std::string>(std::move(r));
 
         std::string call_duration;
         if (data.response_started)
@@ -588,7 +586,7 @@ void http_server::handle_base_request(
             if (std::holds_alternative<std::monostate>(data->request.body))
                 data->request.body = std::string{d};
             else
-                var::get<std::string>(data->request.body) += d;
+                std::get<std::string>(data->request.body) += d;
         }
         if (!done)
             return;

@@ -282,7 +282,7 @@ int main(int argc, char* argv[]) {
                 totins += io;
             }
             if (do_ringsize) {
-                const auto& tx_in_to_key = var::get<cryptonote::txin_to_key>(tx.vin[0]);
+                const auto& tx_in_to_key = std::get<cryptonote::txin_to_key>(tx.vin[0]);
                 io = tx_in_to_key.key_offsets.size();
                 if (io < minrings)
                     minrings = io;

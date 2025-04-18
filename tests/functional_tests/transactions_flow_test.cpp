@@ -252,7 +252,7 @@ bool transactions_flow_test(std::string& working_folder,
         return false;
       }
     }
-    lst_sent_ki = var::get<txin_to_key>(tx.vin[0]).k_image;
+    lst_sent_ki = std::get<txin_to_key>(tx.vin[0]).k_image;
 
     transfered_money += amount_to_tx;
 

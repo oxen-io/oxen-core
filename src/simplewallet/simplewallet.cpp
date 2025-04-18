@@ -4094,9 +4094,6 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                               << m_wallet->get_daemon_address() << ": " << e.what() << ".\n";
         }
         std::string err = interpret_rpc_response(true, res["status"]);
-        if (err.empty() && res["untrusted"].get<bool>())
-            message_writer(fmt::terminal_color::yellow)
-                    << tr("Moreover, a daemon is also less secure when running in bootstrap mode");
     }
 
     if (m_wallet->get_ring_database().empty())
@@ -5641,7 +5638,7 @@ bool simple_wallet::process_ring_members(
         for (size_t i = 0; i < tx.vin.size(); ++i) {
             if (!std::holds_alternative<cryptonote::txin_to_key>(tx.vin[i]))
                 continue;
-            const cryptonote::txin_to_key& in_key = var::get<cryptonote::txin_to_key>(tx.vin[i]);
+            const cryptonote::txin_to_key& in_key = std::get<cryptonote::txin_to_key>(tx.vin[i]);
             const wallet::transfer_details& td =
                     m_wallet->get_transfer_details(construction_data.selected_transfers[i]);
             const cryptonote::tx_source_entry* sptr = NULL;
