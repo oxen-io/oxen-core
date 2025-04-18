@@ -9,11 +9,11 @@ override it to x86-64 when compiled with the deb default `westmere`.
  1 file changed, 4 insertions(+)
 
 diff --git a/external/CMakeLists.txt b/external/CMakeLists.txt
-index 0e3afa1..dada470 100644
+index 6faa8d6..c0d6821 100644
 --- a/external/CMakeLists.txt
 +++ b/external/CMakeLists.txt
-@@ -60,6 +60,10 @@ system_or_submodule(OXENC oxenc liboxenc>=1.1.0 oxen-encoding)
- system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.19 oxen-mq)
+@@ -60,6 +60,10 @@ system_or_submodule(OXENC oxenc liboxenc>=1.4.0 oxen-encoding)
+ system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.20 oxen-mq)
  
  add_subdirectory(db_drivers)
 +
