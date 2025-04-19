@@ -1,0 +1,102 @@
+#!/bin/sh
+
+set -e
+
+restart_oxend=
+
+if [ "$1" = configure ]; then
+    . /usr/share/debconf/confmodule
+    db_get session-service-node/ip-address
+    IP="$RET"
+    db_get session-service-node/l2-provider
+    L2="$RET"
+
+    c=oxen.conf
+
+    # The old oxen-service-node package used to have a diversion of oxen.conf, but it didn't work
+    # properly and so we want to remove it so that our edits to oxen.conf actually show up as
+    # expected:
+    if [ "$(dpkg-divert --listpackage /etc/oxen/oxen.conf)" = "oxen-service-node" ]; then
+        dpkg-divert --no-rename --package oxen-service-node --remove /etc/oxen/oxen.conf
+    fi
+
+    tmpdir=$(mktemp --tmpdir -d session-service-node.XXXXXXXXXX)
+    if [ -f "/etc/oxen/$c" ]; then
+        cp /etc/oxen/$c ${tmpdir}/$c
+    elif [ -f "/etc/oxen/$c.no-service-node" ]; then
+        cp /etc/oxen/$c.no-service-node ${tmpdir}/$c
+    elif [ -f "/usr/share/oxend/$c" ]; then
+        cp /usr/share/oxend/$c ${tmpdir}/$c
+    else
+        echo "Internal error: cannot find an existing $c to update!"
+        false
+    fi
+
+    # Replace commented or uncommented `service_node=...` with `service-node=1`.  Append to the end
+    # if not found.
+    sed -i '/^#\?service-node=/{h;s/.*=.*/service-node=1/};${x;/^$/{s//service-node=1/;H};x}' \
+        ${tmpdir}/oxen.conf
+    # Replace commented or uncommented `service_node-public-ip=...` with
+    # `service-node-public-ip=$IP`, or append if not found.
+    sed -i '/^#\?service-node-public-ip=/{h;s/.*=.*/service-node-public-ip='"$IP"'/};${x;/^$/{s//service-node-public-ip='"$IP"'/;H};x}' \
+        ${tmpdir}/oxen.conf
+
+    # l2-provider= or l2-oxend= handling: we replace the *first* uncommented `l2-provider` (or
+    # l2-oxend) with `l2-provider=$L2` (or l2-oxend=...), but leave commented and subsequent ones
+    # alone.  Append to the end if not found.  When switching between provider<->oxend, we comment
+    # out any of the other one that might be there.
+    #
+    # We use the space-delimited value (provided in the debconf question) rather than trying to
+    # unpack these into multiple lines because the multiple-line value gets very difficult to
+    # properly update the "maintainer's version" of the config file.
+    case "$L2" in
+        "l2-oxend="*)
+            sed -i 's/^l2-provider=/#&/' ${tmpdir}/oxen.conf
+            sed -i '0,/^l2-oxend=/{/^l2-oxend=/{h;s#.*=.*#'"$L2"'#}};${x;/^$/{s##'"$L2"'#;H};x}' \
+                ${tmpdir}/oxen.conf
+            ;;
+        "")
+            ;;
+        *)
+            sed -i 's/^l2-oxend=/#&/' ${tmpdir}/oxen.conf
+            sed -i '0,/^l2-provider=/{/^l2-provider=/{h;s#.*=.*#l2-provider='"$L2"'#}};${x;/^$/{s##l2-provider='"$L2"'#;H};x}' \
+                ${tmpdir}/oxen.conf
+            ;;
+    esac
+
+    orig_md5=$(md5sum /etc/oxen/oxen.conf 2>/dev/null || true)
+
+    if ! [ -f /etc/oxen/$c ]; then
+        mv ${tmpdir}/$c /etc/oxen/$c
+    else
+        # If oxen.conf is currently ucf-managed by the old, pre-rename oxen-service-node package
+        # then we first need to steal it (using --force) because oxen-service-node is just
+        # transitional now.
+        ucfr_extra=
+        if [ "$(ucfq --with-colons /etc/oxen/$c | cut -d: -f2)" = "oxen-service-node" ]; then
+            ucfr --force session-service-node /etc/oxen/$c
+        fi
+
+        ucf --debconf-ok ${tmpdir}/$c /etc/oxen/$c
+    fi
+
+    rm -rf ${tmpdir}
+
+    # NB: also purge in postrm
+    ucfr $ucfr_extra session-service-node /etc/oxen/$c
+
+    # If we updated config files then we need to make sure oxend restarts below.
+    if [ "$(md5sum /etc/oxen/oxen.conf 2>/dev/null || true)" != "$orig_main_md5" ]; then
+        restart_oxend=1
+    fi
+fi
+
+#DEBHELPER#
+
+# Debhelper doesn't do this here because the session-service-node package doesn't contain the service files:
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
+    if [ -d /run/systemd/system ] && [ -n "$restart_oxend" ]; then
+        systemctl --system daemon-reload >/dev/null || true
+        deb-systemd-invoke restart oxen-node.service || true
+    fi
+fi
