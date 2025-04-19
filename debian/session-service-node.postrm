@@ -1,0 +1,28 @@
+#!/bin/sh
+
+set -e
+
+if [ "$1" = remove -o "$1" = "abort-install" -o "$1" = disappear ]; then
+    tmpdir=$(mktemp --tmpdir -d session-service-node.XXXXXXXXXX)
+
+    c=oxen.conf
+    ucfr --purge session-service-node /etc/oxen/$c
+
+    if [ -f "/etc/oxen/$c" ]; then
+        cp /etc/oxen/$c $tmpdir/$c
+    else
+        echo "Internal error: cannot find an existing $c to update!"
+        exit 0
+    fi
+
+    # Comment out `service-node=1` in the oxend config when uninstalling:
+    sed -i 's/^service-node=/#&/' $tmpdir/$c
+
+    ucf --purge /etc/oxen/$c
+    ucf --debconf-ok $tmpdir/$c /etc/oxen/$c
+    ucf --purge /etc/oxen/$c
+
+    rm -rf $tmpdir
+fi
+
+#DEBHELPER#
