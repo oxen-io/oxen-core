@@ -1,2 +1,0 @@
-mv_conffile /etc/loki/loki.conf /etc/oxen/oxen.conf 8.1.5-1~
-mv_conffile /etc/loki/testnet.conf /etc/oxen/testnet.conf 8.1.5-1~

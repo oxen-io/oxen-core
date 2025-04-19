@@ -40,7 +40,6 @@ override_dh_strip:
 	dh_strip --no-ddebs
 
 override_dh_installsystemd:
-	dh_installsystemd --name=oxen-testnet-node --no-enable --no-start
 	dh_installsystemd --name=oxen-node
 
 # Ubuntu's default zstd compression for control, data is not well supported outside Ubuntu:

@@ -1,5 +1,0 @@
-/usr/bin/oxend /usr/bin/lokid
-/usr/bin/oxen-sn-keys /usr/bin/loki-sn-keys
-/usr/bin/oxend-download-lmdb /usr/bin/lokid-download-lmdb
-/lib/systemd/system/oxen-node.service /lib/systemd/system/loki-node.service
-/lib/systemd/system/oxen-testnet-node.service /lib/systemd/system/loki-testnet-node.service

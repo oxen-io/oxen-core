@@ -1,0 +1,84 @@
+Template: session-service-node/ip-address
+Type: string
+Description: Enter your service node publicly accessible IPv4 address
+ Loki service nodes now require your public IP address to broadcast to the
+ network so that remote hosts can connect directly to your service node for
+ network services like lokinet routing and the oxen storage server.
+ .
+ This script can attempt to automatically look up your public IPv4 address
+ using an online service (www.ipify.org), or you can enter your address
+ manually.  To perform an automatic lookup, leave this field blank.
+ .
+ To provide an IP address manually enter it now.
+
+Template: session-service-node/confirm-ip-lookup
+Type: boolean
+Default: true
+Description: Use this Service Node public IP?
+ The online lookup gave us the following public IPv4 address for this host:
+ .
+ ${IP}
+
+Template: session-service-node/ip-lookup-failed
+Type: boolean
+Default: false
+Description: Retry IP address entry/lookup?
+ Automatic IP lookup failed:
+ .
+ ${REASON}
+ .
+ Do you want to go back and enter an IP manually (or try automatic lookup
+ again)?  Note that if you say no here you will have to update the
+ /etc/oxen/oxen.conf file yourself with the IP before oxend will start
+ properly.
+
+Template: session-service-node/invalid-ip
+Type: boolean
+Default: false
+Description: Retry IP address entry?
+ Invalid IPv4 address entered.
+ .
+ You entered an invalid IPv4 address.  Choose yes here to return to the IP
+ entry dialog and try again (or to use the automatic lookup service).  If
+ you say no here your oxend will not start until you manually update the
+ /etc/oxen/oxen.conf file yourself with a valid public IP.
+
+Template: session-service-node/l2-provider
+Type: string
+Description: Enter your Arbitrum One RPC provider URL(s)
+ Oxen 11.2+ (as part of a Session service node) requires an Arbitrum One RPC
+ provider to retrieve Ethereum L2 registration data.
+ .
+ Please enter a provider URL (this typically starts http:// or https://).
+ .
+ If you want to configure backup providers then list them here after the
+ primary L2 provider, separated with spaces.
+ .
+ If you want to update these later, these providers are listed in the
+ /etc/oxen/oxen.conf configuration file.
+ .
+ For advanced setups using oxend L2 proxies enter l2-oxend= followed by
+ the proxy address(es).
+
+Template: session-service-node/no-l2-provider
+Type: boolean
+Default: false
+Description: Provide an Arbitrum L2 URL?
+ Oxen 11.2+ (as part of a Session service node) requires an Arbitrum One RPC
+ provider to retrieve Ethereum L2 registration data.
+ .
+ Are you sure you want to leave this blank?  A Session service node will not
+ start until a provider is entered via the `l2-provider=` option in
+ /etc/oxen/oxen.conf.
+
+Template: session-service-node/bad-l2-provider
+Type: boolean
+Default: false
+Description: Provide another Arbitrum L2 provider URL?
+ The Arbitrum One L2 provider URL(s) you entered do not appear to be working:
+ .
+ ${ERROR}
+ .
+ Do you want to go back and edit the L2 provider URL?  Note that if you say
+ no here your Session service node will not function properly until the URL
+ is updated in /etc/oxen/oxen.conf, or the provider becomes available.
