@@ -1,7 +1,0 @@
-/usr/bin/oxen-blockchain-ancestry /usr/bin/loki-blockchain-ancestry
-/usr/bin/oxen-blockchain-depth /usr/bin/loki-blockchain-depth
-/usr/bin/oxen-blockchain-export /usr/bin/loki-blockchain-export
-/usr/bin/oxen-blockchain-import /usr/bin/loki-blockchain-import
-/usr/bin/oxen-blockchain-mark-spent-outputs /usr/bin/loki-blockchain-mark-spent-outputs
-/usr/bin/oxen-blockchain-stats /usr/bin/loki-blockchain-stats
-/usr/bin/oxen-blockchain-usage /usr/bin/loki-blockchain-usage

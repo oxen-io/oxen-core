@@ -2,7 +2,5 @@
 /usr/bin/oxen-sn-keys
 debian/oxen.conf /etc/oxen
 debian/oxen.conf /usr/share/oxend
-debian/testnet.conf /etc/oxen
-debian/testnet.conf /usr/share/oxend
 debian/ufw/oxend /etc/ufw/applications.d
 debian/oxend-download-lmdb /usr/bin
