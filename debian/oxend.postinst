@@ -52,11 +52,6 @@ if [ "$1" = configure ]; then
             deb-systemd-helper enable oxen-node.service
             deb-systemd-helper disable oxen-node.service
         fi
-
-        # Disabled by default, so enable only if the old one was enabled:
-        if deb-systemd-helper --quiet was-enabled loki-testnet-node.service; then
-            deb-systemd-helper enable oxen-testnet-node.service
-        fi
     fi
 fi
 
