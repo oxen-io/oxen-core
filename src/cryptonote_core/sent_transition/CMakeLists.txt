@@ -1,4 +1,4 @@
-add_library(sent_transition_data
+oxen_add_library(sent_transition_data
   devnet.cpp
   localdev.cpp
   testnet.cpp)
