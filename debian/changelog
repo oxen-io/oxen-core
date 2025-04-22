@@ -1,3 +1,12 @@
+oxen (11.2.0-2~ubuntu2410) oracular; urgency=medium
+
+  * Fix sent_transition shared lib
+  * session-service-node; drop testnet; add L2-provider
+  * clean up tempfiles
+  * Redo config handling without ucf
+
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 22 Apr 2025 13:50:23 -0300
+
 oxen (11.2.0-1~ubuntu2410) oracular; urgency=medium
 
   [ Jason Rhinelander ]
