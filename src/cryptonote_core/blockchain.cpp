@@ -4261,6 +4261,15 @@ bool Blockchain::check_tx_inputs(
         }
     }
 
+    if (tools::equals_any(
+                tx.type, txtype::stake, txtype::key_image_unlock, txtype::oxen_name_system)) {
+        if (hf_version >= hf::hf21_eth) {
+            log::error(logcat, "Stake, ONS and key image unlocks are disabled after HF21");
+            tvc.m_invalid_type = true;
+            return false;
+        }
+    }
+
     if (tx.is_transfer()) {
         if (tx.type != txtype::oxen_name_system && !std::holds_alternative<txin_gen>(tx.vin[0]) &&
             hf_version >= feature::MIN_2_OUTPUTS && tx.vout.size() < 2) {
@@ -4683,16 +4692,14 @@ bool Blockchain::check_tx_inputs(
 
             service_nodes::service_node_info::contribution_t contribution = {};
             uint64_t unlock_height = 0;
-            if (hf_version < hf::hf21_eth) {
-                if (!service_node_list.is_key_image_locked(
-                            unlock.key_image, &unlock_height, &contribution)) {
-                    log::error(
-                            log::Cat("verify"),
-                            "Requested key image: {} to unlock is not locked",
-                            unlock.key_image);
-                    tvc.m_invalid_input = true;
-                    return false;
-                }
+            if (!service_node_list.is_key_image_locked(
+                        unlock.key_image, &unlock_height, &contribution)) {
+                log::error(
+                        log::Cat("verify"),
+                        "Requested key image: {} to unlock is not locked",
+                        unlock.key_image);
+                tvc.m_invalid_input = true;
+                return false;
             }
 
             if (!crypto::check_signature(
@@ -4719,7 +4726,6 @@ bool Blockchain::check_tx_inputs(
                     tx.type,
                     get_transaction_hash(tx));
             tvc.m_invalid_type = true;
-            ;
             return false;
         }
     }

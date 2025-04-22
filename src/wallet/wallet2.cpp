@@ -229,76 +229,74 @@ namespace {
         return false;
     }
 
-    std::string get_text_reason(
-            const nlohmann::json& res, cryptonote::transaction const* tx, bool blink) {
-        if (blink) {
+    std::string get_text_reason(const nlohmann::json& res, cryptonote::transaction const* tx) {
+        if (res.contains("reason"))
             return res["reason"].get<std::string>();
-        } else {
-            std::ostringstream os;
 
-            const auto tvc = res["tvc"];
-            if (auto got = tvc.find("m_verbose_error"); got != tvc.end())
-                os << res["tvc"]["m_verbose_error"].get<std::string_view>() << "\n";
-            if (auto got = tvc.find("m_verifivation_failed"); got != tvc.end())
-                os << "Verification failed, connection should be dropped, ";  // bad tx, should drop
-                                                                              // connection
-            if (auto got = tvc.find("m_verifivation_impossible"); got != tvc.end())
-                os << "Verification impossible, related to alt chain, ";  // the transaction is
-                                                                          // related with an
-                                                                          // alternative blockchain
-            if (auto got = tvc.find("m_should_be_relayed"); got == tvc.end())
-                os << "TX should NOT be relayed, ";
-            if (auto got = tvc.find("m_added_to_pool"); got != tvc.end())
-                os << "TX added to pool, ";
-            if (auto got = tvc.find("m_low_mixin"); got != tvc.end())
-                os << "Insufficient mixin, ";
-            if (auto got = tvc.find("m_double_spend"); got != tvc.end())
-                os << "Double spend TX, ";
-            if (auto got = tvc.find("m_invalid_input"); got != tvc.end())
-                os << "Invalid inputs, ";
-            if (auto got = tvc.find("m_invalid_output"); got != tvc.end())
-                os << "Invalid outputs, ";
-            if (auto got = tvc.find("m_too_few_outputs"); got != tvc.end())
-                os << "Need at least 2 outputs, ";
-            if (auto got = tvc.find("m_too_big"); got != tvc.end())
-                os << "TX too big, ";
-            if (auto got = tvc.find("m_overspend"); got != tvc.end())
-                os << "Overspend, ";
-            if (auto got = tvc.find("m_fee_too_low"); got != tvc.end())
-                os << "Fee too low, ";
-            if (auto got = tvc.find("m_invalid_version"); got != tvc.end())
-                os << "TX has invalid version, ";
-            if (auto got = tvc.find("m_invalid_type"); got != tvc.end())
-                os << "TX has invalid type, ";
-            if (auto got = tvc.find("m_key_image_locked_by_snode"); got != tvc.end())
-                os << "Key image is locked by service node, ";
-            if (auto got = tvc.find("m_key_image_blacklisted"); got != tvc.end())
-                os << "Key image is blacklisted on the service node network, ";
+        std::ostringstream os;
+        assert(res.contains("tvc"));
+        const auto tvc = res["tvc"];
 
-            const auto m_vote_ctx = tvc["m_vote_ctx"];
-            if (auto got = m_vote_ctx.find("m_validator_index_out_of_bounds");
-                got != m_vote_ctx.end())
-                os << "Validator index out of bounds";
-            if (auto got = m_vote_ctx.find("m_signature_not_valid"); got != m_vote_ctx.end())
-                os << "Signature not valid, ";
-            if (auto got = m_vote_ctx.find("m_added_to_pool"); got != m_vote_ctx.end())
-                os << "Added to pool, ";
-            if (auto got = m_vote_ctx.find("m_not_enough_votes"); got != m_vote_ctx.end())
-                os << "Not enough votes, ";
-            if (auto got = m_vote_ctx.find("m_incorrect_voting_group"); got != m_vote_ctx.end())
-                os << "Incorrect voting group specified,";
-            if (auto got = m_vote_ctx.find("m_votes_not_sorted"); got != m_vote_ctx.end())
-                os << "Votes are not stored in ascending order";
+        if (auto got = tvc.find("m_verbose_error"); got != tvc.end())
+            os << res["tvc"]["m_verbose_error"].get<std::string_view>() << "\n";
+        if (auto got = tvc.find("m_verifivation_failed"); got != tvc.end())
+            os << "Verification failed, connection should be dropped, ";  // bad tx, should drop
+                                                                          // connection
+        if (auto got = tvc.find("m_verifivation_impossible"); got != tvc.end())
+            os << "Verification impossible, related to alt chain, ";  // the transaction is
+                                                                      // related with an
+                                                                      // alternative blockchain
+        if (auto got = tvc.find("m_should_be_relayed"); got == tvc.end())
+            os << "TX should NOT be relayed, ";
+        if (auto got = tvc.find("m_added_to_pool"); got != tvc.end())
+            os << "TX added to pool, ";
+        if (auto got = tvc.find("m_low_mixin"); got != tvc.end())
+            os << "Insufficient mixin, ";
+        if (auto got = tvc.find("m_double_spend"); got != tvc.end())
+            os << "Double spend TX, ";
+        if (auto got = tvc.find("m_invalid_input"); got != tvc.end())
+            os << "Invalid inputs, ";
+        if (auto got = tvc.find("m_invalid_output"); got != tvc.end())
+            os << "Invalid outputs, ";
+        if (auto got = tvc.find("m_too_few_outputs"); got != tvc.end())
+            os << "Need at least 2 outputs, ";
+        if (auto got = tvc.find("m_too_big"); got != tvc.end())
+            os << "TX too big, ";
+        if (auto got = tvc.find("m_overspend"); got != tvc.end())
+            os << "Overspend, ";
+        if (auto got = tvc.find("m_fee_too_low"); got != tvc.end())
+            os << "Fee too low, ";
+        if (auto got = tvc.find("m_invalid_version"); got != tvc.end())
+            os << "TX has invalid version, ";
+        if (auto got = tvc.find("m_invalid_type"); got != tvc.end())
+            os << "TX has invalid type, ";
+        if (auto got = tvc.find("m_key_image_locked_by_snode"); got != tvc.end())
+            os << "Key image is locked by service node, ";
+        if (auto got = tvc.find("m_key_image_blacklisted"); got != tvc.end())
+            os << "Key image is blacklisted on the service node network, ";
 
-            if (tx)
-                os << "TX Version: {}, Type: {}"_format(tx->version, tx->type);
+        const auto m_vote_ctx = tvc["m_vote_ctx"];
+        if (auto got = m_vote_ctx.find("m_validator_index_out_of_bounds"); got != m_vote_ctx.end())
+            os << "Validator index out of bounds";
+        if (auto got = m_vote_ctx.find("m_signature_not_valid"); got != m_vote_ctx.end())
+            os << "Signature not valid, ";
+        if (auto got = m_vote_ctx.find("m_added_to_pool"); got != m_vote_ctx.end())
+            os << "Added to pool, ";
+        if (auto got = m_vote_ctx.find("m_not_enough_votes"); got != m_vote_ctx.end())
+            os << "Not enough votes, ";
+        if (auto got = m_vote_ctx.find("m_incorrect_voting_group"); got != m_vote_ctx.end())
+            os << "Incorrect voting group specified,";
+        if (auto got = m_vote_ctx.find("m_votes_not_sorted"); got != m_vote_ctx.end())
+            os << "Votes are not stored in ascending order";
 
-            std::string buf = os.str();
-            if (buf.size() >= 2 && buf[buf.size() - 2] == ',')
-                buf.resize(buf.size() - 2);
+        if (tx)
+            os << "TX Version: {}, Type: {}"_format(tx->version, tx->type);
 
-            return buf;
-        }
+        std::string buf = os.str();
+        if (buf.size() >= 2 && buf[buf.size() - 2] == ',')
+            buf.resize(buf.size() - 2);
+
+        return buf;
     }
 
     size_t get_num_outputs(
@@ -7898,14 +7896,14 @@ void wallet2::commit_tx(pending_tx& ptx, bool blink) {
                     error::tx_blink_rejected,
                     ptx.tx,
                     get_rpc_status(daemon_send_resp["status"]),
-                    get_text_reason(daemon_send_resp, &ptx.tx, blink));
+                    get_text_reason(daemon_send_resp, &ptx.tx));
         else
             THROW_WALLET_EXCEPTION_IF(
                     daemon_send_resp["status"] != rpc::STATUS_OK,
                     error::tx_rejected,
                     ptx.tx,
                     get_rpc_status(daemon_send_resp["status"]),
-                    get_text_reason(daemon_send_resp, &ptx.tx, blink));
+                    get_text_reason(daemon_send_resp, &ptx.tx));
         // sanity checks
         for (size_t idx : ptx.selected_transfers) {
             THROW_WALLET_EXCEPTION_IF(
