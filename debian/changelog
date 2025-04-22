@@ -1,3 +1,12 @@
+oxen (11.2.0-2~deb12) bookworm; urgency=medium
+
+  * Fix sent_transition shared lib
+  * session-service-node; drop testnet; add L2-provider
+  * clean up tempfiles
+  * Redo config handling without ucf
+
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 22 Apr 2025 13:50:14 -0300
+
 oxen (11.2.0-1~deb12) bookworm; urgency=medium
 
   [ Jason Rhinelander ]
