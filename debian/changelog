@@ -1,3 +1,13 @@
+oxen (11.2.0-2~ubuntu2004) focal; urgency=medium
+
+  * drop focal armhf deb
+  * Fix sent_transition shared lib
+  * session-service-node; drop testnet; add L2-provider
+  * clean up tempfiles
+  * Redo config handling without ucf
+
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 22 Apr 2025 13:50:38 -0300
+
 oxen (11.2.0-1~ubuntu2004) focal; urgency=medium
 
   [ Jason Rhinelander ]
