@@ -1,3 +1,12 @@
+oxen (11.2.0-2) sid; urgency=medium
+
+  * Fix sent_transition shared lib
+  * session-service-node; drop testnet; add L2-provider
+  * clean up tempfiles
+  * Redo config handling without ucf
+
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 22 Apr 2025 13:50:00 -0300
+
 oxen (11.2.0-1) sid; urgency=medium
 
   [ Jason Rhinelander ]
