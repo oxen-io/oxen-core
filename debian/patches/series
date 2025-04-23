@@ -2,5 +2,4 @@
 0007-dumb-ARM_ID-ARCH-logic-workaround.patch
 0006-Make-primary-service-node-key-always-available.patch
 0007-Fix-boost-asio-missing-include.patch
-0005-Move-systemd-ready-notification-earlier-in-the-start.patch
 0006-Allow-startup-but-not-proofs-during-HF20-without-an-.patch

@@ -16,7 +16,7 @@ proofs to go out until a provider is added).
  1 file changed, 9 insertions(+), 6 deletions(-)
 
 diff --git a/src/cryptonote_core/cryptonote_core.cpp b/src/cryptonote_core/cryptonote_core.cpp
-index d597371..5f46776 100644
+index cea919a..35aa409 100644
 --- a/src/cryptonote_core/cryptonote_core.cpp
 +++ b/src/cryptonote_core/cryptonote_core.cpp
 @@ -454,13 +454,16 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm)
