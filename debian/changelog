@@ -2,6 +2,12 @@ oxen (11.2.0-3) sid; urgency=medium
 
   * Rediff patches
 
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 22 Apr 2025 23:27:04 -0300
+
+oxen (11.2.0-3) sid; urgency=medium
+
+  * Rediff patches
+
  -- Jason Rhinelander <jason@session.foundation>  Tue, 22 Apr 2025 22:01:08 -0300
 
 oxen (11.2.0-2) sid; urgency=medium
