@@ -2,6 +2,12 @@ oxen (11.2.0-3~ubuntu2204) jammy; urgency=medium
 
   * Rediff patches
 
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 22 Apr 2025 23:27:59 -0300
+
+oxen (11.2.0-3~ubuntu2204) jammy; urgency=medium
+
+  * Rediff patches
+
  -- Jason Rhinelander <jason@session.foundation>  Tue, 22 Apr 2025 22:01:44 -0300
 
 oxen (11.2.0-2~ubuntu2204) jammy; urgency=medium
