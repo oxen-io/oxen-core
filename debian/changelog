@@ -2,6 +2,12 @@ oxen (11.2.0-3~deb13) trixie; urgency=medium
 
   * Rediff patches
 
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 22 Apr 2025 23:27:13 -0300
+
+oxen (11.2.0-3~deb13) trixie; urgency=medium
+
+  * Rediff patches
+
  -- Jason Rhinelander <jason@session.foundation>  Tue, 22 Apr 2025 22:01:15 -0300
 
 oxen (11.2.0-2~deb13) trixie; urgency=medium
