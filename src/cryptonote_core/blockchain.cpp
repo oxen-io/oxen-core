@@ -153,12 +153,12 @@ Blockchain::~Blockchain() {
 
 void Blockchain::extend_watchdog_timeout(uint64_t height) {
 #ifdef ENABLE_SYSTEMD
-    // Tell systemd that we're doing something so that it should let us continue starting up
-    // (giving us 120s until we have to send the next notification):
+    // Tell systemd that we're doing something; we use this during early rescanning (before the
+    // timer for regular operations is set up, but after we've told systemd that we started) to keep
+    // the process alive and update the systemctl status value with the rescan status.
     sd_notify(
             0,
-            "EXTEND_TIMEOUT_USEC=120000000\nSTATUS=Recanning blockchain; height {}/{}"_format(
-                    height, m_db->height())
+            "WATCHDOG=1\nSTATUS=Recanning blockchain; height {}/{}"_format(height, m_db->height())
                     .c_str());
 #endif
 }
@@ -762,6 +762,7 @@ bool Blockchain::init(
         const cryptonote::test_options* test_options,
         difficulty_type fixed_difficulty,
         const GetCheckpointsCallback& get_checkpoints /* = nullptr*/,
+        std::function<void()> pre_rescan_cb,
         const std::atomic<bool>* abort)
 
 {
@@ -859,6 +860,11 @@ bool Blockchain::init(
                     std::chrono::system_clock::now() -
                     std::chrono::system_clock::from_time_t(top_block_timestamp)));
     rtxn_guard.stop();
+
+    // We've not got the initial blockchain loaded, so fire the callback so that core can treat us
+    // as "started" before we dive into the potentially slow block popping and rescanning.
+    if (pre_rescan_cb)
+        pre_rescan_cb();
 
     uint64_t num_popped_blocks = 0;
     while (!m_db->is_read_only()) {

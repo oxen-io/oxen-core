@@ -365,6 +365,9 @@ class core final {
      * @param get_checkpoints if set, will be called to get checkpoints data, must return
      * checkpoints data pointer and size or nullptr if there ain't any checkpoints for specific
      * network type
+     * @param pre_rescan_cb if set, will be called just before we start popping blocks or rescanning
+     * the database.  This is used by daemon.cpp as the point at which to tell systemd that startup
+     * is complete before potentially starting in on slow operations.
      * @param abort optional atomic<bool> that will be checked periodically during potentially long
      * sections of initialization (most notably: service node state/ons/reward rescanning) to
      * allowing abort initialization.
@@ -375,6 +378,7 @@ class core final {
             const boost::program_options::variables_map& vm,
             const test_options* test_options = NULL,
             const GetCheckpointsCallback& get_checkpoints = nullptr,
+            std::function<void()> pre_rescan_cb = nullptr,
             const std::atomic<bool>* abort = nullptr);
 
     /**

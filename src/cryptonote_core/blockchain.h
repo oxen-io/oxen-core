@@ -165,6 +165,9 @@ class Blockchain {
      * @param test_options test parameters
      * @param fixed_difficulty fixed difficulty for testing purposes; 0 means disabled
      * @param get_checkpoints if set, will be called to get checkpoints data
+     * @param pre_rescan_cb if set will be called once databases have been loaded successfully from
+     * disk, but before the potentially heavy/slow operations (popping blocks or rescanning the
+     * chain that may be required).
      * @param abort if set, will be checked periodically during subsystem scanning: if it becomes
      * true then initialization will be aborted.
      *
@@ -179,6 +182,7 @@ class Blockchain {
             const cryptonote::test_options* test_options = nullptr,
             difficulty_type fixed_difficulty = 0,
             const GetCheckpointsCallback& get_checkpoints = nullptr,
+            std::function<void()> pre_rescan_cb = nullptr,
             const std::atomic<bool>* abort = nullptr);
 
     // Common initializer for test code

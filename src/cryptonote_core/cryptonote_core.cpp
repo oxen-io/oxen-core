@@ -564,6 +564,7 @@ bool core::init(
         const boost::program_options::variables_map& vm,
         const cryptonote::test_options* test_options,
         const GetCheckpointsCallback& get_checkpoints /* = nullptr */,
+        std::function<void()> pre_rescan_cb,
         const std::atomic<bool>* abort) {
     ZoneScoped;
     start_time = std::time(nullptr);
@@ -875,6 +876,7 @@ bool core::init(
                                                                     : test_options,
             command_line::get_arg(vm, arg_fixed_difficulty),
             get_checkpoints,
+            std::move(pre_rescan_cb),
             abort);
     CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
 

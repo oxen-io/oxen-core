@@ -367,7 +367,18 @@ bool daemon::run(bool interactive) {
         get_checkpoints = blocks::GetCheckpointsData;
 #endif
         log::info(logcat, "Starting core");
-        if (!core->init(vm, nullptr, get_checkpoints, &shutdown))
+        if (!core->init(
+                    vm,
+                    nullptr,
+                    get_checkpoints,
+#ifdef ENABLE_SYSTEMD
+                    [this] {
+                        sd_notify(0, ("READY=1\nSTATUS=" + core->get_status_string()).c_str());
+                    },
+#else
+                    nullptr,
+#endif
+                    &shutdown))
             throw oxen::traced<std::runtime_error>("Failed to start core");
 
         log::info(logcat, "Starting OxenMQ");
@@ -409,10 +420,6 @@ bool daemon::run(bool interactive) {
                 globallogcat,
                 fg(fmt::terminal_color::green) | fmt::emphasis::bold,
                 "Starting up main network");
-
-#ifdef ENABLE_SYSTEMD
-        sd_notify(0, ("READY=1\nSTATUS=" + core->get_status_string()).c_str());
-#endif
 
         p2p->run();  // blocks until p2p goes down
         log::info(
