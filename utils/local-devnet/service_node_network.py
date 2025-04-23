@@ -641,10 +641,10 @@ class SNNetwork:
         # Setup Oxen ###############################################################################
         # Nodes ####################################################################################
         # Setup directories
-        self.datadir      = datadir
+        self.data_dir      = datadir
         self.oxen_bin_dir = oxen_bin_dir
-        if not os.path.exists(self.datadir):
-            os.makedirs(self.datadir)
+        if not os.path.exists(self.data_dir):
+            os.makedirs(self.data_dir)
         vprint("Using '{}' for data files and logs".format(datadir))
 
         nodeopts       = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
@@ -752,9 +752,9 @@ class SNNetwork:
         for w in self.extrawallets:
             w.wait_for_json_rpc("refresh")
 
-        configfile=self.datadir+'config.py'
-        with open(configfile, 'w') as filetowrite:
-            filetowrite.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
+        config_file=self.data_dir / 'config.py'
+        with open(config_file, 'w') as file:
+            file.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
 
         if not start_at_hf20:
             # Start blockchain setup ###################################################################
@@ -832,8 +832,6 @@ class SNNetwork:
         # Key accounts for bootstrapping the network
         staker      = self.sn_contract.hardhat_account0
         beneficiary = self.sn_contract.hardhat_account1
-
-        transition_eth_addr_no_0x = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 
         # Construct the seed list for initiating the smart contract.
         # Note all SNs up to this point (HF < feature::ETH_BLS) had a 100 OXEN staking requirement
@@ -1194,6 +1192,14 @@ def run():
                                   'smart contracts prior to invoking this script.'),
                             type=pathlib.Path,
                             required=True)
+    arg_parser.add_argument('--data-dir',
+                            help=('Set the path to Oxen\'s `eth-sn-contracts` repository is '
+                                  'located. The script will programmatically launch and deploy the '
+                                  'contracts specified via `make deploy-local`. If omitted, the '
+                                  'private Ethereum blockchain must already be deployed with the '
+                                  'smart contracts prior to invoking this script.'),
+                            type=pathlib.Path,
+                            default=os.getcwd() + "/testdata")
     arg_parser.add_argument('--keep-data-dir',
                             help=('If unset (default) and global snn is not set up, '
                                   'delete the existing datadir if present.  If set, '
@@ -1226,15 +1232,14 @@ def run():
         if args.eth_sn_contracts_dir is None:
             raise RuntimeError('--eth-sn-contracts-dir must be specified when --anvil-path is set')
 
-    data_directory = os.getcwd() + "/testdata"
-
+    args.data_dir = args.data_dir.resolve(); # Make into absolute path
     atexit.register(cleanup)
     global snn, verbose
     if not snn:
-        if os.path.isdir(data_directory+'/') and not args.keep_data_dir:
-            vprint("Removing existing directory at " + data_directory + "/")
-            shutil.rmtree(data_directory+'/')
-        snn = SNNetwork(datadir=data_directory +'/',
+        if os.path.isdir(args.data_dir) and not args.keep_data_dir:
+            vprint("Removing existing directory at " + str(args.data_dir))
+            shutil.rmtree(args.data_dir)
+        snn = SNNetwork(datadir=args.data_dir,
                         oxen_bin_dir=args.oxen_bin_dir,
                         anvil_path=args.anvil_path,
                         eth_sn_contracts_dir=args.eth_sn_contracts_dir,

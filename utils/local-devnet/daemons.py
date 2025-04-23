@@ -44,9 +44,14 @@ class RPCFailed(RuntimeError):
         super().__init__(self.message)
 
 class AccruedRewards:
-    def __init__(self):
-        self.address = ""
-        self.balance = 0
+    address: str = ""
+    balance: int = 0
+
+class HardForkInfo:
+    version:         int  = 7
+    enabled:         bool = False
+    earliest_height: int  = 0
+    last_height:     int  = 9_999_999_999
 
 class RPCDaemon:
     proc: subprocess.Popen | None = None
@@ -278,6 +283,22 @@ class Daemon(RPCDaemon):
 
     def height(self):
         return self.rpc("/get_height").json()["height"]
+
+    def hard_fork_info(self) -> RPCFailed | HardForkInfo:
+        json       = self.json_rpc("hard_fork_info").json()
+        rpc_result = json["result"]
+        if rpc_result["status"] != "OK":
+            raise RPCFailed(json)
+
+        # {"status": "OK", "version": 19, "enabled": true, "earliest_height": 0, "last_height": 0}
+        result                 = HardForkInfo()
+        result.version         = rpc_result["version"]
+        result.enabled         = rpc_result["enabled"]
+        result.earliest_height = rpc_result["earliest_height"]
+        if 'last_height' in rpc_result: # Optional
+            result.last_height = rpc_result["last_height"]
+
+        return result
 
     def get_staking_requirement(self):
         rpc_result = self.json_rpc("get_staking_requirement").json()
