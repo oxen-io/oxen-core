@@ -825,6 +825,33 @@ class SNNetwork:
 
                 time.sleep(5)
 
+        wallet_rows: list[list[str]] = []
+        wallet_rows.append(["Name", "Address", "Balance", "Unlocked", "Command"])
+        all_wallets_sorted_by_name = sorted(self.wallets + self.extrawallets, key=lambda n: n.name)
+        for n in all_wallets_sorted_by_name:
+            row: list[str] = []
+            row.append(n.name)
+            row.append(n.address());
+            balance, unlocked_balance = n.balances()
+            row.append(str(balance))
+            row.append(str(unlocked_balance))
+
+            path = str(pathlib.Path(n.walletdir) / "wallet")
+            cmd  = "oxen-wallet-cli --localdev --wallet-file {} --password '' --daemon-address {}:{}".format(path, self.sns[0].listen_ip, self.sns[0].rpc_port)
+            row.append(cmd)
+
+            wallet_rows.append(row)
+
+        # Kill the wallets (not necessary to run any more)
+        vprint("Terminating {} wallets".format(len(self.wallets) + len(self.extrawallets)))
+        for w in self.wallets:
+            futures.append(thread_pool.submit(w.terminate))
+        for w in self.extrawallets:
+            futures.append(thread_pool.submit(w.terminate))
+
+        concurrent.futures.wait(futures)
+        futures.clear()
+
         # NOTE: Tests complete
         elapsed_time = time.perf_counter() - begin_time
         vprint("Local Devnet SN network setup complete in {}s!".format(elapsed_time))
@@ -846,18 +873,23 @@ class SNNetwork:
             row.append(str(n.storage_server_omq_port) if show_storage_server_ports else "-")
             row.append(str(n.storage_server_https_port) if show_storage_server_ports else "-")
             daemon_rows.append(row)
-        print_unicode_table(daemon_rows)
 
-        first_node = self.sns[0]
+        print_unicode_table(daemon_rows)
+        print_unicode_table(wallet_rows)
+
+        first_node   = self.sns[0]
+        first_wallet = self.wallets[0]
         vprint("""You can send a command over RPC like
 
   Node           JSON-RPC => curl {}:{}/json_rpc -X POST -H "Content-Type: application/json" --data '{{"method": "get_info", "params": {{}}, "id": 1, "jsonrpc": 2.0}}'
   Storage Server HTTPS    => curl --insecure https://{}:{}/storage_rpc/v1 -X POST -H "Content-Type: application/json" --data '{{"method": "info", "params": {{}}}}'
-  (If --storage-server-path is specified)
 """.format(first_node.listen_ip,
            first_node.rpc_port,
            first_node.listen_ip,
-           first_node.storage_server_https_port))
+           first_node.storage_server_https_port,
+           str(pathlib.Path(first_wallet.walletdir) / first_wallet.name),
+           first_node.listen_ip,
+           first_node.rpc_port))
 
     def refresh_wallets(self, *, extra=[]):
         vprint("Refreshing wallets")
@@ -1162,7 +1194,6 @@ class SNNetwork:
         expected_contract_sn_count = prev_contract_sn_count + len(self.eth_sns)
         vprint("Added node via Eth. Contract has {} SNs\n{}".format(contract_sn_count, contract_sn_dump))
         assert contract_sn_count == expected_contract_sn_count, f"Expected {contract_sn_count} service nodes, received {expected_contract_sn_count}"
-
 
     def __del__(self):
         for n in self.all_nodes:
