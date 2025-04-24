@@ -53,6 +53,13 @@ class HardForkInfo:
     earliest_height: int  = 0
     last_height:     int  = 9_999_999_999
 
+class GetInfo:
+    height:         int  = 0
+    l2_height:      int  = 0
+    top_block_hash: str  = ""
+    hard_fork:      int  = 7
+    pulse:          bool = False
+
 class RPCDaemon:
     proc: subprocess.Popen | None = None
 
@@ -284,6 +291,21 @@ class Daemon(RPCDaemon):
     def height(self):
         return self.rpc("/get_height").json()["height"]
 
+    def get_info(self) -> RPCFailed | GetInfo:
+        json       = self.json_rpc("get_info").json()
+        rpc_result = json["result"]
+        if rpc_result["status"] != "OK":
+            raise RPCFailed(json)
+
+        result                = GetInfo()
+        result.height         = rpc_result["height"]
+        result.l2_height      = rpc_result["l2_height"]
+        result.top_block_hash = rpc_result["top_block_hash"]
+        result.hard_fork      = rpc_result["hard_fork"]
+        if 'pulse' in rpc_result:
+            result.pulse = True
+        return result
+
     def hard_fork_info(self) -> RPCFailed | HardForkInfo:
         json       = self.json_rpc("hard_fork_info").json()
         rpc_result = json["result"]
@@ -385,8 +407,7 @@ class Wallet(RPCDaemon):
             datadir=None,
             listen_ip=None,
             rpc_port=None,
-            log_level=4,
-            existing_wallet=False):
+            log_level=4):
 
         self.listen_ip = listen_ip or LISTEN_IP
         self.rpc_port = rpc_port or next_port()
@@ -407,7 +428,6 @@ class Wallet(RPCDaemon):
                 '--wallet-dir={}'.format(self.walletdir),
                 )
         self.wallet_address = None
-        self.existing_wallet = existing_wallet
 
 
     def ready(self, wallet="wallet", existing=False):
@@ -419,7 +439,7 @@ class Wallet(RPCDaemon):
             self.start()
 
         self.wallet_filename = wallet
-        if existing or self.existing_wallet:
+        if existing:
             r = self.wait_for_json_rpc("open_wallet", {"filename": wallet, "password": ""})
         else:
             r = self.wait_for_json_rpc("create_wallet", {"filename": wallet, "password": "", "language": "English"})
