@@ -15,26 +15,29 @@ from ethereum import (
     ServiceNodeParams,
     ReservedContributor,
 )
-
-import enum
-import json
-import sqlite3
-
-import eth_typing.evm
 import eth_account.signers.local
 
-import pathlib
 import argparse
-import time
-import shutil
-import os
 import asyncio
-from   datetime import datetime
-import subprocess
 import atexit
+import base64
 import concurrent.futures
+import enum
+import json
+import os
+import pathlib
 import random
+import secrets
+import shutil
+import sqlite3
+import subprocess
+import time
+from datetime import datetime
 from typing import List
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
+import base64
 
 class SNExitMode(enum.Enum):
     AfterWaitTime = 0
@@ -890,6 +893,45 @@ class SNNetwork:
            str(pathlib.Path(first_wallet.walletdir) / first_wallet.name),
            first_node.listen_ip,
            first_node.rpc_port))
+
+        if storage_server_path:
+            ed25519_skey     = ed25519.Ed25519PrivateKey.generate()
+            ed25519_pkey_hex = "05" + ed25519_skey.public_key().public_bytes(encoding=serialization.Encoding.Raw,
+                                                                             format=serialization.PublicFormat.Raw).hex()
+            store_params = {
+                "method": "store",
+                "params": {
+                    "pubkey": ed25519_pkey_hex,
+                    "timestamp": int(time.time()) * 1000,
+                    "data": base64.b64encode(b"test").decode(),
+                    "ttl": f"{30_000 * 60}", # 30 minutes
+                }
+            }
+
+            swarm_sn_for_pubkey: Daemon | None = None
+            for sn in self.all_nodes:
+                if sn.service_node:
+                    response = self.sns[0].storage_rpc(path="/storage_rpc/v1", params=store_params)
+                    print(f"Tried SN {sn.name}, received response: {response}")
+                    if response.status_code == 200:
+                        swarm_sn_for_pubkey = sn
+                        break;
+
+            assert swarm_sn_for_pubkey is not None
+            retrieve_ts = int(time.time()) * 1000
+            retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
+            retrieve_params = {
+                "method": "retrieve",
+                "params": {
+                    "pubkey": ed25519_pkey_hex,
+                    "timestamp": retrieve_ts,
+                    "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
+                }
+            }
+            response = swarm_sn_for_pubkey.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
+            print(f"Tried retrieving from SN {swarm_sn_for_pubkey.name}, received response: {response}")
+
+
 
     def refresh_wallets(self, *, extra=[]):
         vprint("Refreshing wallets")

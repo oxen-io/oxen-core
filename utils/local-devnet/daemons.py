@@ -245,6 +245,13 @@ class Daemon(RPCDaemon):
             print("Starting storage server: ", args)
             self.storage_server_proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+    def storage_rpc(self, path, params=None, timeout=30):
+        if not self.storage_server_path:
+            raise RuntimeError("Cannot make rpc request before calling start_storage_server()")
+        url = 'https://{}:{}{}'.format(self.listen_ip, self.storage_server_https_port, path)
+        print(f"Submitting storage request {url} => {params}")
+        return requests.post(url, json=params, timeout=timeout, verify=False)
+
     def stop(self):
         super().stop()
         if self.storage_server_proc:
