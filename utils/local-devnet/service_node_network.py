@@ -39,6 +39,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 import base64
 
+CACHE_AT_HF20_DIR_NAME = "hf20-cache"
+
 class SNExitMode(enum.Enum):
     AfterWaitTime = 0
     WithSignature = 1
@@ -563,9 +565,7 @@ class SNNetwork:
                  anvil_path: pathlib.Path | None,
                  eth_sn_contracts_dir: pathlib.Path,
                  storage_server_path: pathlib.Path | None,
-                 keep_data_dir=False,
-                 start_at_hf20=False,
-                 stop_at_hf20=False,
+                 cache_at_hf20=False,
                  integration_tests: bool,
                  listen_ip: str | None,
                  sns=12,
@@ -607,11 +607,25 @@ class SNNetwork:
             else:
                 break
 
+        # Attempt to restore chain from cache if requested and cache is avail
+        chain_bootstrapped_from_cache = False
+        cache_dir = os.path.join(self.data_dir, CACHE_AT_HF20_DIR_NAME)
+        if cache_at_hf20 and os.path.exists(cache_dir):
+            print(f"Restoring cached chain from {cache_dir} to {self.data_dir}")
+            for file_name in os.listdir(cache_dir):
+                src  = os.path.join(cache_dir, file_name)     # Path to copy
+                dest = os.path.join(self.data_dir, file_name) # Restore destination
+                if pathlib.Path(src).is_file():
+                    shutil.copy2(src, dest)
+                else:
+                    shutil.copytree(src, dest, ignore=shutil.ignore_patterns("*.sock"), dirs_exist_ok=True)
+            chain_bootstrapped_from_cache = True
+
         # Nodes ####################################################################################
         nodeopts       = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
-        self.eth_sns   = [Daemon(service_node=True, listen_ip=listen_ip, storage_server_path=storage_server_path, **nodeopts) for _ in range(len(SNExitMode) * 2)]
-        self.sns       = [Daemon(service_node=True,   listen_ip=listen_ip, storage_server_path=storage_server_path, **nodeopts) for _ in range(sns)]
-        self.nodes     = [Daemon(service_node=False,  listen_ip=listen_ip, storage_server_path=None, **nodeopts) for _ in range(nodes)]
+        self.eth_sns   = [Daemon(service_node=True,  listen_ip=listen_ip, storage_server_path=storage_server_path, **nodeopts) for _ in range(len(SNExitMode) * 2)]
+        self.sns       = [Daemon(service_node=True,  listen_ip=listen_ip, storage_server_path=storage_server_path, **nodeopts) for _ in range(sns)]
+        self.nodes     = [Daemon(service_node=False, listen_ip=listen_ip, storage_server_path=None, **nodeopts) for _ in range(nodes)]
         self.all_nodes = self.sns + self.nodes + self.eth_sns
 
         # Wallets ##################################################################################
@@ -687,10 +701,10 @@ class SNNetwork:
 
         # Create wallets ###########################################################################
         for w in self.wallets:
-            futures.append(thread_pool.submit(w.ready, existing=keep_data_dir))
+            futures.append(thread_pool.submit(w.ready, existing=chain_bootstrapped_from_cache == True))
 
         for w in self.extrawallets:
-            futures.append(thread_pool.submit(w.ready, existing=keep_data_dir))
+            futures.append(thread_pool.submit(w.ready, existing=chain_bootstrapped_from_cache == True))
 
         concurrent.futures.wait(futures)
         futures.clear()
@@ -714,7 +728,7 @@ class SNNetwork:
         with open(config_file, 'w') as file:
             file.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
 
-        if not start_at_hf20:
+        if not chain_bootstrapped_from_cache:
             # Start blockchain setup ###################################################################
             # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
             # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
@@ -778,9 +792,15 @@ class SNNetwork:
                 wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
             vprint(timestamp=False)
 
-            if stop_at_hf20:
-                # FIXME: cleaner way to exit here
-                assert False, "stopping at hf20"
+            if cache_at_hf20:
+                shutil.rmtree(cache_dir, ignore_errors=True)
+                for file_name in os.listdir(self.data_dir):
+                    src  = os.path.join(self.data_dir, file_name)                         # Path to copy
+                    dest = os.path.join(self.data_dir, CACHE_AT_HF20_DIR_NAME, file_name) # Backup destination
+                    if pathlib.Path(src).is_file():
+                        shutil.copy2(src, dest)
+                    else:
+                        shutil.copytree(src, dest, ignore=shutil.ignore_patterns("*.sock"), dirs_exist_ok=True)
 
         vprint("Sending fake lokinet/ss pings and uptime proofs")
         for sn in self.sns:
@@ -1279,21 +1299,13 @@ def run():
                                   'smart contracts prior to invoking this script.'),
                             type=pathlib.Path,
                             default=os.getcwd() + "/testdata")
-    arg_parser.add_argument('--keep-data-dir',
-                            help=('If unset (default) and global snn is not set up, '
-                                  'delete the existing datadir if present.  If set, '
-                                  'use the existing directory (caveat emptor)'),
-                            default=False,
-                            action='store_true')
-    arg_parser.add_argument('--start-at-hf20',
-                            help=('With --keep-data-dir, assume the data dir used has a chain '
-                                  'which is at the block before the hf21 transition.  This is '
-                                  'for faster iteration of testing said transition.'),
-                            default=False,
-                            action='store_true')
-    arg_parser.add_argument('--stop-at-hf20',
-                            help=('With --keep-data-dir, stop the script when hf20 is reached. '
-                                  'This is to set the chain up for --start-at-hf20 later.'),
+    arg_parser.add_argument('--cache-at-hf20',
+                            help=("Start the network by using a blockchain cached at HF20. If "
+                                  "the cached blockchain doesn't exist, the chain will be "
+                                  "bootstrapped and a backup of the chain be cached at HF20 before "
+                                  "proceeding for future runs. Once the cache is available, this "
+                                  "flag will always ensure the chain restarts from the network at "
+                                  "HF20."),
                             default=False,
                             action='store_true')
     arg_parser.add_argument('--integration-tests',
@@ -1304,9 +1316,6 @@ def run():
                             type=str)
     args = arg_parser.parse_args()
 
-    if args.start_at_hf20 and args.stop_at_hf20:
-        raise RuntimeError("--start-at-hf20 and --stop-at-hf20 are mutually exclusive")
-
     if args.anvil_path is not None:
         if args.eth_sn_contracts_dir is None:
             raise RuntimeError('--eth-sn-contracts-dir must be specified when --anvil-path is set')
@@ -1315,17 +1324,22 @@ def run():
     atexit.register(cleanup)
     global snn, verbose
     if not snn:
-        if os.path.isdir(args.data_dir) and not args.keep_data_dir:
-            vprint("Removing existing directory at " + str(args.data_dir))
-            shutil.rmtree(args.data_dir)
+        if os.path.exists(args.data_dir):
+            for item in os.listdir(args.data_dir):
+                if item == CACHE_AT_HF20_DIR_NAME:
+                    continue
+                path = pathlib.Path(os.path.join(args.data_dir, item))
+                if path.is_file():
+                    path.unlink()
+                else:
+                    shutil.rmtree(path)
+
         snn = SNNetwork(datadir=args.data_dir,
                         oxen_bin_dir=args.oxen_bin_dir,
                         anvil_path=args.anvil_path,
                         eth_sn_contracts_dir=args.eth_sn_contracts_dir,
                         storage_server_path=args.storage_server_path,
-                        keep_data_dir=args.keep_data_dir,
-                        start_at_hf20=args.start_at_hf20,
-                        stop_at_hf20=args.stop_at_hf20,
+                        cache_at_hf20=args.cache_at_hf20,
                         integration_tests=args.integration_tests,
                         listen_ip=args.listen_ip)
     else:

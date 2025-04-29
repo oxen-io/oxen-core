@@ -465,7 +465,7 @@ the script for setup of the network. See the script's help menu for more
 information (`--help`).
 
 A sample invocation of the script with all features (a network running on
-127.171.63.108 with storage server enabled and private Ethereum blockchain)
+127.171.63.108 with storage server enabled, private Ethereum blockchain)
 looks like:
 
 ```bash
