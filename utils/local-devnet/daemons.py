@@ -7,6 +7,7 @@ import subprocess
 import time
 import eth_typing.evm
 import pathlib
+import logging
 
 # On linux we can pick a random 127.x.y.z IP which is highly likely to not have anything listening
 # on it (so we make bind conflicts highly unlikely).  On most other OSes we have to listen on
@@ -245,15 +246,7 @@ class Daemon(RPCDaemon):
             print("Starting storage server: ", args)
             self.storage_server_proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-    def storage_rpc(self, path, params=None, timeout=30):
-        if not self.storage_server_path:
-            raise RuntimeError("Cannot make rpc request before calling start_storage_server()")
-        url = 'https://{}:{}{}'.format(self.listen_ip, self.storage_server_https_port, path)
-        print(f"Submitting storage request {url} => {params}")
-        return requests.post(url, json=params, timeout=timeout, verify=False)
-
-    def stop(self):
-        super().stop()
+    def stop_storage_server(self):
         if self.storage_server_proc:
             self.storage_server_proc.terminate()
             try:
@@ -262,6 +255,23 @@ class Daemon(RPCDaemon):
                 print("{} storage server took more than 10s to exit, killing it".format(self.name))
                 self.storage_server_proc.kill()
             self.storage_server_proc = None
+
+
+    def storage_rpc(self, path, params=None, timeout=30):
+        if not self.storage_server_path:
+            raise RuntimeError("Cannot make rpc request before calling start_storage_server()")
+        url = 'https://{}:{}{}'.format(self.listen_ip, self.storage_server_https_port, path)
+
+        # Storage server uses self-signed certificates so we have to disable SSL verify in the post
+        # request otherwise it warns very loudly.
+        logging.captureWarnings(True)
+        result = requests.post(url, json=params, timeout=timeout, verify=False)
+        logging.captureWarnings(False)
+        return result
+
+    def stop(self):
+        super().stop()
+        self.stop_storage_server()
 
     def ready(self):
         """Waits for the daemon to get ready, i.e. for it to start returning something to a
