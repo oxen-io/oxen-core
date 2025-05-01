@@ -509,6 +509,178 @@ def test_sn_exits_by_request_signature_and_liquidation(eth_sns: list[Daemon], sn
             # behind the tip for safety! In localdev this is configured to 1 block of lag).
             ethereum.evm_mine();
 
+def test_storage_server_replication(all_nodes: list[Daemon]):
+    ed25519_skey     = ed25519.Ed25519PrivateKey.generate()
+    ed25519_pkey_hex = "05" + ed25519_skey.public_key().public_bytes(encoding=serialization.Encoding.Raw,
+                                                                     format=serialization.PublicFormat.Raw).hex()
+
+    # Find all the service nodes that are part of our swarm by storing a message and
+    # keeping the servers that returned a 200
+    print(f"Test message storing into SNs and retrieve the HTTP 200s as swarm members: ")
+    expected_msg_count                = 0
+    swarm_sn_for_pubkey: list[Daemon] = []
+    for sn in all_nodes:
+        if sn.service_node:
+            store_params = {
+                "method": "store",
+                "params": {
+                    "pubkey": ed25519_pkey_hex,
+                    "timestamp": int(time.time()) * 1000,
+                    "data": base64.b64encode(f"{sn.name}".encode('utf-8')).decode(),
+                    "ttl": f"{30_000 * 60}", # 30 minutes
+                }
+            }
+            response = sn.storage_rpc(path="/storage_rpc/v1", params=store_params)
+            print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code})")
+            if response.status_code == 200:
+                expected_msg_count += 1
+                swarm_sn_for_pubkey.append(sn)
+
+    time.sleep(0.5) # Give some time for messages to propagate
+
+    # Test message retrieval from all our nodes in the swarm
+    assert len(swarm_sn_for_pubkey) > 0
+    print(f"Found {len(swarm_sn_for_pubkey)} nodes for our pubkey {ed25519_pkey_hex}, retrieving messages: ")
+    for sn in swarm_sn_for_pubkey:
+        retrieve_ts = int(time.time()) * 1000
+        retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
+        retrieve_params = {
+            "method": "retrieve",
+            "params": {
+                "pubkey": ed25519_pkey_hex,
+                "timestamp": retrieve_ts,
+                "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
+            }
+        }
+
+        response   = sn.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
+        print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code})")
+        json       = response.json();
+        msgs_array = json["messages"]
+        assert len(msgs_array) == len(swarm_sn_for_pubkey)
+
+    # Send a message to 1 storage server to test message replication
+    print(f"Sending a message to SN {swarm_sn_for_pubkey[0].name}'s storage@{swarm_sn_for_pubkey[0].storage_server_https_port} to test replication across swarm")
+    store_params = {
+        "method": "store",
+        "params": {
+            "pubkey": ed25519_pkey_hex,
+            "timestamp": int(time.time()) * 1000,
+            "data": base64.b64encode(f"test msg is replicated".encode('utf-8')).decode(),
+            "ttl": f"{30_000 * 60}", # 30 minutes
+        }
+    }
+    expected_msg_count += 1
+    response = swarm_sn_for_pubkey[0].storage_rpc(path="/storage_rpc/v1", params=store_params)
+    assert response.status_code == 200
+    time.sleep(0.5) # Sleep abit to allow the message to get replicated across the swarm
+
+    # Test message was replicated
+    prev_msg_replicated_to_sn_count = 0
+    while True:
+        msg_replicated_to_sn_count = 0
+        for sn in swarm_sn_for_pubkey:
+            retrieve_ts = int(time.time()) * 1000
+            retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
+            retrieve_params = {
+                "method": "retrieve",
+                "params": {
+                    "pubkey": ed25519_pkey_hex,
+                    "timestamp": retrieve_ts,
+                    "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
+                }
+            }
+
+            response   = sn.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
+            json       = response.json();
+            msgs_array = json["messages"]
+            if len(msgs_array) == expected_msg_count:
+                msg_replicated_to_sn_count += 1
+
+        if prev_msg_replicated_to_sn_count != msg_replicated_to_sn_count:
+            prev_msg_replicated_to_sn_count = msg_replicated_to_sn_count
+            print(f"  Message replicated to {msg_replicated_to_sn_count}/{len(swarm_sn_for_pubkey)} successfully")
+
+        if msg_replicated_to_sn_count == len(swarm_sn_for_pubkey):
+            break
+
+    # Kill SN 0's storage server. Then, store a message in one of the nodes sleep and see if
+    # the message is replicated
+    print(f"Killing SN {swarm_sn_for_pubkey[0].name}'s storage@{swarm_sn_for_pubkey[0].storage_server_https_port}")
+    swarm_sn_for_pubkey[0].stop_storage_server()
+
+    # Send a message to 1 storage server to test message replication w/ 1 dead node
+    store_params = {
+        "method": "store",
+        "params": {
+            "pubkey": ed25519_pkey_hex,
+            "timestamp": int(time.time()) * 1000,
+            "data": base64.b64encode(f"test msg is replicated w/ 1 dead node".encode('utf-8')).decode(),
+            "ttl": f"{30_000 * 60}", # 30 minutes
+        }
+    }
+    expected_msg_count += 1
+    print(f"Store another message into SN {swarm_sn_for_pubkey[1].name}'s storage@{swarm_sn_for_pubkey[1].storage_server_https_port}/storage_rpc/v1")
+    response = swarm_sn_for_pubkey[1].storage_rpc(path="/storage_rpc/v1", params=store_params)
+    assert response.status_code == 200
+    time.sleep(2) # Sleep abit to allow the message to get replicated across the swarm
+
+    # Start up the server we killed
+    swarm_sn_for_pubkey[0].start_storage_server()
+    time.sleep(2) # Sleep abit to allow the server to start up
+
+    # Test message was replicated to all the servers including the one we killed
+    print(f"Check message was replicated to all nodes, including the one we killed:")
+    msg_replicated_to_sn_count      = 0
+    prev_msg_replicated_to_sn_count = 0
+    sn_retrieve_list                = swarm_sn_for_pubkey[:]
+    attempts                        = 0
+    while attempts < 3:
+        index = 0
+        while index < len(sn_retrieve_list):
+            retrieve_ts = int(time.time()) * 1000
+            retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
+            retrieve_params = {
+                "method": "retrieve",
+                "params": {
+                    "pubkey": ed25519_pkey_hex,
+                    "timestamp": retrieve_ts,
+                    "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
+                }
+            }
+
+            sn: Daemon    = sn_retrieve_list[index]
+            msg_retrieved = False
+            response      = sn.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
+            if response.status_code == 200:
+                json       = response.json();
+                msgs_array = json["messages"]
+                print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code}) message count {len(msgs_array)}/{expected_msg_count}")
+                if len(msgs_array) == expected_msg_count:
+                    msg_replicated_to_sn_count += 1
+                    msg_retrieved = True
+            else:
+                print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code})")
+
+            if msg_retrieved:
+                del sn_retrieve_list[index]
+            else:
+                index += 1
+
+        if prev_msg_replicated_to_sn_count != msg_replicated_to_sn_count:
+            prev_msg_replicated_to_sn_count = msg_replicated_to_sn_count
+            print(f"  Message replicated to {msg_replicated_to_sn_count}/{len(swarm_sn_for_pubkey)}")
+
+        if msg_replicated_to_sn_count == len(swarm_sn_for_pubkey):
+            break
+
+        time.sleep(2)
+        attempts += 1
+
+    if msg_replicated_to_sn_count != len(swarm_sn_for_pubkey):
+        print(f"  Message replication failed after {attempts} attempts. {msg_replicated_to_sn_count}/{len(swarm_sn_for_pubkey)} received the message")
+
+
 def print_unicode_table(rows: List[List[str]]) -> None:
     # Calculate maximum width for each column
     col_widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
@@ -875,6 +1047,10 @@ class SNNetwork:
         concurrent.futures.wait(futures)
         futures.clear()
 
+        # NOTE: Storage server tests
+        if storage_server_path:
+            test_storage_server_replication(self.all_nodes)
+
         # NOTE: Tests complete
         elapsed_time = time.perf_counter() - begin_time
         vprint("Local Devnet SN network setup complete in {}s!".format(elapsed_time))
@@ -913,172 +1089,6 @@ class SNNetwork:
            str(pathlib.Path(first_wallet.walletdir) / first_wallet.name),
            first_node.listen_ip,
            first_node.rpc_port))
-
-        if storage_server_path:
-            ed25519_skey     = ed25519.Ed25519PrivateKey.generate()
-            ed25519_pkey_hex = "05" + ed25519_skey.public_key().public_bytes(encoding=serialization.Encoding.Raw,
-                                                                             format=serialization.PublicFormat.Raw).hex()
-
-            # Find all the service nodes that are part of our swarm by storing a message and
-            # keeping the servers that returned a 200
-            print(f"Test message storing into SNs and retrieve the HTTP 200s as swarm members: ")
-            expected_msg_count                = 0
-            swarm_sn_for_pubkey: list[Daemon] = []
-            for sn in self.all_nodes:
-                if sn.service_node:
-                    store_params = {
-                        "method": "store",
-                        "params": {
-                            "pubkey": ed25519_pkey_hex,
-                            "timestamp": int(time.time()) * 1000,
-                            "data": base64.b64encode(f"{sn.name}".encode('utf-8')).decode(),
-                            "ttl": f"{30_000 * 60}", # 30 minutes
-                        }
-                    }
-                    response = sn.storage_rpc(path="/storage_rpc/v1", params=store_params)
-                    print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code})")
-                    if response.status_code == 200:
-                        expected_msg_count += 1
-                        swarm_sn_for_pubkey.append(sn)
-
-            time.sleep(0.5) # Give some time for messages to propagate
-
-            # Test message retrieval from all our nodes in the swarm
-            assert len(swarm_sn_for_pubkey) > 0
-            print(f"Found {len(swarm_sn_for_pubkey)} nodes for our pubkey {ed25519_pkey_hex}, retrieving messages: ")
-            for sn in swarm_sn_for_pubkey:
-                retrieve_ts = int(time.time()) * 1000
-                retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
-                retrieve_params = {
-                    "method": "retrieve",
-                    "params": {
-                        "pubkey": ed25519_pkey_hex,
-                        "timestamp": retrieve_ts,
-                        "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
-                    }
-                }
-
-                response   = sn.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
-                print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code})")
-                json       = response.json();
-                msgs_array = json["messages"]
-                assert len(msgs_array) == len(swarm_sn_for_pubkey)
-
-            # Send a message to 1 storage server to test message replication
-            print(f"Sending a message to SN {swarm_sn_for_pubkey[0].name}'s storage@{swarm_sn_for_pubkey[0].storage_server_https_port} to test replication across swarm")
-            store_params = {
-                "method": "store",
-                "params": {
-                    "pubkey": ed25519_pkey_hex,
-                    "timestamp": int(time.time()) * 1000,
-                    "data": base64.b64encode(f"test msg is replicated".encode('utf-8')).decode(),
-                    "ttl": f"{30_000 * 60}", # 30 minutes
-                }
-            }
-            expected_msg_count += 1
-            response = swarm_sn_for_pubkey[0].storage_rpc(path="/storage_rpc/v1", params=store_params)
-            assert response.status_code == 200
-            time.sleep(0.5) # Sleep abit to allow the message to get replicated across the swarm
-
-            # Test message was replicated
-            prev_msg_replicated_to_sn_count = 0
-            while True:
-                msg_replicated_to_sn_count = 0
-                for sn in swarm_sn_for_pubkey:
-                    retrieve_ts = int(time.time()) * 1000
-                    retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
-                    retrieve_params = {
-                        "method": "retrieve",
-                        "params": {
-                            "pubkey": ed25519_pkey_hex,
-                            "timestamp": retrieve_ts,
-                            "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
-                        }
-                    }
-
-                    response   = sn.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
-                    json       = response.json();
-                    msgs_array = json["messages"]
-                    if len(msgs_array) == expected_msg_count:
-                        msg_replicated_to_sn_count += 1
-
-                if prev_msg_replicated_to_sn_count != msg_replicated_to_sn_count:
-                    prev_msg_replicated_to_sn_count = msg_replicated_to_sn_count
-                    print(f"  Message replicated to {msg_replicated_to_sn_count}/{len(swarm_sn_for_pubkey)} successfully")
-
-                if msg_replicated_to_sn_count == len(swarm_sn_for_pubkey):
-                    break
-
-            # Kill SN 0's storage server. Then, store a message in one of the nodes sleep and see if
-            # the message is replicated
-            print(f"Killing SN {swarm_sn_for_pubkey[0].name}'s storage@{swarm_sn_for_pubkey[0].storage_server_https_port}")
-            swarm_sn_for_pubkey[0].stop_storage_server()
-
-            # Send a message to 1 storage server to test message replication w/ 1 dead node
-            store_params = {
-                "method": "store",
-                "params": {
-                    "pubkey": ed25519_pkey_hex,
-                    "timestamp": int(time.time()) * 1000,
-                    "data": base64.b64encode(f"test msg is replicated w/ 1 dead node".encode('utf-8')).decode(),
-                    "ttl": f"{30_000 * 60}", # 30 minutes
-                }
-            }
-            expected_msg_count += 1
-            print(f"Store another message into SN {swarm_sn_for_pubkey[1].name}'s storage@{swarm_sn_for_pubkey[1].storage_server_https_port}/storage_rpc/v1")
-            response = swarm_sn_for_pubkey[1].storage_rpc(path="/storage_rpc/v1", params=store_params)
-            assert response.status_code == 200
-            time.sleep(2) # Sleep abit to allow the message to get replicated across the swarm
-
-            # Start up the server we killed
-            swarm_sn_for_pubkey[0].start_storage_server()
-            time.sleep(2) # Sleep abit to allow the server to start up
-
-            # Test message was replicated to all the servers including the one we killed
-            print(f"Check message was replicated to all nodes, including the one we killed:")
-            msg_replicated_to_sn_count      = 0
-            prev_msg_replicated_to_sn_count = 0
-            sn_retrieve_list                = swarm_sn_for_pubkey[:]
-            while True:
-                index = 0
-                while index < len(sn_retrieve_list):
-                    retrieve_ts = int(time.time()) * 1000
-                    retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
-                    retrieve_params = {
-                        "method": "retrieve",
-                        "params": {
-                            "pubkey": ed25519_pkey_hex,
-                            "timestamp": retrieve_ts,
-                            "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
-                        }
-                    }
-
-                    sn: Daemon    = sn_retrieve_list[index]
-                    msg_retrieved = False
-                    response      = sn.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
-                    if response.status_code == 200:
-                        json       = response.json();
-                        msgs_array = json["messages"]
-                        print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code}) message count {len(msgs_array)}/{expected_msg_count}")
-                        if len(msgs_array) == expected_msg_count:
-                            msg_replicated_to_sn_count += 1
-                            msg_retrieved = True
-                    else:
-                        print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code})")
-
-                    if msg_retrieved:
-                        del sn_retrieve_list[index]
-                    else:
-                        index += 1
-
-                if prev_msg_replicated_to_sn_count != msg_replicated_to_sn_count:
-                    prev_msg_replicated_to_sn_count = msg_replicated_to_sn_count
-                    print(f"Message replicated to {msg_replicated_to_sn_count}/{len(swarm_sn_for_pubkey)}")
-
-                if msg_replicated_to_sn_count == len(swarm_sn_for_pubkey):
-                    break
-
-                time.sleep(2)
 
 
     def refresh_wallets(self, *, extra=[]):
