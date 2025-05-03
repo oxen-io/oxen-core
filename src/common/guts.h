@@ -18,7 +18,13 @@
 namespace tools {
 
 template <typename T>
-concept safe_to_memcpy = std::is_trivially_copyable_v<T> || epee::is_byte_spannable<T>;
+constexpr bool is_span = false;
+template <typename T, size_t E>
+constexpr bool is_span<std::span<T, E>> = true;
+
+template <typename T>
+concept safe_to_memcpy =
+        (std::is_trivially_copyable_v<T> || epee::is_byte_spannable<T>) && !is_span<T>;
 
 template <typename T>
 concept byte_spannable = std::convertible_to<T, std::span<const typename T::value_type>> &&
