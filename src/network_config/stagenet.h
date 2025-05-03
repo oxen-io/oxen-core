@@ -4,6 +4,11 @@
 #include "testnet.h"
 
 namespace cryptonote::config::stagenet {
+
+inline constexpr std::array seeds = {
+        "104.243.40.38:11020"sv,  // angus.oxen.io
+};
+
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::STAGENET,
         .DEFAULT_CONFIG_SUBDIR = "stagenet4"sv,
@@ -32,6 +37,7 @@ inline constexpr network_config config{
                   0x65,
                   0x62,
                   0x65}},
+        .P2P_SEED_NODES = seeds,
         .GENESIS_TX =
                 "04011e1e01ff00018080c9db97f4fb2702fa27e905f604faa4eb084ee675faca77b0cfea9adec1526d"
                 "a33cae5e286f31624201dae05bf3fa1662b7fd373c92426763d921cf3745e10ee43edb510f690c656f"

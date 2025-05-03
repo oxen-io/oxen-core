@@ -4,6 +4,11 @@
 #include "testnet.h"
 
 namespace cryptonote::config::devnet {
+
+inline constexpr std::array seeds = {
+        "144.76.164.202:38856"sv,  // public-eu.optf.ngo
+};
+
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::DEVNET,
         .DEFAULT_CONFIG_SUBDIR = "devnet3"sv,
@@ -32,6 +37,7 @@ inline constexpr network_config config{
                   0x57,
                   0xab,
                   0xd7}},
+        .P2P_SEED_NODES = seeds,
         .GENESIS_TX =
                 "04011e1e01ff00018080c9db97f4fb2702fa27e905f604faa4eb084ee675faca77b0cfea9adec152"
                 "6da33cae5e286f31624201dae05bf3fa1662b7fd373c92426763d921cf3745e10ee43edb510f690c"

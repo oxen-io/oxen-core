@@ -57,7 +57,7 @@ if(NOT TARGET oxen::logging)
 endif()
 
 system_or_submodule(OXENC oxenc liboxenc>=1.4.0 oxen-encoding)
-system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.20 oxen-mq)
+system_or_submodule(OXENMQ oxenmq liboxenmq>=1.2.21 oxen-mq)
 
 add_subdirectory(db_drivers)
 add_subdirectory(randomx EXCLUDE_FROM_ALL)
@@ -145,6 +145,22 @@ if(BUILD_PYBIND)
 endif()
 
 
+if(NOT TARGET nlohmann_json::nlohmann_json)
+    set(JSON_BuildTests OFF CACHE INTERNAL "")
+    set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
+    system_or_submodule(NLOHMANN nlohmann_json nlohmann_json>=3.7.0 ethyl/external/json)
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        set(default_nlohmann_diags OFF)
+    else()
+        set(default_nlohmann_diags ON)
+    endif()
+    option(WITH_NLOHMANN_JSON_DIAGNOSTICS "Enables nlohmann-json extended diagnostic exception info" ${default_nlohmann_diags})
+    if(WITH_NLOHMANN_JSON_DIAGNOSTICS)
+        target_compile_definitions(nlohmann_json INTERFACE JSON_DIAGNOSTICS)
+    endif()
+endif()
+
 if(NOT WIN32 AND NOT APPLE)
   set(CPR_FORCE_OPENSSL_BACKEND ON CACHE BOOL "" FORCE)
 endif()
@@ -154,12 +170,6 @@ set(ethyl_ENABLE_LTO FALSE CACHE BOOL "" FORCE)
 add_subdirectory(ethyl EXCLUDE_FROM_ALL)
 oxen_install_library(ethyl)
 oxen_install_library(cpr)  # comes via ethyl
-
-if(NOT TARGET nlohmann_json::nlohmann_json)
-    set(JSON_BuildTests OFF CACHE INTERNAL "")
-    set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
-    system_or_submodule(NLOHMANN nlohmann_json nlohmann_json>=3.7.0 nlohmann-json)
-endif()
 
 
 # NOTE: By default cpptrace is configured to make stack-traces using libdwarf.

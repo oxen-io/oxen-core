@@ -216,7 +216,7 @@ class core_rpc_server {
     void invoke(GET_OUTPUT_HISTOGRAM& get_output_histogram, rpc_context context);
     void invoke(ONS_OWNERS_TO_NAMES& ons_owners_to_names, rpc_context context);
     void invoke(GET_ACCRUED_REWARDS& rpc, rpc_context context);
-    void invoke(ONS_NAMES_TO_OWNERS& ons_names_to_owners, rpc_context context);
+    void invoke(ONS_INFO& info, rpc_context context);
 
     // Deprecated Monero NIH binary endpoints:
     GET_ALT_BLOCKS_HASHES_BIN::response invoke(
