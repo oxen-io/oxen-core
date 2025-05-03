@@ -1,3 +1,9 @@
+oxen (11.2.1-2~ubuntu2404) noble; urgency=medium
+
+  * Fix oxen-sn-keys with legacy keys
+
+ -- Jason Rhinelander <jason@session.foundation>  Sat, 03 May 2025 03:29:59 -0300
+
 oxen (11.2.1-1~ubuntu2404) noble; urgency=medium
 
   [ Jason Rhinelander ]
