@@ -1,5 +1,11 @@
 oxen (11.2.1-2~ubuntu2504) plucky; urgency=medium
 
+  * fix x25519 map pruning
+
+ -- Jason Rhinelander <jason@session.foundation>  Sat, 03 May 2025 03:46:51 -0300
+
+oxen (11.2.1-2~ubuntu2504) plucky; urgency=medium
+
   * Fix oxen-sn-keys with legacy keys
 
  -- Jason Rhinelander <jason@session.foundation>  Sat, 03 May 2025 03:29:42 -0300
