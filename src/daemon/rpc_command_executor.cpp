@@ -602,6 +602,19 @@ bool rpc_command_executor::show_status() {
     auto msg = tools::success_msg_writer("Height: {}", height);
     if (height != net_height)
         msg.append("/{} ({:.1f}%)", net_height, get_sync_percentage(height, net_height));
+    auto l2_height_chain = info.value<int64_t>("l2_height", 0);
+    auto tracker_l2 = info.value<int64_t>("l2_tracker_height", -1);
+    if (l2_height_chain == 0) {
+        // We are most likely in a pre-HF21 part of the chain, so only print the cur L2 tracker
+        // height (if we have it):
+        if (tracker_l2 >= 0)
+            msg.append(" (L2 cur: {})", tracker_l2);
+    } else {
+        msg.append(" (L2 blk: {}", l2_height_chain);
+        if (tracker_l2 >= 0)
+            msg.append(", cur: {:+d}", tracker_l2 - l2_height_chain);
+        msg.append(")");
+    }
 
     auto nettype = cryptonote::network_type_from_string(info.value("nettype", ""));
     if (nettype != cryptonote::network_type::MAINNET) {
@@ -638,7 +651,7 @@ bool rpc_command_executor::show_status() {
     if (restricted_response) {
         std::chrono::seconds uptime{now - info["start_time"].get<std::time_t>()};
         msg.append(
-                ", {}(out)+{}(in) connections, uptime {}",
+                ", {}(out)+{}(in) conns, up {}",
                 info["outgoing_connections_count"].get<int>(),
                 info["incoming_connections_count"].get<int>(),
                 tools::friendly_duration(uptime));
