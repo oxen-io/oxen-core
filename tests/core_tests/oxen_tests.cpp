@@ -1390,7 +1390,7 @@ bool oxen_name_system_get_mappings::generate(std::vector<test_event_entry> &even
       DEFINE_TESTS_ERROR_CONTEXT("check_ons_entries");
       ons::name_system_db &ons_db = c.blockchain.name_system_db();
       std::string session_name_hash = ons::name_to_base64_hash(tools::lowercase_ascii_string(session_name1));
-      std::vector<ons::mapping_record> records = ons_db.get_mappings({ons::mapping_type::session}, session_name_hash);
+      std::vector<ons::mapping_record> records = ons_db.get_mappings(session_name_hash, std::nullopt, {ons::mapping_type::session});
       CHECK_EQ(records.size(), 1);
       CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, records[0], ons::mapping_type::session, session_name1, bob_key.session_value, session_height, std::nullopt, session_tx_hash, bob_key.owner, {} /*backup_owner*/));
       return true;
@@ -2092,7 +2092,7 @@ bool oxen_name_system_update_mapping::generate(std::vector<test_event_entry> &ev
     ons::name_system_db &ons_db = c.blockchain.name_system_db();
 
     std::string name_hash = ons::name_to_base64_hash(session_name1);
-    std::vector<ons::mapping_record> records = ons_db.get_mappings({ons::mapping_type::session}, name_hash);
+    std::vector<ons::mapping_record> records = ons_db.get_mappings(name_hash, std::nullopt, {ons::mapping_type::session});
 
     CHECK_EQ(records.size(), 1);
     CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, records[0], ons::mapping_type::session, session_name1, miner_key.session_value, register_height, std::nullopt, session_tx_hash1, miner_key.owner, {} /*backup_owner*/));
@@ -2118,7 +2118,7 @@ bool oxen_name_system_update_mapping::generate(std::vector<test_event_entry> &ev
     ons::name_system_db &ons_db = c.blockchain.name_system_db();
 
     std::string name_hash = ons::name_to_base64_hash(session_name1);
-    std::vector<ons::mapping_record> records = ons_db.get_mappings({ons::mapping_type::session}, name_hash);
+    std::vector<ons::mapping_record> records = ons_db.get_mappings(name_hash, std::nullopt, {ons::mapping_type::session});
 
     CHECK_EQ(records.size(), 1);
     CHECK_TEST_CONDITION(verify_ons_mapping_record(perr_context, records[0], ons::mapping_type::session, session_name1, bob_key.session_value, blockchain_height, std::nullopt, session_tx_hash2, miner_key.owner, {} /*backup_owner*/));

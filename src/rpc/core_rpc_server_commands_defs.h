@@ -504,7 +504,10 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 ///
 /// - `status` -- General RPC status string. `"OK"` means everything looks good.
 /// - `height` -- Current length of longest chain known to daemon.
-/// - `l2_height` -- Current Arbitrum height that the network is synchronized to
+/// - `l2_height` -- Current Arbitrum height that the network is synchronized to, i.e. in the
+///   current top block.
+/// - `l2_tracker_height` -- The current L2 height known by this node's L2 tracker.  Omitted if this
+///   node does not have an L2 tracker.
 /// - `target_height` -- The height of the next block in the chain.
 /// - `immutable_height` -- The latest height in the blockchain that can not be reorganized (i.e.
 ///   is backed by at least 2 Service Node, or 1 hardcoded checkpoint, 0 if N/A).  Omitted if it
@@ -2679,26 +2682,6 @@ struct TEST_TRIGGER_UPTIME_PROOF : NO_ARGS {
     static constexpr auto names() { return NAMES("test_trigger_uptime_proof"); }
 };
 
-OXEN_RPC_DOC_INTROSPECT
-// Get the name mapping for an Oxen Name Service entry. Oxen currently supports mappings
-// for Session, Wallet and Lokinet.
-struct ONS_NAMES_TO_OWNERS : PUBLIC {
-    static constexpr auto names() { return NAMES("ons_names_to_owners", "lns_names_to_owners"); }
-
-    static constexpr size_t MAX_REQUEST_ENTRIES = 256;
-    static constexpr size_t MAX_TYPE_REQUEST_ENTRIES = 8;
-
-    struct request_parameters {
-        std::vector<std::string> name_hash;  // The 32-byte BLAKE2b hash of the name to resolve to a
-                                             // public key via Oxen Name Service. The value must be
-                                             // provided either in hex (64 hex digits) or base64 (44
-                                             // characters with padding, or 43 characters without).
-        std::vector<uint16_t> type;  // If empty, query all types. Currently supported types are 0
-                                     // (session), 1 (wallet) and 2 (lokinet). In future updates
-                                     // more mapping types will be available.
-    } request;
-};
-
 /// RPC: ons/ons_owners_to_names
 ///
 /// Get all the name mappings for the queried owner. The owner can be either a ed25519 public key
@@ -2759,7 +2742,7 @@ void to_json(nlohmann::json& j, const ONS_OWNERS_TO_NAMES::response_entry& r);
 ///
 /// Performs a simple ONS lookup of a BLAKE2b-hashed name.  This RPC method is meant for simple,
 /// single-value resolutions that do not care about registration details, etc.; if you need more
-/// information use ONS_NAMES_TO_OWNERS instead.
+/// information use `ons_info` instead.
 ///
 /// Inputs:
 ///
@@ -2783,7 +2766,7 @@ void to_json(nlohmann::json& j, const ONS_OWNERS_TO_NAMES::response_entry& r);
 ///
 /// 1. Lower-case the name.
 /// 2. Calculate the name hash as a null-key, 32-byte BLAKE2b hash of the lower-case name.
-/// 3. Obtain the encrypted value and the nonce from this RPC call (or ONS_NAMES_TO_OWNERS); when
+/// 3. Obtain the encrypted value and the nonce from this RPC call (or `ons_info`); when
 ///    using json encode the name hash using either hex or base64.
 /// 4. Calculate the decryption key as a 32-byte BLAKE2b *keyed* hash of the name using the
 ///    (unkeyed) name hash calculated above (in step 2) as the hash key.
@@ -2889,6 +2872,56 @@ struct ONS_RESOLVE : PUBLIC {
     } request;
 };
 
+/// RPC: ons/ons_info
+///
+/// Get the name mapping(s) for an Oxen Name Service entry, including metadata about the
+/// registration.  Oxen currently supports mappings for Session, Wallet and Lokinet.  Any types with
+/// a matching name hash are returned.
+///
+/// To simply resolve a record of a single type without metadata, see `ons_resolve` instead.
+///
+/// Inputs:
+///
+/// - `name_hash` -- A single hashed name to look up.  Either this or `name_hashes` must be
+///   specified (but not both).  See ons_resolve for details on how to properly construct these
+///   hashed name values.  The value(s) can be provided as either hex or base64.
+/// - `name_hashes` -- An array of hashed names to look up multiple names at once.
+/// - `type` -- Optional record type to restrict lookups, where 0 = session, 1 = wallet, 2 =
+///   lokinet.  If omitted (or null) then all matching name_hash entries, regardless of type, will
+///   be returned, otherwise only records of the given type are returned.
+/// - `include_expired` -- Optional bool; if provided and true then expired records will be
+///   included, otherwise they will not be.
+///
+/// Outputs:
+///
+/// - `status` -- Generic RPC error code. "OK" is the success value.
+/// - `result` -- Object of results, with one key per unique input name_hash.  The key is a
+///   name_hash that was looked up (in the same hex or base64 encoding that was provided), and each
+///   value is an array of match results (which will be empty if there was no match), returned as
+///   objects containing keys:
+///   - `type` -- the record type value (0 - session, 1 - wallet, 2 - lokinet)
+///   - `owner` -- the record owner, which is usually an Oxen wallet address
+///   - `backup_owner` -- a second owner; omitted if there is no backup owner.
+///   - `encrypted_value` -- the encrypted ONS record.  (See `ons_resolve`)
+///   - `expiration_height` -- if this record has an expiration, this is the height.  Omitted for
+///     non-expiring records.
+///   - `expired` -- true if this record is expired (i.e. we are past `expiration_height`), false
+///     otherwise.  Omitted for non-expiring records.
+///   - `update_height` -- the height at which this record was last modified, renewed, or created.
+///   - `txid` -- the transaction id that last modified, renewed, or created this ONS record.
+///
+struct ONS_INFO : PUBLIC {
+    static constexpr auto names() { return NAMES("ons_info"); }
+
+    static constexpr size_t MAX_REQUEST_ENTRIES = 256;
+
+    struct request_parameters {
+        std::vector<std::string> name_hash;
+        std::optional<uint16_t> type;
+        bool include_expired = false;
+    } request;
+};
+
 /// RPC: daemon/flush_cache
 ///
 /// Clear TXs from the daemon cache, currently only the cache storing TX hashes that were
@@ -2970,6 +3003,7 @@ using core_rpc_types = tools::type_list<
         MINING_STATUS,
         ONS_OWNERS_TO_NAMES,
         ONS_RESOLVE,
+        ONS_INFO,
         OUT_PEERS,
         POP_BLOCKS,
         PRUNE_BLOCKCHAIN,
@@ -2985,8 +3019,7 @@ using core_rpc_types = tools::type_list<
         SUBMIT_TRANSACTION,
         SYNC_INFO,
         TEST_TRIGGER_P2P_RESYNC,
-        TEST_TRIGGER_UPTIME_PROOF,
-        ONS_NAMES_TO_OWNERS>;
+        TEST_TRIGGER_UPTIME_PROOF>;
 
 using FIXME_old_rpc_types = tools::type_list<RELAY_TX, GET_OUTPUT_DISTRIBUTION>;
 
