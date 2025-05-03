@@ -1,3 +1,55 @@
+oxen (11.2.1-1~deb12) bookworm; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Stagenet debs: handle migrated public-ip question
+  * Allow startup (but not proofs!) during HF20 without an L2
+  * Report L2 status in get_info & oxend status
+  * Update oxen-mq
+
+  [ doylet ]
+  * Fix ons_names_to_owners executing get_output_histogram
+
+  [ Jason Rhinelander ]
+  * Fix ONS get_mapings returning nothing when types is empty
+
+  [ doylet ]
+  * Fix ons_buy_mapping and ons_lookup reading wrong params
+
+  [ Jason Rhinelander ]
+  * Add cmake option to enable nlohmann::json diagnostics
+  * Replace ONS_NAMES_TO_OWNERS with new ONS_INFO
+  * Fix ons-by-owner RPC issues
+  * Disable log file output when running "oxend command"
+
+  [ Thomas Winget ]
+  * allow pulse to proceed in some cases where some validators fail
+
+  [ Jason Rhinelander ]
+  * Duplicate filtering of incoming proofs
+  * Fix path to nlohmann-json submodule
+  * drop obsolete variable
+  * Add `type` filter to ons_info
+  * Tweak L2 height display
+  * wallet_merged: add missing sent_transition_data lib
+  * clean up mildly confusing code
+  * Don't reset proof timestamp on decomm
+  * Don't expire x25519 maps entries for registered nodes
+  * Remove obsolete timesync check version gate
+  * Bump default omq log threshold
+  * Fix L2 display for pre-HF21 (e.g. current mainnet)
+  * Update mainnet seeds; move seed node list to network_config
+  * Improve ONS name check error messages
+  * wallet2: fix ons updating
+  * Mempool acceptance: only one ONS tx per name per block
+  * ONS_INFO: support multiple lookups
+  * Fix error reporting of invalid txes
+  * Miscellaneous wallet json interaction cleanups
+  * Use our local mirror for ios wallet_api builds
+  * 11.2.1 release
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Fri, 02 May 2025 22:45:05 -0300
+
 oxen (11.2.0-3~deb12) bookworm; urgency=medium
 
   * Rediff patches
