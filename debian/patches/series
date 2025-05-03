@@ -1,4 +1,3 @@
 0004-randomx-x86-64-build-fix.patch
 0007-dumb-ARM_ID-ARCH-logic-workaround.patch
 0006-Make-primary-service-node-key-always-available.patch
-0005-Allow-startup-but-not-proofs-during-HF20-without-an-.patch
