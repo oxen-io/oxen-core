@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <span>
 
 #include "../cryptonote_config.h"
 
@@ -31,6 +32,10 @@ struct network_config final {
     const uint16_t RPC_DEFAULT_PORT;
     const uint16_t QNET_DEFAULT_PORT;
     const std::array<unsigned char, 16> NETWORK_ID;
+
+    // oxen blockchain p2p seed nodes.
+    const std::span<const std::string_view> P2P_SEED_NODES;
+
     const std::string_view GENESIS_TX;
     const uint32_t GENESIS_NONCE;
     const std::chrono::seconds GOVERNANCE_REWARD_INTERVAL;

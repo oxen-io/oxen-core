@@ -88,9 +88,9 @@ node_server<t_payload_net_handler>::~node_server() {
     }
 }
 //-----------------------------------------------------------------------------------
-inline bool append_net_address(
+static bool append_net_address(
         std::vector<epee::net_utils::network_address>& seed_nodes,
-        std::string const& addr,
+        std::string_view addr,
         uint16_t default_port);
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
@@ -520,9 +520,9 @@ bool node_server<t_payload_net_handler>::handle_command_line(
     return true;
 }
 //-----------------------------------------------------------------------------------
-inline bool append_net_address(
+static bool append_net_address(
         std::vector<epee::net_utils::network_address>& seed_nodes,
-        std::string const& addr,
+        std::string_view addr,
         uint16_t default_port) {
     using namespace boost::asio;
 
@@ -573,34 +573,6 @@ inline bool append_net_address(
     return true;
 }
 
-//-----------------------------------------------------------------------------------
-template <class t_payload_net_handler>
-std::set<std::string> node_server<t_payload_net_handler>::get_seed_nodes(
-        cryptonote::network_type nettype) const {
-    std::set<std::string> full_addrs;
-    if (nettype == cryptonote::network_type::TESTNET) {
-        full_addrs.insert("144.76.164.202:38156");  // public-eu.optf.ngo
-    } else if (nettype == cryptonote::network_type::DEVNET) {
-        full_addrs.insert("144.76.164.202:38856");
-    } else if (nettype == cryptonote::network_type::STAGENET) {
-        full_addrs.insert("104.243.40.38:11020");  // angus.oxen.io
-    } else if (nettype == cryptonote::network_type::MAINNET) {
-        full_addrs.insert("116.203.196.12:22022");  // Hetzner seed node
-        full_addrs.insert("185.150.191.32:22022");  // Jason's seed node
-        full_addrs.insert("199.127.60.6:22022");    // Oxen Foundation server "holstein"
-        full_addrs.insert("23.88.6.250:22022");     // Official Session open group server
-        full_addrs.insert("104.194.8.115:22000");   // Oxen Foundation server "brahman"
-    }
-    // LOCALDEV and FAKECHAIN don't have seed nodes
-    return full_addrs;
-}
-//-----------------------------------------------------------------------------------
-template <class t_payload_net_handler>
-std::set<std::string> node_server<t_payload_net_handler>::get_seed_nodes() {
-    if (!m_exclusive_peers.empty() || m_offline)
-        return {};
-    return get_seed_nodes(m_nettype);
-}
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 typename node_server<t_payload_net_handler>::network_zone&
@@ -1598,12 +1570,13 @@ bool node_server<t_payload_net_handler>::connect_to_seed() {
     if (!m_seed_nodes_initialized) {
         std::unique_lock lock{m_seed_nodes_mutex};
         if (!m_seed_nodes_initialized) {
-            for (const auto& full_addr : get_seed_nodes()) {
+            const auto& netconf = cryptonote::get_config(m_nettype);
+            for (const auto& full_addr : netconf.P2P_SEED_NODES) {
                 log::debug(logcat, "Seed node: {}", full_addr);
                 append_net_address(
                         m_seed_nodes,
                         full_addr,
-                        cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT);
+                        netconf.P2P_DEFAULT_PORT);
             }
             log::debug(logcat, "Number of seed nodes: {}", m_seed_nodes.size());
             m_seed_nodes_initialized = true;
@@ -1637,13 +1610,14 @@ bool node_server<t_payload_net_handler>::connect_to_seed() {
                 {
                     shlock.unlock();
                     {
+                        const auto& netconf = cryptonote::get_config(m_nettype);
                         std::unique_lock lock{m_seed_nodes_mutex};
-                        for (const auto& peer : get_seed_nodes(m_nettype)) {
+                        for (const auto& peer : netconf.P2P_SEED_NODES) {
                             log::debug(logcat, "Fallback seed node: {}", peer);
                             append_net_address(
                                     m_seed_nodes,
                                     peer,
-                                    cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT);
+                                    netconf.P2P_DEFAULT_PORT);
                         }
                     }
                     shlock.lock();
@@ -2597,8 +2571,8 @@ bool node_server<t_payload_net_handler>::parse_peers_and_add_to_container(
         Container& container) {
     std::vector<std::string> perrs = command_line::get_arg(vm, arg);
 
+    const uint16_t default_port = cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT;
     for (const std::string& pr_str : perrs) {
-        const uint16_t default_port = cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT;
         expect<epee::net_utils::network_address> adr =
                 net::get_network_address(pr_str, default_port);
         if (adr) {

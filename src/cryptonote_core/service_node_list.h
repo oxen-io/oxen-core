@@ -666,7 +666,8 @@ class service_node_list {
     void for_each_service_node_info_and_proof(It begin, End end, Func f) const {
         static const proof_info empty_proof{};
         std::lock_guard lock{m_sn_mutex};
-        for (auto sni_end = m_state.service_nodes_infos.end(); begin != end; ++begin) {
+        auto sni_end = m_state.service_nodes_infos.end();
+        for (; begin != end; ++begin) {
             auto it = m_state.service_nodes_infos.find(*begin);
             if (it != sni_end) {
                 auto pit = proofs.find(it->first);
@@ -1087,6 +1088,20 @@ class service_node_list {
                 uint64_t height, cryptonote::network_type nettype)
                 const;  // return: All nodes that are active and have been online for a period
                         // greater than SERVICE_NODE_PAYABLE_AFTER_BLOCKS
+
+        // How long we should attempt to keep expired proofs and x25519-to-sn-pk map entries once a
+        // node is no longer referenced (i.e. not active and not in the recently removed list).  We
+        // allow a fairly large 6h here because there's no harm in leaving proofs around a bit
+        // longer (they aren't big, and we only store one per SN), and it's possible that we could
+        // reorg a few blocks and resurrect a service node but don't want to prematurely expire the
+        // proof.
+        static constexpr auto INFO_PRUNING_LAG = 6h;
+
+        // Returns true if we want to keep proof & x25519 pubkey info for this node given the age of
+        // the proof, false if it can be deleted.  We keep if the snode is currently registered or
+        // in the recently removed node set; or the proof is less than `INFO_PRUNING_LAG` old.
+        bool should_keep_info(
+                const crypto::public_key& snpk, std::chrono::nanoseconds proof_age) const;
 
         // Takes a BLS pubkey, returns the SN pubkey if known, otherwise null.  Note that "known"
         // here includes both registered SNs and SNs in the recently expired list (i.e. left oxend,
