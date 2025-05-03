@@ -393,8 +393,7 @@ std::pair<bool, nlohmann::json> NodeRPCProxy::ons_owners_to_names(
     return result;
 }
 
-std::pair<bool, nlohmann::json> NodeRPCProxy::ons_names_to_owners(
-        nlohmann::json const& request) const {
+std::pair<bool, nlohmann::json> NodeRPCProxy::ons_info(nlohmann::json const& request) const {
     std::pair<bool, nlohmann::json> result;
     auto& [success, resolved] = result;
     success = false;
@@ -403,9 +402,19 @@ std::pair<bool, nlohmann::json> NodeRPCProxy::ons_names_to_owners(
         return result;
 
     try {
-        auto res = m_http_client.json_rpc("get_output_histogram", request);
-        resolved = res;
-    } catch (...) {
+        auto res = m_http_client.json_rpc("ons_info", request);
+        auto st_it = res.find("status");
+        auto res_it = res.find("result");
+        if (st_it == res.end() || res_it == res.end() || !st_it->is_string() ||
+            !res_it->is_object()) {
+            log::error(logcat, "Did not find expected result or status in:\n{}", res.dump());
+            throw std::runtime_error{"Missing result or status"};
+        }
+        if (auto status = st_it->get<std::string_view>(); status != "OK")
+            throw std::runtime_error{"Received error status '{}'"_format(status)};
+        resolved = res["result"];
+    } catch (const std::exception& e) {
+        log::error(logcat, "Failed to get ONS info: {}", e.what());
         return result;
     }
     success = true;

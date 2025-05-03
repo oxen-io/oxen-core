@@ -298,27 +298,38 @@ int main(int argc, char const* argv[]) {
 
         po::notify(vm);
 
-        // log_file_path
-        //   default: <data_dir>/oxen.log
-        //   if log-file argument given:
-        //     absolute path
-        //     relative path: relative to data_dir
-        auto log_file_path = data_dir / cryptonote::LOG_FILENAME;
-        if (!command_line::is_arg_defaulted(vm, daemon_args::arg_log_file))
-            log_file_path = command_line::get_arg(vm, daemon_args::arg_log_file);
-        if (log_file_path.is_relative())
-            log_file_path = fs::absolute(data_dir / log_file_path);
+        // If there are positional options, we're running a daemon command
+        auto command = command_line::get_arg(vm, daemon_args::arg_command);
+        const bool daemon_command_mode = !command.empty();
 
-        oxen::logging::init(
-                log_file_path.string(), command_line::get_arg(vm, daemon_args::arg_log_level));
+        std::string log_file;
+        if (!daemon_command_mode) {
+            // log_file_path
+            //   default: <data_dir>/oxen.log
+            //   if log-file argument given:
+            //     absolute path
+            //     relative path: relative to data_dir
+            auto log_file_path = data_dir / cryptonote::LOG_FILENAME;
+            if (!command_line::is_arg_defaulted(vm, daemon_args::arg_log_file))
+                log_file_path = command_line::get_arg(vm, daemon_args::arg_log_file);
+            if (log_file_path.is_relative())
+                log_file_path = fs::absolute(data_dir / log_file_path);
+
+            log_file = log_file_path.string();
+        }
+        // else (in command mode) ignore the log file
+
+        oxen::logging::init(log_file, command_line::get_arg(vm, daemon_args::arg_log_level));
 
         logs_initialized = true;
 
         if (!command_line::is_arg_defaulted(vm, daemon_args::arg_max_concurrency))
             tools::set_max_concurrency(command_line::get_arg(vm, daemon_args::arg_max_concurrency));
 
-        // logging is now set up
-        // FIXME: only print this when starting up as a daemon but not when running rpc commands
+        // logging is now set up, so we can log a startup version banner.  We do this even in
+        // command mode, just because it provides some useful version about the oxend binary being
+        // invoked (so if something like oxend status produces mismatched versions, that tells you
+        // the daemon is running an old version).
         Log::info(
                 globallogcat,
                 fg(fmt::terminal_color::cyan) | fmt::emphasis::bold,
@@ -326,40 +337,33 @@ int main(int argc, char const* argv[]) {
                 OXEN_RELEASE_NAME,
                 OXEN_VERSION_FULL);
 
-        // If there are positional options, we're running a daemon command
-        {
-            auto command = command_line::get_arg(vm, daemon_args::arg_command);
-
-            if (command.size()) {
-                auto rpc_config = cryptonote::rpc_args::process(vm);
-                std::string rpc_addr;
-                // TODO: remove this in oxen 9.x and only use rpc-admin
-                if (!is_arg_defaulted(vm, cryptonote::rpc::http_server::arg_rpc_bind_port) ||
-                    rpc_config.bind_ip.has_value()) {
-                    auto rpc_port = command_line::get_arg(
-                            vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
-                    if (rpc_port == 0)
-                        rpc_port = get_config(command_line::get_network(vm)).RPC_DEFAULT_PORT;
-                    rpc_addr = "{}:{}"_format(rpc_config.bind_ip.value_or("127.0.0.1"), rpc_port);
-                } else {
-                    rpc_addr = command_line::get_arg(
-                            vm, cryptonote::rpc::http_server::arg_rpc_admin)[0];
-                    if (rpc_addr == "none")
-                        throw oxen::traced<std::runtime_error>{
-                                "Cannot invoke oxend command: --rpc-admin is disabled"};
-                }
-
-                {
-                    // Throws if invalid:
-                    auto [ip, port] = daemonize::parse_ip_port(rpc_addr, "--rpc-admin");
-                    rpc_addr = "http://"s +
-                               (ip.find(':') != std::string::npos ? "[" + ip + "]" : ip) + ":" +
-                               std::to_string(port);
-                }
-
-                daemonize::command_server rpc_commands{rpc_addr, rpc_config.login};
-                return rpc_commands.process_command_and_log(command) ? 0 : 1;
+        if (daemon_command_mode) {
+            auto rpc_config = cryptonote::rpc_args::process(vm);
+            std::string rpc_addr;
+            // TODO: remove this in oxen 9.x and only use rpc-admin
+            if (!is_arg_defaulted(vm, cryptonote::rpc::http_server::arg_rpc_bind_port) ||
+                rpc_config.bind_ip.has_value()) {
+                auto rpc_port =
+                        command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_bind_port);
+                if (rpc_port == 0)
+                    rpc_port = get_config(command_line::get_network(vm)).RPC_DEFAULT_PORT;
+                rpc_addr = "{}:{}"_format(rpc_config.bind_ip.value_or("127.0.0.1"), rpc_port);
+            } else {
+                rpc_addr =
+                        command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_admin)[0];
+                if (rpc_addr == "none")
+                    throw oxen::traced<std::runtime_error>{
+                            "Cannot invoke oxend command: --rpc-admin is disabled"};
             }
+
+            // Throws if invalid:
+            auto [ip, port] = daemonize::parse_ip_port(rpc_addr, "--rpc-admin");
+
+            daemonize::command_server rpc_commands{
+                    "http://{}:{}"_format(
+                            ip.find(':') != std::string::npos ? "[{}]"_format(ip) : ip, port),
+                    rpc_config.login};
+            return rpc_commands.process_command_and_log(command) ? 0 : 1;
         }
 
         Log::info(logcat, "Moving from main() into the daemonize now.");

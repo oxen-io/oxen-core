@@ -105,20 +105,6 @@ void from_json(const nlohmann::json& j, GET_OUTPUT_HISTOGRAM::entry& e) {
     j.at("recent_instances").get_to(e.recent_instances);
 };
 
-void to_json(nlohmann::json& j, const ONS_OWNERS_TO_NAMES::response_entry& r) {
-    j = nlohmann::json{
-            {"request_index", r.request_index},
-            {"type", r.type},
-            {"name_hash", r.name_hash},
-            {"owner", r.owner},
-            {"backup_owner", r.backup_owner},
-            {"encrypted_value", r.encrypted_value},
-            {"update_height", r.update_height},
-            {"expiration_height", r.expiration_height},
-            {"txid", r.txid},
-    };
-}
-
 KV_SERIALIZE_MAP_CODE_BEGIN(GET_OUTPUT_DISTRIBUTION::request)
 KV_SERIALIZE(amounts)
 KV_SERIALIZE_OPT(from_height, (uint64_t)0)
