@@ -38,26 +38,20 @@
 #include "wallet/transfer_view.h"
 #include "wallet_rpc_server_error_codes.h"
 
-// When making *any* change here, bump minor
-// If the change is incompatible, then bump major and set minor to 0
-// This ensures WALLET_RPC_VERSION always increases, that every change
-// has its own version, and that clients can just test major to see
-// whether they can talk to a given wallet without having to know in
-// advance which version they will stop working with
-// Don't go over 32767 for any of these
-#define WALLET_RPC_VERSION_MAJOR 1
-#define WALLET_RPC_VERSION_MINOR 17
-#define MAKE_WALLET_RPC_VERSION(major, minor) (((major) << 16) | (minor))
-#define WALLET_RPC_VERSION \
-    MAKE_WALLET_RPC_VERSION(WALLET_RPC_VERSION_MAJOR, WALLET_RPC_VERSION_MINOR)
-
-#define WALLET_RPC_STATUS_OK "OK"
-#define WALLET_RPC_STATUS_BUSY "BUSY"
-
 /// Namespace for wallet RPC commands.  Every RPC commands gets defined here and added to
 /// `wallet_rpc_types` list at the bottom of the file.
 
 namespace tools::wallet_rpc {
+
+// When making *any* change here, bump minor
+// If the change is incompatible, then bump major and set minor to 0
+// This ensures RPC_VERSION_CODE always increases, that every change
+// has its own version, and that clients can just test major to see
+// whether they can talk to a given wallet without having to know in
+// advance which version they will stop working with
+inline constexpr std::array<uint16_t, 2> RPC_VERSION = {1, 18};
+inline constexpr uint32_t RPC_VERSION_CODE =
+        (static_cast<uint32_t>(RPC_VERSION[0]) << 16) | RPC_VERSION[1];
 
 /// Base class that all wallet rpc commands inherit from
 struct RPC_COMMAND {};

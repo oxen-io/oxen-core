@@ -454,13 +454,16 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
         if (command_line::get_arg(vm, arg_l2_provider).empty() &&
             command_line::get_arg(vm, arg_l2_oxend).empty()) {
             auto latest_hf_known = get_latest_hard_fork(m_nettype);
-            if (latest_hf_known.version < hf::hf20_eth_transition) {
-                // If HF20 is not yet scheduled on this chain then only warn but don't error.
-                log::warning(globallogcat, "No L2 provider URL was given.");
-                log::warning(
+            if (latest_hf_known.version < hf::hf21_eth) {
+                // If HF21 is not yet scheduled on this chain then show an error in the logs because
+                // we won't send proofs, but don't make it fatal.  This is needed, in particular, to
+                // help with HF20 package migration where oxend might get restarted with
+                // service-node=1 configured by without the l2-provider= configuration added yet.
+                log::error(globallogcat, "No L2 providers given.");
+                log::error(
                         globallogcat,
-                        "At least one L2 provider URL (or L2 oxend proxy) will be REQUIRED "
-                        "starting with the HF20/Anchor release");
+                        "At least one L2 provider URL (or L2 oxend proxy) is REQUIRED. Uptime "
+                        "proofs will not be sent until this is corrected!");
             } else {
                 log::error(
                         logcat,
@@ -1986,67 +1989,61 @@ void core::check_service_node_ip_address() {
             [connection_error_callback](auto, std::string_view) { connection_error_callback(); });
 }
 //-----------------------------------------------------------------------------------------------
-bool core::check_service_node_time() {
-    if (!is_active_sn()) {
-        return true;
-    }
+void core::check_service_node_time() {
+    if (!is_active_sn())
+        return;
 
     crypto::public_key pubkey = service_node_list.get_random_pubkey();
-    crypto::x25519_public_key x_pkey{0};
-    constexpr std::array<uint16_t, 3> MIN_TIMESTAMP_VERSION{9, 1, 0};
-    std::array<uint16_t, 3> proofversion;
-    service_node_list.access_proof(pubkey, [&](auto& proof) {
-        x_pkey = proof.pubkey_x25519;
-        proofversion = proof.proof->version;
-    });
+    auto x_pkey = crypto::null<crypto::x25519_public_key>;
+    service_node_list.access_proof(pubkey, [&](auto& proof) { x_pkey = proof.pubkey_x25519; });
 
-    if (proofversion >= MIN_TIMESTAMP_VERSION && x_pkey) {
-        m_omq->request(
-                tools::view_guts(x_pkey),
-                "quorum.timestamp",
-                [this, pubkey](bool success, std::vector<std::string> data) {
-                    const time_t local_seconds = time(nullptr);
-                    log::debug(
-                            logcat,
-                            "Timestamp message received: {}, local time is: ",
-                            data[0],
-                            local_seconds);
-                    if (success) {
-                        int64_t received_seconds;
-                        if (tools::parse_int(data[0], received_seconds)) {
-                            uint16_t variance;
-                            if (received_seconds > local_seconds + 65535 ||
-                                received_seconds < local_seconds - 65535) {
-                                variance = 65535;
-                            } else {
-                                variance = std::abs(local_seconds - received_seconds);
-                            }
-                            std::lock_guard<std::mutex> lk(m_sn_timestamp_mutex);
-                            // Records the variance into the record of our performance (m_sn_times)
-                            service_nodes::timesync_entry entry{
-                                    variance <= service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC};
-                            m_sn_times.add(entry);
+    if (!x_pkey)
+        return;  // No valid proof from this snode yet
 
-                            // Counts the number of times we have been out of sync
-                            if (m_sn_times.failures() >
-                                (m_sn_times.size() * service_nodes::MAXIMUM_EXTERNAL_OUT_OF_SYNC /
-                                 100)) {
-                                log::warning(logcat, "service node time might be out of sync");
-                                // If we are out of sync record the other service node as in sync
-                                service_node_list.record_timesync_status(pubkey, true);
-                            } else {
-                                service_node_list.record_timesync_status(
-                                        pubkey,
-                                        variance <= service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC);
-                            }
+    m_omq->request(
+            tools::view_guts(x_pkey),
+            "quorum.timestamp",
+            [this, pubkey](bool success, std::vector<std::string> data) {
+                const time_t local_seconds = time(nullptr);
+                log::debug(
+                        logcat,
+                        "Timestamp message received: {}, local time is: ",
+                        data[0],
+                        local_seconds);
+                if (success) {
+                    int64_t received_seconds;
+                    if (tools::parse_int(data[0], received_seconds)) {
+                        uint16_t variance;
+                        if (received_seconds > local_seconds + 65535 ||
+                            received_seconds < local_seconds - 65535) {
+                            variance = 65535;
                         } else {
-                            success = false;
+                            variance = std::abs(local_seconds - received_seconds);
                         }
+                        std::lock_guard<std::mutex> lk(m_sn_timestamp_mutex);
+                        // Records the variance into the record of our performance (m_sn_times)
+                        service_nodes::timesync_entry entry{
+                                variance <= service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC};
+                        m_sn_times.add(entry);
+
+                        // Counts the number of times we have been out of sync
+                        if (m_sn_times.failures() >
+                            (m_sn_times.size() * service_nodes::MAXIMUM_EXTERNAL_OUT_OF_SYNC /
+                             100)) {
+                            log::warning(logcat, "service node time might be out of sync");
+                            // If we are out of sync record the other service node as in sync
+                            service_node_list.record_timesync_status(pubkey, true);
+                        } else {
+                            service_node_list.record_timesync_status(
+                                    pubkey,
+                                    variance <= service_nodes::THRESHOLD_SECONDS_OUT_OF_SYNC);
+                        }
+                    } else {
+                        success = false;
                     }
-                    service_node_list.record_timestamp_participation(pubkey, success);
-                });
-    }
-    return true;
+                }
+                service_node_list.record_timestamp_participation(pubkey, success);
+            });
 }
 //-----------------------------------------------------------------------------------------------
 bool core::is_key_image_spent(const crypto::key_image& key_image) const {
@@ -2283,10 +2280,42 @@ bool core::submit_uptime_proof() {
     }
     return true;
 }
+
+bool core::proof_filter_t::insert(const NOTIFY_BTENCODED_UPTIME_PROOF::request& req) {
+    crypto::hash proof_hash;
+    crypto_generichash_blake2b_state st;
+    crypto_generichash_blake2b_init(&st, nullptr, 0, proof_hash.size());
+    crypto_generichash_blake2b_update(
+            &st, reinterpret_cast<const unsigned char*>(req.proof.data()), req.proof.size());
+    if (req.sig)
+        crypto_generichash_blake2b_update(
+                &st, reinterpret_cast<const unsigned char*>(req.sig->data()), req.sig->size());
+    crypto_generichash_blake2b_update(
+            &st, reinterpret_cast<const unsigned char*>(req.ed_sig.data()), req.ed_sig.size());
+    crypto_generichash_blake2b_final(&st, proof_hash.data(), proof_hash.size());
+
+    std::lock_guard lock{mut};
+    if (auto now = std::chrono::steady_clock::now(); now >= rotate) {
+        seen_old.clear();
+        std::swap(seen, seen_old);
+        rotate = now + ROTATE_INTERVAL;
+    }
+    if (seen.count(proof_hash) || seen_old.count(proof_hash))
+        return false;
+    seen.insert(proof_hash);
+    return true;
+}
+
 //-----------------------------------------------------------------------------------------------
 bool core::handle_uptime_proof(
         const NOTIFY_BTENCODED_UPTIME_PROOF::request& req, bool& my_uptime_proof_confirmation) {
     ZoneScoped;
+
+    if (!proof_filter.insert(req)) {
+        log::debug(logcat, "Ignoring recently received duplicate proof");
+        return false;
+    }
+
     std::unique_ptr<uptime_proof::Proof> proof;
     try {
         // height -1 or would use new rules 1 block too early

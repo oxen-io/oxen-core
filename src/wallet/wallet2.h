@@ -1080,8 +1080,8 @@ class wallet2 {
     auto ons_owners_to_names(nlohmann::json const& request) const {
         return m_node_rpc_proxy.ons_owners_to_names(request);
     }
-    auto ons_names_to_owners(nlohmann::json const& request) const {
-        return m_node_rpc_proxy.ons_names_to_owners(request);
+    auto ons_info(nlohmann::json const& request) const {
+        return m_node_rpc_proxy.ons_info(request);
     }
     auto resolve(nlohmann::json const& request) const {
         return m_node_rpc_proxy.ons_resolve(request);
@@ -1876,7 +1876,7 @@ class wallet2 {
             uint32_t priority = 0,
             uint32_t account_index = 0,
             std::set<uint32_t> subaddr_indices = {},
-            nlohmann::json* response = {});
+            nlohmann::json* record = nullptr);
 
     // ONS renewal (for lokinet registrations, not for session/wallet)
     std::vector<pending_tx> ons_create_renewal_tx(
@@ -1886,7 +1886,7 @@ class wallet2 {
             uint32_t priority = 0,
             uint32_t account_index = 0,
             std::set<uint32_t> subaddr_indices = {},
-            nlohmann::json* response = {});
+            nlohmann::json* record = nullptr);
 
     // Generate just the signature required for putting into ons_update_mapping command in the
     // wallet
@@ -2194,7 +2194,7 @@ class wallet2 {
     std::optional<epee::wipeable_string> on_device_passphrase_request(bool& on_device);
     void on_device_progress(const hw::device_progress& event);
 
-    std::string get_rpc_status(const std::string& s) const;
+    std::string get_rpc_status(std::string_view s) const;
 
     bool should_expand(const cryptonote::subaddress_index& index) const;
 

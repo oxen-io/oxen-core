@@ -46,7 +46,7 @@ void parse_request(HARD_FORK_INFO& hfinfo, rpc_input in);
 void parse_request(IN_PEERS& in_peers, rpc_input in);
 void parse_request(IS_KEY_IMAGE_SPENT& spent, rpc_input in);
 void parse_request(LOKINET_PING& lokinet_ping, rpc_input in);
-void parse_request(ONS_NAMES_TO_OWNERS& ons_names_to_owners, rpc_input in);
+void parse_request(ONS_INFO& info, rpc_input in);
 void parse_request(ONS_OWNERS_TO_NAMES& ons_owners_to_names, rpc_input in);
 void parse_request(ONS_RESOLVE& ons, rpc_input in);
 void parse_request(OUT_PEERS& out_peers, rpc_input in);
