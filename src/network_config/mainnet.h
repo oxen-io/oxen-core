@@ -6,6 +6,14 @@
 using namespace std::literals;
 namespace cryptonote::config::mainnet {
 
+inline constexpr std::array seeds = {
+        "116.203.196.12:22022"sv,  // Hetzner seed node
+        "185.150.191.51:22022"sv,  // Jason's seed node
+        "199.127.61.170:22022"sv,  // Oxen Foundation server "holstein"
+        "23.88.6.250:22022"sv,     // Session project server "chianina"
+        "104.194.8.115:22000"sv,   // Oxen Foundation server "brahman"
+};
+
 inline constexpr auto TARGET_BLOCK_TIME = 2min;
 inline constexpr network_config config{
         .NETWORK_TYPE = network_type::MAINNET,
@@ -34,6 +42,7 @@ inline constexpr network_config config{
                   0x66,
                   0x65,
                   0x79}},
+        .P2P_SEED_NODES = seeds,
         .GENESIS_TX =
                 "021e01ff000380808d93f5d771027c4fd4553bc9886f1f49e3f76d945bf71e8632a94e6c177b19cbc7"
                 "80e7e6bdb48080b4ccd4dfc60302c8b9f6461f58ef3f2107e577c7425d06af584a1c7482bf19060e84"

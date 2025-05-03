@@ -1906,10 +1906,11 @@ bool tx_memory_pool::fill_block_template(
 
     std::unordered_set<crypto::key_image> k_images;
 
-    // Track ONS buys because we can't put more than one for the same ONS name into the same block
-    // (otherwise the *block* will fail but validation won't, because validation here won't see the
-    // earlier tx has having taken effect, but the block addition will).
-    std::unordered_set<crypto::hash> ons_buys;
+    // Track ONS operations (buys, updates, renewals) because we can't put more than one for the
+    // same ONS name into the same block (otherwise the *block* will fail but validation won't,
+    // because validation here won't see the earlier tx has having taken effect to modify that name,
+    // but actual block addition does).
+    std::unordered_set<crypto::hash> ons_seen;
 
     log::debug(
             logcat,
@@ -2024,8 +2025,8 @@ bool tx_memory_pool::fill_block_template(
             // (one of the two will just get delayed for a block), and perfectly figuring out
             // whether two might conflict is complicated enough that it's not worth doing here.
             cryptonote::tx_extra_oxen_name_system ons;
-            if (cryptonote::get_field_from_tx_extra(tx.extra, ons) && ons.is_buying() &&
-                !ons_buys.emplace(ons.name_hash).second) {
+            if (cryptonote::get_field_from_tx_extra(tx.extra, ons) &&
+                !ons_seen.emplace(ons.name_hash).second) {
 
                 log::debug(logcat, "  conflicting ONS buy in mempool");
                 continue;

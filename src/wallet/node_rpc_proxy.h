@@ -66,7 +66,7 @@ class NodeRPCProxy {
             const std::string& contributor) const;
     std::pair<bool, nlohmann::json> get_service_node_blacklisted_key_images() const;
     std::pair<bool, nlohmann::json> ons_owners_to_names(nlohmann::json const& request) const;
-    std::pair<bool, nlohmann::json> ons_names_to_owners(nlohmann::json const& request) const;
+    std::pair<bool, nlohmann::json> ons_info(nlohmann::json const& request) const;
     std::pair<bool, nlohmann::json> ons_resolve(nlohmann::json const& request) const;
 
   private:
