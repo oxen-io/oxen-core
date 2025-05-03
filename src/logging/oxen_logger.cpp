@@ -24,6 +24,7 @@ void set_additional_log_categories(log::Level& log_level) {
             log::set_level("net.http", log::Level::err);
             log::set_level("net.p2p", log::Level::err);
             log::set_level("net.p2p.msg", log::Level::err);
+            log::set_level("omq", log::Level::err);
             log::set_level("global", log::Level::info);
             log::set_level("verify", log::Level::err);
             log::set_level("serialization", log::Level::err);
@@ -37,6 +38,7 @@ void set_additional_log_categories(log::Level& log_level) {
             log::set_level("net.http", log::Level::err);
             log::set_level("net.p2p", log::Level::err);
             log::set_level("net.p2p.msg", log::Level::err);
+            log::set_level("omq", log::Level::warn);
             log::set_level("verify", log::Level::err);
             log::set_level("serialization", log::Level::err);
             log::set_level("blockchain", log::Level::warn);

@@ -1787,15 +1787,35 @@ namespace {
                 stage.bitset == context.transient.wait_for_handshake_bitsets.best_bitset;
 
         if (timed_out || all_hashes) {
+            auto stage_count = bitset_view16(stage.bitset).count();
             if (!enforce_validator_participation_and_timeouts(
-                        context, stage, timed_out, all_hashes))
-                return goto_preparing_for_next_round(context);
+                        context, stage, timed_out, all_hashes)) {
+                if (stage_count < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES) {
+                    log::info(
+                            logcat,
+                            "{} Unable to continue, only have {} of {} required random value "
+                            "hashes",
+                            log_prefix(context),
+                            stage_count,
+                            service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES);
+                    return goto_preparing_for_next_round(context);
+                }
+                auto expected_count =
+                        bitset_view16(context.transient.wait_for_handshake_bitsets.best_bitset)
+                                .count();
+                log::info(
+                        logcat,
+                        "{} continuing with {} validators (expected {}).",
+                        log_prefix(context),
+                        stage_count,
+                        expected_count);
+            }
 
             log::info(
                     logcat,
                     "{}Received {} random value hashes from {}{}",
                     log_prefix(context),
-                    bitset_view16(stage.bitset).count(),
+                    stage_count,
                     bitset_view16(stage.bitset).to_string(),
                     (timed_out ? ". We timed out and some hashes are missing" : ""));
             return round_state::send_and_wait_for_random_value;
@@ -1837,12 +1857,14 @@ namespace {
 
         auto const& quorum = context.transient.random_value.wait.data;
         bool const timed_out = clock::now() >= stage.end_time;
-        bool const all_values =
-                stage.bitset == context.transient.wait_for_handshake_bitsets.best_bitset;
+        auto& prev_stage_bitset = context.transient.random_value_hashes.wait.stage.bitset;
+        bool const all_values = stage.bitset == prev_stage_bitset;
 
         if (timed_out || all_values) {
+            bool enough_values = bitset_view16(stage.bitset).count() >=
+                                 service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES;
             if (!enforce_validator_participation_and_timeouts(
-                        context, stage, timed_out, all_values))
+                        context, stage, timed_out, enough_values))
                 return goto_preparing_for_next_round(context);
 
             // Generate Final Random Value
@@ -1886,6 +1908,16 @@ namespace {
                     final_block.pulse.random_value.data,
                     final_hash.data(),
                     sizeof(final_block.pulse.random_value.data));
+
+            if (final_block.pulse.validator_bitset != prev_stage_bitset) {
+                log::info(
+                        logcat,
+                        "{} Using subset of ideal bitset as some validators dropped out of the "
+                        "process; updating block validator bitset.",
+                        log_prefix(context));
+                final_block.pulse.validator_bitset = prev_stage_bitset;
+                final_block.invalidate_hashes();
+            }
 
             // Generate the signature of the final block (without any of the other
             // Service Node signatures because we allow the first
@@ -1944,8 +1976,7 @@ namespace {
 
         auto const& quorum = context.transient.signed_block.wait.data;
         bool const timed_out = clock::now() >= stage.end_time;
-        bool const enough =
-                stage.bitset >= context.transient.wait_for_handshake_bitsets.best_bitset;
+        bool const enough = stage.bitset >= context.transient.random_value.wait.stage.bitset;
 
         if (timed_out || enough) {
             if (!enforce_validator_participation_and_timeouts(context, stage, timed_out, enough))

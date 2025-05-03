@@ -271,9 +271,12 @@ struct settings_record {
     int version;
 };
 
-std::optional<mapping_type> parse_ons_type(std::string input);
-
-std::optional<mapping_type> parse_ons_type(uint16_t input);
+// Look up the ONS type from string or integer input.  Returns the mapping_type if the input is a
+// valid type value, otherwise returns nullopt.  If the queryable_types_only parameter is given and
+// true, then only the base types (session/wallet/lokinet) but not the special registration types
+// (e.g. lokinet_5years) will be accepted.
+std::optional<mapping_type> parse_ons_type(std::string input, bool queryable_types_only = false);
+std::optional<mapping_type> parse_ons_type(uint16_t input, bool queryable_types_only = false);
 
 struct mapping_record {
     // NOTE: We keep expired entries in the DB indefinitely because we need to
@@ -367,16 +370,15 @@ struct name_system_db {
             std::string str, uint64_t blockchain_height, cryptonote::address_parse_info& addr_info);
     // The get_mapping* methods can return any mapping, or only active mappings: for only active
     // mappings, pass in the blockchain height.  If you omit it (or explicitly pass std::nullopt)
-    // then you will get the latest mappingsvalues regardless of whether expired or not they are
-    // expired.
+    // then you will get the latest mappingsvalues regardless of whether or not they are expired.
     mapping_record get_mapping(
             mapping_type type,
             std::string_view name_base64_hash,
             std::optional<uint64_t> blockchain_height = std::nullopt);
     std::vector<mapping_record> get_mappings(
-            std::vector<mapping_type> const& types,
             std::string_view name_base64_hash,
-            std::optional<uint64_t> blockchain_height = std::nullopt);
+            std::optional<uint64_t> blockchain_height = std::nullopt,
+            const std::unordered_set<mapping_type>& only_types = {});
     std::vector<mapping_record> get_mappings_by_owner(
             generic_owner const& key, std::optional<uint64_t> blockchain_height = std::nullopt);
     std::vector<mapping_record> get_mappings_by_owners(
