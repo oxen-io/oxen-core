@@ -5372,10 +5372,7 @@ void proof_info::update_pubkey(const crypto::ed25519_public_key& pk) {
 
 bool service_node_list::state_t::should_keep_info(
         const crypto::public_key& pubkey, std::chrono::nanoseconds proof_age) const {
-    if (proof_age < INFO_PRUNING_LAG)
-        return false;
-
-    if (service_nodes_infos.count(pubkey))
+    if (proof_age < INFO_PRUNING_LAG || service_nodes_infos.count(pubkey))
         return true;
 
     for (const auto& recently_removed : recently_removed_nodes)
