@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include "common/json_binary_proxy.h"
 
@@ -120,6 +121,13 @@ constexpr bool is_tuple_like<std::pair<S, T>> = true;
 template <typename... T>
 constexpr bool is_tuple_like<std::tuple<T...>> = true;
 
+// Allow std::variant<T, std::vector<T>> as a way to allow a field that takes either a single value
+// or an array of values.
+template <typename T>
+constexpr bool is_singleton_vec_variant = false;
+template <typename T>
+constexpr bool is_singleton_vec_variant<std::variant<T, std::vector<T>>> = !is_expandable_list<T>;
+
 template <typename TupleLike, size_t... Is>
 void load_tuple_values(bt_list_consumer&, TupleLike&, std::index_sequence<Is...>);
 
@@ -142,6 +150,11 @@ void load_value(BTConsumer& c, T& val) {
     } else if constexpr (is_tuple_like<T>) {
         auto lc = c.consume_list_consumer();
         load_tuple_values(lc, val, std::make_index_sequence<std::tuple_size_v<T>>{});
+    } else if constexpr (is_singleton_vec_variant<T>) {
+        if (c.is_list())
+            load_value(c, val.template emplace<1>());
+        else
+            load_value(c, val.template emplace<0>());
     } else
         static_assert(std::is_same_v<T, void>, "Unsupported load_value type");
 }
@@ -201,6 +214,10 @@ void load_value(json_range& r, T& val) {
         } catch (const std::exception& e) {
             throw oxen::traced<std::domain_error>{"Invalid values in '" + key + "'"};
         }
+    } else if constexpr (is_singleton_vec_variant<T>) {
+        if (e.is_array())
+            return load_value(r, val.template emplace<1>());
+        return load_value(r, val.template emplace<0>());
     } else {
         static_assert(std::is_same_v<T, void>, "Unsupported load type");
     }

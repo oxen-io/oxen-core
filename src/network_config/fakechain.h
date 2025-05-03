@@ -17,6 +17,7 @@ inline constexpr network_config config{
         .RPC_DEFAULT_PORT = mainnet::config.RPC_DEFAULT_PORT,
         .QNET_DEFAULT_PORT = mainnet::config.QNET_DEFAULT_PORT,
         .NETWORK_ID = mainnet::config.NETWORK_ID,
+        .P2P_SEED_NODES = {},
         .GENESIS_TX = mainnet::config.GENESIS_TX,
         .GENESIS_NONCE = mainnet::config.GENESIS_NONCE,
         .GOVERNANCE_REWARD_INTERVAL = 200min,

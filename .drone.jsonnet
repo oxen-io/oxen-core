@@ -444,6 +444,7 @@ local gui_wallet_step_darwin = {
           'cmake .. -G Ninja ' +
           '-DCMAKE_TOOLCHAIN_FILE=../cmake/ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
           '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
+          '-DLOCAL_MIRROR=https://oxen.rocks/deps ' +
           '-DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
           'ninja -j6 -v wallet_merged',
           'cd ..',
@@ -469,6 +470,7 @@ local gui_wallet_step_darwin = {
           'cmake .. -G Ninja ' +
           '-DCMAKE_TOOLCHAIN_FILE=../cmake/ios.toolchain.cmake -DPLATFORM=SIMULATORARM64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
           '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
+          '-DLOCAL_MIRROR=https://oxen.rocks/deps ' +
           '-DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
           'ninja -j6 -v wallet_merged',
           'cd ..',
