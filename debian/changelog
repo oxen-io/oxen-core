@@ -1,5 +1,11 @@
 oxen (11.2.1-2) sid; urgency=medium
 
+  * fix x25519 map pruning
+
+ -- Jason Rhinelander <jason@session.foundation>  Sat, 03 May 2025 03:46:30 -0300
+
+oxen (11.2.1-2) sid; urgency=medium
+
   * Fix oxen-sn-keys with legacy keys
 
  -- Jason Rhinelander <jason@session.foundation>  Sat, 03 May 2025 03:28:57 -0300
