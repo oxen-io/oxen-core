@@ -732,7 +732,7 @@ class core final {
      */
     bool check_tx_semantic(const transaction& tx, bool kept_by_block) const;
     void check_service_node_ip_address();
-    bool check_service_node_time();
+    void check_service_node_time();
     void set_semantics_failed(const crypto::hash& tx_hash);
 
     void parse_incoming_tx_pre(tx_verification_batch_info& tx_info);
@@ -943,6 +943,26 @@ class core final {
 
     // TODO: remove this after HF20:
     bool m_skip_proof_l2_check = false;
+
+    // Recently seen proof filter for uptime proofs so that we can drop repeated proofs without
+    // processing them.
+    struct proof_filter_t {
+
+        std::mutex mut;
+        // seen/seen_old store BLAKE2b hashes of (proof || signature || ed_sig) of incoming proofs
+        // seen in the last 0-30s, and the last 30-60s.  Every 60s we rotate seen into seen_old, so
+        // that (by checking both) we always have de-duplication of any proofs received in the last
+        // 30s.
+        std::unordered_set<crypto::hash> seen, seen_old;
+        static constexpr auto ROTATE_INTERVAL = 30s;
+        std::chrono::steady_clock::time_point rotate =
+                std::chrono::steady_clock::now() + ROTATE_INTERVAL;
+
+        // Inserts a new proof, rotating seen->seen_old if due.  Thread-safe.  Returns true if the
+        // proof was not found and inserted, false if it has been recently seen.
+        bool insert(const NOTIFY_BTENCODED_UPTIME_PROOF::request& req);
+
+    } proof_filter;
 
     struct {
         std::shared_mutex mutex;

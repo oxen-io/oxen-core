@@ -247,10 +247,6 @@ struct service_node_list_transient_storage {
 static auto logcat = log::Cat("service_nodes");
 
 constexpr auto X25519_MAP_PRUNING_INTERVAL = 5min;
-constexpr auto X25519_MAP_PRUNING_LAG = 24h;
-static_assert(
-        X25519_MAP_PRUNING_LAG > cryptonote::config::mainnet::config.UPTIME_PROOF_VALIDITY,
-        "x25519 map pruning lag is too short!");
 
 static uint64_t min_recent_height(cryptonote::network_type nettype, uint64_t height) {
     const uint64_t KEEP_WINDOW = cryptonote::get_config(nettype).HISTORY_RECENT_KEEP_WINDOW;
@@ -1281,7 +1277,6 @@ bool service_node_list::state_t::process_state_change_tx(
 
             if (sn_list && !sn_list->m_rescanning) {
                 auto& proof = sn_list->proofs[key];
-                proof.timestamp = proof.effective_timestamp = 0;
                 proof.store(key, sn_list->blockchain);
             }
             return true;
@@ -5317,7 +5312,7 @@ static bool update_val(T& val, const T& to) {
     return false;
 }
 
-proof_info::proof_info() : proof(std::make_unique<uptime_proof::Proof>()) {};
+proof_info::proof_info() : proof(std::make_unique<uptime_proof::Proof>()) {}
 
 void proof_info::store(const crypto::public_key& pubkey, cryptonote::Blockchain& blockchain) {
     if (!proof)
@@ -5373,6 +5368,21 @@ void proof_info::update_pubkey(const crypto::ed25519_public_key& pk) {
         pubkey_x25519.zero();
         proof->pubkey_ed25519.zero();
     }
+}
+
+bool service_node_list::state_t::should_keep_info(
+        const crypto::public_key& pubkey, std::chrono::nanoseconds proof_age) const {
+    if (proof_age < INFO_PRUNING_LAG)
+        return false;
+
+    if (service_nodes_infos.count(pubkey))
+        return true;
+
+    for (const auto& recently_removed : recently_removed_nodes)
+        if (recently_removed.service_node_pubkey == pubkey)
+            return true;
+
+    return false;
 }
 
 bool service_node_list::handle_uptime_proof(
@@ -5642,9 +5652,11 @@ bool service_node_list::handle_uptime_proof(
 
     if (vers.first < feature::SN_PK_IS_ED25519) {
         if (now - x25519_map_last_pruned >= X25519_MAP_PRUNING_INTERVAL) {
-            time_t cutoff = std::chrono::system_clock::to_time_t(now - X25519_MAP_PRUNING_LAG);
-            std::erase_if(
-                    x25519_to_pub, [&cutoff](const auto& x) { return x.second.second < cutoff; });
+            std::erase_if(x25519_to_pub, [this, &now](const auto& x) {
+                return !m_state.should_keep_info(
+                        x.second.first,
+                        now - std::chrono::system_clock::from_time_t(x.second.second));
+            });
             x25519_map_last_pruned = now;
         }
 
@@ -5668,30 +5680,15 @@ bool service_node_list::handle_uptime_proof(
 void service_node_list::cleanup_proofs() {
     log::debug(logcat, "Cleaning up expired SN proofs");
     auto locks = tools::unique_locks(m_sn_mutex, blockchain);
-    uint64_t now = std::time(nullptr);
+    auto now = std::chrono::system_clock::now();
     auto& db = blockchain.db();
     cryptonote::db_wtxn_guard guard{db};
     for (auto it = proofs.begin(); it != proofs.end();) {
         auto& pubkey = it->first;
         auto& proof = it->second;
 
-        bool still_storing_sn_info = false;
-        if (m_state.service_nodes_infos.count(pubkey))
-            still_storing_sn_info = true;
-
-        if (!still_storing_sn_info) {
-            for (const auto& recently_removed_it : m_state.recently_removed_nodes) {
-                if (recently_removed_it.service_node_pubkey == pubkey) {
-                    still_storing_sn_info = true;
-                    break;
-                }
-            }
-        }
-
-        // 6h here because there's no harm in leaving proofs around a bit longer (they aren't big,
-        // and we only store one per SN), and it's possible that we could reorg a few blocks and
-        // resurrect a service node but don't want to prematurely expire the proof.
-        if (!still_storing_sn_info && proof.timestamp + 6 * 60 * 60 < now) {
+        if (!m_state.should_keep_info(
+                    pubkey, now - std::chrono::system_clock::from_time_t(proof.timestamp))) {
             db.remove_service_node_proof(pubkey);
             it = proofs.erase(it);
         } else
