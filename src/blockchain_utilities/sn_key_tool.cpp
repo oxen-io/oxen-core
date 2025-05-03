@@ -178,8 +178,10 @@ int generate(key_type type, std::list<std::string_view> args) {
 
         if (type == key_type::ed25519)
             key_bytes = "0x" + oxenc::to_hex(seckey.begin(), seckey.end()) + "\n";
-        else
-            key_bytes = tools::view_guts(privkey);
+        else {
+            key_bytes.resize(privkey.size());
+            std::memcpy(key_bytes.data(), privkey.data(), privkey.size());
+        }
 
         if (type == key_type::ed25519) {
             crypto::x25519_public_key x_pubkey;
@@ -448,7 +450,7 @@ int restore(key_type type, std::list<std::string_view> args) {
         } else {
             pubkey = pubkey_from_privkey(seed);
             fmt::print("{}", display_legacy(pubkey));
-            sk_data = tools::view_guts(skey).substr(0, 32);
+            sk_data = tools::view_guts(seed);
         }
 
         if (pubkey_expected) {
