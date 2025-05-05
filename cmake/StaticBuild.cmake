@@ -731,7 +731,16 @@ add_static_target(gmp::gmp gmp_external libgmp.a libidn2::libidn2 libtasn1::libt
 
 expand_urls(zstd_urls ${ZSTD_SOURCE} ${ZSTD_MIRROR})
 set(zstd_cmake_extra)
-foreach(opt IN ITEMS CMAKE_C_COMPILER_LAUNCHER CMAKE_TOOLCHAIN_FILE PLATFORM DEPLOYMENT_TARGET ENABLE_VISIBILITY ENABLE_BITCODE)
+foreach(opt IN ITEMS
+        CMAKE_C_COMPILER_LAUNCHER
+        CMAKE_TOOLCHAIN_FILE
+        PLATFORM
+        DEPLOYMENT_TARGET
+        ENABLE_VISIBILITY
+        ENABLE_BITCODE
+        ANDROID_PLATFORM
+        ANDROID_ABI
+    )
     if(${opt})
         list(APPEND zstd_cmake_extra "-D${opt}=${${opt}}")
     endif()
