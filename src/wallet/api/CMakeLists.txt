@@ -146,7 +146,7 @@ if (STATIC AND BUILD_STATIC_DEPS)
             gmp::gmp
             libzmq
             lmdb
-            oxen::logging
+            logging
             oxenmq::oxenmq
             randomx
             sodium

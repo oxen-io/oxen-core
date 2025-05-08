@@ -256,7 +256,7 @@ local android_build_steps(android_abi, android_platform=21, jobs=6, cmake_extra=
   '-DANDROID_PLATFORM=' + android_platform + ' -DANDROID_ABI=' + android_abi + ' ' +
   cmake_options({ MONERO_SLOW_HASH: true, WARNINGS_AS_ERRORS: false, BUILD_TESTS: false }) +
   '-DLOCAL_MIRROR=https://oxen.rocks/deps ' +
-  '-DBUILD_STATIC_DEPS=ON -DSTATIC=ON -G Ninja ' + cmake_extra,
+  '-DBUILD_STATIC_DEPS=ON -DSTATIC=ON -DANDROID_STL=c++_shared -G Ninja ' + cmake_extra,
   'ninja -j' + jobs + ' -v wallet_merged',
   'cd ..',
 ];
