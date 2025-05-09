@@ -254,7 +254,7 @@ local android_build_steps(android_abi, android_platform=21, jobs=6, cmake_extra=
   '-DCMAKE_BUILD_TYPE=Release ' +
   '-DCMAKE_TOOLCHAIN_FILE=/usr/lib/android-ndk/build/cmake/android.toolchain.cmake ' +
   '-DANDROID_PLATFORM=' + android_platform + ' -DANDROID_ABI=' + android_abi + ' ' +
-  cmake_options({ MONERO_SLOW_HASH: true, WARNINGS_AS_ERRORS: false, BUILD_TESTS: false }) +
+  cmake_options({ MONERO_SLOW_HASH: true, WARNINGS_AS_ERRORS: false, BUILD_TESTS: false, RANDOMX_ENABLE_JIT: false }) +
   '-DLOCAL_MIRROR=https://oxen.rocks/deps ' +
   '-DBUILD_STATIC_DEPS=ON -DSTATIC=ON -DANDROID_STL=c++_shared -G Ninja ' + cmake_extra,
   'ninja -j' + jobs + ' -v wallet_merged',
@@ -349,6 +349,7 @@ local gui_wallet_step_darwin = {
           'cd build',
           'cmake .. -G Ninja ' +
           '-DCMAKE_TOOLCHAIN_FILE=../cmake/ios.toolchain.cmake -DPLATFORM=OS64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
+          '-DRANDOMX_ENABLE_JIT=OFF ' +
           '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
           '-DLOCAL_MIRROR=https://oxen.rocks/deps ' +
           '-DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
@@ -375,6 +376,7 @@ local gui_wallet_step_darwin = {
           'cd build',
           'cmake .. -G Ninja ' +
           '-DCMAKE_TOOLCHAIN_FILE=../cmake/ios.toolchain.cmake -DPLATFORM=SIMULATORARM64 -DDEPLOYMENT_TARGET=13 -DENABLE_VISIBILITY=ON -DENABLE_BITCODE=OFF ' +
+          '-DRANDOMX_ENABLE_JIT=OFF ' +
           '-DSTATIC=ON -DBUILD_STATIC_DEPS=ON -DUSE_LTO=OFF -DCMAKE_BUILD_TYPE=Release ' +
           '-DLOCAL_MIRROR=https://oxen.rocks/deps ' +
           '-DCMAKE_CXX_FLAGS=-fcolor-diagnostics',
