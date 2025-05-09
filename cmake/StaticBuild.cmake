@@ -4,6 +4,7 @@
 # invocation to override.
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(BOOST_VERSION 1.88.0 CACHE STRING "boost version")
 set(BOOST_MIRROR ${LOCAL_MIRROR} https://archives.boost.io/release/${BOOST_VERSION}/source
@@ -659,7 +660,7 @@ if(NOT APPLE AND NOT WIN32)
         --prefix=${DEPS_DESTDIR} --libdir=lib ${openssl_extra_opts}
         no-shared no-capieng no-dso no-dtls1 no-ec_nistp_64_gcc_128 no-gost
         no-heartbeats no-md2 no-rc5 no-rdrand no-rfc3779 no-sctp no-ssl-trace no-ssl2 no-ssl3
-        no-static-engine no-tests no-weak-ssl-ciphers no-zlib no-zlib-dynamic "CFLAGS=${deps_CFLAGS}"
+        no-static-engine no-tests no-weak-ssl-ciphers no-zlib no-zlib-dynamic "CFLAGS=${deps_CFLAGS} -fPIC"
       INSTALL_COMMAND make install_sw
       BUILD_BYPRODUCTS
         ${DEPS_DESTDIR}/lib/libssl.a ${DEPS_DESTDIR}/lib/libcrypto.a
@@ -726,8 +727,12 @@ build_external(gmp
         "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
     DEPENDS libidn2_external libtasn1_external
 )
+
+
+
 add_static_target(gmp::gmp gmp_external libgmp.a libidn2::libidn2 libtasn1::libtasn1)
 
+set_target_properties(gmp::gmp PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 expand_urls(zstd_urls ${ZSTD_SOURCE} ${ZSTD_MIRROR})
 set(zstd_cmake_extra)

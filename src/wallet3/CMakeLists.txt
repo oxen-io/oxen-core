@@ -67,6 +67,9 @@ if (STATIC AND BUILD_STATIC_DEPS)
         endif()
     endforeach()
 
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+
     combine_archives(wallet3_merged
             multisig
             cryptonote_core
