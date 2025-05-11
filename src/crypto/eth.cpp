@@ -5,8 +5,7 @@
 #include "crypto/hash.h"
 
 fmt::format_context::iterator fmt::formatter<eth::address>::default_format(
-        std::span<const unsigned char> val, fmt::format_context& ctx) const {
-    auto out = ctx.out();
+        std::span<const unsigned char> val, fmt::format_context::iterator& out) const {
     *out++ = '0';
     *out++ = 'x';
 

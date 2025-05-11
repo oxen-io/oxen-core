@@ -73,12 +73,12 @@
 #include "pulse.h"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
-#include "sent_transition/sent_transition.h"
 #include "serialization/deque.h"
 #include "serialization/string.h"
 #include "service_node_quorum_cop.h"
 #include "service_node_rules.h"
 #include "service_node_swarm.h"
+#include "sesh_transition/sesh_transition.h"
 #include "uptime_proof.h"
 
 using cryptonote::hf;
@@ -287,6 +287,103 @@ static uint64_t min_recent_height(cryptonote::network_type nettype, uint64_t hei
     return result;
 }
 
+// NOTE: In debug mode, check that the total locked SESH as stored in the SQL rewards DB matches
+// the amount of locked SESH that is currently recorded on the SNL. We only verify if the SNL
+// height matches the rewards DB height (e.g. the 2 are in sync).
+//
+// The values we are verifying are do not contribute to chain consensus, they are auxiliary values
+// like the amount of locked SESH, the amount of timelocked SESH for analytics purposes hence gating
+// these checks into debug builds.
+static void verify_rewards_db_values(
+        [[maybe_unused]] cryptonote::Blockchain& blockchain,
+        [[maybe_unused]] const service_node_list::state_t& state) {
+#if !defined(NDEBUG)
+    cryptonote::BlockchainSQLite& db = blockchain.sqlite_db();
+    if (blockchain.get_network_version() >= hf::hf21_eth && db.height == state.height) {
+        struct pubkey_stake {
+            crypto::ed25519_public_key pubkey;  // The SN pubkey
+            uint64_t stake;                     // Amount staked for SN pubkey for the ETH address
+        };
+
+        struct stake_history {
+            uint64_t total;                    // Total SESH the ETH address staked
+            std::vector<pubkey_stake> stakes;  // Individual stakes that the ETH address contributed
+        };
+
+        // NOTE: Enumerate all the current SESH that an ETH address has locked up in the network
+        std::unordered_map<eth::address, stake_history> eth_to_locked_stakes;
+
+        // NOTE: Enumerate SNL
+        for (const auto& [pk, sni] : state.service_nodes_infos) {
+            for (const auto& contrib : sni->contributors) {
+                assert(contrib.ethereum_address);
+                auto& dest = eth_to_locked_stakes[contrib.ethereum_address];
+                dest.total += contrib.amount;
+                dest.stakes.push_back({crypto::ed25519_public_key{pk}, contrib.amount});
+            }
+        }
+
+        // NOTE: Enumerate nodes in the recently removed list (considered locked until exited)
+        for (const auto& it : state.recently_removed_nodes) {
+            for (const auto& contrib : it.info.contributors) {
+                assert(contrib.ethereum_address);
+                auto& dest = eth_to_locked_stakes[contrib.ethereum_address];
+                dest.total += contrib.amount;
+                dest.stakes.push_back(
+                        {crypto::ed25519_public_key{it.service_node_pubkey}, contrib.amount});
+            }
+        }
+
+        // NOTE: Enumerate payments sitting in the timelocked queue (considered locked until
+        // expired)
+        cryptonote::BlockchainSQLite::delayed_payments_request request = {};
+        request.type = cryptonote::BlockchainSQLite::delayed_payments_type::all;
+
+        cryptonote::block_payments locked_payments = db.get_delayed_payments(request);
+        for (const auto& [addr, payment] : locked_payments) {
+            auto& dest = eth_to_locked_stakes[*std::get_if<eth::address>(&addr)];
+            dest.total += payment.amount.to_coin();
+        }
+
+        // NOTE: Walk the locked stakes per ETH address and verify the numbers in the rewards DB
+        for (const auto& [addr, history] : eth_to_locked_stakes) {
+            cryptonote::BlockchainSQLite::wallet_info wallet_info = db.get_accrued_rewards(addr);
+            if (!wallet_info.found) {
+                if (mocknet_is_mock_ethereum_address(addr))
+                    continue;
+                log::error(
+                        logcat,
+                        "Internal error: SN contributor ({}) was not recorded into the rewards DB",
+                        addr);
+                assert(wallet_info.found);
+            }
+
+            if (wallet_info.locked_stakes.to_coin() != history.total) {
+                fmt::memory_buffer buffer;
+                fmt::format_to(
+                        std::back_inserter(buffer),
+                        "Internal error: SN contributor ({}) in the SNL has {} staked SESH but the "
+                        "rewards DB claims it has {} staked SESH",
+                        addr,
+                        cryptonote::print_money(history.total),
+                        cryptonote::print_money(wallet_info.locked_stakes.to_coin()));
+
+                for (const auto& stake : history.stakes) {
+                    fmt::format_to(
+                            std::back_inserter(buffer),
+                            "\n  SN {} => {} SESH",
+                            stake.pubkey,
+                            cryptonote::print_money(stake.stake));
+                }
+
+                log::error(logcat, "{}", fmt::to_string(buffer));
+                assert(wallet_info.locked_stakes.to_coin() == history.total);
+            }
+        }
+    }
+#endif
+}
+
 service_node_list::service_node_list(cryptonote::Blockchain& blockchain) :
         blockchain(blockchain)  // Warning: don't touch `blockchain`, it gets initialized *after* us
         ,
@@ -331,6 +428,8 @@ void service_node_list::init() {
             m_state.quorums.pulse = std::make_shared<const quorum>(copy);
         }
     }
+
+    verify_rewards_db_values(blockchain, m_state);
 }
 
 template <std::predicate<const service_node_info&> UnaryPredicate>
@@ -672,7 +771,7 @@ void validate_registration(
     ZoneScoped;
     if (hf_version == feature::ETH_TRANSITION)
         throw invalid_registration{
-                "New registrations are disabled during OXEN->SENT transition period"};
+                "New registrations are disabled during OXEN->SESH transition period"};
     if (reg.uses_portions) {
         if (hf_version >= hf::hf19_reward_batching)
             throw invalid_registration{"Portion-based registrations are not permitted in HF19+"};
@@ -1923,7 +2022,7 @@ void service_node_list::state_t::process_new_ethereum_tx(
     else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated)
         log::info(
                 globallogcat,
-                "Service node staking requirement tx ({}) from ethereum changing to {} SENT"
+                "Service node staking requirement tx ({}) from ethereum changing to {} SESH"
                 " @ height: {}; awaiting confirmations",
                 cryptonote::print_money(val),
                 cryptonote::get_transaction_hash(tx),
@@ -1947,15 +2046,16 @@ void service_node_list::state_t::process_new_ethereum_tx(
                 "Internal error: incoming eth tx was processed multiple times!"};
 }
 
-bool service_node_list::state_t::process_confirmed_event(
+service_node_list::state_t::confirm_result service_node_list::state_t::process_confirmed_event(
         const eth::event::NewServiceNodeV2& new_sn, const confirm_metadata& confirm) {
     ZoneScoped;
+    confirm_result result = {};
     if (service_nodes_infos.count(new_sn.sn_pubkey)) {
         log::warning(
                 logcat,
                 "Duplicate service node registration from ethereum for {} ignored",
                 new_sn.sn_pubkey);
-        return false;
+        return result;
     }
     if (auto it = std::find_if(
                 service_nodes_infos.begin(),
@@ -1968,7 +2068,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 "registration ignored",
                 new_sn.bls_pubkey,
                 new_sn.sn_pubkey);
-        return false;
+        return result;
     }
 
     try {
@@ -1999,16 +2099,18 @@ bool service_node_list::state_t::process_confirmed_event(
                     key,
                     confirm.confirmed_height);
         insert_info(key, std::move(service_node_info));
-        return true;
+        result.success = true;
+        result.need_swarm_update = true;
     } catch (const std::exception& e) {
         log::error(logcat, "Failed to register node from ethereum transaction: {}", e.what());
-        return false;
     }
+    return result;
 }
 
-bool service_node_list::state_t::process_confirmed_event(
+service_node_list::state_t::confirm_result service_node_list::state_t::process_confirmed_event(
         const eth::event::ServiceNodeExitRequest& remreq, const confirm_metadata& confirm) {
     ZoneScoped;
+    confirm_result result = {};
     crypto::public_key snode_pk = find_public_key(remreq.bls_pubkey);
     if (!snode_pk) {
         log::info(
@@ -2017,7 +2119,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 remreq.bls_pubkey,
                 confirm.confirmed_height,
                 confirm.vote_index);
-        return false;
+        return result;
     }
 
     auto it = service_nodes_infos.find(snode_pk);
@@ -2028,7 +2130,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 remreq.bls_pubkey,
                 confirm.confirmed_height,
                 confirm.vote_index);
-        return false;
+        return result;
     }
 
     const auto& node_info = *it->second;
@@ -2040,7 +2142,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 confirm.vote_index,
                 snode_pk,
                 node_info.requested_unlock_height);
-        return false;
+        return result;
     }
 
     auto& netconf = get_config(confirm.nettype);
@@ -2064,12 +2166,14 @@ bool service_node_list::state_t::process_confirmed_event(
                 unlock_height);
 
     duplicate_info(it->second).requested_unlock_height = unlock_height;
-    return false;  // false => this doesn't affect swarms
+    result.success = true;
+    return result;  // NOTE: This doesn't affect swarms
 }
 
-bool service_node_list::state_t::process_confirmed_event(
+service_node_list::state_t::confirm_result service_node_list::state_t::process_confirmed_event(
         const eth::event::ServiceNodeExit& exit, const confirm_metadata& confirm) {
     ZoneScoped;
+    confirm_result result = {};
     // NOTE: Retrieve node from the staging area
     auto node = std::find_if(
             recently_removed_nodes.begin(),
@@ -2082,7 +2186,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 "ETH exit event for BLS pubkey {}: Node has already been removed or did not exist, "
                 "skipping",
                 exit.bls_pubkey);
-        return false;
+        return result;
     } else if (oxen::log::get_level(logcat) <= oxen::log::Level::trace) {
         oxen::log::trace(
                 logcat,
@@ -2119,7 +2223,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 node->info.staking_requirement,
                 height,
                 node->liquidation_height);
-        return false;
+        return result;
     }
 
     // NOTE: Calculate how many blocks from now the funds are still to be locked for, if this node
@@ -2138,10 +2242,8 @@ bool service_node_list::state_t::process_confirmed_event(
     }
 
     // NOTE: Enumerate the contributors to refund to
-    std::vector<cryptonote::BlockchainSQLite::exit_stake> returned_stakes;
-    for (size_t contrib_index = 0; contrib_index < node->info.contributors.size();
-         contrib_index++) {
-        const auto& contributor = node->info.contributors[contrib_index];
+    for (size_t index = 0; index < node->info.contributors.size(); index++) {
+        const auto& contributor = node->info.contributors[index];
         // TODO: Once merge code is in this can be re-evaluated. Right now in the localdev tests
         // we don't have migration code so we're putting in bad data into the DB. The DB checks if
         // the payment has an eth address defined, if it does it stores the delayed payment as an
@@ -2150,27 +2252,28 @@ bool service_node_list::state_t::process_confirmed_event(
         // This leads us to storing a cryptonote address in the delayed payments which causes the
         // network to stall as code tries to deserialise that address into an eth address and fails.
         if (contributor.ethereum_address) {
-            auto& item = returned_stakes.emplace_back();
+            auto& item = result.exit_stakes.emplace_back();
+            item.sn = crypto::ed25519_public_key{node->service_node_pubkey};
             item.addr = contributor.ethereum_address;
             item.amount = cryptonote::reward_money::coin_amount(contributor.amount);
             item.block_height = confirm.height;
             item.tx_index = confirm.tx_index;
-            item.contributor_index = contrib_index;
+            item.contributor_index = index;
         }
     }
 
-    if (returned_stakes.empty()) {
+    if (result.exit_stakes.empty()) {
         log::warning(
                 logcat,
                 "ETH exit event for BLS pubkey {}: SN {} has 0 contributors detected, null data "
                 "encountered, skipping",
                 node->info.bls_public_key,
                 node->service_node_pubkey);
-        return false;
+        return result;
     }
 
     // NOTE: Apply the slash penalty to the operator
-    if (slash_amount > returned_stakes[0].amount.to_coin()) {
+    if (slash_amount > result.exit_stakes[0].amount.to_coin()) {
         log::error(
                 logcat,
                 "ETH exit of BLS pubkey {} rejected: SN {} returned amount {} is less than the "
@@ -2178,15 +2281,16 @@ bool service_node_list::state_t::process_confirmed_event(
                 node->info.bls_public_key,
                 node->service_node_pubkey,
                 slash_amount,
-                returned_stakes[0].amount);
-        return false;
+                result.exit_stakes[0].amount);
+        return result;
     }
-    returned_stakes[0].amount = cryptonote::reward_money::coin_amount(
-            returned_stakes[0].amount.to_coin() - slash_amount);
+
+    result.exit_stakes[0].liquidation = cryptonote::reward_money::coin_amount(slash_amount);
 
     std::string exit_label = "";
     if (slash_amount)
-        exit_label = "liquidation ({})"_format(cryptonote::format_money(slash_amount, false));
+        exit_label = "liquidation ({})"_format(
+                cryptonote::format_money(slash_amount, cryptonote::strip_zeros::no));
     else
         exit_label = "exit";
 
@@ -2208,7 +2312,7 @@ bool service_node_list::state_t::process_confirmed_event(
 
     // NOTE: Add the funds to the unlock queue in the DB, can be retrieved by BLS aggregation when
     // fully unlocked..
-    sn_list->blockchain.sqlite_db().add_delayed_payments(returned_stakes, height, block_delay);
+    sn_list->blockchain.sqlite_db().add_delayed_payments(result.exit_stakes, height, block_delay);
 
     // NOTE: Remove the x25519/bls lookup entries:
     x25519_map.erase(snpk_to_xpk(node->service_node_pubkey));
@@ -2220,12 +2324,14 @@ bool service_node_list::state_t::process_confirmed_event(
     // A exit event does not trigger a swarm update because the node is not in the SNL, it's in a
     // staging area where they're awaiting to get removed (e.g. at this point they've already exited
     // the list and the swarm has already reconfigured).
-    return false;
+    result.success = true;
+    return result;
 }
 
-bool service_node_list::state_t::process_confirmed_event(
+service_node_list::state_t::confirm_result service_node_list::state_t::process_confirmed_event(
         const eth::event::StakingRequirementUpdated& req_change, const confirm_metadata& confirm) {
     ZoneScoped;
+    confirm_result result = {};
     auto old_staking_requirement = get_staking_requirement(confirm.nettype);
     staking_requirement = req_change.staking_requirement;
     auto new_staking_requirement = get_staking_requirement(confirm.nettype);
@@ -2247,12 +2353,14 @@ bool service_node_list::state_t::process_confirmed_event(
                 height);
     }
 
-    return false;  // This doesn't affect swarm composition
+    result.success = true;
+    return result;  // This doesn't affect swarm composition
 }
 
-bool service_node_list::state_t::process_confirmed_event(
+service_node_list::state_t::confirm_result service_node_list::state_t::process_confirmed_event(
         const eth::event::ServiceNodePurge& purge, const confirm_metadata& confirm) {
     ZoneScoped;
+    confirm_result result = {};
     auto pk = find_public_key(purge.bls_pubkey);
     if (!pk) {
         log::info(
@@ -2261,7 +2369,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 purge.bls_pubkey,
                 confirm.confirmed_height,
                 confirm.vote_index);
-        return false;
+        return result;
     }
 
     auto it = service_nodes_infos.find(pk);
@@ -2272,7 +2380,7 @@ bool service_node_list::state_t::process_confirmed_event(
                 purge.bls_pubkey,
                 confirm.confirmed_height,
                 confirm.vote_index);
-        return false;
+        return result;
     }
 
     bool is_me = confirm.my_keys && confirm.my_keys->pub == pk;
@@ -2298,9 +2406,22 @@ bool service_node_list::state_t::process_confirmed_event(
                 confirm.vote_index,
                 purge.l2_height);
 
+    for (size_t contrib_index = 0; contrib_index < it->second->contributors.size();
+         contrib_index++) {
+        const auto& contributor = it->second->contributors[contrib_index];
+        eth_stake& stake = result.exit_stakes.emplace_back();
+        stake.sn = crypto::ed25519_public_key{it->first};
+        stake.addr = contributor.ethereum_address;
+        stake.amount = cryptonote::reward_money::coin_amount(contributor.amount);
+        stake.block_height = confirm.height;
+        stake.tx_index = confirm.tx_index;
+        stake.contributor_index = contrib_index;
+    }
     erase_info(it, recently_removed_node::type_t::purged);
 
-    return true;  // True: removing a SN affects swarms
+    result.success = true;
+    result.need_swarm_update = true;  // NOTE: Removing a SN affects swarms
+    return result;
 }
 
 bool service_node_list::state_t::process_contribution_tx(
@@ -2898,7 +3019,9 @@ void service_node_list::verify_block(
             prev_timestamp = blockchain.db().get_block_timestamp(prev_height);
         }
 
-        if (!pulse::get_round_timings(blockchain, height, prev_timestamp, timings))
+        if (auto t = pulse::get_round_timings(blockchain, height, prev_timestamp))
+            timings = std::move(*t);
+        else
             throw oxen::traced<std::runtime_error>{
                     "Failed to query the block data for Pulse timings to validate incoming {} at height {}"_format(
                             block_type, height)};
@@ -3746,6 +3869,7 @@ block_add_result service_node_list::state_t::update_from_block(
 
     // On first block of hf21, do hf21 transition.
     // TODO: chaingen doesn't have a BlockchainSQLite so it can't test this correctly.
+    block_add_result result = {};
     auto hf21_height = hard_fork_begins(nettype, hf::hf21_eth);
     if (hf21_height && height == *hf21_height && sqlite_db_ptr) {
         auto print_sns = [&]() {
@@ -3789,15 +3913,16 @@ block_add_result service_node_list::state_t::update_from_block(
                 (uint8_t)nettype);
         print_sns();
         auto& sqlite_db = *sqlite_db_ptr;
-        oxen::sent::transition_context context =
-                oxen::sent::get_transition_context(nettype, height);
-        oxen::sent::transition(context, *this, sqlite_db, nettype);
+
+        oxen::sesh::transition_context context =
+                oxen::sesh::get_transition_context(nettype, height);
+        oxen::sesh::transition(context, *this, sqlite_db, nettype, result, block.tx_hashes.size());
         print_sns();
     }
 
     //
     // Remove expired blacklisted key images
-    // Starting at hf21, blacklist represents permanent stakes converted to SENT
+    // Starting at hf21, blacklist represents permanent stakes converted to SESH
     // and do not get removed.
     //
     TracyCZoneN(expire_blacklisted_key_images, "Expire blacklisted key images", true);
@@ -3869,76 +3994,106 @@ block_add_result service_node_list::state_t::update_from_block(
             auto& txhash = unconf_it->first;
             auto& unconf = unconf_it->second;
             (vote ? unconf.confirmations : unconf.denials) += vote_weight;
+            std::optional<bool> done = unconf.confirmed(height);
+            if (!done) {
+                ++unconf_it;
+                continue;
+            }
 
-            if (auto done = unconf.confirmed(height)) {
-                log::debug(
+            log::debug(
+                    logcat,
+                    "State change tx {} finalized; received {}/{} confirm/deny votes in {} "
+                    "blocks",
+                    txhash,
+                    unconf.confirmations,
+                    unconf.denials,
+                    height - unconf.height_added);
+
+            std::string fail;
+            auto event = eth::extract_event(sn_list->blockchain.db().get_tx(txhash), &fail);
+            if (std::holds_alternative<std::monostate>(event))
+                throw oxen::traced<std::runtime_error>{
+                        "Internal error: did not find state change tx data in blockchain database: {}"_format(
+                                fail)};
+
+            // NOTE: Grab TX index of the L2 transaction it was originally mined in
+            uint16_t tx_index = 0;
+            cryptonote::block block = db.get_block_from_height(unconf.height_added, nullptr);
+            bool found = false;
+            for (size_t index = 0; index < block.tx_hashes.size(); index++) {
+                if (block.tx_hashes[index] == txhash) {
+                    tx_index = index;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                throw oxen::traced<std::runtime_error>(
+                        "TX {} was confirmed from block {} but the TX hash does not exist "
+                        "in the DB, block {} cannot be added due to missing data"_format(
+                                txhash, unconf.height_added, height));
+            }
+
+            // NOTE: Handle event
+            confirm_result conf_result = {};
+            if (*done) {
+                log::info(logcat, "State change tx {} confirmed by votes", txhash);
+                conf_result = std::visit(
+                        [&](const auto& e) -> confirm_result {
+                            confirm_metadata confirm = {
+                                    .nettype = nettype,
+                                    .hf_version = hf_version,
+                                    .height = unconf.height_added,
+                                    .confirmed_height = height,
+                                    .vote_index = i,
+                                    .tx_index = tx_index,
+                                    .my_keys = my_keys,
+                            };
+                            return process_confirmed_event(e, confirm);
+                        },
+                        event);
+            } else {
+                log::warning(
                         logcat,
-                        "State change tx {} finalized; received {}/{} confirm/deny votes in {} "
-                        "blocks",
+                        "State change tx {} denied by {}",
                         txhash,
-                        unconf.confirmations,
-                        unconf.denials,
-                        height - unconf.height_added);
+                        unconf.is_denied() ? "votes" : "expiry");
+                // Nothing to process here
+            }
 
-                if (*done) {
-                    log::info(logcat, "State change tx {} confirmed by votes", txhash);
+            // NOTE: Collect stakes metadata
+            // TODO: We only care about successfully confirmed events. This means that we will not
+            // correctly count ETH-related transactions that were mined in to the chain but failed
+            // validation/confirmations.
+            //
+            // This currently leaves a hole in terms of "losing" visiblity of locked/unlocked SESH
+            // through the collected stake metadata here.
+            if (conf_result.success) {
+                if (auto* ptr = std::get_if<eth::event::NewServiceNodeV2>(&event)) {
+                    for (size_t it_index = 0; it_index < ptr->contributors.size(); it_index++) {
+                        const eth::event::ContributorV2& it = ptr->contributors[it_index];
+                        eth_stake stake = {
+                                .sn = crypto::ed25519_public_key{ptr->sn_pubkey},
+                                .addr = it.address,
+                                .amount = cryptonote::reward_money::coin_amount(it.amount),
+                                .liquidation = cryptonote::reward_money{},
+                                .block_height = static_cast<uint32_t>(block.get_height()),
+                                .tx_index = static_cast<uint32_t>(tx_index),
+                                .contributor_index = static_cast<uint32_t>(it_index),
+                        };
 
-                    std::string fail;
-                    auto event = eth::extract_event(sn_list->blockchain.db().get_tx(txhash), &fail);
-                    if (std::holds_alternative<std::monostate>(event))
-                        throw oxen::traced<std::runtime_error>{
-                                "Internal error: did not find state change tx data in blockchain database: {}"_format(
-                                        fail)};
-
-                    // NOTE: Grab TX index of the L2 transaction it was originally mined in
-                    uint64_t tx_index = 0;
-                    cryptonote::block block =
-                            db.get_block_from_height(unconf.height_added, nullptr);
-                    bool found = false;
-                    for (size_t index = 0; index < block.tx_hashes.size(); index++) {
-                        if (block.tx_hashes[index] == txhash) {
-                            tx_index = index;
-                            found = true;
-                            break;
-                        }
+                        result.locked_stakes.push_back(stake);
                     }
-
-                    if (!found) {
-                        throw oxen::traced<std::runtime_error>(
-                                "TX {} was confirmed from block {} but the TX hash does not exist "
-                                "in the DB, block {} cannot be added due to missing data"_format(
-                                        txhash, unconf.height_added, height));
-                    }
-
-                    need_swarm_update += std::visit(
-                            [&](const auto& e) {
-                                confirm_metadata confirm = {
-                                        .nettype = nettype,
-                                        .hf_version = hf_version,
-                                        .height = unconf.height_added,
-                                        .confirmed_height = height,
-                                        .vote_index = i,
-                                        .tx_index = tx_index,
-                                        .my_keys = my_keys,
-                                };
-                                return process_confirmed_event(e, confirm);
-                            },
-                            event);
-
-                } else {
-                    log::warning(
-                            logcat,
-                            "State change tx {} denied by {}",
-                            txhash,
-                            unconf.is_denied() ? "votes" : "expiry");
-
-                    // Nothing to process here
                 }
 
-                unconf_it = unconfirmed_l2_txes.erase(unconf_it);
-            } else {
-                ++unconf_it;
+                if (std::holds_alternative<eth::event::ServiceNodePurge>(event))
+                    result.purged_stakes = conf_result.exit_stakes;
             }
+
+            // NOTE: Post-amble, advance iterator
+            need_swarm_update += conf_result.need_swarm_update;
+            unconf_it = unconfirmed_l2_txes.erase(unconf_it);
         }
     }
 
@@ -4000,7 +4155,6 @@ block_add_result service_node_list::state_t::update_from_block(
     TracyCZoneEnd(process_txs_in_block);
 
     // NOTE: Calculate both lists in one loop
-    block_add_result result = {};
     result.payable_nodes_hf19_onwards.reserve(pre_block_precomputed.payable_node_count);
 
     std::vector<service_node_pubkey_info> post_block_active_snode_list = {};
@@ -4720,7 +4874,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
     //
     // Arbitrum (HF21+):
     // NULL | Blocks never have miner_txes at all.  Rewards are still accumulated in the batching
-    //        DB, but they now represent SENT values and are redeemed by getting a signed reward
+    //        DB, but they now represent SESH values and are redeemed by getting a signed reward
     //        balance to submit to the smart contract (and then pay out from there).
     //
     // NOTE: See cryptonote_tx_utils.cpp construct_miner_tx(...) for payment details.
@@ -5059,13 +5213,20 @@ static std::string serialize_db_blob(
     return result;
 }
 
+// NOTE: Private version only exposed in impl file as we don't use this outside of this file and
+// only for one niche usecase at the moment, resetting the stagenet.
+enum state_version {
+    state_version_v0,
+    state_version_v1_track_stakes,
+};
+
 // Serialise the service node state into the archive `ar`. If a serializer is passed in the function
 // produces the binary string and returns it. If it's deserializing the `state` object is populated
 // and an empty string is returned.
 template <typename Archive>
 static std::string serialize_snl_directly(Archive& ar, service_node_list::state_t& state) {
     ZoneScoped;
-    uint32_t version = 0;
+    uint32_t version = state_version_v1_track_stakes;
     field_varint(ar, "version", version);
     field_varint(ar, "height", state.height);
     // NOTE: Serialization code struggles with the SN info stored behind a const
@@ -5080,8 +5241,10 @@ static std::string serialize_snl_directly(Archive& ar, service_node_list::state_
     field_varint(ar, "staking_requirement", state.staking_requirement);
     field(ar, "recently_removed_nodes", state.recently_removed_nodes);
 
-    if constexpr (Archive::is_deserializer)
+    if constexpr (Archive::is_deserializer) {
+        state.version = version;
         state.initialize_alt_pk_maps();
+    }
 
     std::string result;
     if constexpr (!Archive::is_deserializer)
@@ -5402,7 +5565,7 @@ bool service_node_list::handle_uptime_proof(
         return false;
     }
 
-    for (auto const& min : MIN_UPTIME_PROOF_VERSIONS) {
+    for (auto const& min : MIN_UPTIME_PROOF_VERSIONS(blockchain.nettype())) {
         if (vers >= min.hardfork_revision) {
             if (proof->version < min.oxend) {
                 log::debug(
@@ -6421,6 +6584,14 @@ bool service_node_list::load(const uint64_t current_height) {
     if (!load_result.success)
         return false;
 
+    // NOTE: In stagenet reset the DB if they have v0. v1 starts tracking the locked/unlocked stakes
+    // in the SQL DB which means they need to rescan the blockchain starting from the HF21 block and
+    // accumulate the locked and unlocked stakes from the transactions that the chain has witnessed
+    // and confirmed.
+    if (blockchain.nettype() == cryptonote::network_type::STAGENET &&
+        m_state.version == state_version_v0)
+        return false;
+
     // NOTE: Load uptime proof data
     proofs = db.get_all_service_node_proofs();
     if (m_service_node_keys) {
@@ -6821,16 +6992,26 @@ service_node_list::hf21_transition_result service_node_list::hf21_dry_run(
     auto old_rewards = blockchain.sqlite_db().get_all_accrued_rewards();
     for (size_t i = 0; i < old_rewards.first.size(); i++) {
         const auto& addr = old_rewards.first[i];
-        const cryptonote::reward_money& amt = old_rewards.second[i];
+        const cryptonote::reward_money& amt = old_rewards.second[i].amount;
         db::exec_query(insert_payment, addr, 0, static_cast<int64_t>(amt.to_db()));
         insert_payment->reset();
     }
 
-    oxen::sent::transition_context context =
-            oxen::sent::get_transition_context(nettype, state_copy.height);
-    oxen::sent::transition(context, state_copy, db_copy, nettype);
+    block_add_result add_result = {};
+    oxen::sesh::transition_context context =
+            oxen::sesh::get_transition_context(nettype, state_copy.height);
+    oxen::sesh::transition(context, state_copy, db_copy, nettype, add_result, /*block_tx_count=*/0);
 
-    return {state_copy.service_nodes_infos, db_copy.get_all_accrued_rewards()};
+    service_node_list::hf21_transition_result result = {};
+    result.sns_after = std::move(state_copy.service_nodes_infos);
+
+    auto accrued_rewards_after = db_copy.get_all_accrued_rewards();
+    result.rewards_after.first = std::move(accrued_rewards_after.first);
+    result.rewards_after.second.reserve(accrued_rewards_after.second.size());
+    for (auto it : accrued_rewards_after.second)
+        result.rewards_after.second.push_back(it.amount);
+
+    return result;
 }
 
 }  // namespace service_nodes

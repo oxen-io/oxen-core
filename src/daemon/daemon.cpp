@@ -342,7 +342,7 @@ bool daemon::run(bool interactive) {
         while (!stop_sig)
             std::this_thread::sleep_for(100ms);
         if (shutdown) {
-            log::error(logcat, "Signal received; shutting down...");
+            log::warning(logcat, "Signal received; shutting down...");
             stop();
         }
     }};
