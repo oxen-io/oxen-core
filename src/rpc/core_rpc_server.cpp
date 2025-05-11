@@ -234,12 +234,12 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
     info.response["hard_fork"] = m_core.blockchain.get_network_version();
 
     bool next_block_is_pulse = false;
-    if (pulse::timings t; pulse::get_round_timings(bs, height, top_block.timestamp, t)) {
+    if (auto t = pulse::get_round_timings(bs, height, top_block.timestamp)) {
         info.response["pulse_ideal_timestamp"] =
-                tools::to_seconds(t.ideal_timestamp.time_since_epoch());
+                tools::to_seconds(t->ideal_timestamp.time_since_epoch());
         info.response["pulse_target_timestamp"] =
-                tools::to_seconds(t.r0_timestamp.time_since_epoch());
-        next_block_is_pulse = pulse::clock::now() < t.miner_fallback_timestamp;
+                tools::to_seconds(t->r0_timestamp.time_since_epoch());
+        next_block_is_pulse = pulse::clock::now() < t->miner_fallback_timestamp;
     }
 
     if (cryptonote::checkpoint_t checkpoint; db.get_immutable_checkpoint(&checkpoint, top_height)) {
@@ -657,7 +657,7 @@ namespace {
                     // We aren't given info on whether this is testnet/mainnet, but we can guess by
                     // looking at the operator amount, which has to be <= 100 on testnet, but >=
                     // 3750 on mainnet.
-                    auto nettype = x.amounts[0] > oxen::SENT_STAKING_REQUIREMENT_TESTNET
+                    auto nettype = x.amounts[0] > oxen::SESH_STAKING_REQUIREMENT_TESTNET
                                          ? network_type::MAINNET
                                          : network_type::TESTNET;
                     portion = std::lround(
@@ -684,12 +684,18 @@ namespace {
         auto& _state_change(const T& x) {
             // Common loading code for nearly-identical state_change and deregister_old variables:
             auto voters = json::array();
-            for (auto& v : x.votes)
+            auto sigs = json::array();
+            json_binary_proxy sigs_hex{sigs, format};
+
+            for (auto& v : x.votes) {
                 voters.push_back(v.validator_index);
+                sigs_hex.push_back(v.signature);
+            }
 
             json sc{{"height", x.block_height},
                     {"index", x.service_node_index},
-                    {"voters", std::move(voters)}};
+                    {"voters", std::move(voters)},
+                    {"signatures", std::move(sigs)}};
             return set("sn_state_change", std::move(sc));
         }
         void operator()(const tx_extra_service_node_deregister_old& x) {
@@ -1491,27 +1497,27 @@ static void fill_block_header_response(
         std::optional<uint64_t> maybe_height,
         const crypto::hash& hash,
         bool fill_pow_hash,
-        bool get_tx_hashes,
+        bool tx_hashes_and_sigs,
         nlohmann::json& response,
         bool is_bt,
         cryptonote::core& core) {
 
     auto& db = core.blockchain.db();
 
-    tools::json_binary_proxy response_hex{
-            response,
-            is_bt ? tools::json_binary_proxy::fmt::bt : tools::json_binary_proxy::fmt::hex};
+    auto binfmt = is_bt ? tools::json_binary_proxy::fmt::bt : tools::json_binary_proxy::fmt::hex;
+
+    serialization::json_archiver ar{binfmt};
+    serialize(ar, const_cast<block&>(blk));
+    response = std::move(ar).json();
+    tools::json_binary_proxy response_hex{response, binfmt};
 
     uint64_t height = maybe_height ? *maybe_height : blk.get_height();
-
-    response["major_version"] = static_cast<uint8_t>(blk.major_version);
-    response["minor_version"] = static_cast<uint8_t>(blk.minor_version);
-    response["timestamp"] = blk.timestamp;
-    response_hex["prev_hash"] = blk.prev_id;
-    response["nonce"] = blk.nonce;
-    response["orphan_status"] = orphan_status;
-    response["height"] = height;
+    if (!response.count("height"))
+        response["height"] = height;
     response["depth"] = core.blockchain.get_current_blockchain_height() - height - 1;
+    response["prev_hash"] = std::move(response["prev_id"]);
+    response.erase("prev_id");
+    response["orphan_status"] = orphan_status;
     response_hex["hash"] = hash;
     response["difficulty"] = core.blockchain.block_difficulty(height);
     response["cumulative_difficulty"] = db.get_block_cumulative_difficulty(height);
@@ -1519,9 +1525,10 @@ static void fill_block_header_response(
     response["block_weight"] = weight;
     response["block_size"] = block_size + weight;
     auto coinbase = get_block_coinbase_payouts(blk);
-    response["coinbase_payouts"] = coinbase;
-    response["reward"] =
-            blk.major_version >= cryptonote::hf::hf19_reward_batching ? blk.reward : coinbase;
+    if (blk.major_version < cryptonote::hf::hf21_eth)
+        response["coinbase_payouts"] = coinbase;
+    if (blk.major_version < cryptonote::hf::hf19_reward_batching)
+        response["reward"] = coinbase;
     response["num_txes"] = blk.tx_hashes.size();
     if (fill_pow_hash)
         response_hex["pow_hash"] = get_block_longhash_w_blockchain(
@@ -1530,20 +1537,19 @@ static void fill_block_header_response(
     if (blk.major_version < feature::ETH_BLS)
         response_hex["service_node_winner"] =
                 cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.value().extra);
-    else
-        response_hex["service_node_winner_tail"] = blk.sn_winner_tail;
-    if (blk.major_version >= cryptonote::feature::ETH_BLS) {
-        response["l2_height"] = blk.l2_height;
-        response["l2_reward"] = blk.l2_reward;
-        response["l2_votes"] = blk.l2_votes;
+    else {
+        response["service_node_winner_tail"] = std::move(response["sn_winner_tail"]);
+        response.erase("sn_winner_tail");
     }
+    response.erase("miner_tx");
     if (blk.miner_tx) {
         response_hex["miner_tx_hash"] = cryptonote::get_transaction_hash(*blk.miner_tx);
         response["miner_tx_outs"] = blk.miner_tx->vout.size();
     }
-    if (get_tx_hashes)
-        for (const auto& tx_hash : blk.tx_hashes)
-            response_hex["tx_hashes"].push_back(tx_hash);
+    if (!tx_hashes_and_sigs) {
+        response.erase("tx_hashes");
+        response.erase("signatures");
+    }
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_LAST_BLOCK_HEADER& get_last_block_header, rpc_context context) {
@@ -1620,12 +1626,35 @@ void core_rpc_server::invoke(GET_BLOCK_HEADER_BY_HASH& gbh, rpc_context context)
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
         GET_BLOCK_HEADERS_RANGE& get_block_headers_range, rpc_context context) {
-    const uint64_t bc_height = m_core.blockchain.get_current_blockchain_height();
-    uint64_t start_height = get_block_headers_range.request.start_height;
-    uint64_t end_height = get_block_headers_range.request.end_height;
-    if (start_height >= bc_height || end_height >= bc_height || start_height > end_height)
-        throw rpc_error{ERROR_TOO_BIG_HEIGHT, "Invalid start/end heights."};
-    for (uint64_t h = start_height; h <= end_height; ++h) {
+    const int64_t bc_height =
+            static_cast<int64_t>(m_core.blockchain.get_current_blockchain_height());
+    const auto& req = get_block_headers_range.request;
+    int64_t start_height = req.start_height;
+    int64_t end_height = req.end_height;
+    if (start_height >= bc_height || -start_height > bc_height)
+        throw rpc_error{
+                ERROR_TOO_BIG_HEIGHT,
+                "Invalid start_height: {} exceeds top block height {}"_format(
+                        start_height, bc_height - 1)};
+    if (start_height < 0)
+        start_height = bc_height + start_height;
+    if (end_height >= bc_height || -end_height > bc_height)
+        throw rpc_error{
+                ERROR_TOO_BIG_HEIGHT,
+                "Invalid end_height: {} exceeds top block height {}"_format(
+                        end_height, bc_height - 1)};
+    if (end_height < 0)
+        end_height = bc_height + end_height;
+    if (start_height > end_height)
+        throw rpc_error{
+                ERROR_TOO_BIG_HEIGHT,
+                "Invalid start/end heights: end_height cannot be less than start_height."};
+    if (end_height - start_height >= GET_BLOCK_HEADERS_RANGE::MAX_COUNT)
+        throw rpc_error{
+                ERROR_TOO_BIG_HEIGHT,
+                "Invalid start/end heights: requested range of {} blocks exceeds limit {}"_format(
+                        end_height - start_height + 1, GET_BLOCK_HEADERS_RANGE::MAX_COUNT)};
+    for (int64_t h = start_height; h <= end_height; ++h) {
         block blk;
         size_t block_size;
         bool have_block = m_core.blockchain.get_block_by_height(h, blk, &block_size);
@@ -1639,8 +1668,8 @@ void core_rpc_server::invoke(
                 false,
                 std::nullopt,
                 get_block_hash(blk),
-                get_block_headers_range.request.fill_pow_hash && context.admin,
-                get_block_headers_range.request.get_tx_hashes,
+                req.fill_pow_hash && context.admin,
+                req.get_tx_hashes,
                 get_block_headers_range.response["headers"].emplace_back(),
                 get_block_headers_range.is_bt(),
                 m_core);
@@ -1705,21 +1734,20 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
                             get_block.request.hash)};
         if (!m_core.blockchain.get_block_by_hash(block_hash, blk, &block_size, &orphan))
             throw rpc_error{
-                    ERROR_INTERNAL,
-                    "Internal error: can't get block by hash. Hash = {}."_format(
-                            get_block.request.hash)};
+                    ERROR_ID_NOT_FOUND,
+                    "Requested block hash: {} not found"_format(get_block.request.hash)};
     } else {
+        auto req_height = get_block.request.height.value();
         if (auto curr_height = m_core.blockchain.get_current_blockchain_height();
-            get_block.request.height >= curr_height)
+            req_height >= curr_height)
             throw rpc_error{
                     ERROR_TOO_BIG_HEIGHT,
                     "Requested block height: {} greater than current top block height: {}"_format(
-                            get_block.request.height, curr_height - 1)};
-        if (!m_core.blockchain.get_block_by_height(get_block.request.height, blk, &block_size))
+                            req_height, curr_height - 1)};
+        if (!m_core.blockchain.get_block_by_height(*get_block.request.height, blk, &block_size))
             throw rpc_error{
                     ERROR_INTERNAL,
-                    "Internal error: can't get block by height. Height = {}."_format(
-                            get_block.request.height)};
+                    "Internal error: can't get block by height. Height = {}."_format(req_height)};
         block_hash = get_block_hash(blk);
         block_height = get_block.request.height;
     }
@@ -1730,11 +1758,12 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
             block_height,
             block_hash,
             get_block.request.fill_pow_hash && context.admin,
-            false /*tx hashes*/,
+            true /*tx hashes*/,
             get_block.response["block_header"],
             get_block.is_bt(),
             m_core);
-    get_block.response_hex["tx_hashes"] = blk.tx_hashes;
+    get_block.response["tx_hashes"] = std::move(get_block.response["block_header"]["tx_hashes"]);
+    get_block.response["block_header"].erase("tx_hashes");
     get_block.response_hex["blob"] = t_serializable_object_to_blob(blk);
     get_block.response["json"] = obj_to_json_str(blk);
     get_block.response["status"] = STATUS_OK;
@@ -2438,11 +2467,12 @@ void core_rpc_server::invoke(GET_QUORUM_STATE& get_quorum_state, rpc_context con
         const auto& blockchain = m_core.blockchain;
         const auto& top_header = blockchain.db().get_block_header_from_height(curr_height - 1);
 
-        pulse::timings next_timings{};
         uint8_t pulse_round = 0;
-        if (pulse::get_round_timings(blockchain, curr_height, top_header.timestamp, next_timings) &&
+        if (auto next_timings =
+                    pulse::get_round_timings(blockchain, curr_height, top_header.timestamp);
+            next_timings &&
             pulse::convert_time_to_round(
-                    nettype(), pulse::clock::now(), next_timings.r0_timestamp, &pulse_round)) {
+                    nettype(), pulse::clock::now(), next_timings->r0_timestamp, &pulse_round)) {
             auto entropy =
                     service_nodes::get_pulse_entropy_for_next_block(blockchain.db(), pulse_round);
             auto& sn_list = m_core.service_node_list;
@@ -2690,7 +2720,7 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
         for (auto& contrib_it : sn_info["contributors"]) {
             constexpr std::string_view ERASE_FIELDS_CONTRIBUTOR[] = {
                     "address",  // Cryptonote address  (not used in L2, use ETH addresses)
-                    "locked_contributions",  // $OXEN contributions (not used in L2, use $SENT)
+                    "locked_contributions",  // $OXEN contributions (not used in L2, use $SESH)
             };
 
             for (const auto& field : ERASE_FIELDS_CONTRIBUTOR) {
@@ -3105,7 +3135,7 @@ void core_rpc_server::fill_sn_response_entry(
             } else
                 c["address"] = cryptonote::get_account_address_as_str(
                         m_core.get_nettype(), false /*subaddress*/, contributor.address);
-            if (contributor.reserved != contributor.amount)
+            if (contributor.reserved && contributor.reserved != contributor.amount)
                 c["reserved"] = contributor.reserved;
             if (want_locked_c) {
                 auto& locked = (c["locked_contributions"] = json::array());
@@ -3225,7 +3255,7 @@ void core_rpc_server::invoke(HF21_DRY_RUN& req, rpc_context) {
     for (size_t i = 0; i < rewards_before_pair.first.size(); i++) {
         const auto& addr = rewards_before_pair.first[i];
         const auto& amt = rewards_before_pair.second[i];
-        rewards_before[addr] = amt.to_coin();
+        rewards_before[addr] = amt.amount.to_coin();
     }
     for (size_t i = 0; i < transition_result.rewards_after.first.size(); i++) {
         const auto& addr = transition_result.rewards_after.first[i];
@@ -3253,6 +3283,38 @@ void core_rpc_server::invoke(HF21_DRY_RUN& req, rpc_context) {
                 *info,
                 top_height,
                 &removable);
+}
+
+void core_rpc_server::invoke(GET_ALL_UPTIME_PROOFS& req, rpc_context) {
+    req.response["status"] = STATUS_OK;
+    req.response["proofs"] = json::array();
+
+    m_core.service_node_list.for_each_proof([&req,
+                                             this](const service_nodes::proof_info& proof_info) {
+        const auto& proof = *proof_info.proof;
+        if (!m_core.service_node_list.is_funded_service_node(proof.pubkey)) {
+            log::debug(logcat, "have proof for non-funded service node {}, ignoring", proof.pubkey);
+            return;
+        }
+
+        if (proof.serialized_proof.empty()) {
+            log::debug(
+                    logcat,
+                    "have yet to receive (and keep serialized) proof for {}",
+                    proof.pubkey_ed25519);
+            return;
+        }
+        auto entry = json::object();
+        tools::json_binary_proxy entry_hex{entry, tools::json_binary_proxy::fmt::hex};
+        entry_hex["proof"] = proof.serialized_proof;
+        entry_hex["pubkey"] = proof.pubkey;
+        entry_hex["sig"] = proof.sig;
+        entry_hex["pubkey_ed25519"] = proof.pubkey_ed25519;
+        entry_hex["sig_ed25519"] = proof.sig_ed25519;
+        entry_hex["pubkey_bls"] = proof.pubkey_bls;
+        entry_hex["pop_bls"] = proof.pop_bls;
+        req.response["proofs"].push_back(std::move(entry));
+    });
 }
 
 // Sets the "registered" or "recently_removed" key to the SN info or recently removed info,
@@ -3883,47 +3945,85 @@ void core_rpc_server::invoke(ONS_RESOLVE& resolve, rpc_context) {
     }
 }
 
+static nlohmann::json wallet_info_to_json(
+        std::string address, const BlockchainSQLite::wallet_info& wallet_info) {
+    nlohmann::json result = {
+            {"found", wallet_info.found},
+            {"address", address},
+            {"amount", wallet_info.amount.to_coin()},
+            {"lifetime_locked_stakes", wallet_info.lifetime_locked_stakes.to_coin()},
+            {"lifetime_unlocked_stakes", wallet_info.lifetime_unlocked_stakes.to_coin()},
+            {"lifetime_rewards", wallet_info.lifetime_rewards.to_coin()},
+            {"lifetime_liquidated_stakes", wallet_info.lifetime_liquidated_stakes.to_coin()},
+            {"locked_stakes", wallet_info.locked_stakes.to_coin()},
+            {"timelocked_stakes", wallet_info.timelocked_stakes.to_coin()},
+    };
+    return result;
+}
+
 void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, rpc_context) {
     auto& balances = rpc.response["balances"];
-    balances = json::object();
+    balances = json::array();
 
     const auto& req = rpc.request;
     auto net = nettype();
     BlockchainSQLite& sql_db = m_core.blockchain.sqlite_db();
 
+    nlohmann::json::array_t& array = balances.get_ref<nlohmann::json::array_t&>();
+    uint64_t height = 0;
     if (req.addresses.size() > 0) {
+        array.reserve(req.addresses.size());
         for (const auto& address : req.addresses) {
-            cryptonote::reward_money amount = {};
-            if (eth::address eth_address{};
-                tools::try_load_from_hex_guts<eth::address>(address, eth_address)) {
-                std::tie(std::ignore, amount) = sql_db.get_accrued_rewards(eth_address);
-            } else if (address_parse_info parse_info{};
-                       get_account_address_from_str(parse_info, net, address)) {
-                std::tie(std::ignore, amount) = sql_db.get_accrued_rewards(parse_info.address);
+            BlockchainSQLite::wallet_info wallet_info = {};
+            if (eth::address eth{}; tools::try_load_from_hex_guts<eth::address>(address, eth)) {
+                wallet_info = sql_db.get_accrued_rewards(eth);
+            } else if (address_parse_info oxen{};
+                       get_account_address_from_str(oxen, net, address)) {
+                wallet_info = sql_db.get_accrued_rewards(oxen.address);
             }
-            balances[address] = amount.to_coin();
+            array.push_back(wallet_info_to_json(address, wallet_info));
+            if (height == 0)
+                height = wallet_info.height;
+            assert(wallet_info.height == height);
         }
     } else {
-        auto [addresses, amounts] = sql_db.get_all_accrued_rewards();
+        auto [addresses, wallets] = sql_db.get_all_accrued_rewards();
+        array.reserve(addresses.size());
         for (size_t i = 0; i < addresses.size(); i++) {
-            balances[addresses[i]] = amounts[i].to_coin();
+            const std::string& address = addresses[i];
+            const BlockchainSQLite::wallet_info& wallet_info = wallets[i];
+            array.push_back(wallet_info_to_json(address, wallet_info));
+
+            if (height == 0)
+                height = wallet_info.height;
+            assert(wallet_info.height == height);
         }
     }
 
     if (rpc.request.oxen10_compat) {
-        // Oxen 10.x wallets expect `"addresses": [...], "amounts": [...]` because old Monero
+        // Oxen 10.x wallets expect `"addresses": [...], "amounts": [...]`
         // serialization didn't support dicts, so rewrite it if this came through the old endpoint
         // name to maintain compatibility.
         auto& addrs = rpc.response["addresses"];
         auto& amts = rpc.response["amounts"];
-        for (auto& [addr, amt] : balances.items()) {
-            addrs.emplace_back(std::move(addr));
-            amts.emplace_back(std::move(amt));
+        for (auto& it : array) {
+            nlohmann::json::iterator address = it.find("address");
+            nlohmann::json::iterator amount = it.find("amount");
+            if (address == it.end() || amount == it.end()) {
+                assert(address != it.end());
+                assert(amount != it.end());
+            } else {
+                assert(address->is_string());
+                assert(amount->is_number_unsigned());
+                addrs.emplace_back(address->get<std::string>());
+                amts.emplace_back(amount->get<uint64_t>());
+            }
         }
         rpc.response.erase("balances");
+    } else {
+        rpc.response["height"] = height;
     }
 
     rpc.response["status"] = STATUS_OK;
 }
-
 }  // namespace cryptonote::rpc

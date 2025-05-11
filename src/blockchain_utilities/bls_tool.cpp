@@ -1,13 +1,16 @@
 #include <fmt/format.h>
 #include <oxenc/hex.h>
 
+#include <fstream>
 #include <list>
 #include <stdexcept>
 #include <string_view>
 #include <vector>
 
 #include "bls/bls_crypto.h"
+#include "common/file.h"
 #include "common/guts.h"
+#include "common/string_util.h"
 #include "crypto/eth.h"
 #include "networks.h"
 
@@ -51,6 +54,10 @@ NETWORK must be mainnet, stagenet, devnet, etc.
 
 MSG is the message that was allegedly signed, either with auto-detected hex or plaintext (but can be
 prefixed with 0x or _ to force hex or plaintext interpretation).
+
+HF21 transition BLS proof-of-possession verification:
+
+    {0} --verify-bls-proofs-file /path/to/oxen-core/contrib/hf21_bls_proofs.txt
 
 )",
             prog);
@@ -102,7 +109,31 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    bool verify_bls_proofs_file = false;
+    bool first_arg = true;
+    std::string hf21_bls_proofs_file{};
     for (auto& arg : args) {
+        if (arg == "--verify-bls-proofs-file"sv) {
+            if (first_arg) {
+                first_arg = false;
+                verify_bls_proofs_file = true;
+                continue;
+            } else
+                return usage(
+                        arg,
+                        "--verify-bls-proofs-file only works if it and the filename are the only "
+                        "arguments");
+        }
+        first_arg = false;
+        if (verify_bls_proofs_file) {
+            if (!hf21_bls_proofs_file.empty())
+                return usage(
+                        arg,
+                        "--verify-bls-proofs-file only works if it and the filename are the only "
+                        "arguments");
+            hf21_bls_proofs_file = arg;
+            continue;
+        }
         bool add = arg.starts_with('+');
         bool sub = arg.starts_with('-');
         if (add || sub)
@@ -135,6 +166,62 @@ int main(int argc, char* argv[]) {
             }
             n_sig++;
         }
+    }
+
+    if (verify_bls_proofs_file) {
+        if (hf21_bls_proofs_file.empty())
+            return usage(
+                    "",
+                    "--verify-bls-proofs-file only works if it and the filename are the only "
+                    "arguments");
+
+        std::string contents;
+        if (!tools::slurp_file(hf21_bls_proofs_file, contents)) {
+            fmt::print("Failed to read file {}\n", hf21_bls_proofs_file);
+            return 4;
+        }
+
+        auto lines = tools::split(contents, "\n");
+
+        bool first = true;
+        int fail_count = 0;
+        int line_number = 0;
+        for (const auto& line : lines) {
+            line_number++;
+            // first line is a table header
+            if (first) {
+                first = false;
+                continue;
+            }
+            if (line.empty())
+                continue;
+
+            auto parts = tools::split(line, " ");
+
+            auto pubkey_ed25519 = tools::make_from_hex_guts<crypto::ed25519_public_key>(parts[3]);
+            auto pubkey = tools::make_from_hex_guts<crypto::public_key>(parts[1]);
+            auto pubkey_bls = tools::make_from_hex_guts<eth::bls_public_key>(parts[5]);
+            auto pop_bls = tools::make_from_hex_guts<eth::bls_signature>(parts[6]);
+
+            auto pop = tools::concat_guts<uint8_t>(pubkey_bls, pubkey);
+            if (!eth::verify(
+                        cryptonote::network_type_from_string("mainnet"),
+                        pop_bls,
+                        pubkey_bls,
+                        pop,
+                        &crypto::null<eth::address>)) {
+                fmt::print(
+                        "\e[31;1mInvalid BLS proof of possession on line {} for node {} (ed "
+                        "{})\e[0m\n",
+                        line_number,
+                        pubkey,
+                        pubkey_ed25519);
+                fail_count++;
+            }
+        }
+
+        fmt::print("\nBLS verification failure count: {}\n", fail_count);
+        return 0;
     }
 
     if (verify && (!n_pk || !n_sig))

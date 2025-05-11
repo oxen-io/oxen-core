@@ -2,8 +2,12 @@
 
 import requests
 
+from hf21_transition_data import addresses, transition_bonus
+
+print(f"{len(addresses)} addresses and {len(transition_bonus)} bonus entries")
+
 #url_base = 'http://127.0.0.1:38157/'
-url_base = 'http://127.0.0.1:38857/'
+url_base = 'http://127.0.0.1:22023/'
 
 def json_rpc(method, params=None, timeout=50):
     json = {
@@ -19,33 +23,9 @@ def json_rpc(method, params=None, timeout=50):
 def get_service_nodes():
     return json_rpc('get_service_nodes').json()
 
-addresses = {
-    'dV3jKVomABtGr2cB75CvMciVoBsgUukBwQxdX586Q7pPKr3ohPBpH2h6QQDBG5j1D7CJBAWWamTTpbaRyPDTXFPW2nWRkwJg8': '0xB0CefD61ddB88176Fb972955341adC6c1d05230e',
-    'dV22dkgs6Tgb1YiqwBzq8URRQ8gjzGJMd13bEt3CySkC6AVx6cnH35TSHHtHCnMf68jXHMpW68ZQ93ZxRBbUyAC929rGKPM8n': '0xb82Cd271CE0E498e4203AC4db801698Bd720f6AF',
-    'dV1ttpi6U815NHxh8QqK5LGNfWKHzhhxoWYAznsfiQtZWuxD44Jrw4uCAXZgPGw96zB7WPsNdcBRdWx7c8ANvzDx15sNugT7G': '0xB7649B5A5DfABAA0713ACFB3040945035b0bBD9e',
-    'dV33LyGNcFQhqe84oiMUy9SAy1suyHNEJ53prwv18iBt6Kh5cejcHZ9W842SdQZ1izaMubG6Qg7P9fjxLagV8rsj18nfVvc46': '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    'dV3YWiufwPxKFmpGbyVmQjHCyTTHeQc3ATW8XFNPymYKcoBa9Rbfj4nAaGihf4XJoqdsYnLNLSFWpJC5GJMMHyvs1Q75JiKai': '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-    'dV1owP8ZZmGQqeDDnwGCJVTCCRPwkDZTLPDqybnsdQHLCmb7c5H5hQ5XJ7QybPT83Za3YtMm325DhN7vNvJqU3ia1GetGj3tT': '',  # wallet6, not registered
-    'dV2y4ThUjQKdKvCKVbwW5Ni9JBjEuYb7B66Qa6AaReVX6hXKDYsabJZ1xr9w3AKtXZNHZkKsbaN5Bi3dLyrZgyDJ1VnYRqvMS': '0xcccccccccccccccccccccccccccccccccccccccc',
-    'dV1uNumdfREEvgUhZi91frgBrApRBB7QHeuVmi6eiZSx16LXxFkkxR5DDQYV2f4VkwH19kYLuxr6g7QDd6C7zwBU1pmDCY5mP': '0xdddddddddddddddddddddddddddddddddddddddd',
-    'dV2pBi3wvr39EH8V9izJAtMDL6J9PS4i8ApRLJWD5LcxGc2uf5ADBJ84d1pTKWu2Kt1bJ5KuaA69ncxiyiS6eaGb35f5HD84P': '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
-    'dV1jxf26zLYZ9B34enQtDnLngpoLqNXxQMSM3RJvDyB4b8N6Mnjw7v4Sc9m13Jf6MfPWNcDEvwbGK93MirdHTnBH2F5Ednii9': '0xffffffffffffffffffffffffffffffffffffffff',
-}
-
-transition_bonus = {
-    '0xB0CefD61ddB88176Fb972955341adC6c1d05230e': 64035886857040, # wallet1
-    '0xB7649B5A5DfABAA0713ACFB3040945035b0bBD9e': 1658571428520,  # wallet2
-    '0xb82Cd271CE0E498e4203AC4db801698Bd720f6AF': 3577714285680,  # wallet3
-    '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa': 0,              # wallet4
-    '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb': 0,              # wallet5
-    '0xcccccccccccccccccccccccccccccccccccccccc': 6434285714320,   # wallet7
-    '0xdddddddddddddddddddddddddddddddddddddddd': 0,              # wallet8
-    '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee': 76368521000000,  # wallet9
-    '0xffffffffffffffffffffffffffffffffffffffff': 12345123450,    # wallet10 (registered, but staked nothing)
-}
-
-conversion_ratio = 200 # testnet SENT stake is 200x testnet OXEN stake
-staking_requirement = 20000000000000
+conversion_ratio = 0.54  # dummy value
+conversion_ratio_parts = [54, 100]  # dummy value
+staking_requirement = 25000000000000
 
 # added for testnet to get all contributor addresses to put in the
 # list above, as I did not have a list.
@@ -63,23 +43,28 @@ def get_migration():
     bls_map = {}
     edkey_map = {}
     seed_list = []
+    not_migrating_count = 0
     for res in get_service_nodes()['result']['service_node_states']:
         edkey = res['pubkey_ed25519']
 
         if not res['active']:
             print(f"Not migrating {edkey} because it's not active")
+            not_migrating_count += 1
             continue
 
         if 'pubkey_bls' not in res:
             print(f"Not migrating {edkey} because it somehow does not have a bls pubkey set")
+            not_migrating_count += 1
             continue
 
         if res['operator_address'] not in addresses:
             print(f"Not migrating {edkey} because its operator address is not registered to convert")
+            not_migrating_count += 1
             continue
 
         if res['operator_address'] != res['contributors'][0]['address']:
             print(f"operator_address != first contributor address -- ({res['operator_address']} != {res['contributors'][0]['address']}")
+            not_migrating_count += 1
             continue
 
         ok = True
@@ -89,11 +74,12 @@ def get_migration():
             if cont['address'] not in addresses or len(addresses[cont['address']]) == 0:
                 ok = False
                 break
-            contributors.append({'address': addresses[cont['address']], 'amount': cont['amount'] * conversion_ratio})
-            contribution_sum += cont['amount'] * conversion_ratio
+            contributors.append({'address': addresses[cont['address']], 'amount': int(cont['amount'] * conversion_ratio)})
+            contribution_sum += contributors[-1]['amount']
 
         if not ok:
             print(f"Not migrating {edkey} because a contributor address is not registered to convert")
+            not_migrating_count += 1
             continue
 
         # TODO: normalize if sum > req for the few nodes on mainnet with a higher stake sum
@@ -116,39 +102,114 @@ def get_migration():
         if res['service_node_pubkey'] != edkey:
             edkey_map[res['service_node_pubkey']] = edkey
 
+    print(f"\nNot migrating {not_migrating_count} nodes\n")
     return [bls_map, edkey_map, seed_list]
-
-def print_address_migration():
-    print("Printing C++ for oxen -> eth mapping\n")
-    for addr in addresses:
-        if len(addresses[addr]):
-            print(f"{{\"{addr}\"s, tools::make_from_hex_guts<eth::address>(\"{addresses[addr]}\"s)}},")
-    print("")
 
 def print_migration():
     bls_map, edkey_map, seed_list = get_migration()
+    
+    with open("hf21_transition_data.cpp", "w") as f:
+        f.write(
+"""#include <oxenc/hex.h>
 
-    print_address_migration()
+#include <cstdint>
+#include <string_view>
+#include <unordered_map>
 
-    print("Printing C++ for monero key -> ed25519 key mapping\n")
-    for monero_key in edkey_map:
-        print(f"{{tools::make_from_hex_guts<crypto::public_key>(\"{monero_key}\"s), tools::make_from_hex_guts<crypto::ed25519_public_key>(\"{edkey_map[monero_key]}\"s)}},")
-    print("")
+#include "crypto/crypto.h"
+#include "crypto/eth.h"
+#include "crypto/literals.h"
+#include "detail.h"
 
-    print("Printing C++ for ed -> bls mapping\n")
-    for edkey in bls_map:
-        print(f"{{tools::make_from_hex_guts<crypto::ed25519_public_key>(\"{edkey}\"s), tools::make_from_hex_guts<eth::bls_public_key>(\"{bls_map[edkey]}\"s)}},")
-    print("")
+namespace oxen::sent::mainnet {
 
-    print("Printing C++ for transition bonus\n")
-    for addr in transition_bonus:
-        print(f"{{tools::make_from_hex_guts<eth::address>(\"{addr}\"s), {transition_bonus[addr]}}},")
-    print("")
+using namespace std::literals;
+using namespace crypto::literals;
+
+// clang-format off
+
+const std::unordered_map<std::string_view, eth::address> addresses{
+""")
+        print("Printing C++ for oxen -> eth mapping\n")
+        for addr, eth in sorted(addresses.items()):
+            if len(eth):
+                to_write = f'    {{"{addr}"sv, "{eth}"_eth}},\n'
+                print(to_write, end="")
+                f.write(to_write)
+        print("")
+        f.write(
+"""};
+
+const std::unordered_map<crypto::public_key, crypto::ed25519_public_key> proper_ed_keys{
+""")
+
+        print("Printing C++ for monero key -> ed25519 key mapping\n")
+        for monero_key, ed_key in sorted(edkey_map.items()):
+            to_write = f'    {{"{monero_key}"_pk, "{ed_key}"_edpk}},\n'
+            print(to_write, end="")
+            f.write(to_write)
+        print("")
+        f.write(
+"""};
+
+const std::unordered_map<crypto::ed25519_public_key, eth::bls_public_key> bls_keys{
+""")
+
+        print("Printing C++ for ed -> bls mapping\n")
+        for edkey, blskey in sorted(bls_map.items()):
+            to_write = f'    {{"{edkey}"_edpk, "{blskey}"_blspk}},\n'
+            print(to_write, end="")
+            f.write(to_write)
+        print("")
+        f.write("};\n\n")
+        f.write(f"const std::pair<std::uint64_t, std::uint64_t> conv_ratio{{{conversion_ratio_parts[0]}, {conversion_ratio_parts[1]}}};\n")
+
+        f.write("\nconst std::unordered_map<eth::address, std::uint64_t> transition_bonus{\n")
+
+        print("Printing C++ for transition bonus\n")
+        for addr, amt in sorted(transition_bonus.items(), key=lambda x: str.lower(x[0])):
+            to_write = f'    {{"{addr}"_eth, {amt}}},\n'
+            print(to_write, end="")
+            f.write(to_write)
+        print("")
+        f.write(
+"""};
+
+// clang-format-on
+
+}  // namespace oxen::sent::mainnet
+""")
 
     print("Printing python for seeding contract\n")
-    from pprint import pp
-    pp(seed_list)
+    from pprint import pformat
+    s = pformat(seed_list)
+    print(s)
+    with open("contract_seed_info.py", "w") as f:
+        f.write(s)
+    print("Wrote cpp code to hf21_transition_data.cpp as well as printing")
+    print("Wrote contract seed info to contract_seed_info.py as well as printing")
+
+def write_proofs_file():
+    proofs = json_rpc('get_all_uptime_proofs').json()
+    with open("bls_proofs.txt", "w") as f:
+        f.write("{} {} {} {} {} {} {}".format(
+                "proof",
+                "pubkey",
+                "sig",
+                "pubkey_ed25519",
+                "sig_ed25519",
+                "pubkey_bls",
+                "pop_bls"))
+        for proof in proofs['result']['proofs']:
+            f.write("\n{} {} {} {} {} {} {}".format(
+                    proof["proof"],
+                    proof["pubkey"],
+                    proof["sig"],
+                    proof["pubkey_ed25519"],
+                    proof["sig_ed25519"],
+                    proof["pubkey_bls"],
+                    proof["pop_bls"]))
+    print("Wrote bls proof of possession table to bls_proofs.txt")
 
 print_migration()
-#print_address_migration()
-#get_addresses()
+write_proofs_file()

@@ -466,7 +466,8 @@ class tx_memory_pool {
             uint64_t& expected_reward,
             hf version,
             uint64_t height,
-            std::optional<uint64_t> l2_max = std::nullopt);
+            std::optional<uint64_t> l2_max = std::nullopt,
+            std::vector<std::string>* state_change_txes = nullptr);
 
     /**
      * @brief get a list of all transactions in the pool

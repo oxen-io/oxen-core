@@ -88,7 +88,8 @@ PendingTransaction TransactionConstructor::create_ons_buy_transaction(
             encrypted_value.to_string(),
             prev_txid);
 
-    new_tx.burn_fixed = ons::burn_needed(cryptonote::get_latest_hard_fork(nettype).version, *type);
+    new_tx.burn_fixed =
+            ons::burn_needed(cryptonote::get_latest_hard_fork(nettype).version, nettype, *type);
     new_tx.update_change();
 
     // Finally save the data to the extra field of our transaction

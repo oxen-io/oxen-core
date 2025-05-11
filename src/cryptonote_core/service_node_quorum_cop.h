@@ -117,7 +117,7 @@ struct service_node_test_results {
     bool storage_server_reachable = true;
     bool lokinet_reachable = true;
     bool recent_l2_height = true;
-    bool failed_transition = false;  // FIXME this bool is true bad, rest are true good
+    bool failed_transition = false;
 
     // Returns a vector of reasons why this node is failing (nullopt if not failing).
     std::optional<std::vector<std::string_view>> why() const;

@@ -31,10 +31,11 @@ struct std::hash<eth::bls_public_key> : crypto::raw_hasher<eth::bls_public_key> 
 template <>
 struct std::hash<eth::address> : crypto::raw_hasher<eth::address> {};
 
-// For an eth address, override the default format of <...hex...> to be 0x...hex... instead.  (But
-// don't override for non-default formatting).
+// For an eth address, override the default format of lower-case hex to be 0x...hEx... instead,
+// using the usual ETH address checksum capitalization.  (But don't override for non-default
+// formatting, so that something like "{:x}" can still output the expected straight hex).
 template <>
 struct fmt::formatter<eth::address> : formattable::hex_span_formatter {
     fmt::format_context::iterator default_format(
-            std::span<const unsigned char> val, fmt::format_context& ctx) const override;
+            std::span<const unsigned char> val, fmt::format_context::iterator& out) const override;
 };

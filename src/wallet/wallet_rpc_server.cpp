@@ -810,9 +810,7 @@ CREATE_ADDRESS::response wallet_rpc_server::invoke(CREATE_ADDRESS::request&& req
 LABEL_ADDRESS::response wallet_rpc_server::invoke(LABEL_ADDRESS::request&& req) {
     require_open();
     LABEL_ADDRESS::response res{};
-    {
-        m_wallet->set_subaddress_label(req.index, req.label);
-    }
+    m_wallet->set_subaddress_label(req.index, req.label);
     return res;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -863,9 +861,7 @@ CREATE_ACCOUNT::response wallet_rpc_server::invoke(CREATE_ACCOUNT::request&& req
 LABEL_ACCOUNT::response wallet_rpc_server::invoke(LABEL_ACCOUNT::request&& req) {
     require_open();
     LABEL_ACCOUNT::response res{};
-    {
-        m_wallet->set_subaddress_label({req.account_index, 0}, req.label);
-    }
+    m_wallet->set_subaddress_label({req.account_index, 0}, req.label);
     return res;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -890,18 +886,14 @@ GET_ACCOUNT_TAGS::response wallet_rpc_server::invoke(GET_ACCOUNT_TAGS::request&&
 TAG_ACCOUNTS::response wallet_rpc_server::invoke(TAG_ACCOUNTS::request&& req) {
     require_open();
     TAG_ACCOUNTS::response res{};
-    {
-        m_wallet->set_account_tag(req.accounts, req.tag);
-    }
+    m_wallet->set_account_tag(req.accounts, req.tag);
     return res;
 }
 //------------------------------------------------------------------------------------------------------------------------------
 UNTAG_ACCOUNTS::response wallet_rpc_server::invoke(UNTAG_ACCOUNTS::request&& req) {
     require_open();
     UNTAG_ACCOUNTS::response res{};
-    {
-        m_wallet->set_account_tag(req.accounts, "");
-    }
+    m_wallet->set_account_tag(req.accounts, "");
     return res;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -909,9 +901,7 @@ SET_ACCOUNT_TAG_DESCRIPTION::response wallet_rpc_server::invoke(
         SET_ACCOUNT_TAG_DESCRIPTION::request&& req) {
     require_open();
     SET_ACCOUNT_TAG_DESCRIPTION::response res{};
-    {
-        m_wallet->set_account_tag_description(req.tag, req.description);
-    }
+    m_wallet->set_account_tag_description(req.tag, req.description);
     return res;
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -1123,8 +1113,8 @@ TRANSFER::response wallet_rpc_server::invoke(TRANSFER::request&& req) {
             throw wallet_rpc_error{
                     error_code::HF_QUERY_FAILED,
                     tools::wallet2::ERR_MSG_NETWORK_VERSION_QUERY_FAILED};
-        cryptonote::oxen_construct_tx_params tx_params = tools::wallet2::construct_params(
-                *hf_version, cryptonote::txtype::standard, priority);
+        cryptonote::oxen_construct_tx_params tx_params =
+                m_wallet->construct_params(*hf_version, cryptonote::txtype::standard, priority);
         std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(
                 dsts,
                 cryptonote::TX_OUTPUT_DECOYS,
@@ -1184,8 +1174,8 @@ TRANSFER_SPLIT::response wallet_rpc_server::invoke(TRANSFER_SPLIT::request&& req
                     error_code::HF_QUERY_FAILED,
                     tools::wallet2::ERR_MSG_NETWORK_VERSION_QUERY_FAILED};
 
-        cryptonote::oxen_construct_tx_params tx_params = tools::wallet2::construct_params(
-                *hf_version, cryptonote::txtype::standard, priority);
+        cryptonote::oxen_construct_tx_params tx_params =
+                m_wallet->construct_params(*hf_version, cryptonote::txtype::standard, priority);
         log::debug(logcat, "on_transfer_split calling create_transactions_2");
         std::vector<wallet2::pending_tx> ptx_vector = m_wallet->create_transactions_2(
                 dsts,
