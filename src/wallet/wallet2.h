@@ -1636,7 +1636,7 @@ class wallet2 {
 
     // params constructor, accumulates the burn amounts if the priority is
     // a blink and, or a ons tx. If it is a blink TX, ons_burn_type is ignored.
-    static cryptonote::oxen_construct_tx_params construct_params(
+    cryptonote::oxen_construct_tx_params construct_params(
             cryptonote::hf hf_version,
             cryptonote::txtype tx_type,
             uint32_t priority,

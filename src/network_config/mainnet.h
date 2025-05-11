@@ -82,9 +82,8 @@ inline constexpr network_config config{
         .ETH_EXIT_BUFFER = 7 * 24h / TARGET_BLOCK_TIME,
         .ETH_DEREG_BUFFER = 7 * 24h / TARGET_BLOCK_TIME,
         .ETHEREUM_CHAIN_ID = 42161,  // Arbitrum One
-        // TODO: To be set closer to mainnet TGE
-        .ETHEREUM_REWARDS_CONTRACT = "",
-        .ETHEREUM_POOL_CONTRACT = "",
+        .ETHEREUM_REWARDS_CONTRACT = "0x5ea20fC3e92840111a16F4b3B55D0ee2078da102",
+        .ETHEREUM_POOL_CONTRACT = "0xc0C54840BF7df85F4ae603e8b227100865c7Cb43",
         // Update every ~10 minutes with an Arbitrum ~250ms block time:
         .L2_REWARD_POOL_UPDATE_BLOCKS = 10min / L2_BLOCK_TIME,
         // The default is 70s behind with an Arbitrum ~250ms block time, so that pulse nodes using

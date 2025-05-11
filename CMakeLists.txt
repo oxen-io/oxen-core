@@ -51,9 +51,9 @@ message(STATUS "CMake version ${CMAKE_VERSION}")
 set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "macOS deployment target (Apple clang only)")
 
 project(oxen
-    VERSION 11.2.1
+    VERSION 11.3.0
     LANGUAGES CXX C)
-set(OXEN_RELEASE_CODENAME "Anchor")
+set(OXEN_RELEASE_CODENAME "Landing")
 # Version update notes:
 # - bump the version above.
 # - for a new major release, make a new codename
