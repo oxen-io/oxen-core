@@ -305,7 +305,7 @@ or "default" to return the limit to its default value.)");
             "claim_rewards",
             [this](const auto& x) { return m_parser.claim_rewards(x); },
             "claim_rewards ETH_ADDRESS",
-            "Generates a network reward signature that allows claiming of SENT rewards");
+            "Generates a network reward signature that allows claiming of SESH rewards");
     m_command_lookup.set_handler(
             "test_trigger_uptime_proof",
             [this](const auto&) {

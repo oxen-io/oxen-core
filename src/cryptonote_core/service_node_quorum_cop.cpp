@@ -151,7 +151,6 @@ service_node_test_results quorum_cop::check_service_node(
         result.storage_server_reachable = false;
     }
 
-    // TODO: perhaps come back and make this activate on some "soft fork" height before HF19?
     if (!lokinet_reachable && hf_version >= hf::hf19_reward_batching) {
         log::info(logcat, "Service Node lokinet is not reachable for node: {}", pubkey);
         result.lokinet_reachable = false;
@@ -418,6 +417,11 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
 
                             auto test_results = check_service_node(
                                     obligations_height_hf_version, node_key, info);
+
+                            // disable lokinet reachability being a decomm reason, for now
+                            // we still want the testing to happen, though, so we just change
+                            // the result here
+                            test_results.lokinet_reachable = true;
                             bool passed = test_results.passed();
 
                             new_state vote_for_state;

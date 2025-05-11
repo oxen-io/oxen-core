@@ -700,7 +700,7 @@ cryptonote::transaction oxen_chain_generator::create_oxen_name_system_tx(crypton
   cryptonote::block const &head = top().block;
   uint64_t new_height           = top().block.get_height() + 1;
   auto new_hf_version = get_hf_version_at(new_height);
-  uint64_t burn = burn_override.value_or(ons::burn_needed(new_hf_version, type));
+  uint64_t burn = burn_override.value_or(ons::burn_needed(new_hf_version, cryptonote::network_type::FAKECHAIN, type));
 
   auto lcname = tools::lowercase_ascii_string(name);
   crypto::hash name_hash       = ons::name_to_hash(lcname);
@@ -824,7 +824,7 @@ cryptonote::transaction oxen_chain_generator::create_oxen_name_system_tx_renew(c
   }
 
   auto new_hf_version = get_hf_version_at(top().block.get_height() + 1);
-  uint64_t burn = burn_override.value_or(ons::burn_needed(new_hf_version, type));
+  uint64_t burn = burn_override.value_or(ons::burn_needed(new_hf_version, cryptonote::network_type::FAKECHAIN, type));
 
   std::vector<uint8_t> extra;
   cryptonote::tx_extra_oxen_name_system data = cryptonote::tx_extra_oxen_name_system::make_renew(type, name_hash, prev_txid);

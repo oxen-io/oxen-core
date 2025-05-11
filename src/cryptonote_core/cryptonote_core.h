@@ -68,7 +68,7 @@ extern const command_line::arg_descriptor<size_t> arg_block_download_max_size;
 // has been set up but before it starts listening.  Return an opaque pointer (void *) that gets
 // passed into all the other callbacks below so that the callbacks can recast it into whatever it
 // should be.
-using quorumnet_new_proc = void*(core& core);
+using quorumnet_new_proc = void*(core& core, pulse::pulse pulse);
 // Initializes quorumnet; unlike `quorumnet_new_proc` this needs to be called for all nodes, not
 // just service nodes.  The second argument should be the `quorumnet_new` return value if a
 // service node, nullptr if not.
@@ -925,6 +925,9 @@ class core final {
     // Internal opaque data object managed by cryptonote_protocol/quorumnet.cpp.  void pointer to
     // avoid linking issues (protocol does not link against core).
     void* m_quorumnet_state = nullptr;
+
+    // Internal mostly opaque interface to pulse state.
+    pulse::pulse m_pulse;
 
     /// Stores x25519 -> access level for OMQ authentication.
     /// Not to be modified after the OMQ listener starts.

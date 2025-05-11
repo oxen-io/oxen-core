@@ -107,7 +107,7 @@ if (STATIC AND BUILD_STATIC_DEPS)
             wallet
             multisig
             cryptonote_core
-            sent_transition_data
+            sesh_transition_data
             cryptonote_basic
             cryptonote_protocol
             sqlitedb
