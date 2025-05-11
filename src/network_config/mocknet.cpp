@@ -12,10 +12,10 @@
 #include "crypto/eth.h"
 #include "cryptonote_basic/verification_context.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "cryptonote_core/sent_transition/sent_transition.h"
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_core/service_node_quorum_cop.h"
 #include "cryptonote_core/service_node_rules.h"
+#include "cryptonote_core/sesh_transition/sesh_transition.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "logging/oxen_logger.h"
 
@@ -45,9 +45,9 @@ struct mocknet_global_data {
     bool fork_enabled;
     uint64_t fork_at_height;  // The chain height to fork at from the current chain
     bool protocol_is_disabled;
-    oxen::sent::addrmap_t transition_addr_map;
-    oxen::sent::bonus_map_t transition_bonus_map;
-    oxen::sent::bls_keys_t transition_bls_keys;
+    oxen::sesh::addrmap_t transition_addr_map;
+    oxen::sesh::bonus_map_t transition_bonus_map;
+    oxen::sesh::bls_keys_t transition_bls_keys;
 };
 static mocknet_global_data globals;
 
@@ -59,7 +59,7 @@ struct mocknet_key {
 };
 
 const eth::address MOCK_ETH_ADDRESS = tools::make_from_hex_guts<eth::address>(
-        "485973e8dfFA8Abd3AB91292bFCE25896C687bA5"sv, false);
+        "4444444444444444444444444444444444444444"sv, false);
 
 // NOTE: Ed25519 public key is stuffed in the last 32 bytes of the secret key
 // but it's useful to have the pubkey separated to visually grok instantly for
@@ -239,10 +239,14 @@ void mocknet_inject_nodes(uint8_t nettype_u8, void* snl_state_ptr, uint8_t hf_ve
         {
             service_nodes::service_node_info::contributor_t contributor = {};
             contributor.amount = state->get_staking_requirement(nettype);
-
-            service_nodes::service_node_info::contribution_t contribution = {};
-            contribution.amount = contributor.amount;
-            contributor.locked_contributions.push_back(contribution);
+            if (hf_version >= static_cast<uint8_t>(cryptonote::feature::ETH_BLS)) {
+                contributor.ethereum_address = MOCK_ETH_ADDRESS;
+                contributor.ethereum_beneficiary = MOCK_ETH_ADDRESS;
+            } else {
+                service_nodes::service_node_info::contribution_t contribution = {};
+                contribution.amount = contributor.amount;
+                contributor.locked_contributions.push_back(contribution);
+            }
 
             info->contributors.push_back(contributor);
         }
@@ -456,7 +460,12 @@ void mocknet_push_mock_pulse_block(cryptonote::core& core) {
     }
 }
 
-void mocknet_get_transition_context(oxen::sent::transition_context& context) {
+bool mocknet_is_mock_ethereum_address(const eth::address& addr) {
+    bool result = addr == MOCK_ETH_ADDRESS;
+    return result;
+}
+
+void mocknet_get_transition_context(oxen::sesh::transition_context& context) {
     context.conv_ratio = {1, 120};  // X SESH per Y OXEN
     context.addresses = &globals.transition_addr_map;
     context.bls_keys = &globals.transition_bls_keys;

@@ -229,7 +229,7 @@ void parse_request(SUBMIT_TRANSACTION& tx, rpc_input in) {
 }
 
 void parse_request(GET_BLOCK_HASH& bh, rpc_input in) {
-    get_values(in, "heights", bh.request.heights);
+    get_values(in, "heights", required{bh.request.heights});
 
     if (bh.request.heights.size() > bh.MAX_HEIGHTS)
         throw std::domain_error{"Error: too many block heights requested at once"};
@@ -365,6 +365,13 @@ void parse_request(GET_BLOCK_HEADER_BY_HASH& get_block_header_by_hash, rpc_input
             get_block_header_by_hash.request.hash,
             "hashes",
             get_block_header_by_hash.request.hashes);
+
+    if (get_block_header_by_hash.request.hash.empty() &&
+        get_block_header_by_hash.request.hashes.empty())
+        throw std::invalid_argument{"Error: No hash/hashes parameter given"};
+    if (get_block_header_by_hash.request.hashes.size() > GET_BLOCK_HEADERS_RANGE::MAX_COUNT)
+        throw std::invalid_argument{
+                "Error: no more than 1000 block headers may be requested at once"};
 }
 
 void parse_request(SET_BANS& set_bans, rpc_input in) {
@@ -378,17 +385,17 @@ void parse_request(SET_BANS& set_bans, rpc_input in) {
             required{set_bans.request.seconds});
 }
 
-void parse_request(GET_BLOCK_HEADERS_RANGE& get_block_headers_range, rpc_input in) {
+void parse_request(GET_BLOCK_HEADERS_RANGE& gbhr, rpc_input in) {
     get_values(
             in,
             "end_height",
-            get_block_headers_range.request.end_height,
+            required{gbhr.request.end_height},
             "fill_pow_hash",
-            get_block_headers_range.request.fill_pow_hash,
+            gbhr.request.fill_pow_hash,
             "get_tx_hashes",
-            get_block_headers_range.request.get_tx_hashes,
+            gbhr.request.get_tx_hashes,
             "start_height",
-            get_block_headers_range.request.start_height);
+            required{gbhr.request.start_height});
 }
 
 void parse_request(GET_BLOCK_HEADER_BY_HEIGHT& get_block_header_by_height, rpc_input in) {
@@ -402,6 +409,14 @@ void parse_request(GET_BLOCK_HEADER_BY_HEIGHT& get_block_header_by_height, rpc_i
             get_block_header_by_height.request.height,
             "heights",
             get_block_header_by_height.request.heights);
+
+    if (!get_block_header_by_height.request.height &&
+        get_block_header_by_height.request.heights.empty())
+        throw std::invalid_argument{
+                "Error: Either height or heights parameter must be given but are missing"};
+    if (get_block_header_by_height.request.heights.size() > GET_BLOCK_HEADERS_RANGE::MAX_COUNT)
+        throw std::invalid_argument{
+                "Error: no more than 1000 block headers may be requested at once"};
 }
 
 void parse_request(GET_BLOCK& get_block, rpc_input in) {
@@ -413,6 +428,8 @@ void parse_request(GET_BLOCK& get_block, rpc_input in) {
             get_block.request.hash,
             "height",
             get_block.request.height);
+    if (!get_block.request.hash.empty() == get_block.request.height.has_value())
+        throw std::invalid_argument{"Error: Exactly one of hash or height must be specified"};
 }
 
 void parse_request(GET_OUTPUT_HISTOGRAM& get_output_histogram, rpc_input in) {

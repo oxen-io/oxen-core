@@ -1867,7 +1867,8 @@ bool tx_memory_pool::fill_block_template(
         uint64_t& expected_reward,
         hf version,
         uint64_t height,
-        std::optional<uint64_t> l2_max) {
+        std::optional<uint64_t> l2_max,
+        std::vector<std::string>* state_change_txes) {
     auto locks = tools::unique_locks(m_transactions_lock, m_blockchain);
 
     total_weight = 0;
@@ -1895,11 +1896,11 @@ bool tx_memory_pool::fill_block_template(
                                                 : reward_parts.base_miner;
         max_total_weight = 2 * median_weight - COINBASE_BLOB_RESERVED_SIZE;
     } else {  // HF21+
-        // Before SENT, there was the "full reward" limit (300kB) and then a hard limit of double
+        // Before SESH, there was the "full reward" limit (300kB) and then a hard limit of double
         // that (600kB), but over 300kB a quadratic penalty applied that reduced the miner (or pulse
         // leader) tx fee reward.
         //
-        // Under SENT we don't have any Oxen rewards to subtract *from* so all OXEN tx fees just get
+        // Under SESH we don't have any Oxen rewards to subtract *from* so all OXEN tx fees just get
         // burned and the 300kB block weight soft limit (before HF21) just becomes a hard limit.
         max_total_weight = BLOCK_GRANTED_FULL_REWARD_ZONE_V5 - COINBASE_BLOB_RESERVED_SIZE;
     }
@@ -1923,6 +1924,8 @@ bool tx_memory_pool::fill_block_template(
     uint64_t next_reward = 0;
     uint64_t net_fee = 0;
     bl.tx_eth_count = 0;
+    if (state_change_txes)
+        state_change_txes->clear();
 
     for (const auto& pooltx : m_txs_by_priority) {
         const auto& txid = std::get<crypto::hash>(pooltx);
@@ -1948,7 +1951,7 @@ bool tx_memory_pool::fill_block_template(
 
         block_reward_parts next_reward_parts = {};
         if (version < feature::ETH_BLS) {
-            // We don't check any of this under SENT because we simply have a hard limit that we
+            // We don't check any of this under SESH because we simply have a hard limit that we
             // can't exceed (see comment above).
 
             // NOTE: Calculate the next block reward for the block producer
@@ -2036,6 +2039,8 @@ bool tx_memory_pool::fill_block_template(
         bl.tx_hashes.push_back(txid);
         if (meta.l2_height > 0)
             bl.tx_eth_count++;
+        if (tx.type == txtype::state_change && state_change_txes)
+            state_change_txes->push_back(txblob);
         total_weight += meta.weight;
         raw_fee += meta.fee;
         net_fee = next_reward_parts.miner_fee;

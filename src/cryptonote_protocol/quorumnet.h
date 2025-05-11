@@ -30,8 +30,6 @@
 
 // This file (plus .cpp) contains the glue layer between cryptonote_core and oxen-mq.
 
-#include <vector>
-
 namespace service_nodes {
 struct quorum_vote_t;
 };

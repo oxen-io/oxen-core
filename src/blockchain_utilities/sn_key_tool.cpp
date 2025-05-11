@@ -49,7 +49,7 @@ legacy [--overwrite] FILENAME
     flag is specified.
 
     Note that legacy keypairs are not needed as of Oxen 8.x, and are not used at
-    all as of the Oxen 11.x/SENT hard fork.  As of Oxen 11.x both the
+    all as of the Oxen 11.x/SESH hard fork.  As of Oxen 11.x both the
     key_ed25519 and key_bls are required.
 
 show [--ed25519|--bls|--legacy] FILENAME

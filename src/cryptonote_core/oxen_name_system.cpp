@@ -1555,7 +1555,7 @@ bool name_system_db::validate_ons_tx(
     {
         uint64_t burn = cryptonote::get_burned_amount_from_tx_extra(tx.extra);
         uint64_t const burn_required = (ons_extra.is_buying() || ons_extra.is_renewing())
-                                             ? burn_needed(hf_version, ons_extra.type)
+                                             ? burn_needed(hf_version, nettype, ons_extra.type)
                                              : 0;
         if (hf_version == hf::hf18 && burn > burn_required && blockchain_height < 524'000) {
             // Testnet sync fix: PR #1433 merged that lowered fees for HF18 while testnet was

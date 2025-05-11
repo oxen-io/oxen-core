@@ -1532,7 +1532,7 @@ bool oxen_name_system_invalid_tx_extra_params::generate(std::vector<test_event_e
         char const *reason) -> void {
       uint64_t new_height    = gen.top().block.get_height() + 1;
       auto new_hf_version = gen.get_hf_version_at(new_height);
-      uint64_t burn_requirement = ons::burn_needed(new_hf_version, static_cast<ons::mapping_type>(data.type));
+      uint64_t burn_requirement = ons::burn_needed(new_hf_version, cryptonote::network_type::FAKECHAIN, static_cast<ons::mapping_type>(data.type));
 
       std::vector<uint8_t> extra;
       cryptonote::add_oxen_name_system_to_tx_extra(extra, data);
@@ -1956,7 +1956,7 @@ bool oxen_name_system_name_value_max_lengths::generate(std::vector<test_event_en
 
     uint64_t new_height    = gen.top().block.get_height() + 1;
     auto new_hf_version = gen.get_hf_version_at(new_height);
-    uint64_t burn_requirement = ons::burn_needed(new_hf_version, static_cast<ons::mapping_type>(data.type));
+    uint64_t burn_requirement = ons::burn_needed(new_hf_version, cryptonote::network_type::FAKECHAIN, static_cast<ons::mapping_type>(data.type));
     std::vector<uint8_t> extra;
     cryptonote::add_oxen_name_system_to_tx_extra(extra, data);
     cryptonote::add_burned_amount_to_tx_extra(extra, burn_requirement);
@@ -2541,7 +2541,7 @@ bool oxen_name_system_wrong_burn::generate(std::vector<test_event_entry> &events
 
         uint64_t new_height      = gen.top().block.get_height() + 1;
         auto new_hf_version = gen.get_hf_version_at(new_height);
-        uint64_t burn            = ons::burn_needed(new_hf_version, type);
+        uint64_t burn            = ons::burn_needed(new_hf_version, cryptonote::network_type::FAKECHAIN, type);
         if (under_burn) burn -= 1;
         else            burn += 1;
 
@@ -2578,7 +2578,7 @@ bool oxen_name_system_wrong_version::generate(std::vector<test_event_entry> &eve
 
   uint64_t new_height       = gen.top().block.get_height() + 1;
   auto new_hf_version = gen.get_hf_version_at(new_height);
-  uint64_t burn_requirement = ons::burn_needed(new_hf_version, ons::mapping_type::session);
+  uint64_t burn_requirement = ons::burn_needed(new_hf_version, cryptonote::network_type::FAKECHAIN, ons::mapping_type::session);
 
   std::vector<uint8_t> extra;
   cryptonote::add_oxen_name_system_to_tx_extra(extra, data);
