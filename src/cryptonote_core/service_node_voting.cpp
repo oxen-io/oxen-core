@@ -255,7 +255,7 @@ bool verify_quorum_signatures(
         const cryptonote::block* block) {
     bool enforce_vote_ordering = true;
     constexpr size_t MAX_QUORUM_SIZE =
-            std::max(CHECKPOINT_QUORUM_SIZE, PULSE_QUORUM_NUM_VALIDATORS);
+            std::max<size_t>(CHECKPOINT_QUORUM_SIZE, PULSE_QUORUM_NUM_VALIDATORS);
     std::array<size_t, MAX_QUORUM_SIZE> unique_vote_set = {};
 
     switch (type) {

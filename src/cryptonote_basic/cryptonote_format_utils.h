@@ -297,17 +297,24 @@ std::vector<uint64_t> absolute_output_offsets_to_relative(const std::vector<uint
 constexpr std::string_view get_unit() {
     return "OXEN"sv;
 }
+
+enum class strip_zeros {
+    no,
+    yes,
+};
+
 // Returns a monetary value with a decimal point; optionally strips insignificant trailing 0s.
 std::string print_money(
         uint64_t amount,
-        size_t decimal_places = oxen::DISPLAY_DECIMAL_POINT,
-        bool strip_zeros = false);
+        strip_zeros strip_z = strip_zeros::no,
+        size_t decimal_point = oxen::DISPLAY_DECIMAL_POINT);
+
 // Returns a formatted monetary value including the unit, e.g. "1.234567 OXEN"; strips
 // insignificant trailing 0s by default (unlike the above) but can be overridden to not do that.
 std::string format_money(
         uint64_t amount,
-        size_t decimal_places = oxen::DISPLAY_DECIMAL_POINT,
-        bool strip_zeros = true);
+        strip_zeros strip_z = strip_zeros::yes,
+        size_t decimal_point = oxen::DISPLAY_DECIMAL_POINT);
 
 std::string print_tx_verification_context(
         tx_verification_context const& tvc, transaction const* tx = nullptr);

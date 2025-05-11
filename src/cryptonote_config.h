@@ -167,7 +167,7 @@ using MAXIMUM_ACCEPTABLE_STAKE = std::ratio<101, 100>;
 // precision of HF19+ registrations (i.e. to a percentage with two decimal places of precision).
 inline constexpr uint64_t STAKING_FEE_BASIS = 10'000;
 
-// We calculate and store batch rewards in thousanths of atomic OXEN/SENT, to reduce the size of
+// We calculate and store batch rewards in thousanths of atomic OXEN/SESH, to reduce the size of
 // errors from integer division of rewards.
 constexpr uint64_t BATCH_REWARD_FACTOR = 1000;
 
