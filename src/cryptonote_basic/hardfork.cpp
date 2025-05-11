@@ -101,7 +101,7 @@ static constexpr std::array mainnet_hard_forks = {
         hard_fork{hf::hf20_eth_transition, 0, 1836239, 1745884800 /*Tue, 29 Apr 2025 00:00*/},
 
         // Oxen 11.3: SESH TGE and completion of the Oxen network transition to SESH
-        // hard_fork{hf::hf21_eth, 0, 184????, 174??????? /*Date TBD*/},
+        hard_fork{hf::hf21_eth, 0, 1852079, 1747785600 /*Wed, 21 May 2025 00:00*/},
 
         // NOTE: See contrib/hardfork-calc.py to aid with new HF block/date calculations!
 };

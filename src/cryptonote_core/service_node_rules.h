@@ -206,12 +206,13 @@ struct proof_version {
 
 inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS_MAINNET = {
         proof_version{{cryptonote::hf::hf20_eth_transition, 0}, {11, 2, 0}, {0, 9, 13}, {2, 10, 0}},
+        proof_version{{cryptonote::hf::hf21_eth, 0}, {11, 3, 0}, {0, 9, 13}, {2, 10, 0}},
 };
 inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS_STAGENET = {
         proof_version{{cryptonote::hf::hf21_eth, 0}, {11, 0, 7}, {0, 9, 13}, {2, 10, 0}},
 };
 inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS_TESTNET = {
-        proof_version{{cryptonote::hf::hf21_eth, 0}, {11, 2, 0}, {0, 9, 13}, {2, 10, 0}},
+        proof_version{{cryptonote::hf::hf21_eth, 0}, {11, 3, 0}, {0, 9, 13}, {2, 10, 0}},
 };
 
 inline constexpr std::span<const proof_version> MIN_UPTIME_PROOF_VERSIONS(
