@@ -28,6 +28,7 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 option(BUILD_BLOCKCHAIN_UTILS "Build various blockchain utility for inspecting the oxend blockchain" ${BUILD_EVERYTHING})
+option(BUILD_BLS_TOOL "Build BLS signature tool" ${BUILD_BLOCKCHAIN_UTILS})
 if(BUILD_BLOCKCHAIN_UTILS)
 
     add_library(blockchain_tools_common_libs INTERFACE)
@@ -101,9 +102,11 @@ if(BUILD_BLOCKCHAIN_UTILS)
 #     blockchain_tools_common_libs
 #     p2p)
 
+endif()
+
+if(BUILD_BLS_TOOL)
     oxen_add_executable(bls_tool "oxen-bls" bls_tool.cpp)
     target_link_libraries(bls_tool PRIVATE bls_crypto)
-
 endif()
 
 if (TARGET sodium_vendor OR NOT SODIUM_VERSION VERSION_LESS 1.0.17)

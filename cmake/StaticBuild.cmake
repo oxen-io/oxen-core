@@ -5,26 +5,26 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(BOOST_VERSION 1.87.0 CACHE STRING "boost version")
+set(BOOST_VERSION 1.88.0 CACHE STRING "boost version")
 set(BOOST_MIRROR ${LOCAL_MIRROR} https://archives.boost.io/release/${BOOST_VERSION}/source
     CACHE STRING "boost download mirror(s)")
 string(REPLACE "." "_" BOOST_VERSION_ ${BOOST_VERSION})
 set(BOOST_SOURCE boost_${BOOST_VERSION_}.tar.bz2)
-set(BOOST_HASH SHA256=af57be25cb4c4f4b413ed692fe378affb4352ea50fbe294a11ef548f4d527d89
+set(BOOST_HASH SHA256=46d9d2c06637b219270877c9e16155cbd015b6dc84349af064c088e9b5b12f7b
     CACHE STRING "boost source hash")
 
-set(NCURSES_VERSION 6.3 CACHE STRING "ncurses version")
+set(NCURSES_VERSION 6.5 CACHE STRING "ncurses version")
 set(NCURSES_MIRROR ${LOCAL_MIRROR} http://ftpmirror.gnu.org/gnu/ncurses
     CACHE STRING "ncurses download mirror(s)")
 set(NCURSES_SOURCE ncurses-${NCURSES_VERSION}.tar.gz)
-set(NCURSES_HASH SHA512=5373f228cba6b7869210384a607a2d7faecfcbfef6dbfcd7c513f4e84fbd8bcad53ac7db2e7e84b95582248c1039dcfc7c4db205a618f7da22a166db482f0105
+set(NCURSES_HASH SHA512=fc5a13409d2a530a1325776dcce3a99127ddc2c03999cfeb0065d0eee2d68456274fb1c7b3cc99c1937bc657d0e7fca97016e147f93c7821b5a4a6837db821e8
     CACHE STRING "ncurses source hash")
 
-set(READLINE_VERSION 8.1 CACHE STRING "readline version")
+set(READLINE_VERSION 8.2 CACHE STRING "readline version")
 set(READLINE_MIRROR ${LOCAL_MIRROR} http://ftpmirror.gnu.org/gnu/readline
     CACHE STRING "readline download mirror(s)")
 set(READLINE_SOURCE readline-${READLINE_VERSION}.tar.gz)
-set(READLINE_HASH SHA512=27790d0461da3093a7fee6e89a51dcab5dc61928ec42e9228ab36493b17220641d5e481ea3d8fee5ee0044c70bf960f55c7d3f1a704cf6b9c42e5c269b797e00
+set(READLINE_HASH SHA512=0a451d459146bfdeecc9cdd94bda6a6416d3e93abd80885a40b334312f16eb890f8618a27ca26868cebbddf1224983e631b1cbc002c1a4d1cd0d65fba9fea49a
     CACHE STRING "readline source hash")
 
 set(SQLITE3_VERSION 3490100 CACHE STRING "sqlite3 version")
@@ -95,17 +95,17 @@ set(ZLIB_SOURCE zlib-${ZLIB_VERSION}.tar.xz)
 set(ZLIB_HASH SHA256=38ef96b8dfe510d42707d9c781877914792541133e1870841463bfa73f883e32
     CACHE STRING "zlib source hash")
 
-set(CURL_VERSION 8.12.1 CACHE STRING "curl version")
+set(CURL_VERSION 8.13.0 CACHE STRING "curl version")
 set(CURL_MIRROR ${LOCAL_MIRROR} https://curl.se/download https://curl.askapache.com
     CACHE STRING "curl mirror(s)")
 set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
-set(CURL_HASH SHA512=88915468fa1bb7256e3dd6c9d058ada6894faa1e3e7800c7d9bfee3e8be4081ae57e7f2bf260c5342b709499fc4302ddc2d7864e25bfa3300fa07f118a3de603
+set(CURL_HASH SHA512=d266e460f162ee455b56726e5b7247b2d1aa5265ae12081513fc0c5c79e785a594097bc71d505dc9bcd2c2f6f1ff6f4bab9dbd9d120bb76d06c5be8521a8ca7d
     CACHE STRING "curl source hash")
 
-set(OPENSSL_VERSION 3.0.16 CACHE STRING "openssl version")
+set(OPENSSL_VERSION 3.5.0 CACHE STRING "openssl version")
 set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION} CACHE STRING "openssl download mirror(s)")
 set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
-set(OPENSSL_HASH SHA256=57e03c50feab5d31b152af2b764f10379aecd8ee92f16c985983ce4a99f7ef86
+set(OPENSSL_HASH SHA256=344d0a79f1a9b08029b0744e2cc401a43f9c90acd1044d09a530b4885a8e9fc0
     CACHE STRING "openssl source hash")
 
 set(LIBICONV_VERSION 1.18 CACHE STRING "libiconv version")

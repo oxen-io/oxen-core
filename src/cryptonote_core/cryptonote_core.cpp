@@ -249,7 +249,9 @@ static const command_line::arg_flag arg_disable_ip_check = {
 void (*long_poll_trigger)(tx_memory_pool& pool) = [](tx_memory_pool&) {
     need_core_init("long_poll_trigger"sv);
 };
-quorumnet_new_proc* quorumnet_new = [](core&) -> void* { need_core_init("quorumnet_new"sv); };
+quorumnet_new_proc* quorumnet_new = [](core&, pulse::pulse) -> void* {
+    need_core_init("quorumnet_new"sv);
+};
 quorumnet_init_proc* quorumnet_init = [](core&, void*) { need_core_init("quorumnet_init"sv); };
 quorumnet_delete_proc* quorumnet_delete = [](void*&) { need_core_init("quorumnet_delete"sv); };
 quorumnet_relay_obligation_votes_proc* quorumnet_relay_obligation_votes =
@@ -1331,7 +1333,8 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
                     return omq_allow(ip, pk, public_ ? AuthLevel::basic : AuthLevel::none);
                 });
 
-        m_quorumnet_state = quorumnet_new(*this);
+        m_pulse = pulse::pulse{*this};
+        m_quorumnet_state = quorumnet_new(*this, m_pulse);
     }
 
     quorumnet_init(*this, m_quorumnet_state);
@@ -1342,11 +1345,8 @@ void core::start_oxenmq() {
 
     if (m_service_node) {
         m_pulse_thread_id = m_omq->add_tagged_thread("pulse");
-        m_omq->add_timer(
-                [this]() { pulse::main(m_quorumnet_state, *this); },
-                std::chrono::milliseconds(500),
-                false,
-                m_pulse_thread_id);
+        m_pulse.init(m_quorumnet_state);
+        m_omq->add_timer(m_pulse, 500ms, false, m_pulse_thread_id);
         m_omq->add_timer([this]() { check_service_node_time(); }, 5s, false);
         m_omq->add_timer([this]() { check_service_node_ip_address(); }, 15min, false);
     }
@@ -2392,17 +2392,22 @@ bool core::relay_service_node_votes() {
 void core::set_service_node_votes_relayed(const std::vector<service_nodes::quorum_vote_t>& votes) {
     m_quorum_cop.set_votes_relayed(votes);
 }
-//-----------------------------------------------------------------------------------------------
+
+// Attempts to build a block_complete_entry containing the block and any referenced transactions in
+// the block.  Transactions are looked up in the mempool.
+//
+// Throws on error (such as failing to parse the block or failing to find a referenced tx).
 block_complete_entry get_block_complete_entry(block& b, tx_memory_pool& pool) {
     block_complete_entry bce = {};
     bce.block = cryptonote::block_to_blob(b);
     for (const auto& tx_hash : b.tx_hashes) {
-        std::string txblob;
-        if (!pool.get_transaction(tx_hash, txblob) || txblob.size() == 0) {
-            oxen::log::error(logcat, "Transaction {} not found in pool", tx_hash);
-            throw oxen::traced<std::runtime_error>("Transaction not found in pool");
+
+        if (std::string txblob; pool.get_transaction(tx_hash, txblob) && !txblob.empty()) {
+            bce.txs.push_back(std::move(txblob));
+            continue;
         }
-        bce.txs.push_back(txblob);
+
+        throw std::runtime_error{"Transaction {} not found in pool"_format(tx_hash)};
     }
     return bce;
 }
@@ -2416,9 +2421,11 @@ bool core::handle_block_found(block& b, block_verification_context& bvc) {
         OXEN_DEFER {
             miner.resume();
         };
+
         try {
             blocks.push_back(get_block_complete_entry(b, mempool));
         } catch (const std::exception& e) {
+            log::error(logcat, "Cannot add block: {}", e.what());
             return false;
         }
         std::vector<block> pblocks;

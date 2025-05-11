@@ -63,6 +63,7 @@ class Blockchain;
 class BlockchainDB;
 class BlockchainSQLite;
 struct checkpoint_t;
+struct wallet_info;
 };  // namespace cryptonote
 
 namespace service_nodes {
@@ -214,10 +215,22 @@ struct pulse_sort_key {
     }
 };
 
+struct eth_stake {
+    crypto::ed25519_public_key sn;
+    eth::address addr;
+    cryptonote::reward_money amount;       // Original stake amount
+    cryptonote::reward_money liquidation;  // Liquidation penalty on `amount` if applicable
+    uint32_t block_height;                 // Block that the exit event was mined in
+    uint32_t tx_index;  // Index of transaction in the block that the exit event was mined in
+    uint32_t contributor_index;  // Index of the contributor in the event the exit stake is for
+};
+
 struct block_add_result {
     // List of payable nodes. Populated when the block height is >= HF19, empty
     // otherwise
     std::vector<crypto::public_key> payable_nodes_hf19_onwards;
+    std::vector<eth_stake> locked_stakes;
+    std::vector<eth_stake> purged_stakes;
 };
 
 struct service_node_info  // registration information
@@ -506,7 +519,7 @@ struct service_node_keys {
     crypto::x25519_secret_key key_x25519;
     crypto::x25519_public_key pub_x25519;
 
-    /// BLS keypair of this service node, used for SENT registrations and interacting with the SENT
+    /// BLS keypair of this service node, used for SESH registrations and interacting with the SESH
     /// staking contract.
     eth::bls_secret_key key_bls;
     eth::bls_public_key pub_bls;
@@ -675,6 +688,13 @@ class service_node_list {
             }
         }
     }
+
+    template <std::invocable<const proof_info&> Func>
+    void for_each_proof(Func f) const {
+        std::lock_guard lock{m_sn_mutex};
+        for (const auto& proof : proofs)
+            f(proof.second);
+    };
 
     /// Loops through all registered service nodes and calls `f` with the pubkey and basic service
     /// node info.  The SN lock is held while iterating, so the "something" should be quick.  If the
@@ -1033,6 +1053,7 @@ class service_node_list {
     using block_height = uint64_t;
 
     struct state_t {
+        uint32_t version;
         crypto::hash block_hash{};
         bool only_loaded_quorums{false};
         service_nodes_infos_t service_nodes_infos;
@@ -1180,23 +1201,30 @@ class service_node_list {
             const service_node_keys* my_keys;
         };
 
+        struct confirm_result {
+            bool success;
+            bool need_swarm_update;
+            std::vector<eth_stake> exit_stakes;
+        };
+
         // Applies a pulse-quorums-confirmed L2 event to the service node list state.  Returns true
         // if processing the event affects swarms, false if it does not.
-        bool process_confirmed_event(
+        confirm_result process_confirmed_event(
                 const eth::event::NewServiceNodeV2& new_sn, const confirm_metadata& confirm);
-        bool process_confirmed_event(
+        confirm_result process_confirmed_event(
                 const eth::event::ServiceNodeExitRequest& rem_req, const confirm_metadata& confirm);
-        bool process_confirmed_event(
+        confirm_result process_confirmed_event(
                 const eth::event::ServiceNodeExit& exit, const confirm_metadata& confirm);
-        bool process_confirmed_event(
+        confirm_result process_confirmed_event(
                 const eth::event::StakingRequirementUpdated& req_change,
                 const confirm_metadata& confirm);
-        bool process_confirmed_event(
+        confirm_result process_confirmed_event(
                 const eth::event::ServiceNodePurge& purge, const confirm_metadata& confirm);
-        bool process_confirmed_event(
+        confirm_result process_confirmed_event(
                 const std::monostate&,  // do-nothing fallback for "not an event" variant
                 const confirm_metadata&) {
-            return false;
+            confirm_result result = {};
+            return result;
         }
 
         // Returns the block leader of the next block: that is, the round 0 pulse quorum leader, and

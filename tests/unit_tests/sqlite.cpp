@@ -56,9 +56,9 @@ TEST(SQLITE, AddSNRewards)
 
   cryptonote::get_account_address_from_str(wallet_address, cryptonote::network_type::FAKECHAIN, "LCFxT37LAogDn1jLQKf4y7aAqfi21DjovX9qyijaLYQSdrxY1U5VGcnMJMjWrD9RhjeK5Lym67wZ73uh9AujXLQ1RKmXEyL");
 
-  t1[wallet_address.address] = cryptonote::reward_money::db_amount(16500000001'789/2);
+  t1[wallet_address.address].amount = cryptonote::reward_money::db_amount(16500000001'789/2);
 
-  EXPECT_NO_THROW(sqliteDB.add_sn_rewards(t1));
+  EXPECT_NO_THROW(sqliteDB.add_sn_rewards(cryptonote::hf::_next, t1, false));
   EXPECT_EQ(sqliteDB.batching_count(), 1);
 
   std::vector<cryptonote::batch_sn_payment> p1;
@@ -105,7 +105,7 @@ TEST(SQLITE, CalculateRewards)
     contributor.amount = reward.to_coin();
 
     sqliteDB.add_rewards(hf_version, reward, single_contributor, rewards);
-    EXPECT_EQ(rewards[first_address.address].to_coin(), reward.to_coin());
+    EXPECT_EQ(rewards[first_address.address].amount.to_coin(), reward.to_coin());
   }
 
   // Check that 3 contributor receives their portion of the block reward
@@ -134,9 +134,9 @@ TEST(SQLITE, CalculateRewards)
   auto& a1 = first_address.address;
   auto& a2 = second_address.address;
   auto& a3 = third_address.address;
-  EXPECT_EQ(rewards[a1].to_coin(), cryptonote::reward_money::coin_amount(66).to_coin());
-  EXPECT_EQ(rewards[a2].to_coin(), cryptonote::reward_money::coin_amount(66).to_coin());
-  EXPECT_EQ(rewards[a3].to_coin(), cryptonote::reward_money::coin_amount(68).to_coin());
+  EXPECT_EQ(rewards[a1].amount.to_coin(), 66);
+  EXPECT_EQ(rewards[a2].amount.to_coin(), 66);
+  EXPECT_EQ(rewards[a3].amount.to_coin(), 68);
 
   // Check that 3 contributors receives their portion of the block reward when the operator takes a 10% fee
   multiple_contributors.portions_for_operator = cryptonote::old::STAKING_PORTIONS/10;
@@ -145,7 +145,7 @@ TEST(SQLITE, CalculateRewards)
   rewards.clear();
   sqliteDB.add_rewards(hf_version, reward, multiple_contributors, rewards);
   // Operator gets 10%, remainder split among operator and contributors:
-  EXPECT_EQ(rewards[a1].to_coin(), cryptonote::reward_money::coin_amount(99 + 297).to_coin()); // fee + share
-  EXPECT_EQ(rewards[a2].to_coin(), cryptonote::reward_money::coin_amount(297).to_coin());
-  EXPECT_EQ(rewards[a3].to_coin(), cryptonote::reward_money::coin_amount(306).to_coin());
+  EXPECT_EQ(rewards[a1].amount.to_coin(), 99 + 297); // fee + share
+  EXPECT_EQ(rewards[a2].amount.to_coin(), 297);
+  EXPECT_EQ(rewards[a3].amount.to_coin(), 306);
 }

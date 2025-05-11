@@ -6129,8 +6129,8 @@ bool simple_wallet::transfer_main(
             return false;
         }
 
-        oxen_construct_tx_params tx_params = tools::wallet2::construct_params(
-                *hf_version, txtype::standard, priority, burn_amount);
+        oxen_construct_tx_params tx_params =
+                m_wallet->construct_params(*hf_version, txtype::standard, priority, burn_amount);
         ptx_vector = m_wallet->create_transactions_2(
                 dsts,
                 cryptonote::TX_OUTPUT_DECOYS,
