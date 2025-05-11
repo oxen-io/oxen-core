@@ -1226,13 +1226,13 @@ void get_blob_hash(const std::string_view blob, crypto::hash& res) {
     cn_fast_hash(blob.data(), blob.size(), res);
 }
 //---------------------------------------------------------------
-std::string print_money(uint64_t amount, size_t decimal_places, bool strip_zeros) {
+std::string print_money(uint64_t amount, strip_zeros strip_z, size_t decimal_point) {
     std::string s = std::to_string(amount);
-    if (s.size() < decimal_places + 1) {
-        s.insert(0, decimal_places + 1 - s.size(), '0');
+    if (s.size() < decimal_point + 1) {
+        s.insert(0, decimal_point + 1 - s.size(), '0');
     }
-    s.insert(s.size() - decimal_places, ".");
-    if (strip_zeros) {
+    s.insert(s.size() - decimal_point, ".");
+    if (strip_z == strip_zeros::yes) {
         while (s.back() == '0')
             s.pop_back();
         if (s.back() == '.')
@@ -1241,10 +1241,11 @@ std::string print_money(uint64_t amount, size_t decimal_places, bool strip_zeros
     return s;
 }
 //---------------------------------------------------------------
-std::string format_money(uint64_t amount, size_t decimal_places, bool strip_zeros) {
-    auto value = print_money(amount, strip_zeros, decimal_places);
-    auto result = "{} {}"_format(value, get_unit());
-    return result;
+std::string format_money(uint64_t amount, strip_zeros strip_z, size_t decimal_point) {
+    auto value = print_money(amount, strip_z, decimal_point);
+    value += ' ';
+    value += get_unit();
+    return value;
 }
 //---------------------------------------------------------------
 std::string print_tx_verification_context(

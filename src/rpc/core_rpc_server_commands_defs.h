@@ -664,8 +664,8 @@ struct GET_BLOCK_HASH : PUBLIC {
 ///
 /// Inputs:
 /// - `fill_pow_hash` -- Tell the daemon if it should fill out pow_hash field.
-/// - `get_tx_hashes` -- If true (default false) then include the hashes of non-coinbase
-///   transactions
+/// - `get_tx_hashes` -- If true (default false) then include some extra info: hashes of
+///   non-coinbase transactions, and pulse quorum block signatures.
 ///
 /// Outputs:
 ///
@@ -724,8 +724,8 @@ struct GET_LAST_BLOCK_HEADER : PUBLIC {
 /// - `hash` -- The block's hash.
 /// - `hashes` -- Request multiple blocks via an array of hashes
 /// - `fill_pow_hash` -- Tell the daemon if it should fill out pow_hash field.
-/// - `get_tx_hashes` -- If true (default false) then include the hashes of non-coinbase
-///   transactions
+/// - `get_tx_hashes` -- If true (default false) then include some extra info: hashes of
+///   non-coinbase transactions, and pulse quorum block signatures.
 ///
 /// Outputs:
 ///
@@ -755,8 +755,8 @@ struct GET_BLOCK_HEADER_BY_HASH : PUBLIC {
 /// - `height` -- A block height to look up; returned in `block_header`
 /// - `heights` -- Block heights to retrieve; returned in `block_headers`
 /// - `fill_pow_hash` -- Tell the daemon if it should fill out pow_hash field.
-/// - `get_tx_hashes` -- If true (default false) then include the hashes of non-coinbase
-///   transactions
+/// - `get_tx_hashes` -- If true (default false) then include some extra info: hashes of
+///   non-coinbase transactions, and pulse quorum block signatures.
 ///
 /// Outputs:
 ///
@@ -809,7 +809,7 @@ struct GET_BLOCK : PUBLIC {
 
     struct request_parameters {
         std::string hash;
-        uint64_t height;
+        std::optional<uint64_t> height;
         bool fill_pow_hash;
     } request;
 };
@@ -1059,11 +1059,14 @@ struct GET_CONNECTIONS : NO_ARGS {
 ///
 /// Inputs:
 ///
-/// - `start_height` -- The starting block's height.
-/// - `end_height` -- The ending block's height.
+/// - `start_height` -- The starting block's height.  If negative then the value means relative to
+///   the current chain height (e.g. "start_height": -10, "end_height": -1 would request the last 10
+///   blocks).
+/// - `end_height` -- The ending block's height (inclusive).  Must be less than start_height + 1000.
+///   Negative values are relative to the current chain height.
 /// - `fill_pow_hash` -- Tell the daemon if it should fill out pow_hash field.
-/// - `get_tx_hashes` -- If true (default false) then include the hashes of non-coinbase
-///   transactions
+/// - `get_tx_hashes` -- If true (default false) then include some extra info: hashes of
+///   non-coinbase transactions, and pulse quorum block signatures.
 ///
 /// Outputs:
 ///
@@ -1082,9 +1085,12 @@ struct GET_BLOCK_HEADERS_RANGE : PUBLIC {
         return NAMES("get_block_headers_range", "getblockheadersrange");
     }
 
+    // Used for this endpoint as well as the by_hash/by_height versions.
+    static constexpr int64_t MAX_COUNT = 1000;
+
     struct request_parameters {
-        uint64_t start_height;
-        uint64_t end_height;
+        int64_t start_height;
+        int64_t end_height;
         bool fill_pow_hash;
         bool get_tx_hashes;
     } request;
@@ -2107,6 +2113,10 @@ struct HF21_DRY_RUN : PUBLIC, NO_ARGS {
     static constexpr auto names() { return NAMES("hf21_dry_run"); }
 };
 
+struct GET_ALL_UPTIME_PROOFS : PUBLIC, NO_ARGS {
+    static constexpr auto names() { return NAMES("get_all_uptime_proofs"); }
+};
+
 /// RPC: service_node/get_service_node_status
 ///
 /// Retrieves information on the current daemon's Service Node state.  The returned information is
@@ -2170,7 +2180,7 @@ struct GET_SERVICE_NODE_STATUS : NO_ARGS {
 ///   communicating service nodes that have been removed from the contract.  Once confirmed, these
 ///   also remove and unlock contributors' stakes.  Each element contains fields:
 ///   - `bls_pubkey` -- BLS pubkey of the node removed from the smart contract
-///   - `returned_amount` -- amount of SENT that is returned to contributors.  For normal unlocks
+///   - `returned_amount` -- amount of SESH that is returned to contributors.  For normal unlocks
 ///     (i.e. nodes that completed an unlock without getting deregistered) this is the full service
 ///     node stake; for deregistrations this will have a small penalty removed (which is incurred by
 ///     the operator in the returned stakes).
@@ -2190,9 +2200,9 @@ struct GET_SERVICE_NODE_STATUS : NO_ARGS {
 ///   the rare event that the staking requirement in the contract is changing; it is rare to see
 ///   this non-empty at all, and rarer still to see multiple events in it.  Each element contains
 ///   fields:
-///   - `new_staking_requirement` -- the new staking requirement, in atomic SENT.
+///   - `new_staking_requirement` -- the new staking requirement, in atomic SESH.
 ///   - `current_staking_requirement` -- the current oxen chain staking requirement (at the time of
-///     the rpc call), in atomic SENT.
+///     the rpc call), in atomic SESH.
 ///   - common fields (see below)
 ///
 /// - SN info fields, included for events including a BLS public key (basically everything except
@@ -2244,16 +2254,37 @@ struct GET_PENDING_EVENTS : PUBLIC {
 /// RPC: blockchain/get_accrued_rewards
 ///
 /// Retrieve the current "balance" of accrued service node rewards for the given addresses.  Before
-/// SENT, the returned balances are accumulated OXEN amounts to go into the next reward payout;
-/// after SENT these are the lifetime earnings of the given address.
+/// SESH, the returned balances are accumulated OXEN amounts to go into the next reward payout;
+/// after SESH these are the lifetime earnings of the given address.
 ///
 /// Inputs:
 ///  - `addresses` -- a set of addresses about which to query.  If omitted/empty then all addresses
 ///    with balances are returned.
 ///
 /// Outputs:
-///  - `balances` -- a dict where keys are the wallet addresses and values are the balance (in
-///    atomic SENT units).
+///  - `balances` -- an array of objects containing the reward metadata for the associated addresses
+///    in the same order as specified in the input `addresses`, irrespective of if the wallet exists
+///    or not. Each object contains the following fields:
+///    - `address` -- the address of the wallet this object is for. This matches 1:1 with the given
+///    requested addresses in input. If no addresses were specified then all addresses are returned
+///    and this field identifies said address it's describing.
+///    - `amount` -- the total amount of claimable tokens for the given address. This includes the
+///    earnt rewards as well as unlocked stakes that are available to be claimed.
+///    - `found` -- flag that indicates if the address has ever participated in the network. When
+///    false, all rewards metadata values will be 0.
+///    - `lifetime_liquidated_stakes` -- the total amount of tokens in the lifetime of the network
+///    that have been liquidated from the stakes for this address.
+///    - `lifetime_locked_stakes` -- the total amount of tokens in the lifetime of the network that
+///    has been staked into nodes for this address.
+///    - `lifetime_rewards` -- the total amount of tokens in the lifetime of the network that has
+///    been earnt from staking into nodes for this address.
+///    - `lifetime_unlocked_stakes` -- the total amount of tokens in the lifetime of the network
+///    that has been unlocked from the nodes this address has staked into.
+///    - `locked_stakes` -- the amount of tokens currently locked into nodes on the network. This is
+///    defined as `lifetime locked - lifetime unlocked`.
+///    - `timelocked_stakes` -- the amount of tokens that have been unstaked from nodes but cannot
+//     be claimed until the time lock on those individual stakes have been unlocked.
+
 struct GET_ACCRUED_REWARDS : PUBLIC {
     static constexpr auto names() { return NAMES("get_accrued_rewards"); }
     struct request_parameters {
@@ -2980,6 +3011,7 @@ using core_rpc_types = tools::type_list<
         GET_SERVICE_KEYS,
         GET_SERVICE_NODES,
         HF21_DRY_RUN,
+        GET_ALL_UPTIME_PROOFS,
         GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES,
         BLS_REWARDS_REQUEST,
         BLS_EXIT_LIQUIDATION_LIST,

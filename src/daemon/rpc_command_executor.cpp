@@ -1996,8 +1996,7 @@ static void append_printable_service_node_list_entry(
         stream << '\n';
     }
 
-    if (detailed_view)  // Print contributors
-    {
+    if (detailed_view) {  // Print contributors
         auto n_contributors = entry["contributors"].size();
         stream << indent2 << "Contributors (" << n_contributors << "):\n";
         for (auto& contributor : entry["contributors"]) {
@@ -2006,9 +2005,9 @@ static void append_printable_service_node_list_entry(
             stream << indent3 << (addr.size() == 40 ? "0x" : "") << addr;
             auto amount = contributor["amount"].get<uint64_t>();
             auto reserved = contributor.value("reserved", amount);
-            stream << " (" << cryptonote::print_money(amount, true);
+            stream << " (" << cryptonote::print_money(amount, cryptonote::strip_zeros::yes);
             if (reserved != amount)
-                stream << " / " << cryptonote::print_money(reserved, true);
+                stream << " / " << cryptonote::print_money(reserved, cryptonote::strip_zeros::yes);
             if (!is_funded || n_contributors > 1) {
                 auto required = entry["staking_requirement"].get<uint64_t>();
                 stream << " = " << std::round(reserved / (double)required * 10000.) / 100. << "%";
@@ -2377,7 +2376,7 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
         return false;
     } else if (hf_version == cryptonote::feature::ETH_TRANSITION) {
         tools::fail_msg_writer(
-                "Error: New SN registrations are disabled during OXEN->SENT transition");
+                "Error: New SN registrations are disabled during OXEN->SESH transition");
         return false;
     } else if (hf_version >= cryptonote::feature::ETH_BLS) {
         tools::fail_msg_writer(

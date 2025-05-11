@@ -40,6 +40,6 @@ constexpr int16_t ERROR_WRONG_PARAM = -1, ERROR_TOO_BIG_HEIGHT = -2,
                   ERROR_CORE_BUSY = -9, ERROR_WRONG_BLOCKBLOB_SIZE = -10,
                   ERROR_UNSUPPORTED_RPC = -11, ERROR_MINING_TO_SUBADDRESS = -12,
                   ERROR_REGTEST_REQUIRED = -13, ERROR_BLS_SIG = -14, ERROR_NO_L2_TRACKER = -15,
-                  ERROR_NOT_A_SERVICE_NODE = -16;
+                  ERROR_NOT_A_SERVICE_NODE = -16, ERROR_ID_NOT_FOUND = -17;
 
 }  // namespace cryptonote::rpc

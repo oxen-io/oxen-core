@@ -8774,7 +8774,7 @@ oxen_construct_tx_params wallet2::construct_params(
 
     if (tx_type == txtype::oxen_name_system) {
         assert(priority != tools::tx_priority_blink);
-        tx_params.burn_fixed = ons::burn_needed(hf_version, type);
+        tx_params.burn_fixed = ons::burn_needed(hf_version, m_nettype, type);
     } else if (priority == tools::tx_priority_blink) {
         tx_params.burn_fixed = oxen::BLINK_BURN_FIXED;
         tx_params.burn_percent = oxen::BLINK_BURN_TX_FEE_PERCENT_V18;
@@ -9265,8 +9265,7 @@ wallet2::stake_result wallet2::create_stake_tx(
             return result;
         }
 
-        oxen_construct_tx_params tx_params =
-                tools::wallet2::construct_params(*hf_version, txtype::stake, priority);
+        oxen_construct_tx_params tx_params = construct_params(*hf_version, txtype::stake, priority);
         auto ptx_vector = create_transactions_2(
                 dsts,
                 cryptonote::TX_OUTPUT_DECOYS,
@@ -9475,8 +9474,7 @@ wallet2::register_service_node_result wallet2::create_register_service_node_tx(
         cryptonote::address_parse_info dest = {};
         dest.address = address;
 
-        oxen_construct_tx_params tx_params =
-                tools::wallet2::construct_params(*hf_version, txtype::stake, priority);
+        oxen_construct_tx_params tx_params = construct_params(*hf_version, txtype::stake, priority);
         auto ptx_vector = create_transactions_2(
                 dsts,
                 cryptonote::TX_OUTPUT_DECOYS,
@@ -9893,7 +9891,7 @@ std::vector<wallet2::pending_tx> wallet2::ons_create_buy_mapping_tx(
     }
 
     oxen_construct_tx_params tx_params =
-            wallet2::construct_params(*hf_version, txtype::oxen_name_system, priority, 0, type);
+            construct_params(*hf_version, txtype::oxen_name_system, priority, 0, type);
     auto result = create_transactions_2(
             {} /*dests*/,
             cryptonote::TX_OUTPUT_DECOYS,
@@ -9960,7 +9958,7 @@ std::vector<wallet2::pending_tx> wallet2::ons_create_renewal_tx(
     }
 
     oxen_construct_tx_params tx_params =
-            wallet2::construct_params(*hf_version, txtype::oxen_name_system, priority, 0, type);
+            construct_params(*hf_version, txtype::oxen_name_system, priority, 0, type);
     auto result = create_transactions_2(
             {} /*dests*/,
             cryptonote::TX_OUTPUT_DECOYS,
@@ -10035,7 +10033,7 @@ std::vector<wallet2::pending_tx> wallet2::ons_create_update_mapping_tx(
             *reason = ERR_MSG_NETWORK_VERSION_QUERY_FAILED;
         return {};
     }
-    oxen_construct_tx_params tx_params = wallet2::construct_params(
+    oxen_construct_tx_params tx_params = construct_params(
             *hf_version,
             txtype::oxen_name_system,
             priority,
@@ -11783,9 +11781,7 @@ void wallet2::light_wallet_get_unspent_outs() {
                 spent = true;
                 break;
             }
-            {
-                log::trace(logcat, "Unspent output found. {}", o.public_key);
-            }
+            log::trace(logcat, "Unspent output found. {}", o.public_key);
         }
 
         // Check if tx already exists in m_transfers.
@@ -13264,8 +13260,7 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
             error::get_hard_fork_version_error,
             "Failed to query current hard fork version");
 
-    oxen_construct_tx_params oxen_tx_params =
-            tools::wallet2::construct_params(*hf_version, tx_type, priority);
+    oxen_construct_tx_params oxen_tx_params = construct_params(*hf_version, tx_type, priority);
     uint64_t burn_fixed = 0, burn_percent = 0;
     // Swap these out because we don't want them present for building intermediate temporary tx
     // calculations (which we don't actually use); we'll set them again at the end before we build
@@ -15214,9 +15209,21 @@ void wallet2::refresh_batching_cache() {
     THROW_WALLET_EXCEPTION_IF(
             status != rpc::STATUS_OK, error::get_accrued_rewards_error, get_rpc_status(status));
 
-    auto records = res["balances"].get<std::unordered_map<std::string, uint64_t>>();
     batching_records_cache.clear();
-    batching_records_cache = std::move(records);
+    for (const auto& it : res["balances"]) {
+        nlohmann::json::const_iterator address = it.find("address");
+        nlohmann::json::const_iterator amount = it.find("amount");
+        if (address == it.end() || amount == it.end()) {
+            assert(address != it.end());
+            assert(amount != it.end());
+        } else {
+            assert(address->is_string());
+            assert(amount->is_number_unsigned());
+            const auto& address_str = address->get_ref<const std::string&>();
+            assert(batching_records_cache.count(address_str) == 0);
+            batching_records_cache[address_str] = amount->get<uint64_t>();
+        }
+    }
 }
 
 uint64_t wallet2::get_batched_amount(std::optional<std::string> address) const {
