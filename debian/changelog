@@ -1,3 +1,78 @@
+oxen (11.3.0-1~ubuntu2410) oracular; urgency=medium
+
+  [ doylet ]
+  * Early continue in unconfirmed TXs loop to allow unindent of code block
+  * Add non-consensus locked stakes field to rewards DB
+  * Grab timelocked SESH stakes from delayed payments
+  * Update docs for get_accrued_rewards
+  * Update get_accrued_rewards to emit wallet_info data
+  * Correctly calculate timelocked stakes and update the RPC docs
+  * Remove unused unlocked stakes
+  * Fix Oxen 10 backwards compat get batched rewards to handle new wallet_info output
+  * Add address to docs for accrued rewards, gate new debug checks behind HF21
+  * Gate lifetime rewards metadata behind HF21
+  * Formatting for adding-rewards-metadata PR
+  * Fix CalculateRewards, to_coin in EXPECT divides by 0, so base amount needs to be in DB units
+  * Rebase onto dev w/ reward money changes
+  * Handle locked stakes and rewards generated on the migration
+  * Make mocknet work w/ rewards metadata changes
+  * Fix decimal_points/strip_zeros parameter swap being misused
+  * Code review: for-each fixes, non-debug checks, structured bindings
+  * Linting pass in mocknet
+
+  [ Jason Rhinelander ]
+  * Separate uptime proof requirements for different networks
+
+  [ Thomas Winget ]
+  * hf21 mainnet transition data (build, no data yet)
+  * add get_all_uptime_proofs RPC method
+  * add uptime proof collection to hf21_info script
+
+  [ doylet ]
+  * increase ONS fees after HF21
+
+  [ Thomas Winget ]
+  * add hf21 transition bls proof of possession check to bls-tool
+  * make hf21 info dump contract seed info to file
+  * hf21_info final mainnet params and small touchup
+
+  [ Jason Rhinelander ]
+  * cmake bls tool option cleanup
+  * add BLS pop verification usage to help message
+  * Add user-defined literals for pubkeys and eth addrs
+  * Reformat transition files
+
+  [ Thomas Winget ]
+  * final hf21 transition data and bls proofs
+
+  [ Jason Rhinelander ]
+  * Disallow stake and unlock txes in HF21+
+  * static dep version updates
+  * bump randomx to fix no-jit compilation
+  * hex formatter: add support for ellipsized values
+  * Pulse refactor with late stage repeatability
+  * Fix span_guts alignment constraint
+  * Fix testnet syncing
+  * Downgrade signal received message
+  * Misc RPC fixes
+  * Allow get_block_headers_range to take negative relative values
+  * RPC: add missing block header fields
+  * add missing signatures to tx_extra parser
+  * Optimize
+  * Fix pulse failure when nodes disagree about state change tx hashes
+
+  [ Thomas Winget ]
+  * disable lokinet reachability as decomm reason
+  * sent->sesh
+
+  [ Jason Rhinelander ]
+  * Fix testnet ONS fee
+  * Fix stagenet syncing
+  * Oxen 11.3.0
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Sun, 11 May 2025 11:28:35 -0300
+
 oxen (11.2.1-2~ubuntu2410) oracular; urgency=medium
 
   * fix x25519 map pruning
