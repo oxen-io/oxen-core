@@ -1621,7 +1621,7 @@ PendingTransaction* WalletImpl::createTransactionMultDest(
 
             if (amount) {
                 oxen_construct_tx_params tx_params =
-                        tools::wallet2::construct_params(*hf_version, txtype::standard, priority);
+                        w->construct_params(*hf_version, txtype::standard, priority);
                 transaction->m_pending_tx = w->create_transactions_2(
                         dsts,
                         cryptonote::TX_OUTPUT_DECOYS,
