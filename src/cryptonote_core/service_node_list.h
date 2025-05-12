@@ -231,6 +231,8 @@ struct block_add_result {
     std::vector<crypto::public_key> payable_nodes_hf19_onwards;
     std::vector<eth_stake> locked_stakes;
     std::vector<eth_stake> purged_stakes;
+    // Vector of confirmed ONS events that occurred in this block
+    std::vector<eth::event::StateChangeVariant> confirmed_ons_events;
 };
 
 struct service_node_info  // registration information
@@ -550,7 +552,7 @@ class service_node_list {
     service_node_list(const service_node_list&) = delete;
     service_node_list& operator=(const service_node_list&) = delete;
 
-    void block_add(
+    block_add_result block_add(
             const cryptonote::block& block,
             const std::vector<cryptonote::transaction>& txs,
             const cryptonote::checkpoint_t* checkpoint,
@@ -1220,6 +1222,16 @@ class service_node_list {
                 const confirm_metadata& confirm);
         confirm_result process_confirmed_event(
                 const eth::event::ServiceNodePurge& purge, const confirm_metadata& confirm);
+        confirm_result process_confirmed_event(
+                const eth::event::NameRegistered& e, const confirm_metadata& confirm);
+        confirm_result process_confirmed_event(
+                const eth::event::NameDeleted& e, const confirm_metadata& confirm);
+        confirm_result process_confirmed_event(
+                const eth::event::NameRenewed& e, const confirm_metadata& confirm);
+        confirm_result process_confirmed_event(
+                const eth::event::NameExpired& e, const confirm_metadata& confirm);
+        confirm_result process_confirmed_event(
+                const eth::event::TextRecordUpdated& e, const confirm_metadata& confirm);
         confirm_result process_confirmed_event(
                 const std::monostate&,  // do-nothing fallback for "not an event" variant
                 const confirm_metadata&) {

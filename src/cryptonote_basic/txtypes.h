@@ -32,12 +32,17 @@ enum class txtype : uint16_t {
     ethereum_staking_requirement_updated,
     ethereum_purge_missing_service_node,
     ethereum_new_service_node_v2,
+    ethereum_sns_name_registered,
+    ethereum_sns_name_deleted,
+    ethereum_sns_name_renewed,
+    ethereum_sns_name_expired,
+    ethereum_sns_text_record_updated,
     _count
 };
 
 inline constexpr bool is_l2_event_tx(txtype type) {
     return type >= txtype::ethereum_service_node_exit_request &&
-           type <= txtype::ethereum_new_service_node_v2;
+           type <= txtype::ethereum_sns_text_record_updated;
 }
 
 inline constexpr std::string_view to_string(txversion v) {
@@ -65,6 +70,11 @@ inline constexpr std::string_view to_string(txtype type) {
             return "ethereum_staking_requirement_updated"sv;
         case txtype::ethereum_purge_missing_service_node:
             return "ethereum_purge_missing_service_node"sv;
+        case txtype::ethereum_sns_name_registered: return "ethereum_sns_name_registered"sv;
+        case txtype::ethereum_sns_name_deleted: return "ethereum_sns_name_deleted"sv;
+        case txtype::ethereum_sns_name_renewed: return "ethereum_sns_name_renewed"sv;
+        case txtype::ethereum_sns_name_expired: return "ethereum_sns_name_expired"sv;
+        case txtype::ethereum_sns_text_record_updated: return "ethereum_sns_text_record_updated"sv;
         case txtype::_count:;
     }
     assert(false);

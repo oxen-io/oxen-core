@@ -160,6 +160,7 @@ struct network_config final {
     const uint32_t ETHEREUM_CHAIN_ID;
     const std::string_view ETHEREUM_REWARDS_CONTRACT;
     const std::string_view ETHEREUM_POOL_CONTRACT;
+    const std::string_view ETHEREUM_SESSION_NAME_SERVICE_CONTRACT;
 
     // How frequently the reward rate gets recomputed for inclusion into Oxen blocks.  An Oxen block
     // that has a l2_height of x must include the reward computed at the highest block height <= x

@@ -2424,6 +2424,52 @@ service_node_list::state_t::confirm_result service_node_list::state_t::process_c
     return result;
 }
 
+service_node_list::state_t::confirm_result service_node_list::state_t::process_confirmed_event(
+        const eth::event::NameRegistered& e, const confirm_metadata& confirm) {
+    // TODO sean: Implement name registration processing
+    ZoneScoped;
+    confirm_result result = {};
+    result.success = true;
+    return result;
+}
+
+service_node_list::state_t::confirm_result service_node_list::state_t::process_confirmed_event(
+        const eth::event::NameDeleted& e, const confirm_metadata& confirm) {
+    // TODO sesan: Implement name deletion processing
+    ZoneScoped;
+    confirm_result result = {};
+    result.success = true;
+    return result;
+}
+
+service_node_list::state_t::confirm_result service_node_list::state_t::process_confirmed_event(
+        const eth::event::NameRenewed& e, const confirm_metadata& confirm) {
+    // TODO sean: Implement name renewal processing
+    ZoneScoped;
+    confirm_result result = {};
+    result.success = true;
+    return result;
+}
+
+service_node_list::state_t::confirm_result service_node_list::state_t::process_confirmed_event(
+        const eth::event::NameExpired& e, const confirm_metadata& confirm) {
+    // TODO sean: Implement name expiration processing
+    ZoneScoped;
+    confirm_result result = {};
+    result.success = true;
+    return result;
+}
+
+service_node_list::state_t::confirm_result service_node_list::state_t::process_confirmed_event(
+        const eth::event::TextRecordUpdated& e, const confirm_metadata& confirm) {
+    // TODO sean: Implement text record update processing
+    ZoneScoped;
+    confirm_result result = {};
+    result.success = true;
+    return result;
+}
+
+
 bool service_node_list::state_t::process_contribution_tx(
         cryptonote::network_type nettype,
         const cryptonote::block& block,
@@ -3099,7 +3145,7 @@ void service_node_list::verify_block(
                         block_type, height)};
 }
 
-void service_node_list::block_add(
+block_add_result service_node_list::block_add(
         const cryptonote::block& block,
         const std::vector<cryptonote::transaction>& txs,
         cryptonote::checkpoint_t const* checkpoint,
@@ -3167,6 +3213,7 @@ void service_node_list::block_add(
                 &m_state,
                 static_cast<uint8_t>(block.major_version));
     }
+    return result;
 }
 
 static std::mt19937_64 quorum_rng(hf hf_version, crypto::hash const& hash, quorum_type type) {
@@ -4053,6 +4100,17 @@ block_add_result service_node_list::state_t::update_from_block(
                             return process_confirmed_event(e, confirm);
                         },
                         event);
+
+                // Add confirmed ONS events to the result
+                if (conf_result.success) {
+                    if (std::holds_alternative<eth::event::NameRegistered>(event) ||
+                        std::holds_alternative<eth::event::NameDeleted>(event) ||
+                        std::holds_alternative<eth::event::NameRenewed>(event) ||
+                        std::holds_alternative<eth::event::NameExpired>(event) ||
+                        std::holds_alternative<eth::event::TextRecordUpdated>(event)) {
+                        result.confirmed_ons_events.push_back(event);
+                    }
+                }
             } else {
                 log::warning(
                         logcat,
@@ -4149,6 +4207,11 @@ block_add_result service_node_list::state_t::update_from_block(
                 process_new_ethereum_tx(block, tx, my_keys);
                 break;
             case txtype::oxen_name_system:
+            case txtype::ethereum_sns_name_registered:
+            case txtype::ethereum_sns_name_deleted:
+            case txtype::ethereum_sns_name_renewed:
+            case txtype::ethereum_sns_name_expired:
+            case txtype::ethereum_sns_text_record_updated:
             case txtype::_count: break;
         }
     }

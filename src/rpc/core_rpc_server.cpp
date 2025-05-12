@@ -774,6 +774,7 @@ namespace {
                 ons_bin["value"] = x.encrypted_value;
             _load_owner(ons, "owner", x.owner);
             _load_owner(ons, "backup_owner", x.backup_owner);
+            set("ons", std::move(ons));
         }
         void operator()(const eth::event::NewServiceNodeV2& x) {
             set("type", "ethereum_new_service_node_v2");
@@ -816,6 +817,40 @@ namespace {
         // Ignore these fields:
         void operator()(const tx_extra_padding&) {}
         void operator()(const tx_extra_mysterious_minergate&) {}
+
+        void operator()(const eth::event::NameRegistered& x) {
+            set("type", "ethereum_sns_name_registered");
+            set("name", x.name);
+            set("owner", "{}"_format(x.owner));
+            set("token_id", x.token_id);
+        }
+
+        void operator()(const eth::event::NameDeleted& x) {
+            set("type", "ethereum_sns_name_deleted");
+            set("name", x.name);
+            set("owner", "{}"_format(x.owner));
+            set("token_id", x.token_id);
+        }
+
+        void operator()(const eth::event::NameRenewed& x) {
+            set("type", "ethereum_sns_name_renewed");
+            set("name", x.name);
+            set("owner", "{}"_format(x.owner));
+        }
+
+        void operator()(const eth::event::NameExpired& x) {
+            set("type", "ethereum_sns_name_expired");
+            set("name", x.name);
+            set("owner", "{}"_format(x.owner));
+            set("token_id", x.token_id);
+        }
+
+        void operator()(const eth::event::TextRecordUpdated& x) {
+            set("type", "ethereum_sns_text_record_updated");
+            set("token_id", x.token_id);
+            set("record_type", x.record_type);
+            set("text", x.text);
+        }
     };
 
     void load_tx_extra_data(
@@ -3429,6 +3464,46 @@ void core_rpc_server::add_event_details(
     pending.response["purges"].push_back(std::move(entry));
 }
 
+void core_rpc_server::add_event_details(
+        GET_PENDING_EVENTS& pending, json&& entry, const eth::event::NameRegistered& name_reg) {
+    entry["name"] = name_reg.name;
+    entry["owner"] = "{}"_format(name_reg.owner);
+    entry["token_id"] = name_reg.token_id;
+    pending.response["name_registrations"].push_back(std::move(entry));
+}
+
+void core_rpc_server::add_event_details(
+        GET_PENDING_EVENTS& pending, json&& entry, const eth::event::NameDeleted& name_del) {
+    entry["name"] = name_del.name;
+    entry["owner"] = "{}"_format(name_del.owner);
+    entry["token_id"] = name_del.token_id;
+    pending.response["name_deletions"].push_back(std::move(entry));
+}
+
+void core_rpc_server::add_event_details(
+        GET_PENDING_EVENTS& pending, json&& entry, const eth::event::NameRenewed& name_renew) {
+    entry["name"] = name_renew.name;
+    entry["owner"] = "{}"_format(name_renew.owner);
+    entry["timestamp"] = name_renew.timestamp;
+    pending.response["name_renewals"].push_back(std::move(entry));
+}
+
+void core_rpc_server::add_event_details(
+        GET_PENDING_EVENTS& pending, json&& entry, const eth::event::NameExpired& name_exp) {
+    entry["name"] = name_exp.name;
+    entry["owner"] = "{}"_format(name_exp.owner);
+    entry["token_id"] = name_exp.token_id;
+    pending.response["name_expirations"].push_back(std::move(entry));
+}
+
+void core_rpc_server::add_event_details(
+        GET_PENDING_EVENTS& pending, json&& entry, const eth::event::TextRecordUpdated& text_upd) {
+    entry["token_id"] = text_upd.token_id;
+    entry["record_type"] = text_upd.record_type;
+    entry["text"] = text_upd.text;
+    pending.response["text_record_updates"].push_back(std::move(entry));
+}
+
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_PENDING_EVENTS& pending, rpc_context) {
     pending.response["status"] = STATUS_OK;
@@ -3439,7 +3514,12 @@ void core_rpc_server::invoke(GET_PENDING_EVENTS& pending, rpc_context) {
           "exits"s,
           "liquidations"s,
           "staking_requirement_updates"s,
-          "purges"s})
+          "purges"s,
+          "name_registrations"s,
+          "name_deletions"s,
+          "name_renewals"s,
+          "name_expirations"s,
+          "text_record_updates"s})
         pending.response[k] = json::array();
 
     using conf_info = service_nodes::service_node_list::unconfirmed_l2_tx;

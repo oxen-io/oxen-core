@@ -32,6 +32,7 @@ struct L2State {
     uint8_t version = MAX_VERSION;
     uint64_t chain_id;
     std::string rewards_contract;
+    std::string session_name_service_contract;
 
     uint64_t latest_height = 0;
     uint64_t synced_height = 0;
@@ -41,6 +42,11 @@ struct L2State {
     RecentEvents<event::ServiceNodeExitRequest> recent_unlocks;
     RecentEvents<event::ServiceNodeExit> recent_exits;
     RecentEvents<event::StakingRequirementUpdated> recent_req_changes;
+    RecentEvents<event::NameRegistered> recent_name_registrations;
+    RecentEvents<event::NameDeleted> recent_name_deletions;
+    RecentEvents<event::NameRenewed> recent_name_renewals;
+    RecentEvents<event::NameExpired> recent_name_expirations;
+    RecentEvents<event::TextRecordUpdated> recent_text_record_updates;
 
     std::map<uint64_t, uint64_t> reward_rate;
 };
@@ -335,6 +341,11 @@ class L2Tracker {
     bool get_vote_for(const event::ServiceNodeExitRequest& unlock) const;
     bool get_vote_for(const event::StakingRequirementUpdated& req_change) const;
     bool get_vote_for(const event::ServiceNodePurge& purge) const;
+    bool get_vote_for(const event::NameRegistered& reg) const;
+    bool get_vote_for(const event::NameDeleted& del) const;
+    bool get_vote_for(const event::NameRenewed& renew) const;
+    bool get_vote_for(const event::NameExpired& expired) const;
+    bool get_vote_for(const event::TextRecordUpdated& update) const;
     bool get_vote_for(const std::monostate&) const { return false; }
 
     // Returns a copy of the current full L2 tracking state (excluding in-contract nodes for

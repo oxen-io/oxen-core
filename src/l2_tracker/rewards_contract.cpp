@@ -22,6 +22,11 @@ enum class EventType {
     ServiceNodeExitRequest,
     ServiceNodeExit,
     StakingRequirementUpdated,
+    NameRegistered,
+    NameDeleted,
+    NameRenewed,
+    NameExpired,
+    TextRecordUpdated,
     Other
 };
 
@@ -31,6 +36,11 @@ static constexpr std::string_view to_string(EventType type) {
         case EventType::ServiceNodeExitRequest: return "ServiceNodeExitRequest";
         case EventType::ServiceNodeExit: return "ServiceNodeExit";
         case EventType::StakingRequirementUpdated: return "StakingRequirementUpdated";
+        case EventType::NameRegistered: return "NameRegistered";
+        case EventType::NameDeleted: return "NameDeleted";
+        case EventType::NameRenewed: return "NameRenewed";
+        case EventType::NameExpired: return "NameExpired";
+        case EventType::TextRecordUpdated: return "TextRecordUpdated";
         case EventType::Other: return "Other";
     }
     return "eth_event_type_ERROR";
@@ -49,6 +59,16 @@ EventType get_log_type(const ethyl::LogEntry& log) {
         return EventType::StakingRequirementUpdated;
     if (event_sig == eth::contract::event::NewServiceNodeV2)
         return EventType::NewServiceNodeV2;
+    if (event_sig == eth::contract::event::NameRegistered)
+        return EventType::NameRegistered;
+    if (event_sig == eth::contract::event::NameDeleted)
+        return EventType::NameDeleted;
+    if (event_sig == eth::contract::event::NameRenewed)
+        return EventType::NameRenewed;
+    if (event_sig == eth::contract::event::NameExpired)
+        return EventType::NameExpired;
+    if (event_sig == eth::contract::event::TextRecordUpdated)
+        return EventType::TextRecordUpdated;
     return EventType::Other;
 }
 
@@ -368,6 +388,62 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             auto& item = result.emplace<event::StakingRequirementUpdated>(chain_id, l2_height);
             auto [amt256] = tools::split_hex_into<u256>(log.data);
             item.staking_requirement = tools::decode_integer_be(amt256);
+            break;
+        }
+        case EventType::NameRegistered: {
+            auto& item = result.emplace<event::NameRegistered>(chain_id, l2_height);
+            if (log.topics.size() < 2) {
+                log::error(logcat, "NameRegistered event missing required topics");
+                return result;
+            }
+            item.owner = tools::make_from_hex_guts<eth::address>(log.topics[1]);
+            //TODO sean how to get the tokenID after this
+            auto [name_len_bytes, name_bytes] = tools::split_hex_into<u256, std::string_view>(log.data);
+            uint64_t name_len = tools::decode_integer_be(name_len_bytes);
+            item.name = std::string(name_bytes.substr(0, name_len));
+            break;
+        }
+        case EventType::NameDeleted: {
+            auto& item = result.emplace<event::NameDeleted>(chain_id, l2_height);
+            if (log.topics.size() < 2) {
+                log::error(logcat, "NameDeleted event missing required topics");
+                return result;
+            }
+            item.owner = tools::make_from_hex_guts<eth::address>(log.topics[1]);
+            auto [token_id] = tools::split_hex_into<crypto::hash>(log.data);
+            item.token_id = token_id;
+            break;
+        }
+        case EventType::NameRenewed: {
+            auto& item = result.emplace<event::NameRenewed>(chain_id, l2_height);
+            if (log.topics.size() < 2) {
+                log::error(logcat, "NameRenewed event missing required topics");
+                return result;
+            }
+            item.owner = tools::make_from_hex_guts<eth::address>(log.topics[1]);
+            auto [timestamp_bytes] = tools::split_hex_into<u256>(log.data);
+            item.timestamp = tools::decode_integer_be(timestamp_bytes);
+            break;
+        }
+        case EventType::NameExpired: {
+            auto& item = result.emplace<event::NameExpired>(chain_id, l2_height);
+            if (log.topics.size() < 2) {
+                log::error(logcat, "NameExpired event missing required topics");
+                return result;
+            }
+            item.owner = tools::make_from_hex_guts<eth::address>(log.topics[1]);
+            auto [token_id] = tools::split_hex_into<crypto::hash>(log.data);
+            item.token_id = token_id;
+            break;
+        }
+        case EventType::TextRecordUpdated: {
+            auto& item = result.emplace<event::TextRecordUpdated>(chain_id, l2_height);
+            auto [token_id, record_type_bytes, text_len_bytes, text_bytes] = 
+                tools::split_hex_into<crypto::hash, u256, u256, std::string_view>(log.data);
+            item.token_id = token_id;
+            item.record_type = static_cast<uint8_t>(tools::decode_integer_be(record_type_bytes));
+            uint64_t text_len = tools::decode_integer_be(text_len_bytes);
+            item.text = std::string(text_bytes.substr(0, text_len));
             break;
         }
         case EventType::Other: break;

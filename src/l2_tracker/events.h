@@ -201,13 +201,133 @@ struct ServiceNodePurge : L2StateChange {
     static constexpr std::string_view description = "purge missing service node"sv;
 };
 
+struct NameRegistered : L2StateChange {
+    std::string name;
+    eth::address owner;
+    crypto::hash token_id = crypto::null<crypto::hash>;
+
+    explicit NameRegistered(uint64_t chain_id = 0, uint64_t l2_height = 0) :
+            L2StateChange{chain_id, l2_height} {}
+
+    std::string to_string() const { return "{} [name={}, owner={}, tokenId={}]"_format(description, name, owner, token_id); }
+    std::strong_ordering operator<=>(const NameRegistered&) const = default;
+
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        serialize_base_fields(ar, nullptr);
+        field(ar, "name", name);
+        field(ar, "owner", owner);
+        field(ar, "token_id", token_id); // TODO: Check how std::string is serialized
+    }
+
+    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_sns_name_registered; // Needs to be added to txtypes.h
+    static constexpr std::string_view description = "SNS name registered"sv;
+};
+
+struct NameDeleted : L2StateChange {
+    std::string name;
+    eth::address owner;
+    crypto::hash token_id = crypto::null<crypto::hash>;
+
+    explicit NameDeleted(uint64_t chain_id = 0, uint64_t l2_height = 0) :
+            L2StateChange{chain_id, l2_height} {}
+
+    std::string to_string() const { return "{} [name={}, owner={}, tokenId={}]"_format(description, name, owner, token_id); }
+    std::strong_ordering operator<=>(const NameDeleted&) const = default;
+
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        serialize_base_fields(ar, nullptr);
+        field(ar, "name", name);
+        field(ar, "owner", owner);
+        field(ar, "token_id", token_id);
+    }
+
+    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_sns_name_deleted; // Needs to be added to txtypes.h
+    static constexpr std::string_view description = "SNS name deleted"sv;
+};
+
+struct NameRenewed : L2StateChange {
+    std::string name;
+    eth::address owner;
+    uint64_t timestamp; // uint256 in contract, but likely block timestamp fits uint64_t
+
+    explicit NameRenewed(uint64_t chain_id = 0, uint64_t l2_height = 0) :
+            L2StateChange{chain_id, l2_height} {}
+
+    std::string to_string() const { return "{} [name={}, owner={}, timestamp={}]"_format(description, name, owner, timestamp); }
+    std::strong_ordering operator<=>(const NameRenewed&) const = default;
+
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        serialize_base_fields(ar, nullptr);
+        field(ar, "name", name);
+        field(ar, "owner", owner);
+        field_varint(ar, "timestamp", timestamp);
+    }
+
+    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_sns_name_renewed; // Needs to be added to txtypes.h
+    static constexpr std::string_view description = "SNS name renewed"sv;
+};
+
+struct NameExpired : L2StateChange {
+    std::string name;
+    eth::address owner;
+    crypto::hash token_id = crypto::null<crypto::hash>;
+
+    explicit NameExpired(uint64_t chain_id = 0, uint64_t l2_height = 0) :
+            L2StateChange{chain_id, l2_height} {}
+
+    std::string to_string() const { return "{} [name={}, owner={}, tokenId={}]"_format(description, name, owner, token_id); }
+    std::strong_ordering operator<=>(const NameExpired&) const = default;
+
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        serialize_base_fields(ar, nullptr);
+        field(ar, "name", name);
+        field(ar, "owner", owner);
+        field(ar, "token_id", token_id);
+    }
+
+    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_sns_name_expired; // Needs to be added to txtypes.h
+    static constexpr std::string_view description = "SNS name expired"sv;
+};
+
+struct TextRecordUpdated : L2StateChange {
+    crypto::hash token_id = crypto::null<crypto::hash>;
+    uint8_t record_type;
+    std::string text;
+
+    explicit TextRecordUpdated(uint64_t chain_id = 0, uint64_t l2_height = 0) :
+            L2StateChange{chain_id, l2_height} {}
+
+    std::string to_string() const { return "{} [tokenId={}, recordType={}, text={}]"_format(description, token_id, record_type, text); }
+    std::strong_ordering operator<=>(const TextRecordUpdated&) const = default;
+
+    template <class Archive>
+    void serialize_object(Archive& ar) {
+        serialize_base_fields(ar, nullptr);
+        field(ar, "token_id", token_id);
+        field_varint(ar, "record_type", record_type); // Assuming uint8_t can be varint
+        field(ar, "text", text);
+    }
+
+    static constexpr cryptonote::txtype txtype = cryptonote::txtype::ethereum_sns_text_record_updated; // Needs to be added to txtypes.h
+    static constexpr std::string_view description = "SNS text record updated"sv;
+};
+
 using StateChangeVariant = std::variant<
         std::monostate,
         NewServiceNodeV2,
         ServiceNodeExitRequest,
         ServiceNodeExit,
         StakingRequirementUpdated,
-        ServiceNodePurge>;
+        ServiceNodePurge,
+        NameRegistered,
+        NameDeleted,
+        NameRenewed,
+        NameExpired,
+        TextRecordUpdated>;
 
 }  // namespace eth::event
 

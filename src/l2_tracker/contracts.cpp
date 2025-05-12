@@ -17,6 +17,17 @@ namespace event {
     const crypto::hash StakingRequirementUpdated =
             crypto::keccak("StakingRequirementUpdated(uint256)"sv);
 
+    const crypto::hash NameRegistered = 
+            crypto::keccak("NameRegistered(string,address,uint256)"sv);
+    const crypto::hash NameDeleted = 
+            crypto::keccak("NameDeleted(string,address,uint256)"sv);
+    const crypto::hash NameRenewed = 
+            crypto::keccak("NameRenewed(string,address,uint256)"sv);
+    const crypto::hash NameExpired = 
+            crypto::keccak("NameExpired(string,address,uint256)"sv);
+    const crypto::hash TextRecordUpdated = 
+            crypto::keccak("TextRecordUpdated(uint256,uint8,string)"sv);
+
 }  // namespace event
 
 namespace call {

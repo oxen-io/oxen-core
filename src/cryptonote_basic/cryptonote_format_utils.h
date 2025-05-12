@@ -202,6 +202,16 @@ bool add_l2_event_to_tx_extra(
         std::vector<uint8_t>& tx_extra, const eth::event::StakingRequirementUpdated& req_change);
 bool add_l2_event_to_tx_extra(
         std::vector<uint8_t>& tx_extra, const eth::event::ServiceNodePurge& purge);
+bool add_l2_event_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::NameRegistered& name_registered);
+bool add_l2_event_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::NameDeleted& name_deleted);
+bool add_l2_event_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::NameRenewed& name_renewed);
+bool add_l2_event_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::NameExpired& name_expired);
+bool add_l2_event_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::TextRecordUpdated& text_record_updated);
 uint64_t get_burned_amount_from_tx_extra(const std::vector<uint8_t>& tx_extra);
 bool is_out_to_acc(
         const account_keys& acc,

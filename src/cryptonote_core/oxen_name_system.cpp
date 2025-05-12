@@ -786,6 +786,13 @@ ons::generic_owner make_ed25519_owner(crypto::ed25519_public_key const& pkey) {
     return result;
 }
 
+generic_owner ons::make_ethereum_owner(crypto::eth::address const& address) {
+    generic_owner result = {};
+    result.type = ons::generic_owner_sig_type::ethereum;
+    result.eth.address = address;
+    return result;
+}
+
 bool parse_owner_to_generic_owner(
         cryptonote::network_type nettype,
         std::string_view owner,
@@ -793,16 +800,25 @@ bool parse_owner_to_generic_owner(
         std::string* reason) {
     cryptonote::address_parse_info parsed_addr;
     crypto::ed25519_public_key ed_owner;
+    uint8_t eth_address_data[20];
+    crypto::eth::address eth_address;
+
     if (cryptonote::get_account_address_from_str(parsed_addr, nettype, owner)) {
         result = ons::make_monero_owner(parsed_addr.address, parsed_addr.is_subaddress);
     } else if (owner.size() == 2 * ed_owner.size() && oxenc::is_hex(owner)) {
         oxenc::from_hex(owner.begin(), owner.end(), ed_owner.data());
         result = ons::make_ed25519_owner(ed_owner);
+    } else if (owner.size() == 42 && owner.substr(0, 2) == "0x" && oxenc::is_hex(owner.substr(2))) {
+        // Handle Ethereum address (0x + 40 hex chars)
+        oxenc::from_hex(owner.begin() + 2, owner.end(), eth_address.data);
+        result = ons::make_ethereum_owner(eth_address);
     } else {
         if (reason) {
             char const* type_heuristic = (owner.size() == sizeof(crypto::ed25519_public_key) * 2)
                                                ? "ED25519 Key"
-                                               : "Wallet address";
+                                               : (owner.size() == 42 && owner.substr(0, 2) == "0x")
+                                                         ? "Ethereum address"
+                                                         : "Wallet address";
             *reason = type_heuristic;
             *reason += " provided could not be parsed owner=";
             *reason += owner;
@@ -2840,6 +2856,32 @@ settings_record name_system_db::get_settings() {
     settings_record result = {};
     result.loaded = sql_run_statement(ons_sql_type::get_setting, get_settings_sql, &result);
     return result;
+}
+
+// === ONS event processing stubs ===
+bool name_system_db::process_name_registration(uint64_t height, const eth::event::NameRegistered& event) {
+    // TODO: implement
+    return true;
+}
+
+bool name_system_db::process_name_deletion(uint64_t height, const eth::event::NameDeleted& event) {
+    // TODO: implement
+    return true;
+}
+
+bool name_system_db::process_name_renewal(uint64_t height, const eth::event::NameRenewed& event) {
+    // TODO: implement
+    return true;
+}
+
+bool name_system_db::process_name_expiration(uint64_t height, const eth::event::NameExpired& event) {
+    // TODO: implement
+    return true;
+}
+
+bool name_system_db::process_text_record_update(uint64_t height, const eth::event::TextRecordUpdated& event) {
+    // TODO: implement
+    return true;
 }
 
 }  // namespace ons

@@ -61,6 +61,11 @@ constexpr uint8_t TX_EXTRA_TAG_PADDING = 0x00, TX_EXTRA_TAG_PUBKEY = 0x01, TX_EX
                   TX_EXTRA_TAG_ETHEREUM_NEW_SERVICE_NODE_V2 = 0x7E,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_EXIT = 0x7F,
                   TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_PURGE = 0x80,
+                  TX_EXTRA_TAG_ETHEREUM_SNS_NAME_REGISTERED = 0x81,
+                  TX_EXTRA_TAG_ETHEREUM_SNS_NAME_DELETED = 0x82,
+                  TX_EXTRA_TAG_ETHEREUM_SNS_NAME_RENEWED = 0x83,
+                  TX_EXTRA_TAG_ETHEREUM_SNS_NAME_EXPIRED = 0x84,
+                  TX_EXTRA_TAG_ETHEREUM_SNS_TEXT_RECORD_UPDATED = 0x85,
 
                   TX_EXTRA_MYSTERIOUS_MINERGATE_TAG = 0xDE;
 
@@ -97,7 +102,7 @@ constexpr inline extra_field& operator&=(extra_field& a, extra_field b) {
     return a = a & b;
 }
 
-enum struct generic_owner_sig_type : uint8_t { monero, ed25519, _count };
+enum struct generic_owner_sig_type : uint8_t { monero, ed25519, ethereum, _count };
 struct alignas(size_t) generic_owner {
     union {
         crypto::ed25519_public_key ed25519;
@@ -106,6 +111,10 @@ struct alignas(size_t) generic_owner {
             bool is_subaddress;
             char padding01_[7];
         } wallet;
+        struct {
+            eth::address address;
+            char padding01_[12];
+        } eth;
     };
 
     generic_owner_sig_type type;
@@ -113,8 +122,16 @@ struct alignas(size_t) generic_owner {
 
     std::string to_string(cryptonote::network_type nettype) const;
     explicit operator bool() const {
-        return (type == generic_owner_sig_type::monero) ? wallet.address != cryptonote::null_address
-                                                        : (bool)ed25519;
+        switch (type) {
+            case generic_owner_sig_type::monero:
+                return wallet.address != cryptonote::null_address;
+            case generic_owner_sig_type::ed25519:
+                return (bool)ed25519;
+            case generic_owner_sig_type::ethereum:
+                return (bool)eth.address;
+            default:
+                return false;
+        }
     }
     bool operator==(generic_owner const& other) const;
     bool operator!=(generic_owner const& other) const { return !(*this == other); }
@@ -123,11 +140,19 @@ struct alignas(size_t) generic_owner {
     void serialize_object(Archive& ar) {
         field_varint(
                 ar, "type", type, [](auto& type) { return type < generic_owner_sig_type::_count; });
-        if (type == generic_owner_sig_type::monero) {
-            field(ar, "wallet.address", wallet.address);
-            field(ar, "wallet.is_subaddress", wallet.is_subaddress);
-        } else {
-            field(ar, "ed25519", ed25519);
+        switch (type) {
+            case generic_owner_sig_type::monero:
+                field(ar, "wallet.address", wallet.address);
+                field(ar, "wallet.is_subaddress", wallet.is_subaddress);
+                break;
+            case generic_owner_sig_type::ed25519:
+                field(ar, "ed25519", ed25519);
+                break;
+            case generic_owner_sig_type::ethereum:
+                field(ar, "eth.address", eth.address);
+                break;
+            default:
+                break;
         }
     }
 };
@@ -679,10 +704,25 @@ using tx_extra_field = std::variant<
         eth::event::ServiceNodeExit,
         eth::event::StakingRequirementUpdated,
         eth::event::ServiceNodePurge,
+        eth::event::NameRegistered,
+        eth::event::NameDeleted,
+        eth::event::NameRenewed,
+        eth::event::NameExpired,
+        eth::event::TextRecordUpdated,
         tx_extra_burn,
         tx_extra_merge_mining_tag,
         tx_extra_mysterious_minergate,
         tx_extra_padding>;
+
+generic_owner make_monero_owner(
+        cryptonote::account_public_address const& owner, bool is_subaddress);
+generic_owner make_ed25519_owner(crypto::ed25519_public_key const& pkey);
+generic_owner make_ethereum_owner(eth::address const& address);
+bool parse_owner_to_generic_owner(
+        cryptonote::network_type nettype,
+        std::string_view owner,
+        generic_owner& result,
+        std::string* reason);
 }  // namespace cryptonote
 
 BLOB_SERIALIZER(cryptonote::tx_extra_service_node_deregister_old::vote);
@@ -731,3 +771,13 @@ BINARY_VARIANT_TAG(
         cryptonote::TX_EXTRA_TAG_ETHEREUM_STAKING_REQUIREMENT_UPDATED);
 BINARY_VARIANT_TAG(
         eth::event::ServiceNodePurge, cryptonote::TX_EXTRA_TAG_ETHEREUM_SERVICE_NODE_PURGE);
+BINARY_VARIANT_TAG(
+        eth::event::NameRegistered, cryptonote::TX_EXTRA_TAG_ETHEREUM_SNS_NAME_REGISTERED);
+BINARY_VARIANT_TAG(
+        eth::event::NameDeleted, cryptonote::TX_EXTRA_TAG_ETHEREUM_SNS_NAME_DELETED);
+BINARY_VARIANT_TAG(
+        eth::event::NameRenewed, cryptonote::TX_EXTRA_TAG_ETHEREUM_SNS_NAME_RENEWED);
+BINARY_VARIANT_TAG(
+        eth::event::NameExpired, cryptonote::TX_EXTRA_TAG_ETHEREUM_SNS_NAME_EXPIRED);
+BINARY_VARIANT_TAG(
+        eth::event::TextRecordUpdated, cryptonote::TX_EXTRA_TAG_ETHEREUM_SNS_TEXT_RECORD_UPDATED);

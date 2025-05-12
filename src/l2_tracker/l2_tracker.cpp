@@ -568,6 +568,85 @@ void L2Tracker::update_logs() {
                     // before we consider purging.
                     update_purge_list();
             });
+    provider->getLogsAsync(
+            from,
+            to,
+            state.session_name_service_contract,
+            [this, to, from, started = std::chrono::steady_clock::now()](
+                    std::optional<std::vector<ethyl::LogEntry>> logs) {
+                if (!logs) {
+                    log::warning(
+                            logcat,
+                            "Failed to retrieve L2 session name service logs for {}-{}",
+                            from,
+                            to);
+                    // Do not alter main control flow (update_done, etc.) here,
+                    // as it's handled by the primary (rewards contract) log processing.
+                    return;
+                }
+                log::debug(
+                        logcat,
+                        "Retrieved {} L2 session name service logs for heights {}-{} in {:.3f}s",
+                        logs->size(),
+                        from,
+                        to,
+                        std::chrono::duration<double>{
+                                std::chrono::steady_clock::now() - started}
+                                .count());
+
+                auto locks = tools::unique_locks(mutex, core.mempool);
+
+                for (const auto& log : *logs) {
+                    if (!log.blockNumber) {
+                        log::error(
+                                logcat,
+                                "Session name service log item from L2 provider without a "
+                                "blockNumber!");
+                        continue;
+                    }
+                    try {
+                        auto tx = get_log_event(state.chain_id, log);
+                        add_to_mempool(tx);
+
+                        if (auto* nr = std::get_if<event::NameRegistered>(&tx))
+                            state.recent_name_registrations.add(std::move(*nr), *log.blockNumber);
+                        else if (auto* nd = std::get_if<event::NameDeleted>(&tx))
+                            state.recent_name_deletions.add(std::move(*nd), *log.blockNumber);
+                        else if (auto* nren = std::get_if<event::NameRenewed>(&tx))
+                            state.recent_name_renewals.add(std::move(*nren), *log.blockNumber);
+                        else if (auto* nexp = std::get_if<event::NameExpired>(&tx))
+                            state.recent_name_expirations.add(std::move(*nexp), *log.blockNumber);
+                        else if (auto* tru = std::get_if<event::TextRecordUpdated>(&tx))
+                            state.recent_text_record_updates.add(std::move(*tru), *log.blockNumber);
+                        else if (tx.index() != 0) {  // Not monostate and not a known event
+                            log::warning(
+                                    logcat,
+                                    "Unhandled L2 session name service event type for log at block "
+                                    "{}",
+                                    *log.blockNumber);
+                        }
+                    } catch (const std::exception& e) {
+                        fmt::memory_buffer buffer{};
+                        fmt::format_to(
+                                std::back_inserter(buffer),
+                                "The raw blob was (32 byte chunks/line):\n\n");
+                        std::string_view hex_data = log.data;
+                        while (hex_data.size()) {
+                            std::string_view chunk =
+                                    tools::string_safe_substr(hex_data, 0, 64);
+                            fmt::format_to(std::back_inserter(buffer), "  {}\n", chunk);
+                            hex_data = tools::string_safe_substr(hex_data, 64, hex_data.size());
+                        }
+                        log::error(
+                                logcat,
+                                "Failed to convert L2 session name service state change to Oxen "
+                                "transaction: {}\n\n{}",
+                                e.what(),
+                                fmt::to_string(buffer));
+                        continue;
+                    }
+                }
+            });
 }
 
 // Generates purge transactions for the mempool, called just after updating the purge list for both
@@ -952,6 +1031,26 @@ bool L2Tracker::get_vote_for(const event::ServiceNodePurge& purge) const {
     // event that we either agree or disagree with.
     auto locks = tools::shared_locks(mutex, core.blockchain);
     return is_node_purgeable(purge.bls_pubkey);
+}
+bool L2Tracker::get_vote_for(const event::NameRegistered& reg) const {
+    std::shared_lock lock{mutex};
+    return state.recent_name_registrations.contains(reg);
+}
+bool L2Tracker::get_vote_for(const event::NameDeleted& del) const {
+    std::shared_lock lock{mutex};
+    return state.recent_name_deletions.contains(del);
+}
+bool L2Tracker::get_vote_for(const event::NameRenewed& renewal) const {
+    std::shared_lock lock{mutex};
+    return state.recent_name_renewals.contains(renewal);
+}
+bool L2Tracker::get_vote_for(const event::NameExpired& expiry) const {
+    std::shared_lock lock{mutex};
+    return state.recent_name_expirations.contains(expiry);
+}
+bool L2Tracker::get_vote_for(const event::TextRecordUpdated& update) const {
+    std::shared_lock lock{mutex};
+    return state.recent_text_record_updates.contains(update);
 }
 bool L2Tracker::is_node_purgeable(const bls_public_key& bls_pubkey) const {
     if (purge_state.in_contract.empty())

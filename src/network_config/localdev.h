@@ -71,6 +71,7 @@ inline constexpr network_config config{
         .ETHEREUM_CHAIN_ID = 31337,
         .ETHEREUM_REWARDS_CONTRACT = "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"sv,
         .ETHEREUM_POOL_CONTRACT = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"sv,
+        .ETHEREUM_SESSION_NAME_SERVICE_CONTRACT = "",
         // Set the reward rate, polled from the smart contract to be sampled
         // very frequently because everything is running locally.
         // This is needed for tests because we are running Pulse nodes

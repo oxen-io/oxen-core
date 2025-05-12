@@ -124,22 +124,35 @@ std::vector<std::string> coded_reasons(uint16_t decomm_reason) {
 namespace ons {
 
 std::string generic_owner::to_string(cryptonote::network_type nettype) const {
-    if (type == generic_owner_sig_type::monero)
-        return cryptonote::get_account_address_as_str(
-                nettype, wallet.is_subaddress, wallet.address);
-    else
-        return tools::hex_guts(ed25519);
+    switch (type) {
+        case generic_owner_sig_type::monero:
+            return cryptonote::get_account_address_as_str(
+                    nettype, wallet.is_subaddress, wallet.address);
+        case generic_owner_sig_type::ed25519:
+            return tools::hex_guts(ed25519);
+        case generic_owner_sig_type::ethereum:
+            return eth.address.to_string();
+        default:
+            return "";
+    }
 }
 
 bool generic_owner::operator==(const generic_owner& other) const {
     if (type != other.type)
         return false;
 
-    if (type == generic_owner_sig_type::monero)
-        return wallet.is_subaddress == other.wallet.is_subaddress &&
-               wallet.address == other.wallet.address;
-    else
-        return ed25519 == other.ed25519;
+    switch (type) {
+        case generic_owner_sig_type::monero:
+            return wallet.is_subaddress == other.wallet.is_subaddress &&
+                   wallet.address == other.wallet.address;
+        case generic_owner_sig_type::ed25519:
+            return ed25519 == other.ed25519;
+        case generic_owner_sig_type::ethereum:
+            return eth.address == other.eth.address;
+        default:
+            return false;
+    }
 }
+
 
 }  // namespace ons

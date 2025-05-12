@@ -11,9 +11,11 @@
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_config.h"
 #include "epee/span.h"
+#include "l2_tracker/events.h"
 
 struct sqlite3;
 struct sqlite3_stmt;
+
 namespace cryptonote {
 struct checkpoint_t;
 struct block;
@@ -402,6 +404,13 @@ struct name_system_db {
             cryptonote::transaction const& tx,
             cryptonote::tx_extra_oxen_name_system& entry,
             std::string* reason);
+
+    // === ONS event processing ===
+    bool process_name_registration(uint64_t height, const eth::event::NameRegistered& event);
+    bool process_name_deletion(uint64_t height, const eth::event::NameDeleted& event);
+    bool process_name_renewal(uint64_t height, const eth::event::NameRenewed& event);
+    bool process_name_expiration(uint64_t height, const eth::event::NameExpired& event);
+    bool process_text_record_update(uint64_t height, const eth::event::TextRecordUpdated& event);
 
     // Destructor; closes the sqlite3 database if one is open
     ~name_system_db();

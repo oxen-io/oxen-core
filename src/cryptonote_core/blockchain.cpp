@@ -3675,7 +3675,12 @@ bool Blockchain::is_node_removable(const eth::bls_public_key& bls_pubkey, bool l
                             std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
                             std::is_same_v<Event, eth::event::ServiceNodeExit> ||
                             std::is_same_v<Event, eth::event::StakingRequirementUpdated> ||
-                            std::is_same_v<Event, eth::event::ServiceNodePurge>);
+                            std::is_same_v<Event, eth::event::ServiceNodePurge> ||
+                            std::is_same_v<Event, eth::event::NameRegistered> ||
+                            std::is_same_v<Event, eth::event::NameDeleted> ||
+                            std::is_same_v<Event, eth::event::NameRenewed> ||
+                            std::is_same_v<Event, eth::event::NameExpired> ||
+                            std::is_same_v<Event, eth::event::TextRecordUpdated>);
                 }
             });
 
@@ -3788,7 +3793,12 @@ std::unordered_map<eth::bls_public_key, bool> Blockchain::get_removable_nodes() 
                             std::is_same_v<Event, eth::event::ServiceNodeExitRequest> ||
                             std::is_same_v<Event, eth::event::ServiceNodeExit> ||
                             std::is_same_v<Event, eth::event::StakingRequirementUpdated> ||
-                            std::is_same_v<Event, eth::event::ServiceNodePurge>);
+                            std::is_same_v<Event, eth::event::ServiceNodePurge> ||
+                            std::is_same_v<Event, eth::event::NameRegistered> ||
+                            std::is_same_v<Event, eth::event::NameDeleted> ||
+                            std::is_same_v<Event, eth::event::NameRenewed> ||
+                            std::is_same_v<Event, eth::event::NameExpired> ||
+                            std::is_same_v<Event, eth::event::TextRecordUpdated>);
                 }
             });
 
@@ -5704,8 +5714,9 @@ bool Blockchain::handle_block_to_main_chain(
     for (std::pair<transaction, std::string> const& tx_pair : txs)
         only_txs.push_back(tx_pair.first);
 
+    service_nodes::block_add_result snl_result;
     try {
-        service_node_list.block_add(bl, only_txs, checkpoint);
+        snl_result = service_node_list.block_add(bl, only_txs, checkpoint);
     } catch (const std::exception& e) {
         log::info(logcat, fg(fmt::terminal_color::red), "Failed to add block to SNL: {}", e.what());
         bvc.m_verifivation_failed = true;
@@ -5716,6 +5727,27 @@ bool Blockchain::handle_block_to_main_chain(
         log::info(logcat, fg(fmt::terminal_color::red), "Failed to add block to ONS DB.");
         bvc.m_verifivation_failed = true;
         return false;
+    }
+
+    // Process confirmed ONS events from service node list
+    for (const auto& event : snl_result.confirmed_ons_events) {
+        try {
+            std::visit([this, height=new_height](const auto& e) {
+                using T = std::decay_t<decltype(e)>;
+                if constexpr (std::is_same_v<T, eth::event::NameRegistered>)
+                    m_ons_db.process_name_registration(height, e);
+                else if constexpr (std::is_same_v<T, eth::event::NameDeleted>)
+                    m_ons_db.process_name_deletion(height, e);
+                else if constexpr (std::is_same_v<T, eth::event::NameRenewed>)
+                    m_ons_db.process_name_renewal(height, e);
+                else if constexpr (std::is_same_v<T, eth::event::NameExpired>)
+                    m_ons_db.process_name_expiration(height, e);
+                else if constexpr (std::is_same_v<T, eth::event::TextRecordUpdated>)
+                    m_ons_db.process_text_record_update(height, e);
+            }, event);
+        } catch (const std::exception& e) {
+            log::warning(logcat, "Failed to process ONS event at height {}: {}", new_height, e.what());
+        }
     }
 
     assert(service_node_list.height() == m_ons_db.height());

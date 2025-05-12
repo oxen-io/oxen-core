@@ -85,6 +85,7 @@ inline constexpr network_config config{
         // TODO: To be set closer to mainnet TGE
         .ETHEREUM_REWARDS_CONTRACT = "",
         .ETHEREUM_POOL_CONTRACT = "",
+        .ETHEREUM_SESSION_NAME_SERVICE_CONTRACT = "",
         // Update every ~10 minutes with an Arbitrum ~250ms block time:
         .L2_REWARD_POOL_UPDATE_BLOCKS = 10min / L2_BLOCK_TIME,
         // The default is 70s behind with an Arbitrum ~250ms block time, so that pulse nodes using

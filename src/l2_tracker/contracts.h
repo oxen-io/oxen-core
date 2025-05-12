@@ -15,6 +15,12 @@ namespace event {
     extern const crypto::hash ServiceNodeExit;
     extern const crypto::hash StakingRequirementUpdated;
 
+    extern const crypto::hash NameRegistered;
+    extern const crypto::hash NameDeleted;
+    extern const crypto::hash NameRenewed;
+    extern const crypto::hash NameExpired;
+    extern const crypto::hash TextRecordUpdated;
+
 }  // namespace event
 
 namespace call {

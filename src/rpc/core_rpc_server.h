@@ -269,6 +269,16 @@ class core_rpc_server {
             const eth::event::StakingRequirementUpdated& stake_upd);
     void add_event_details(
             GET_PENDING_EVENTS& pending, json&& entry, const eth::event::ServiceNodePurge& purge);
+    void add_event_details(
+            GET_PENDING_EVENTS& pending, json&& entry, const eth::event::NameRegistered& name_reg);
+    void add_event_details(
+            GET_PENDING_EVENTS& pending, json&& entry, const eth::event::NameDeleted& name_del);
+    void add_event_details(
+            GET_PENDING_EVENTS& pending, json&& entry, const eth::event::NameRenewed& name_renew);
+    void add_event_details(
+            GET_PENDING_EVENTS& pending, json&& entry, const eth::event::NameExpired& name_exp);
+    void add_event_details(
+            GET_PENDING_EVENTS& pending, json&& entry, const eth::event::TextRecordUpdated& text_upd);
 
     core& m_core;
     nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core>>& m_p2p;

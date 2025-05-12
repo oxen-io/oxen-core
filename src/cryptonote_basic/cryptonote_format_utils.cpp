@@ -1013,6 +1013,56 @@ bool add_l2_event_to_tx_extra(
     }
     return true;
 }
+
+bool add_l2_event_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::NameRegistered& name_registered) {
+    tx_extra_field field = name_registered;
+    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
+        log::info(logcat, "failed to serialize tx extra for name registration transaction");
+        return false;
+    }
+    return true;
+}
+
+bool add_l2_event_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::NameDeleted& name_deleted) {
+    tx_extra_field field = name_deleted;
+    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
+        log::info(logcat, "failed to serialize tx extra for name deletion transaction");
+        return false;
+    }
+    return true;
+}
+
+bool add_l2_event_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::NameRenewed& name_renewed) {
+    tx_extra_field field = name_renewed;
+    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
+        log::info(logcat, "failed to serialize tx extra for name renewal transaction");
+        return false;
+    }
+    return true;
+}
+
+bool add_l2_event_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::NameExpired& name_expired) {
+    tx_extra_field field = name_expired;
+    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
+        log::info(logcat, "failed to serialize tx extra for name expiration transaction");
+        return false;
+    }
+    return true;
+}
+
+bool add_l2_event_to_tx_extra(
+        std::vector<uint8_t>& tx_extra, const eth::event::TextRecordUpdated& text_record_updated) {
+    tx_extra_field field = text_record_updated;
+    if (!add_tx_extra_field_to_tx_extra(tx_extra, field)) {
+        log::info(logcat, "failed to serialize tx extra for text record update transaction");
+        return false;
+    }
+    return true;
+}
 //---------------------------------------------------------------
 bool get_inputs_money_amount(const transaction& tx, uint64_t& money) {
     money = 0;
