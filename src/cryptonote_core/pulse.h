@@ -24,7 +24,7 @@ enum struct message_type : uint8_t {
     block_template,
     random_value_hash,
     random_value,
-    signed_block,
+    block_signature,
 };
 
 constexpr std::string_view to_string(message_type type) {
@@ -36,7 +36,7 @@ constexpr std::string_view to_string(message_type type) {
         case message_type::block_template: return "Block Template"sv;
         case message_type::random_value_hash: return "Random Value Hash"sv;
         case message_type::random_value: return "Random Value"sv;
-        case message_type::signed_block: return "Signed Block"sv;
+        case message_type::block_signature: return "Block Signature"sv;
     }
     return "Invalid2"sv;
 }
@@ -48,25 +48,36 @@ struct message {
     crypto::signature signature;  // Signs the contents of the message, proving it came from the
                                   // node at quorum_position
 
-    struct {
-        uint16_t validator_bitset;  // Set if type is handshake_bitset, otherwise 0.
-    } handshakes;
+    using block_and_txes = std::pair<std::string, std::vector<std::string>>;
+    std::variant<
+            std::monostate,
+            uint16_t,
+            block_and_txes,
+            crypto::hash,
+            cryptonote::pulse_random_value,
+            crypto::signature>
+            payload;  // Contained type dependent on `type`
 
-    struct {
-        std::string blob;
-    } block_template;
+    // clang-format off
+    template <message_type Type>
+    using payload_t =
+        std::conditional_t<Type == message_type::handshake_bitset, uint16_t,
+        std::conditional_t<Type == message_type::block_template, block_and_txes,
+        std::conditional_t<Type == message_type::random_value_hash, crypto::hash,
+        std::conditional_t<Type == message_type::random_value, cryptonote::pulse_random_value,
+        std::conditional_t<Type == message_type::block_signature, crypto::signature, void>>>>>;
+    // clang-format on
 
-    struct {
-        crypto::hash hash;
-    } random_value_hash;
-
-    struct {
-        cryptonote::pulse_random_value value;
-    } random_value;
-
-    struct {
-        crypto::signature signature_of_final_block_hash;
-    } signed_block;
+    template <message_type Type>
+        requires(!std::is_void_v<payload_t<Type>>)
+    auto& get() const {
+        return std::get<payload_t<Type>>(payload);
+    }
+    template <message_type Type>
+        requires(!std::is_void_v<payload_t<Type>>)
+    auto& get() {
+        return std::get<payload_t<Type>>(payload);
+    }
 };
 
 struct timings {
@@ -78,8 +89,28 @@ struct timings {
     time_point miner_fallback_timestamp;
 };
 
-void main(void* quorumnet_state, cryptonote::core& core);
-void handle_message(void* quorumnet_state, message const& msg);
+// Opaque holder class for the private internal implementation; an external pulse caller constructs
+// this, then calls it like a function (i.e. `operator()`) to deliver new messages, and periodically
+// to trigger stage/round advancement.  The holder is essentially a shared_ptr and so can be copied
+// without duplicating the underlying pulse state.
+class pulse {
+  private:
+    std::shared_ptr<void> impl;
+
+  public:
+    pulse() = default;
+    explicit pulse(cryptonote::core& core);
+
+    // Finishes initialization, taking the quorumnet_state pointer (because quorumnet itself depends
+    // on a pulse object).
+    void init(void* quorumnet_state);
+
+    // The pulse object should be called periodically to check for pulse state advancement (i.e.
+    // from timeouts, next rounds etc.).  It can also be invoked to deliver a message when incoming,
+    // external messages arrive: if `msg` is not nullptr, then the message will be processed before
+    // the state is rechecked (so that incoming messages can immediately trigger state changes).
+    void operator()(const message* msg = nullptr) const;
+};
 
 // Calculate the current Pulse round active depending on the 'time' elapsed since round 0 started
 // for a block. r0_timestamp: The timestamp that round 0 starts at for the desired block (this
@@ -92,11 +123,8 @@ bool convert_time_to_round(
         const time_point& time,
         const time_point& r0_timestamp,
         uint8_t* round);
-bool get_round_timings(
-        const cryptonote::Blockchain& blockchain,
-        uint64_t height,
-        uint64_t prev_timestamp,
-        timings& times);
+std::optional<timings> get_round_timings(
+        const cryptonote::Blockchain& blockchain, uint64_t height, uint64_t prev_timestamp);
 
 }  // namespace pulse
 

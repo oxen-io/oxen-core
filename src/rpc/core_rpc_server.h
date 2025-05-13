@@ -157,6 +157,7 @@ class core_rpc_server {
     void invoke(GET_SERVICE_NODE_STATUS& sns, rpc_context context);
     void invoke(GET_SERVICE_NODES& sns, rpc_context context);
     void invoke(HF21_DRY_RUN& req, rpc_context context);
+    void invoke(GET_ALL_UPTIME_PROOFS& req, rpc_context context);
     void invoke(GET_PENDING_EVENTS& sns, rpc_context context);
     void invoke(GET_LIMIT& limit, rpc_context context);
     void invoke(SET_LIMIT& limit, rpc_context context);

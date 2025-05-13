@@ -449,7 +449,12 @@ class Blockchain {
      * @param round the current pulse round the block is being generated for
      * @param validator_bitset the bitset indicating which validators in the quorum are
      * participating in constructing the block.
-     * @param ex_nonce extra data to be added to the miner transaction's extra
+     * @param height will be set to the block's height
+     * @param state_change_txes (if provided) will be filled with any state change txes that should
+     * be sent along to the pulse quorum to avoid failures where validators have equivalent but
+     * different versions (i.e. with different signature subsets) of the state change.  Without it
+     * being sent along, any validator with such a different version would be unable to add it to
+     * the chain or broadcast it.
      *
      * @return true if block template filled in successfully, else false
      */
@@ -458,7 +463,8 @@ class Blockchain {
             const service_nodes::payout& block_producer,
             uint8_t round,
             uint16_t validator_bitset,
-            uint64_t& height);
+            uint64_t& height,
+            std::vector<std::string>* state_change_txes = nullptr);
 
     /**
      * @brief checks if a block is known about with a given hash
@@ -1295,7 +1301,8 @@ class Blockchain {
             difficulty_type& di,
             uint64_t& height,
             uint64_t& expected_reward,
-            const std::string& ex_nonce);
+            const std::string& ex_nonce,
+            std::vector<std::string>* state_change_txes = nullptr);
 
     // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
     typedef std::unordered_set<crypto::key_image> key_images_container;
