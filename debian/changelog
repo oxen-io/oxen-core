@@ -1,5 +1,11 @@
 oxen (11.3.0-1~deb13) trixie; urgency=medium
 
+  * Oxen 11.3.0
+
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 13 May 2025 01:36:53 -0300
+
+oxen (11.3.0-1~deb13) trixie; urgency=medium
+
   [ doylet ]
   * Early continue in unconfirmed TXs loop to allow unindent of code block
   * Add non-consensus locked stakes field to rewards DB
