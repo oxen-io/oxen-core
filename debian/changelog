@@ -1,5 +1,11 @@
 oxen (11.3.0-1~ubuntu2204) jammy; urgency=medium
 
+  * Oxen 11.3.0
+
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 13 May 2025 01:37:26 -0300
+
+oxen (11.3.0-1~ubuntu2204) jammy; urgency=medium
+
   [ doylet ]
   * Early continue in unconfirmed TXs loop to allow unindent of code block
   * Add non-consensus locked stakes field to rewards DB
