@@ -175,6 +175,10 @@ static const command_line::arg_descriptor<int> arg_l2_max_logs = {
         "Specify the maximum number of logs we will request at once in a single request to the L2 "
         "provider.  If more logs are needed than this at once then multiple requests will be used.",
         ETH_L2_DEFAULT_MAX_LOGS};
+static const command_line::arg_descriptor<double> arg_l2_update_cooldown = {
+        "l2-update-cooldown",
+        "Specify the minimum time between log update requests to the L2 provider.",
+        dseconds{ETH_L2_DEFAULT_UPDATE_COOLDOWN}.count()};
 static const command_line::arg_descriptor<double> arg_l2_check_interval = {
         "l2-check-interval",
         "When multiple L2 providers are specified, this specifies how often (in seconds) all of "
@@ -190,11 +194,6 @@ static const command_line::arg_flag arg_l2_skip_chainid = {
         "l2-skip-chainid",
         "Skips the oxend startup chainId check that ensures the configured L2 provider(s) are "
         "providing data for the the correct L2 chain."};
-static const command_line::arg_flag arg_l2_skip_proof_check = {
-        "l2-skip-proof-check",
-        "Skips the requirement in HF20 that we have heard from the L2 provider recently before "
-        "sending an uptime proof.  This is a temporary option that will be removed after the HF20 "
-        "transition period."};
 static const command_line::arg_descriptor<std::string> arg_l2_proxy = {
         "l2-proxy",
         "Enables this node to act as an L2 state proxy.  This option takes a filename containing "
@@ -357,8 +356,8 @@ void core::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_l2_max_logs);
     command_line::add_arg(desc, arg_l2_check_interval);
     command_line::add_arg(desc, arg_l2_check_threshold);
+    command_line::add_arg(desc, arg_l2_update_cooldown);
     command_line::add_arg(desc, arg_l2_skip_chainid);
-    command_line::add_arg(desc, arg_l2_skip_proof_check);
     command_line::add_arg(desc, arg_l2_proxy);
     command_line::add_arg(desc, arg_l2_oxend);
     command_line::add_arg(desc, arg_storage_server_port);
@@ -750,7 +749,11 @@ bool core::init(
             l2_refresh = as_duration<std::chrono::milliseconds>(
                     command_line::get_arg(vm, arg_l2_refresh));
 
-        m_l2_tracker = std::make_unique<eth::L2Tracker>(*this, l2_refresh);
+        m_l2_tracker = std::make_unique<eth::L2Tracker>(
+                *this,
+                l2_refresh,
+                as_duration<std::chrono::milliseconds>(
+                        command_line::get_arg(vm, arg_l2_update_cooldown)));
 
         m_l2_tracker->provider->setTimeout(as_duration<std::chrono::milliseconds>(
                 1000 * command_line::get_arg(vm, arg_l2_timeout)));
@@ -866,9 +869,6 @@ bool core::init(
     // it being configured correctly
     if (m_nettype == network_type::FAKECHAIN && !m_l2_tracker)
         m_l2_tracker = std::make_unique<eth::L2Tracker>(*this);
-
-    // TODO: remove this after HF21
-    m_skip_proof_l2_check = command_line::get_arg(vm, arg_l2_skip_proof_check);
 
     r = blockchain.init(
             std::move(db),

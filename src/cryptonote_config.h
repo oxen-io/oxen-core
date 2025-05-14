@@ -87,6 +87,9 @@ inline constexpr auto ETH_L2_DEFAULT_REQUEST_TIMEOUT = 5s;
 // used to retrieve the logs.  Can be adjusted at runtime using the --l2-max-logs command
 // line/config file setting.
 inline constexpr auto ETH_L2_DEFAULT_MAX_LOGS = 1000;
+// The default value for the minimum time between ethereum log update requests.  Can be adjusted
+// at runtime using the --l2-update-cooldown command line/config file setting.
+inline constexpr auto ETH_L2_DEFAULT_UPDATE_COOLDOWN = 0s;
 // When refreshing, this controls how often we get heights from *all* configured L2 providers
 // (instead of just the primary one) to check whether L2 providers are in sync.  (This only applies
 // when multiple L2 providers are in use).
