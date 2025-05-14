@@ -1,3 +1,11 @@
+oxen (11.3.1-1~deb13) trixie; urgency=medium
+
+  * Stagenet staking URL update & pass network type
+  * Fix warning and extra requests caused by empty SN list in contract
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 14 May 2025 15:07:51 -0300
+
 oxen (11.3.0-1~deb13) trixie; urgency=medium
 
   * Oxen 11.3.0
