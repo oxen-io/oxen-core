@@ -61,6 +61,7 @@
 #include "cryptonote_core/service_node_rules.h"
 #include "epee/int-util.h"
 #include "epee/string_tools.h"
+#include "networks.h"
 #include "oxen_economy.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 
@@ -2845,16 +2846,16 @@ bool rpc_command_executor::prepare_eth_registration(
                 ed_sig.substr(0, 64),
                 ed_sig.substr(64));
     } else {
+        auto nettype =
+                cryptonote::network_type_from_string(info["nettype"].get<std::string_view>());
         if (url.empty())
-            url = get_config(cryptonote::network_type_from_string(
-                                     info["nettype"].get<std::string_view>()))
-                          .DEFAULT_STAKING_URL;
+            url = get_config(nettype).DEFAULT_STAKING_URL;
 
         if (url.empty()) {
             tools::fail_msg_writer(
                     "Unable to submit L2 staking information: '{}' network has no default staking "
                     "URL",
-                    info["nettype"].get<std::string_view>());
+                    cryptonote::network_type_to_string(nettype));
             return false;
         }
 
@@ -2869,6 +2870,7 @@ bool rpc_command_executor::prepare_eth_registration(
         tools::msg_writer("Submitting L2 staking information to {} ...", url);
 
         auto msg = cpr::Multipart{
+                {"network"s, std::string{cryptonote::network_type_to_string(nettype)}},
                 {"sig_ed25519"s, ed_sig},
                 {"pubkey_bls"s, bls_pubkey},
                 {"sig_bls"s, bls_sig},
