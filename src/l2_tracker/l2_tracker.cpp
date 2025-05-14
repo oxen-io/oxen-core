@@ -55,7 +55,10 @@ L2Tracker::L2Tracker(
     });
 }
 
-L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_interval) :
+L2Tracker::L2Tracker(
+        cryptonote::core& core_,
+        std::chrono::milliseconds update_interval,
+        std::chrono::milliseconds update_cooldown) :
         L2Tracker{core_, ethyl::Provider::make_provider(), [this, update_interval] {
                       update_state();
                       core.omq().add_timer(
@@ -63,7 +66,36 @@ L2Tracker::L2Tracker(cryptonote::core& core_, std::chrono::milliseconds update_i
                               update_interval,
                               /*squelch*/ true,
                               update_thread_id);
-                  }} {}
+                  }} {
+    if (update_cooldown > 0s) {
+        update_logs_cooldown = update_cooldown;
+        update_logs_thread = std::thread{[this] {
+            std::chrono::steady_clock::time_point last_update{};
+            std::unique_lock lock{update_logs_mutex};
+            while (update_logs_running) {
+                update_logs_cv.wait(lock, [this] { return update_logs_wakeup; });
+                if (!update_logs_running)
+                    break;
+                update_logs_wakeup = false;
+
+                auto now = std::chrono::steady_clock::now();
+                auto delta = now - last_update;
+
+                if (now < last_update + update_logs_cooldown) {
+                    update_logs_cv.wait_until(lock, last_update + update_logs_cooldown, [this] {
+                        return !update_logs_running;
+                    });
+                    if (!update_logs_running)
+                        break;
+                }
+                lock.unlock();
+                update_logs_internal();
+                last_update = std::chrono::steady_clock::now();
+                lock.lock();
+            }
+        }};
+    }
+}
 
 L2Tracker::L2Tracker(
         cryptonote::core& core_,
@@ -104,7 +136,17 @@ L2Tracker::L2Tracker(
             .add_command("purge_state", [this](auto& msg) { l2_notify_state(msg, true); });
 }
 
-L2Tracker::~L2Tracker() = default;
+L2Tracker::~L2Tracker() {
+    if (update_logs_thread.joinable()) {
+        {
+            std::lock_guard lock{update_logs_mutex};
+            update_logs_running = false;
+            update_logs_wakeup = true;
+        }
+        update_logs_cv.notify_one();
+        update_logs_thread.join();
+    }
+}
 
 // For any given l2 height, we calculate the reward using the last height (inclusive) that was
 // divisible by (netconfig).L2_REWARD_POOL_UPDATE_BLOCKS:
@@ -434,6 +476,19 @@ void L2Tracker::update_rewards(std::optional<std::forward_list<uint64_t>> more) 
 }
 
 void L2Tracker::update_logs() {
+    // if no cooldown set, no update thread, just call it
+    if (!update_logs_thread.joinable())
+        update_logs_internal();
+    else {
+        {
+            std::lock_guard lock{update_logs_mutex};
+            update_logs_wakeup = true;
+        }
+        update_logs_cv.notify_one();
+    }
+}
+
+void L2Tracker::update_logs_internal() {
     assert(provider);
     std::shared_lock lock{mutex};
 
