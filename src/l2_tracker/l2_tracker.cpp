@@ -602,6 +602,11 @@ void L2Tracker::generate_purge_transactions() {
         return;
     }
 
+    if (purge_state.in_contract.empty()) {
+        log::debug(logcat, "Skipping purge tx creation: service node list is entirely empty");
+        return;
+    }
+
     // We only add nodes in the mempool here, on a fresh fetch of data.  It's possible that
     // conditions change that make it purgeable before our next fetch, but if so that's okay: it'll
     // get to live slightly longer to next update but we'll catch it then.
@@ -695,6 +700,7 @@ void L2Tracker::update_purge_list(bool curr_height_fallback) {
 
                     auto result_hex = maybe_result->get<std::string_view>();
                     std::vector<std::pair<uint64_t, bls_public_key>> result;
+                    bool failed = false;
                     try {
                         result = RewardsContract::parse_all_service_node_ids(result_hex);
                     } catch (const std::exception& e) {
@@ -704,9 +710,10 @@ void L2Tracker::update_purge_list(bool curr_height_fallback) {
                                 "{}: {}",
                                 purge_height,
                                 e.what());
+                        failed = true;
                     }
 
-                    if (!result.empty()) {
+                    if (!failed) {
                         purge_state.in_contract.clear();
                         for (const auto& [id, blspk] : result)
                             purge_state.in_contract.insert(blspk);
