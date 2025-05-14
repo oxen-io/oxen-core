@@ -1,5 +1,21 @@
 oxen (11.3.1-1~ubuntu2004) focal; urgency=medium
 
+  [ Thomas Winget ]
+  * add optional cooldown to l2 tracker update_logs
+  * add cli/config option for l2 update logs cooldown
+  * update ethyl submodule (just some log level changes)
+  * concrete thread instance instead of unique_ptr
+  * technically more correct atomic usage
+
+  [ Jason Rhinelander ]
+  * add cli arg registration
+  * Rewrite using a condition_variable for gcc-10 compat
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 14 May 2025 20:10:21 -0300
+
+oxen (11.3.1-1~ubuntu2004) focal; urgency=medium
+
   * Stagenet staking URL update & pass network type
   * Fix warning and extra requests caused by empty SN list in contract
   * Rediff patches
