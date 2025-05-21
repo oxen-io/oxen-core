@@ -790,6 +790,8 @@ class service_node_list {
 
         // NOTE: Add nodes from the SNL (active & decomm)
         for (const auto& pk_info : m_state.service_nodes_infos) {
+            if (pk_info.second->staking_requirement == 0)
+                continue;
             auto it = proofs.find(pk_info.first);
             if (it == proofs.end())
                 continue;
