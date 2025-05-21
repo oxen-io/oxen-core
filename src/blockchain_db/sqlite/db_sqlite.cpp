@@ -932,7 +932,7 @@ static BlockchainSQLite::wallet_info get_accrued_rewards_at_impl(
             "SELECT"
             " {}"
             " FROM "
-            " batched_payments_accrued"
+            " batched_payments_accrued_recent"
             " WHERE address = ? AND height = ?"_format(WALLET_METADATA_FIELDS),
             address,
             static_cast<int64_t>(at_height));
