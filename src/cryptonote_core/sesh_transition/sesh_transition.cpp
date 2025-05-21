@@ -375,15 +375,15 @@ static void dump_transition_outcome_csv(
         for (const node_transition& it : node_list) {
             bool transitioned = it.tokens_allocated >= context.staking_requirement;
             file.print(
-                    "{:06d}," // registration_height
-                    "{},"     // pkey
-                    "{},"     // tokens_allocated
-                    "{},"     // transitioned
-                    "{},"     // missing_ed25519_key
-                    "{},"     // missing_bls_key
-                    "{},"     // partially_funded
-                    "{},"     // contributor_not_registered_for_swap
-                    "{},"     // insufficient_sesh
+                    "{:06d},"  // registration_height
+                    "{},"      // pkey
+                    "{},"      // tokens_allocated
+                    "{},"      // transitioned
+                    "{},"      // missing_ed25519_key
+                    "{},"      // missing_bls_key
+                    "{},"      // partially_funded
+                    "{},"      // contributor_not_registered_for_swap
+                    "{},"      // insufficient_sesh
                     "\n",
                     it.sn_info->registration_height,
                     it.pkey,
