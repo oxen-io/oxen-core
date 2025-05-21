@@ -293,8 +293,9 @@ static void dump_transition_outcome_csv(
 
             // NOTE: Write the CSV line
             file.print(
-                    "redacted_{:04d},{},{},{},{},{},{}\n",
-                    index++,
+                    "{}_{:04d},{},{},{},{},{},{}\n",
+                    sorted_it.addr,
+                    index,
                     sorted_it.oxen_sn_count,
                     sorted_it.sesh_sn_count,
                     cryptonote::print_money(bonus_tokens),
@@ -374,18 +375,18 @@ static void dump_transition_outcome_csv(
         for (const node_transition& it : node_list) {
             bool transitioned = it.tokens_allocated >= context.staking_requirement;
             file.print(
-                    "{:06d},"           // registration_height
-                    "redacted_{:04d},"  // pkey
-                    "{},"               // tokens_allocated
-                    "{},"               // transitioned
-                    "{},"               // missing_ed25519_key
-                    "{},"               // missing_bls_key
-                    "{},"               // partially_funded
-                    "{},"               // contributor_not_registered_for_swap
-                    "{},"               // insufficient_sesh
+                    "{:06d}," // registration_height
+                    "{},"     // pkey
+                    "{},"     // tokens_allocated
+                    "{},"     // transitioned
+                    "{},"     // missing_ed25519_key
+                    "{},"     // missing_bls_key
+                    "{},"     // partially_funded
+                    "{},"     // contributor_not_registered_for_swap
+                    "{},"     // insufficient_sesh
                     "\n",
                     it.sn_info->registration_height,
-                    count++,
+                    it.pkey,
                     cryptonote::print_money(it.tokens_allocated),
                     transitioned,
                     it.missing_ed25519_key,
