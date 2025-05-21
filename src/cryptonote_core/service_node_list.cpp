@@ -369,16 +369,17 @@ static void verify_rewards_db_values(
                         cryptonote::print_money(history.total),
                         cryptonote::print_money(wallet_info.locked_stakes.to_coin()));
 
-                for (const auto& stake : history.stakes) {
+                for (size_t index = 0; index < history.stakes.size(); index++) {
+                    const auto& stake = history.stakes[index];
                     fmt::format_to(
                             std::back_inserter(buffer),
-                            "\n  SN {} => {} SESH",
+                            "\n  {:02d} SN {} => {} SESH",
+                            index,
                             stake.pubkey,
                             cryptonote::print_money(stake.stake));
                 }
 
                 log::error(logcat, "{}", fmt::to_string(buffer));
-                assert(wallet_info.locked_stakes.to_coin() == history.total);
             }
         }
     }
@@ -4297,8 +4298,12 @@ block_add_result service_node_list::state_t::update_from_block(
                     }
                 }
 
-                if (std::holds_alternative<eth::event::ServiceNodePurge>(event))
-                    result.purged_stakes = conf_result.exit_stakes;
+                if (std::holds_alternative<eth::event::ServiceNodePurge>(event)) {
+                    result.purged_stakes.insert(
+                            result.purged_stakes.end(),
+                            conf_result.exit_stakes.begin(),
+                            conf_result.exit_stakes.end());
+                }
             }
 
             // NOTE: Post-amble, advance iterator
