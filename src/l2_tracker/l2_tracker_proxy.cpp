@@ -646,7 +646,12 @@ static bool check_state_update(const T& new_state, const T& state, std::string_v
 }
 
 void L2Tracker::proxy_update_state(L2State&& new_state, std::string_view from) {
-    std::unique_lock lock{mutex};
+    // Our add to mempool below takes a mempool lock, and inside itself takes the blockchain lock,
+    // which means if we don't hold all three we can deadlock with our hook_block_post_add in the
+    // L2Tracker constructor, which is called with the blockchain lock already held, so lock
+    // everything at once:
+    auto locks = tools::unique_locks(mutex, core.mempool, core.blockchain);
+
     if (!check_state_update(new_state, state, from))
         return;
 
@@ -663,7 +668,7 @@ void L2Tracker::proxy_update_state(L2State&& new_state, std::string_view from) {
 }
 
 void L2Tracker::proxy_update_state(L2PurgeState&& new_state, std::string_view from) {
-    std::unique_lock lock{mutex};
+    auto locks = tools::unique_locks(mutex, core.mempool, core.blockchain);
     if (!check_state_update(new_state, purge_state, from))
         return;
 
