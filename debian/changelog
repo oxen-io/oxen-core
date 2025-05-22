@@ -1,3 +1,13 @@
+oxen (11.3.2-1~ubuntu2504) plucky; urgency=medium
+
+  * Add L2 vote confirmation to pulse
+  * Fix deadlock in L2 proxy
+  * version bump
+  * Remove old legacy /key handling entirely
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 22 May 2025 17:18:50 -0300
+
 oxen (11.3.1-1~ubuntu2504) plucky; urgency=medium
 
   [ Thomas Winget ]
