@@ -890,15 +890,6 @@ bool core::init(
     // transactions in the pool that do not conform to the current fork
     mempool.validate(blockchain.get_network_version());
 
-    // if loading after HF21 and monero key was still present, fix here
-    auto height = blockchain.get_current_blockchain_height();
-    if (height > 0) {
-        auto hf21_height = hard_fork_begins(m_nettype, hf::hf21_eth);
-        if (hf21_height && height > *hf21_height) {
-            service_node_list.while_locked([this]() { init_service_keys(true); });
-        }
-    }
-
     bool show_time_stats = command_line::get_arg(vm, arg_show_time_stats) != 0;
     blockchain.set_show_time_stats(show_time_stats);
 
@@ -1132,7 +1123,7 @@ bool init_key(
 }
 
 //-----------------------------------------------------------------------------------------------
-bool core::init_service_keys(bool fixup_monero_ed) {
+bool core::init_service_keys() {
     auto& keys = m_service_keys;
 
     static_assert(
@@ -1143,20 +1134,8 @@ bool core::init_service_keys(bool fixup_monero_ed) {
                     sizeof(crypto::x25519_secret_key) == crypto_scalarmult_curve25519_BYTES,
             "Invalid ed25519/x25519 sizes");
 
-    // clang-format off
-    // at HF21 (and on load if after HF21), we need to ignore the old monero-style key
-    // and just use the proper ed25519 as if it doesn't exist
-    if (!fixup_monero_ed) {
-
     // <data>/key_ed25519: Standard ed25519 secret key.  We always have this, and generate one if it
     // doesn't exist.
-    //
-    // As of Loki 8.x, if this exists and `key` doesn't, we use this key for everything.  For
-    // compatibility with earlier versions we also allow `key` to contain a separate monero privkey
-    // for the SN keypair.  (The main difference is that the Monero keypair is unclamped and that it
-    // only contains the private key value but not the secret key value that we need for full
-    // Ed25519 signing).
-    //
     if (!init_key(
                 m_config_folder / "key_ed25519",
                 keys.key_ed25519,
@@ -1193,34 +1172,19 @@ bool core::init_service_keys(bool fixup_monero_ed) {
                                   }))
         return false;
 
-    }
-    // clang-format on
-
     // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
     // for the primary SN keypair.  (This key predates the Ed25519 keys and so is needed for
     // backwards compatibility with existing active service nodes.)  The legacy key consists of
     // *just* the private point, but not the seed, and so cannot be used for full Ed25519 signatures
     // (which rely on the seed for signing).
     if (m_service_node) {
-        if (std::error_code ec; fixup_monero_ed || !fs::exists(m_config_folder / "key", ec)) {
-            keys.key = crypto::ed25519_to_monero_secret_key(keys.key_ed25519);
-            if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
-                throw oxen::traced<std::runtime_error>{
-                        "Failed to derive primary key from ed25519 key"};
-            if (std::memcmp(keys.pub.data(), keys.pub_ed25519.data(), 32))
-                throw oxen::traced<std::runtime_error>{
-                        "Internal error: unexpected primary pubkey and ed25519 pubkey mismatch"};
-        } else if (!init_key(
-                           m_config_folder / "key",
-                           keys.key,
-                           keys.pub,
-                           crypto::secret_key_to_public_key,
-                           [](crypto::secret_key&, crypto::public_key&) {
-                               throw oxen::traced<std::runtime_error>{
-                                       "Internal error: old-style public keys are no longer "
-                                       "generated"};
-                           }))
-            return false;
+        keys.key = crypto::ed25519_to_monero_secret_key(keys.key_ed25519);
+        if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
+            throw oxen::traced<std::runtime_error>{
+                    "Failed to derive primary key from ed25519 key"};
+        if (std::memcmp(keys.pub.data(), keys.pub_ed25519.data(), 32))
+            throw oxen::traced<std::runtime_error>{
+                    "Internal error: unexpected primary pubkey and ed25519 pubkey mismatch"};
     } else {
         keys.key.zero();
         keys.pub.zero();
@@ -1234,11 +1198,7 @@ bool core::init_service_keys(bool fixup_monero_ed) {
             fg(fmt::terminal_color::cyan) | fmt::emphasis::bold,
             "{} public keys:",
             m_service_node ? "Service node" : "Node");
-    bool unified_pk = std::memcmp(keys.pub.data(), keys.pub_ed25519.data(), 32) == 0;
-    if (m_service_node)
-        log::info(globallogcat, style, "- primary{}: {:x}", unified_pk ? "/ed25519" : "", keys.pub);
-    if (!m_service_node || !unified_pk)
-        log::info(globallogcat, style, "- ed25519: {:x}", keys.pub_ed25519);
+    log::info(globallogcat, style, "- {}ed25519: {:x}", m_service_node ? "primary/" : "", keys.pub);
     log::info(globallogcat, style, "- x25519: {:x}", keys.pub_x25519);
     // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
     if (m_service_node) {
@@ -2494,10 +2454,6 @@ bool core::add_new_block(
     if (result) {
         relay_service_node_votes();  // NOTE: nop if synchronising due to not accepting votes whilst
                                      // syncing
-        auto hf21_height = hard_fork_begins(m_nettype, hf::hf21_eth);
-        if (hf21_height && b.get_height() == *hf21_height) {
-            service_node_list.while_locked([this]() { init_service_keys(true); });
-        }
     }
     return result;
 }

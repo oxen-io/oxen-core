@@ -1884,6 +1884,19 @@ namespace {
                             *this,
                             block.tx_eth_count,
                             block.tx_hashes.size());
+
+                    // Confirm that votes for recent state changes match our vote:
+                    if (auto my_l2_votes = core.service_node_list.l2_pending_state_votes();
+                        block.l2_votes != my_l2_votes) {
+                        log::warning(
+                                logcat,
+                                "{}Rejecting block: L2 event vote mismatch: [{}] (block) != [{}] "
+                                "(this node)",
+                                *this,
+                                fmt::join(block.l2_votes, ","),
+                                fmt::join(block.l2_votes, ","));
+                        return goto_preparing_for_next_round();
+                    }
                 }
 
                 if (!block.signatures.empty()) {

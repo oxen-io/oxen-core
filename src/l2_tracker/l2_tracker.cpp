@@ -528,8 +528,9 @@ void L2Tracker::update_logs_internal() {
                     std::optional<std::vector<ethyl::LogEntry>> logs) {
                 bool keep_going = false;
                 {
-                    // NOTE: This lambda locks both the TX pool and the L2 tracker atomically
-                    // because we will add the L2 transactions into the mempool. This prevents
+                    // NOTE: This lambda locks all of TX pool, blockchain, and L2 tracker atomically
+                    // because we will add the L2 transactions into the mempool (and the mempool
+                    // addition itself tries to acquire a blockchain lock). This prevents
                     // deadlock in other codepaths that may try to lock like
                     //
                     //   This thread: Lock(L2 Tracker) -> Lock (TX pool)
@@ -560,7 +561,7 @@ void L2Tracker::update_logs_internal() {
                                     std::chrono::steady_clock::now() - started}
                                     .count());
 
-                    auto locks = tools::unique_locks(mutex, core.mempool);
+                    auto locks = tools::unique_locks(mutex, core.mempool, core.blockchain);
 
                     for (const auto& log : *logs) {
                         if (!log.blockNumber) {
