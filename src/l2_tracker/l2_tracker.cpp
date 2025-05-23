@@ -930,9 +930,13 @@ std::optional<uint64_t> L2Tracker::get_reward_rate(uint64_t height) const {
     return std::nullopt;
 }
 
-uint64_t L2Tracker::get_latest_height() const {
+L2Tracker::L2Heights L2Tracker::get_l2_heights() const {
     std::shared_lock lock{mutex};
-    return state.latest_height;
+    L2Heights result = {
+            .latest = state.latest_height,
+            .synced = state.synced_height,
+    };
+    return result;
 }
 
 std::optional<std::chrono::nanoseconds> L2Tracker::latest_height_age() const {
