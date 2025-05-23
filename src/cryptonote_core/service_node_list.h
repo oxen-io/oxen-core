@@ -776,13 +776,14 @@ class service_node_list {
         }
     }
 
-    /// Copies `service_node_address`es (pubkeys, ip, port) of all current and expired (yet to be
-    /// removed from smart contract) SNs with potentially reachable, known addresses (via a recently
-    /// received valid proof) into the given output iterator.  Service nodes that for which we have
-    /// not yet received/accepted a proof containing IP info are not included.
-    template <std::output_iterator<service_node_address> OutputIt>
-    void copy_reachable_service_node_addresses(
-            OutputIt out, cryptonote::network_type nettype) const {
+    /// Iterates through `service_node_address`es (pubkeys, ip, port) of all current and expired
+    /// (yet to be removed from smart contract) SNs with potentially reachable, known addresses (via
+    /// a recently received valid proof), calling the given callback with the address info.  Service
+    /// nodes that for which we have not yet received/accepted a proof containing IP info are not
+    /// included.
+    template <std::invocable<service_node_address> Callback>
+    void for_each_reachable_service_node_address(
+            Callback&& cb, cryptonote::network_type nettype) const {
         std::lock_guard lock{m_sn_mutex};
         bool sn_pk_is_ed25519_hf = cryptonote::is_hard_fork_at_least(
                 nettype, cryptonote::feature::SN_PK_IS_ED25519, m_state.height);
@@ -806,12 +807,12 @@ class service_node_list {
                                                    // proof
                 pubkey_x25519 = it->second.pubkey_x25519;
             }
-            *out++ = service_node_address{
+            cb(service_node_address{
                     pk_info.first,
                     pk_info.second->bls_public_key,
                     sn_pk_is_ed25519_hf ? snpk_to_xpk(pk_info.first) : it->second.pubkey_x25519,
                     proof.public_ip,
-                    proof.qnet_port};
+                    proof.qnet_port});
         }
 
         if (sn_pk_is_ed25519_hf) {
@@ -822,24 +823,24 @@ class service_node_list {
                 auto it = proofs.find(recently_removed_it.service_node_pubkey);
                 if (it != proofs.end() && it->second.proof) {
                     auto& proof = *it->second.proof;
-                    *out++ = service_node_address{
+                    cb(service_node_address{
                             recently_removed_it.service_node_pubkey,
                             recently_removed_it.info.bls_public_key,
                             it->second.pubkey_x25519,
                             proof.public_ip,
-                            proof.qnet_port};
+                            proof.qnet_port});
                     continue;
                 }
 
                 // NOTE: We don't have a proof, we defer to what we last stored for the node.
                 if (recently_removed_it.public_ip == 0 || recently_removed_it.qnet_port == 0)
                     continue;
-                *out++ = service_node_address{
+                cb(service_node_address{
                         recently_removed_it.service_node_pubkey,
                         recently_removed_it.info.bls_public_key,
                         snpk_to_xpk(recently_removed_it.service_node_pubkey),
                         recently_removed_it.public_ip,
-                        recently_removed_it.qnet_port};
+                        recently_removed_it.qnet_port});
             }
         }
     }
