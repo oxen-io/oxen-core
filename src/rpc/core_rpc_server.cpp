@@ -226,8 +226,11 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
 
     info.response["height"] = height;
     info.response["l2_height"] = top_block.l2_height;
-    if (auto* l2 = bs.maybe_l2_tracker())
-        info.response["l2_tracker_height"] = l2->get_latest_height();
+    if (auto* l2 = bs.maybe_l2_tracker()) {
+        eth::L2Tracker::L2Heights heights = l2->get_l2_heights();
+        info.response["l2_tracker_height"] = heights.latest;
+        info.response["l2_tracker_synced_height"] = heights.synced;
+    }
     info.response_hex["top_block_hash"] = get_block_hash(top_block);
     info.response["target_height"] = m_core.get_target_blockchain_height();
 
@@ -2871,9 +2874,11 @@ void core_rpc_server::fill_sn_response_entry(
         const crypto::public_key& sn_pubkey,
         const service_nodes::service_node_info& info,
         uint64_t top_height,
-        const std::unordered_map<eth::bls_public_key, bool>* removable) {
+        const std::unordered_map<eth::bls_public_key, bool>* removable,
+        bool oxen10_compat_fields) {
 
-    auto binary_format = is_bt ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex;
+    auto binary_format = (is_bt && !oxen10_compat_fields) ? json_binary_proxy::fmt::bt
+                                                          : json_binary_proxy::fmt::hex;
     json_binary_proxy binary{entry, binary_format};
 
     set_if_requested(reqed, binary, "service_node_pubkey", sn_pubkey);
@@ -3019,7 +3024,7 @@ void core_rpc_server::fill_sn_response_entry(
                     m_core.get_service_keys().pub_x25519);
             set_if_requested(reqed, binary, "pubkey_bls", m_core.get_service_keys().pub_bls);
         } else {
-            if (proof.proof->public_ip != 0)
+            if (proof.proof->public_ip != 0 || oxen10_compat_fields)
                 set_if_requested(
                         reqed,
                         entry,
@@ -3232,7 +3237,8 @@ void core_rpc_server::invoke(GET_SERVICE_NODES& sns, rpc_context) {
                 pubkey_info.pubkey,
                 *pubkey_info.info,
                 top_height,
-                &removable);
+                &removable,
+                sns.request.oxen10_compat_fields);
 }
 
 void core_rpc_server::invoke(HF21_DRY_RUN& req, rpc_context) {

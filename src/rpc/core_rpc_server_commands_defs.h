@@ -2106,6 +2106,7 @@ struct GET_SERVICE_NODES : PUBLIC {
         bool active_only = false;
         int limit = 0;
         crypto::hash poll_block_hash{};
+        bool oxen10_compat_fields = false;
     } request;
 };
 
