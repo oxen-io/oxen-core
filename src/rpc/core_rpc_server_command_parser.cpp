@@ -49,6 +49,11 @@ void parse_request(GET_SERVICE_NODES& sns, rpc_input in) {
                 !sns.request.fields.count("-locked_contributions") &&
                 sns.request.fields.count("contributors"))
                 sns.request.fields.insert("locked_contributions");
+
+            // Session clients do not handle missing "public_ip", "storage_lmq_port",
+            // "storage_server_version" values, so if the deprecated fields are requested, we
+            // include Oxen 10 compatible "0" values.
+            sns.request.oxen10_compat_fields = true;
         }
     }
     if (!fields_dict) {

@@ -1180,8 +1180,7 @@ bool core::init_service_keys() {
     if (m_service_node) {
         keys.key = crypto::ed25519_to_monero_secret_key(keys.key_ed25519);
         if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
-            throw oxen::traced<std::runtime_error>{
-                    "Failed to derive primary key from ed25519 key"};
+            throw oxen::traced<std::runtime_error>{"Failed to derive primary key from ed25519 key"};
         if (std::memcmp(keys.pub.data(), keys.pub_ed25519.data(), 32))
             throw oxen::traced<std::runtime_error>{
                     "Internal error: unexpected primary pubkey and ed25519 pubkey mismatch"};
@@ -2671,6 +2670,29 @@ void core::do_uptime_proof_call() {
                             l2_update_age
                                     ? "{} ago"_format(tools::friendly_duration(*l2_update_age))
                                     : "startup");
+                    return;
+                }
+
+                eth::L2Tracker::L2Heights l2_heights = l2_tracker().get_l2_heights();
+                assert(l2_heights.latest >= l2_heights.synced);
+                size_t allowed_height_delta = 10s / config::L2_BLOCK_TIME;
+                size_t min_height = l2_heights.latest - allowed_height_delta;
+
+                // Allow some block buffer because these are individual network requests which take
+                // time
+                if (l2_heights.synced < min_height) {
+                    log::error(
+                            globallogcat,
+                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                            "Failed to submit uptime proof: the L2 RPC provider has not synced the "
+                            "logs from Arbitrum to a sufficient height of {} to be considered "
+                            "synced. The L2's latest known/synced height is {}/{}. Check your "
+                            "L2 provider's dashboard for request health or the logs of "
+                            "your local Arbitrum node to ensure the getLogs requests are being "
+                            "handled successfully",
+                            min_height,
+                            l2_heights.latest,
+                            l2_heights.synced);
                     return;
                 }
             }
