@@ -5461,7 +5461,8 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
             storage_omq_port,
             ss_version,
             quorumnet_port,
-            hardfork >= feature::ETH_TRANSITION ? blockchain.l2_tracker().get_latest_height() : 0,
+            hardfork >= feature::ETH_TRANSITION ? blockchain.l2_tracker().get_l2_heights().synced
+                                                : 0,
             lokinet_version,
             keys};
 }

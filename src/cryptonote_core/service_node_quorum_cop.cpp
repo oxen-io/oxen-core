@@ -172,7 +172,7 @@ service_node_test_results quorum_cop::check_service_node(
 
     if (check_l2_height) {
         // Checking if the nodes L2 height is too far behind
-        auto l2_min_acceptable_height = m_core.l2_tracker().get_latest_height();
+        auto l2_min_acceptable_height = m_core.l2_tracker().get_l2_heights().synced;
         l2_min_acceptable_height -= std::min(
                 static_cast<uint64_t>(proof_age / cryptonote::config::L2_BLOCK_TIME),
                 l2_min_acceptable_height);
