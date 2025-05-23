@@ -1,5 +1,20 @@
 oxen (11.3.2-1~deb11) bullseye; urgency=medium
 
+  [ doylet ]
+  * Add L2 synced checks before proofing, validating or producing blocks
+  * Move L2 sync check above L2 reward rate query in block template
+  * Linting check
+  * Remove :L specifier, does not do anything w/o explicit locale
+
+  [ Jason Rhinelander ]
+  * Use more conservative default L2 settings
+  * Fix get_service_nodes Session compatibility
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Fri, 23 May 2025 02:35:45 -0300
+
+oxen (11.3.2-1~deb11) bullseye; urgency=medium
+
   * Add L2 vote confirmation to pulse
   * Fix deadlock in L2 proxy
   * version bump
