@@ -248,7 +248,8 @@ class core_rpc_server {
             const crypto::public_key& sn_pubkey,
             const service_nodes::service_node_info& sn_info,
             uint64_t top_height,
-            const std::unordered_map<eth::bls_public_key, bool>* removable);
+            const std::unordered_map<eth::bls_public_key, bool>* removable,
+            bool oxen10_compat_fields = false);
 
     void add_event_sn_info(
             json& entry,

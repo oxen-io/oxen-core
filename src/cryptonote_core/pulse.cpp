@@ -1819,6 +1819,20 @@ namespace {
                 // eth state change transactions by making sure we have them in our pool *and* that
                 // we have the indicated state change in our L2 tracker.
                 if (block.major_version >= cryptonote::feature::ETH_BLS) {
+                    eth::L2Tracker::L2Heights l2_heights = core.l2_tracker().get_l2_heights();
+                    if (l2_heights.synced < block.l2_height) {
+                        log::error(
+                                logcat,
+                                "{}Pulse block template uses L2 height {} which is not synced in "
+                                "the L2 tracker yet. The L2 tracker's current latest/synced height "
+                                "is {}/{}",
+                                *this,
+                                block.l2_height,
+                                l2_heights.latest,
+                                l2_heights.synced);
+                        return goto_preparing_for_next_round();
+                    }
+
                     if (block.tx_eth_count > block.tx_hashes.size()) {
                         log::warning(
                                 logcat,
