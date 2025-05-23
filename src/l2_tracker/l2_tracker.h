@@ -282,7 +282,12 @@ class L2Tracker {
     std::optional<uint64_t> get_reward_rate(uint64_t height) const;
 
     // Returns the latest L2 height we know about, i.e. from previous provider updates.
-    uint64_t get_latest_height() const;
+    struct L2Heights {
+        uint64_t latest;
+        uint64_t synced;
+    };
+
+    L2Heights get_l2_heights() const;
 
     // Returns the latest L2 height that we have known about for at least 70s
     // (L2_TRACKER_SAFE_BLOCKS); when building a block we use this slight lag so that service nodes
