@@ -795,7 +795,7 @@ class service_node_list {
                 continue;
             // If we don't have a proof then we won't know the IP/port, and so this node isn't
             // considered reachable and shouldn't be returned.
-            if (!it->second.proof)
+            if (!it->second.proof || !it->second.proof->public_ip)
                 continue;
             auto& proof = *it->second.proof;
 
@@ -821,7 +821,7 @@ class service_node_list {
 
                 // NOTE: Look for their latest IP/port from an uptime proof
                 auto it = proofs.find(recently_removed_it.service_node_pubkey);
-                if (it != proofs.end() && it->second.proof) {
+                if (it != proofs.end() && it->second.proof && it->second.proof->public_ip) {
                     auto& proof = *it->second.proof;
                     cb(service_node_address{
                             recently_removed_it.service_node_pubkey,
