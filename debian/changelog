@@ -1,3 +1,13 @@
+oxen (11.3.2-2~ubuntu2504) plucky; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Add last_ip_change_height to get_service_nodes result
+
+  [ Thomas Winget ]
+  * fix zombie nodes getting stuck in recently removed
+
+ -- Jason Rhinelander <jason@session.foundation>  Sat, 24 May 2025 00:35:05 -0300
+
 oxen (11.3.2-1~ubuntu2504) plucky; urgency=medium
 
   [ doylet ]
