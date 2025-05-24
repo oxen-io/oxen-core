@@ -1981,6 +1981,8 @@ struct GET_SERVICE_PRIVKEYS : NO_ARGS {
 ///     - `"timesync"`
 ///     - `"lokinet"`
 ///     - other values are reserved for future use.
+///   - `last_ip_change_height` -- The last height at which the network applied an IP change penalty
+///     to this service node.  Omitted if an IP change penalty has never been applied.
 ///   - `earned_downtime_blocks` -- The number of blocks earned towards decommissioning (if
 ///     currently active), or the number of blocks remaining until the service node is eligible
 ///     for deregistration (if currently decommissioned).
