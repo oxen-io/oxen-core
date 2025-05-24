@@ -2975,6 +2975,8 @@ void core_rpc_server::fill_sn_response_entry(
                 reasons["some"] = std::move(some);
         }
     }
+    if (info.last_ip_change_height > info.registration_height)
+        set_if_requested(reqed, entry, "last_ip_change_height", info.last_ip_change_height);
 
     auto& netconf = m_core.get_net_config();
     std::pair<hf, uint8_t> network_rev = get_network_version_revision(nettype(), top_height);
