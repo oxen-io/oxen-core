@@ -1,3 +1,13 @@
+oxen (11.3.2-2~deb11) bullseye; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Add last_ip_change_height to get_service_nodes result
+
+  [ Thomas Winget ]
+  * fix zombie nodes getting stuck in recently removed
+
+ -- Jason Rhinelander <jason@session.foundation>  Sat, 24 May 2025 00:34:58 -0300
+
 oxen (11.3.2-1~deb11) bullseye; urgency=medium
 
   [ doylet ]
