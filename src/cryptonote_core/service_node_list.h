@@ -963,6 +963,8 @@ class service_node_list {
         }
     };
 
+    void cleanup_zombies_from_state();
+
   private:
     bool set_peer_reachable(bool storage_server, crypto::public_key const& pubkey, bool value);
 

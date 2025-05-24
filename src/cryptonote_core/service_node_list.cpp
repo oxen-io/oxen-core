@@ -2263,56 +2263,69 @@ service_node_list::state_t::confirm_result service_node_list::state_t::process_c
     }
 
     if (result.exit_stakes.empty()) {
-        log::warning(
-                logcat,
-                "ETH exit event for BLS pubkey {}: SN {} has 0 contributors detected, null data "
-                "encountered, skipping",
-                node->info.bls_public_key,
-                node->service_node_pubkey);
-        return result;
+        auto hf21_height = hard_fork_begins(sn_list->blockchain.nettype(), hf::hf21_eth);
+        if (!hf21_height || node->info.registration_height >= *hf21_height) {
+            log::warning(
+                    logcat,
+                    "ETH exit event for BLS pubkey {}: SN {} has 0 contributors detected, null "
+                    "data "
+                    "encountered, skipping",
+                    node->info.bls_public_key,
+                    node->service_node_pubkey);
+            return result;
+        } else {
+            log::debug(
+                    logcat,
+                    "ETH exit event for BLS pubkey {}: SN {} has 0 contributors detected, but it's "
+                    "an HF21 zombie so this is expected.",
+                    node->info.bls_public_key,
+                    node->service_node_pubkey);
+        }
+    } else {
+
+        // NOTE: Apply the slash penalty to the operator
+        if (slash_amount > result.exit_stakes[0].amount.to_coin()) {
+            log::error(
+                    logcat,
+                    "ETH exit of BLS pubkey {} rejected: SN {} returned amount {} is less than the "
+                    "operator contribution {}, skipping",
+                    node->info.bls_public_key,
+                    node->service_node_pubkey,
+                    slash_amount,
+                    result.exit_stakes[0].amount);
+            return result;
+        }
+
+        result.exit_stakes[0].liquidation = cryptonote::reward_money::coin_amount(slash_amount);
+
+        std::string exit_label = "";
+        if (slash_amount)
+            exit_label = "liquidation ({})"_format(
+                    cryptonote::format_money(slash_amount, cryptonote::strip_zeros::no));
+        else
+            exit_label = "exit";
+
+        if (confirm.my_keys && confirm.my_keys->pub == node->service_node_pubkey)
+            log::info(
+                    globallogcat,
+                    fg(fmt::terminal_color::yellow),
+                    "Service node exit confirmed for {} (THIS NODE) @ height {}; type: {}",
+                    node->service_node_pubkey,
+                    height,
+                    exit_label);
+        else
+            log::debug(
+                    logcat,
+                    "Service node exit confirmed for {} @ height {}; type: {}",
+                    node->service_node_pubkey,
+                    height,
+                    exit_label);
+
+        // NOTE: Add the funds to the unlock queue in the DB, can be retrieved by BLS aggregation
+        // when fully unlocked..
+        sn_list->blockchain.sqlite_db().add_delayed_payments(
+                result.exit_stakes, height, block_delay);
     }
-
-    // NOTE: Apply the slash penalty to the operator
-    if (slash_amount > result.exit_stakes[0].amount.to_coin()) {
-        log::error(
-                logcat,
-                "ETH exit of BLS pubkey {} rejected: SN {} returned amount {} is less than the "
-                "operator contribution {}, skipping",
-                node->info.bls_public_key,
-                node->service_node_pubkey,
-                slash_amount,
-                result.exit_stakes[0].amount);
-        return result;
-    }
-
-    result.exit_stakes[0].liquidation = cryptonote::reward_money::coin_amount(slash_amount);
-
-    std::string exit_label = "";
-    if (slash_amount)
-        exit_label = "liquidation ({})"_format(
-                cryptonote::format_money(slash_amount, cryptonote::strip_zeros::no));
-    else
-        exit_label = "exit";
-
-    if (confirm.my_keys && confirm.my_keys->pub == node->service_node_pubkey)
-        log::info(
-                globallogcat,
-                fg(fmt::terminal_color::yellow),
-                "Service node exit confirmed for {} (THIS NODE) @ height {}; type: {}",
-                node->service_node_pubkey,
-                height,
-                exit_label);
-    else
-        log::debug(
-                logcat,
-                "Service node exit confirmed for {} @ height {}; type: {}",
-                node->service_node_pubkey,
-                height,
-                exit_label);
-
-    // NOTE: Add the funds to the unlock queue in the DB, can be retrieved by BLS aggregation when
-    // fully unlocked..
-    sn_list->blockchain.sqlite_db().add_delayed_payments(result.exit_stakes, height, block_delay);
 
     // NOTE: Remove the x25519/bls lookup entries:
     x25519_map.erase(snpk_to_xpk(node->service_node_pubkey));
@@ -4537,6 +4550,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
 
             auto it = m_transient->state_archive.find(archive_height);
             m_state = std::move(*it);
+            cleanup_zombies_from_state();
             m_transient->state_archive.erase(std::next(it), m_transient->state_archive.end());
             detach_label = " (from archive history)";
         } break;
@@ -4545,6 +4559,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
                                                                         // history
             auto it = m_transient->state_history.find(target_height);
             m_state = std::move(*it);
+            cleanup_zombies_from_state();
             m_transient->state_history.erase(std::next(it), m_transient->state_history.end());
             detach_label = " (from recent history)";
         } break;
@@ -6608,6 +6623,8 @@ bool service_node_list::load(const uint64_t current_height) {
         initialize_x25519_map();
     // else the x25519 map is part of state_t
 
+    cleanup_zombies_from_state();
+
     log::info(
             globallogcat,
             "{} nodes, {} recent states [blks {}-{}], {} historical [blks {}-{}] (w/ {} "
@@ -6623,6 +6640,39 @@ bool service_node_list::load(const uint64_t current_height) {
             tools::get_human_readable_bytes(load_result.bytes_loaded),
             m_state.height);
     return true;
+}
+
+void service_node_list::cleanup_zombies_from_state() {
+    auto hf21_height = hard_fork_begins(blockchain.nettype(), hf::hf21_eth);
+    if (hf21_height) {
+        for (auto node = m_state.recently_removed_nodes.begin();
+             node != m_state.recently_removed_nodes.end();) {
+            if (node->info.contributors.empty()) {
+                if (node->info.registration_height >= *hf21_height) {
+                    log::warning(
+                            logcat,
+                            "SNL load, recently removed node for BLS pubkey {}: SN {} has 0 "
+                            "contributors detected, but has registration height after HF21; this "
+                            "should not be possible!",
+                            node->info.bls_public_key,
+                            node->service_node_pubkey);
+                }
+
+                // if node in recently removed but also active, was a zombie that got re-registered
+                // before zombie exit removal from that list was fixed, keep its key mappings since
+                // it's registered now
+                if (m_state.service_nodes_infos.find(node->service_node_pubkey) ==
+                    m_state.service_nodes_infos.end()) {
+                    // NOTE: Remove the x25519/bls lookup entries:
+                    m_state.x25519_map.erase(snpk_to_xpk(node->service_node_pubkey));
+                    m_state.bls_map.erase(node->info.bls_public_key);
+                }
+
+                m_state.recently_removed_nodes.erase(node);
+            } else
+                node++;
+        }
+    }
 }
 
 void service_node_list::reset(bool delete_db_entry) {
