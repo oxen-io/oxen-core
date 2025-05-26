@@ -55,6 +55,7 @@
 #include "common/util.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
+#include "crypto/literals.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"
@@ -85,6 +86,8 @@ using cryptonote::hf;
 namespace feature = cryptonote::feature;
 
 namespace service_nodes {
+
+using namespace crypto::literals;
 
 // TODO: This is deprecated after HF20 w/ the new direct serialisation method
 // Internal intermediate structure to store runtime quorum data in a format suitable for
@@ -3686,6 +3689,29 @@ static bool is_expired_node_hf10_onwards(
     return false;
 }
 
+static void apply_fixups(
+        cryptonote::network_type nettype,
+        service_node_list::state_t& state,
+        const cryptonote::block& block) {
+    if (block.major_version == cryptonote::hf::hf22_eth_fixup) {
+        uint64_t height = *cryptonote::hard_fork_begins(nettype, cryptonote::hf::hf22_eth_fixup);
+        if (block.get_height() == height) {
+            constexpr crypto::public_key PUBKEYS_TO_REMOVE[] = {};
+            for (const auto& key : PUBKEYS_TO_REMOVE) {
+                auto it = std::find_if(
+                        state.recently_removed_nodes.begin(),
+                        state.recently_removed_nodes.end(),
+                        [&key](const service_node_list::recently_removed_node& entry) {
+                            bool result = entry.service_node_pubkey == key;
+                            return result;
+                        });
+                assert(it != state.recently_removed_nodes.end());
+                state.recently_removed_nodes.erase(it);
+            }
+        }
+    }
+}
+
 block_add_result service_node_list::state_t::update_from_block(
         cryptonote::BlockchainDB const& db,
         cryptonote::BlockchainSQLite* sqlite_db_ptr,
@@ -3707,6 +3733,8 @@ block_add_result service_node_list::state_t::update_from_block(
     assert(block.get_height() == height + 1);
     quorums = {};
     auto hf_version = block.major_version;
+
+    apply_fixups(nettype, *this, block);
 
     // NOTE: In the update step there are multiple pieces of information we want
     // to extract from the SN list. Instead of the various steps independently
