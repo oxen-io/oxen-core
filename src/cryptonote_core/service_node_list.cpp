@@ -1963,14 +1963,19 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
     auto& [pk, type, val] = result;
     if (tx.type == cryptonote::txtype::ethereum_new_service_node_v2) {
         type = "registration v2";
-        if (auto reg = eth_reg_v2_tx_extract_fields(hf_version, tx))
+        if (auto reg = eth_reg_v2_tx_extract_fields(hf_version, tx)) {
             pk = reg->service_node_pubkey;
+            type += " (key: {}, bls: {})"_format(pk, reg->bls_pubkey);
+        }
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
         type = "unlock";
-        if (eth::event::ServiceNodeExitRequest remreq;
-            cryptonote::get_field_from_tx_extra(tx.extra, remreq) &&
-            (pk = snl.find_public_key(remreq.bls_pubkey)))
-            type += " (key: {})"_format(pk);
+        eth::event::ServiceNodeExitRequest remreq;
+        if (cryptonote::get_field_from_tx_extra(tx.extra, remreq)) {
+            type += " (bls: {}"_format(remreq.bls_pubkey);
+            if (pk = snl.find_public_key(remreq.bls_pubkey); pk)
+                type += ", key: {}"_format(pk);
+            type += ")";
+        }
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit) {
         type = "exit";
         if (eth::event::ServiceNodeExit exit; cryptonote::get_field_from_tx_extra(tx.extra, exit) &&
@@ -1984,14 +1989,18 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
         }
     } else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated) {
         type = "staking requirement";
-        if (eth::event::StakingRequirementUpdated req;
-            cryptonote::get_field_from_tx_extra(tx.extra, req))
+        eth::event::StakingRequirementUpdated req;
+        if (cryptonote::get_field_from_tx_extra(tx.extra, req))
             val = req.staking_requirement;
     } else if (tx.type == cryptonote::txtype::ethereum_purge_missing_service_node) {
         type = "sn purge";
-        if (eth::event::ServiceNodePurge purge;
-            cryptonote::get_field_from_tx_extra(tx.extra, purge))
-            type += " (bls: {})"_format(purge.bls_pubkey);
+        eth::event::ServiceNodePurge purge;
+        if (cryptonote::get_field_from_tx_extra(tx.extra, purge)) {
+            type += " (bls: {}"_format(purge.bls_pubkey);
+            if (pk = snl.find_public_key(purge.bls_pubkey); pk)
+                type += ", key: {}"_format(pk);
+            type += ")";
+        }
     }
     return result;
 }
@@ -4022,8 +4031,9 @@ block_add_result service_node_list::state_t::update_from_block(
                     unconf.denials,
                     height - unconf.height_added);
 
+            const cryptonote::transaction& tx = sn_list->blockchain.db().get_tx(txhash);
             std::string fail;
-            auto event = eth::extract_event(sn_list->blockchain.db().get_tx(txhash), &fail);
+            auto event = eth::extract_event(tx, &fail);
             if (std::holds_alternative<std::monostate>(event))
                 throw oxen::traced<std::runtime_error>{
                         "Internal error: did not find state change tx data in blockchain database: {}"_format(
@@ -4049,9 +4059,10 @@ block_add_result service_node_list::state_t::update_from_block(
             }
 
             // NOTE: Handle event
+            std::string tx_desc = std::get<1>(eth_tx_info(hf_version, *sn_list, tx));
             confirm_result conf_result = {};
             if (*done) {
-                log::info(logcat, "State change tx {} confirmed by votes", txhash);
+                log::info(logcat, "State change tx {} confirmed by votes, was {}", txhash, tx_desc);
                 conf_result = std::visit(
                         [&](const auto& e) -> confirm_result {
                             confirm_metadata confirm = {
@@ -4069,10 +4080,10 @@ block_add_result service_node_list::state_t::update_from_block(
             } else {
                 log::warning(
                         logcat,
-                        "State change tx {} denied by {}",
+                        "State change tx {} denied by {}, was {}",
                         txhash,
-                        unconf.is_denied() ? "votes" : "expiry");
-                // Nothing to process here
+                        unconf.is_denied() ? "votes" : "expiry",
+                        tx_desc);
             }
 
             // NOTE: Collect stakes metadata
