@@ -2291,7 +2291,6 @@ service_node_list::state_t::confirm_result service_node_list::state_t::process_c
                     node->service_node_pubkey);
         }
     } else {
-
         // NOTE: Apply the slash penalty to the operator
         if (slash_amount > result.exit_stakes[0].amount.to_coin()) {
             log::error(
@@ -2336,7 +2335,6 @@ service_node_list::state_t::confirm_result service_node_list::state_t::process_c
                 result.exit_stakes, height, block_delay);
     }
 
-    // NOTE: Remove the x25519/bls lookup entries:
     x25519_map.erase(snpk_to_xpk(node->service_node_pubkey));
     bls_map.erase(exit.bls_pubkey);
 
