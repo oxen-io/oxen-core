@@ -311,9 +311,8 @@ void mocknet_push_mock_pulse_block(cryptonote::core& core) {
     constexpr bool adhere_to_pulse_timings = false;
     const int64_t now = time(nullptr);
     if (adhere_to_pulse_timings) {
-        pulse::timings timings = {};
-        pulse::get_round_timings(
-                core.blockchain, top_block.get_height() + 1, top_block.timestamp, timings);
+        pulse::timings timings = *pulse::get_round_timings(
+                core.blockchain, top_block.get_height() + 1, top_block.timestamp);
         int64_t r0_unix_ts = std::chrono::duration_cast<std::chrono::seconds>(
                                      timings.r0_timestamp.time_since_epoch())
                                      .count();
