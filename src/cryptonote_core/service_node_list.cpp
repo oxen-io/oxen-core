@@ -3718,14 +3718,11 @@ static void apply_fixups(
         cryptonote::BlockchainSQLite* sql_db,
         service_node_list::state_t& state,
         const cryptonote::block& block) {
-    static bool once = true;
-    if ((nettype == cryptonote::network_type::MAINNET &&
-        block.major_version == cryptonote::hf::hf22_eth_fixup) || true) {
+    if (nettype == cryptonote::network_type::MAINNET &&
+        block.major_version == cryptonote::hf::hf22_eth_fixup) {
         assert(sql_db);
         uint64_t height = *cryptonote::hard_fork_begins(nettype, cryptonote::hf::hf22_eth_fixup);
-        if ((block.get_height() == height) || once) {
-            once = false;
-
+        if (block.get_height() == height) {
             enum struct Fix {
                 Purge,
                 Reg,
@@ -3866,12 +3863,12 @@ static void apply_fixups(
                 {Fix::Exit, 1854403, 0, 3, "0bc61ecbd86839f21dc7ed7598f7c8d8c644d6541149e86672a8ca75fff99456"_edpk, "0xCfbbD8AC14Fe4c0b9098bC2A9515b004B7429c6D"_eth, 4710'000'000'000},
                 {Fix::Exit, 1854403, 0, 4, "0bc61ecbd86839f21dc7ed7598f7c8d8c644d6541149e86672a8ca75fff99456"_edpk, "0xbb726dd6BEEe92ae4C6C61cBEa0eD64E4bCb38fF"_eth, 3333'333'333'333},
                 {Fix::Exit, 1854403, 0, 5, "0bc61ecbd86839f21dc7ed7598f7c8d8c644d6541149e86672a8ca75fff99456"_edpk, "0x4F6ecBCC4bD165eb95Ca2A8107Ddc60671eC84Ad"_eth, 340'000'000'000},
-                // clang-format on
+                    // clang-format on
             };
 
             // Remove the 1 failed exit from the recently removed list
             constexpr crypto::public_key PUBKEYS_TO_REMOVE[] = {
-                "0bc61ecbd86839f21dc7ed7598f7c8d8c644d6541149e86672a8ca75fff99456"_pk,
+                    "0bc61ecbd86839f21dc7ed7598f7c8d8c644d6541149e86672a8ca75fff99456"_pk,
             };
 
             for (const auto& key : PUBKEYS_TO_REMOVE) {
@@ -3886,7 +3883,7 @@ static void apply_fixups(
                 state.recently_removed_nodes.erase(it);
             }
 
-           // Credit the denied exits, purges and registrations
+            // Credit the denied exits, purges and registrations
             struct BeforeAndAfter {
                 cryptonote::reward_money before;
                 cryptonote::reward_money after;
@@ -3909,7 +3906,7 @@ static void apply_fixups(
                             .tx_index = static_cast<uint32_t>(entry.tx_index),
                             .contributor_index = static_cast<uint32_t>(entry.contributor_index),
                     };
-                    block_add.locked_stakes.emplace_back();
+                    block_add.locked_stakes.push_back(stake);
                 }
 
                 // Exits, purges and registration will be recorded as block payments which correctly
@@ -3930,22 +3927,25 @@ static void apply_fixups(
                     payments.size());
 
             sql_db->submit_stakes_metadata(block_add);
-            sql_db->add_sn_rewards(block.major_version,  payments, false /*rewards_payment*/);
+            sql_db->add_sn_rewards(block.major_version, payments, false /*rewards_payment*/);
 
             for (const auto& entry : FIXUP_ENTRY)
                 book_keeping[entry.addr].after = sql_db->get_accrued_rewards(entry.addr).amount;
 
             fmt::memory_buffer buffer;
-            fmt::format_to(std::back_inserter(buffer), "  Fixup results: ");
+            fmt::format_to(std::back_inserter(buffer), "Fixup results:\n");
+            size_t book_index = 0;
             for (auto it : book_keeping)
                 fmt::format_to(
                         std::back_inserter(buffer),
-                        "  {}: {} => {}\n",
+                        "  {:2d} {}: {:<16} => {} (+{})\n",
+                        book_index++,
                         it.first,
                         cryptonote::print_money(it.second.before.to_coin()),
-                        cryptonote::print_money(it.second.after.to_coin()));
+                        cryptonote::print_money(it.second.after.to_coin()),
+                        cryptonote::print_money((it.second.after - it.second.before).to_coin()));
 
-            log::debug(logcat, "{}", fmt::to_string(buffer));
+            log::info(logcat, "{}", fmt::to_string(buffer));
         }
     }
 }
@@ -4166,12 +4166,13 @@ block_add_result service_node_list::state_t::update_from_block(
                 std::vector<std::string> contributors;
                 for (const auto& c : info.second->contributors) {
                     auto a = cryptonote::get_account_address_as_str(nettype, 0, c.address);
-                    contributors.emplace_back(fmt::format(
-                            "{} eth ({}) bene ({}): {}",
-                            a,
-                            c.ethereum_address,
-                            c.ethereum_beneficiary,
-                            c.amount));
+                    contributors.emplace_back(
+                            fmt::format(
+                                    "{} eth ({}) bene ({}): {}",
+                                    a,
+                                    c.ethereum_address,
+                                    c.ethereum_beneficiary,
+                                    c.amount));
                 }
                 op_addr = cryptonote::get_account_address_as_str(
                         nettype, 0, info.second->operator_address);
@@ -6290,16 +6291,17 @@ std::vector<bool> service_node_list::l2_pending_state_votes() const {
     auto& l2_tracker = blockchain.l2_tracker();
     votes.reserve(m_state.unconfirmed_l2_txes.size());
     for (auto& [txid, confirm_info] : m_state.unconfirmed_l2_txes) {
-        votes.push_back(std::visit(
-                [&l2_tracker, &txid]<typename T>(const T& evt) -> bool {
-                    if constexpr (std::is_same_v<T, std::monostate>)
-                        throw oxen::traced<std::runtime_error>{
-                                "Internal error: did not find required state data for pending unconfirmed tx {}"_format(
-                                        txid)};
-                    else
-                        return l2_tracker.get_vote_for(evt);
-                },
-                get_event_from_tx(blockchain.db().get_tx(txid))));
+        votes.push_back(
+                std::visit(
+                        [&l2_tracker, &txid]<typename T>(const T& evt) -> bool {
+                            if constexpr (std::is_same_v<T, std::monostate>)
+                                throw oxen::traced<std::runtime_error>{
+                                        "Internal error: did not find required state data for pending unconfirmed tx {}"_format(
+                                                txid)};
+                            else
+                                return l2_tracker.get_vote_for(evt);
+                        },
+                        get_event_from_tx(blockchain.db().get_tx(txid))));
     }
     return votes;
 }
@@ -6545,14 +6547,15 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
                                            ? netconf.ETH_EXIT_BUFFER
                                            : netconf.ETH_DEREG_BUFFER;
 
-            recently_removed_nodes.emplace_back(recently_removed_node{
-                    .height = height,
-                    .liquidation_height = height + exit_buffer,
-                    .type = exit_type,
-                    .public_ip = public_ip,
-                    .qnet_port = qnet_port,
-                    .service_node_pubkey = snpk,
-                    .info = *it->second});
+            recently_removed_nodes.emplace_back(
+                    recently_removed_node{
+                            .height = height,
+                            .liquidation_height = height + exit_buffer,
+                            .type = exit_type,
+                            .public_ip = public_ip,
+                            .qnet_port = qnet_port,
+                            .service_node_pubkey = snpk,
+                            .info = *it->second});
         }
     }
 
