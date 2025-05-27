@@ -206,7 +206,7 @@ struct proof_version {
 
 inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS_MAINNET = {
         proof_version{{cryptonote::hf::hf21_eth, 0}, {11, 3, 0}, {0, 9, 13}, {2, 10, 0}},
-        proof_version{{cryptonote::hf::hf22_eth_fixup, 1}, {11, 4, 0}, {0, 9, 13}, {2, 10, 0}},
+        proof_version{{cryptonote::hf::hf22_eth_fixup, 0}, {11, 4, 0}, {0, 9, 13}, {2, 10, 0}},
 };
 inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS_STAGENET = {
         proof_version{{cryptonote::hf::hf21_eth, 0}, {11, 0, 7}, {0, 9, 13}, {2, 10, 0}},
