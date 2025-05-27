@@ -1968,7 +1968,12 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
         type = "registration v2";
         if (auto reg = eth_reg_v2_tx_extract_fields(hf_version, tx)) {
             pk = reg->service_node_pubkey;
-            type += " (key: {}, bls: {})"_format(pk, reg->bls_pubkey);
+            type += " (key: {}, bls: {})\n"_format(pk, reg->bls_pubkey);
+            for (size_t index = 0; index < reg->eth_contributions.size(); index++) {
+                const auto& item = reg->eth_contributions[index];
+                type += "  {:02d} {}: {}\n"_format(
+                        index, item.address, cryptonote::print_money(item.amount));
+            }
         }
     } else if (tx.type == cryptonote::txtype::ethereum_service_node_exit_request) {
         type = "unlock";
@@ -1983,12 +1988,21 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
         type = "exit";
         if (eth::event::ServiceNodeExit exit; cryptonote::get_field_from_tx_extra(tx.extra, exit) &&
                                               (pk = snl.find_public_key(exit.bls_pubkey))) {
+            std::string contrib_text;
             eth::address op = {};
             snl.if_recently_removed_node(pk, [&](const auto& node) {
                 if (node.info.contributors.size())
                     op = node.info.contributors.front().ethereum_address;
+                for (size_t index = 0; index < node.info.contributors.size(); index++) {
+                    const auto& item = node.info.contributors[index];
+                    contrib_text += "  {:02d} {}: {}\n"_format(
+                            index, item.ethereum_address, cryptonote::print_money(item.amount));
+                }
             });
+
             type += " (op: {}; key: {}; returned: {})"_format(op, pk, exit.returned_amount);
+            if (contrib_text.size())
+                type += "\n{}"_format(contrib_text);
         }
     } else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated) {
         type = "staking requirement";
@@ -2000,9 +2014,19 @@ static std::tuple<crypto::public_key, std::string, uint64_t> eth_tx_info(
         eth::event::ServiceNodePurge purge;
         if (cryptonote::get_field_from_tx_extra(tx.extra, purge)) {
             type += " (bls: {}"_format(purge.bls_pubkey);
-            if (pk = snl.find_public_key(purge.bls_pubkey); pk)
+            if (pk = snl.find_public_key(purge.bls_pubkey); pk) {
                 type += ", key: {}"_format(pk);
+            }
             type += ")";
+
+            snl.if_service_node(pk, [&](const service_node_info& info) {
+                type += "\n";
+                for (size_t index = 0; index < info.contributors.size(); index++) {
+                    const auto& item = info.contributors[index];
+                    type += "  {:02d} {}: {}\n"_format(
+                            index, item.ethereum_address, cryptonote::print_money(item.amount));
+                }
+            });
         }
     }
     return result;
@@ -2025,12 +2049,12 @@ void service_node_list::state_t::process_new_ethereum_tx(
         log::info(
                 globallogcat,
                 fg(fmt::terminal_color::green),
-                "New service node {} tx ({}) from ethereum: {} (THIS NODE) @ height: {}"
-                "; awaiting confirmations",
-                type,
+                "New service node tx ({}) from ethereum: {} (THIS NODE) @ height: {}"
+                "; awaiting confirmations, was {}",
                 cryptonote::get_transaction_hash(tx),
                 snpk,
-                block_height);
+                block_height,
+                type);
     else if (tx.type == cryptonote::txtype::ethereum_staking_requirement_updated)
         log::info(
                 globallogcat,
@@ -2042,12 +2066,12 @@ void service_node_list::state_t::process_new_ethereum_tx(
     else
         log::info(
                 logcat,
-                "New service node {} tx ({}) from ethereum{} @ height: {}"
-                "; awaiting confirmations",
-                type,
+                "New tx ({}) from ethereum{} @ height: {}"
+                "; awaiting confirmations was {}",
                 cryptonote::get_transaction_hash(tx),
                 snpk ? ": {}"_format(snpk) : "",
-                block_height);
+                block_height,
+                type);
 
     if (auto [it, ins] = unconfirmed_l2_txes.emplace(
                 std::piecewise_construct,
@@ -4088,7 +4112,13 @@ block_add_result service_node_list::state_t::update_from_block(
             std::string tx_desc = std::get<1>(eth_tx_info(hf_version, *sn_list, tx));
             confirm_result conf_result = {};
             if (*done) {
-                log::info(logcat, "State change tx {} confirmed by votes, was {}", txhash, tx_desc);
+                log::info(
+                        logcat,
+                        "Blk {}/{} state change tx {} confirmed by votes, was {}",
+                        block.get_height(),
+                        tx_index,
+                        txhash,
+                        tx_desc);
                 conf_result = std::visit(
                         [&](const auto& e) -> confirm_result {
                             confirm_metadata confirm = {
@@ -4106,7 +4136,9 @@ block_add_result service_node_list::state_t::update_from_block(
             } else {
                 log::warning(
                         logcat,
-                        "State change tx {} denied by {}, was {}",
+                        "Blk {}/{} state change tx {} denied by {}, was {}",
+                        block.get_height(),
+                        tx_index,
                         txhash,
                         unconf.is_denied() ? "votes" : "expiry",
                         tx_desc);
