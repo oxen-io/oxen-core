@@ -91,6 +91,10 @@ class BlockchainSQLite : public db::Database {
     // inorder to separate the tracked rewards from the exit payments values.
     void add_sn_rewards(hf hf_version, const block_payments& payments, bool is_rewards);
 
+    // Submit locked and purged stakes to the DB to update the non-consensus metadata that tracks
+    // the lifetime total locked stakes for a given ethereum address.
+    void submit_stakes_metadata(const service_nodes::block_add_result& block_add);
+
     enum class delayed_payments_type {
         all,
         height,

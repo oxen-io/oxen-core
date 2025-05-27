@@ -1200,8 +1200,7 @@ block_payments BlockchainSQLite::get_delayed_payments(const delayed_payments_req
     return result;
 }
 
-static void submit_stakes_metadata(
-        BlockchainSQLite& db, const service_nodes::block_add_result& block_add) {
+void BlockchainSQLite::submit_stakes_metadata(const service_nodes::block_add_result& block_add) {
     // NOTE: Submit (locked) stakes information
     // New ETH addresses that are staking may not exist in the table yet if it's their first time
     // because they haven't received rewards yet. The adding of locked stakes has to account for
@@ -1210,7 +1209,7 @@ static void submit_stakes_metadata(
     //
     // NOTE: We specify amount and payout_offset because older DBs don't have the 'DEFAULT 0' clause
     // applied to those rows.
-    auto lifetime_locked_stakes = db.prepared_st(
+    auto lifetime_locked_stakes = prepared_st(
             "INSERT INTO batched_payments_accrued (lifetime_locked_stakes, address, amount, "
             "payout_offset)"
             " VALUES (?, ?, 0, 0)"
@@ -1222,7 +1221,7 @@ static void submit_stakes_metadata(
         assert(it.amount.to_db() > 0);
 
         std::string address = eth_address_to_sql_address(it.addr);
-        BlockchainSQLite::wallet_info wallet_info_before = get_accrued_rewards_impl(db, address);
+        BlockchainSQLite::wallet_info wallet_info_before = get_accrued_rewards_impl(*this, address);
 
         // NOTE: Add the locked SESH
         int rows_changed = exec_query(
@@ -1231,13 +1230,13 @@ static void submit_stakes_metadata(
         assert(rows_changed == 1);
 
         // NOTE: Verify the DB operations did what we expected
-        BlockchainSQLite::wallet_info wallet_info_after = get_accrued_rewards_impl(db, address);
+        BlockchainSQLite::wallet_info wallet_info_after = get_accrued_rewards_impl(*this, address);
         assert(wallet_info_after.found);
         log::trace(
                 logcat,
                 "SN contributor {} at height {} locked {} SESH ({} => {} total) into SN {}",
                 address,
-                db.height + 1,
+                height + 1,
                 cryptonote::print_money(it.amount.to_coin()),
                 cryptonote::print_money(wallet_info_before.lifetime_locked_stakes.to_coin()),
                 cryptonote::print_money(wallet_info_after.lifetime_locked_stakes.to_coin()),
@@ -1250,7 +1249,7 @@ static void submit_stakes_metadata(
     // For purged stakes, these funds have "disappeared" from the contract (node is in the SNL but
     // _not_ in the contract). To account for this we need to undo the stakes we counted as being
     // locked up.
-    auto purged_stakes = db.prepared_st(
+    auto purged_stakes = prepared_st(
             "UPDATE batched_payments_accrued"
             " SET lifetime_locked_stakes = (lifetime_locked_stakes - ?)"
             " WHERE address = ?");
@@ -1260,7 +1259,7 @@ static void submit_stakes_metadata(
 
         // NOTE: Verify remaining locked stakes don't go below 0
         std::string address = eth_address_to_sql_address(it.addr);
-        BlockchainSQLite::wallet_info wallet_info_before = get_accrued_rewards_impl(db, address);
+        BlockchainSQLite::wallet_info wallet_info_before = get_accrued_rewards_impl(*this, address);
         assert(wallet_info_before.found);
         if (wallet_info_before.locked_stakes.to_db() < it.amount.to_db()) {
             log::error(
@@ -1280,13 +1279,13 @@ static void submit_stakes_metadata(
         purged_stakes->reset();
 
         // NOTE: Verify the DB operations did what we expected
-        BlockchainSQLite::wallet_info wallet_info_after = get_accrued_rewards_impl(db, address);
+        BlockchainSQLite::wallet_info wallet_info_after = get_accrued_rewards_impl(*this, address);
         assert(wallet_info_after.found);
         log::trace(
                 logcat,
                 "SN contributor {} at height {} purged {} SESH ({} => {} total) into SN {}",
                 address,
-                db.height + 1,
+                height + 1,
                 cryptonote::print_money(it.amount.to_coin()),
                 cryptonote::print_money(wallet_info_before.locked_stakes.to_coin()),
                 cryptonote::print_money(wallet_info_after.locked_stakes.to_coin()),
@@ -1354,7 +1353,7 @@ bool BlockchainSQLite::add_block(
 
         reward_handler(block, service_nodes_state, block_add);
         if (hf_version >= hf::hf21_eth)
-            submit_stakes_metadata(*this, block_add);
+            submit_stakes_metadata(block_add);
         update_height(
                 height + 1);  // NOTE: Update height which synchronises the archive/recent tables
 
