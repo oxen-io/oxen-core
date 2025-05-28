@@ -4221,13 +4221,12 @@ block_add_result service_node_list::state_t::update_from_block(
                 std::vector<std::string> contributors;
                 for (const auto& c : info.second->contributors) {
                     auto a = cryptonote::get_account_address_as_str(nettype, 0, c.address);
-                    contributors.emplace_back(
-                            fmt::format(
-                                    "{} eth ({}) bene ({}): {}",
-                                    a,
-                                    c.ethereum_address,
-                                    c.ethereum_beneficiary,
-                                    c.amount));
+                    contributors.emplace_back(fmt::format(
+                            "{} eth ({}) bene ({}): {}",
+                            a,
+                            c.ethereum_address,
+                            c.ethereum_beneficiary,
+                            c.amount));
                 }
                 op_addr = cryptonote::get_account_address_as_str(
                         nettype, 0, info.second->operator_address);
@@ -6349,17 +6348,16 @@ std::vector<bool> service_node_list::l2_pending_state_votes() const {
     auto& l2_tracker = blockchain.l2_tracker();
     votes.reserve(m_state.unconfirmed_l2_txes.size());
     for (auto& [txid, confirm_info] : m_state.unconfirmed_l2_txes) {
-        votes.push_back(
-                std::visit(
-                        [&l2_tracker, &txid]<typename T>(const T& evt) -> bool {
-                            if constexpr (std::is_same_v<T, std::monostate>)
-                                throw oxen::traced<std::runtime_error>{
-                                        "Internal error: did not find required state data for pending unconfirmed tx {}"_format(
-                                                txid)};
-                            else
-                                return l2_tracker.get_vote_for(evt);
-                        },
-                        get_event_from_tx(blockchain.db().get_tx(txid))));
+        votes.push_back(std::visit(
+                [&l2_tracker, &txid]<typename T>(const T& evt) -> bool {
+                    if constexpr (std::is_same_v<T, std::monostate>)
+                        throw oxen::traced<std::runtime_error>{
+                                "Internal error: did not find required state data for pending unconfirmed tx {}"_format(
+                                        txid)};
+                    else
+                        return l2_tracker.get_vote_for(evt);
+                },
+                get_event_from_tx(blockchain.db().get_tx(txid))));
     }
     return votes;
 }
@@ -6605,15 +6603,14 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
                                            ? netconf.ETH_EXIT_BUFFER
                                            : netconf.ETH_DEREG_BUFFER;
 
-            recently_removed_nodes.emplace_back(
-                    recently_removed_node{
-                            .height = height,
-                            .liquidation_height = height + exit_buffer,
-                            .type = exit_type,
-                            .public_ip = public_ip,
-                            .qnet_port = qnet_port,
-                            .service_node_pubkey = snpk,
-                            .info = *it->second});
+            recently_removed_nodes.emplace_back(recently_removed_node{
+                    .height = height,
+                    .liquidation_height = height + exit_buffer,
+                    .type = exit_type,
+                    .public_ip = public_ip,
+                    .qnet_port = qnet_port,
+                    .service_node_pubkey = snpk,
+                    .info = *it->second});
         }
     }
 
