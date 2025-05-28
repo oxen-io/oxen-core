@@ -1268,6 +1268,11 @@ class Blockchain {
     bool load_missing_blocks_into_oxen_subsystems(
             const std::atomic<bool>* abort = nullptr, bool use_threaded_load = false);
 
+    /** DEBUG.  Sets a max sync height; the blockchain object will reject any incoming blocks with a
+     *   sync height above the given value.  0 disables.
+     */
+    void max_sync_height(uint64_t max_height);
+
 #ifndef IN_UNIT_TESTS
   private:
 #endif
@@ -1345,6 +1350,8 @@ class Blockchain {
     std::chrono::nanoseconds m_fake_scan_time;
     uint64_t m_sync_counter;
     uint64_t m_bytes_to_sync;
+    uint64_t m_max_sync_height = 0;
+    std::chrono::steady_clock::time_point m_max_sync_last_log = std::chrono::steady_clock::now() - 1h;
 
     uint64_t m_long_term_block_weights_window;
     uint64_t m_long_term_effective_median_block_weight;

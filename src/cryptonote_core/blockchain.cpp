@@ -5246,11 +5246,35 @@ Blockchain::block_pow_verified Blockchain::verify_block_pow(
     return result;
 }
 
+void Blockchain::max_sync_height(uint64_t max_height) {
+    m_max_sync_height = max_height;
+    if (m_max_sync_height > 0)
+        log::warning(
+                logcat,
+                "Blockchain max sync height enabled; oxend will not sync beyond height {}",
+                m_max_sync_height);
+}
+
 bool Blockchain::basic_block_checks(cryptonote::block const& blk, bool alt_block) {
     const crypto::hash blk_hash = cryptonote::get_block_hash(blk);
     const uint64_t blk_height = blk.get_height();
     const uint64_t chain_height = get_current_blockchain_height();
     const auto hf_version = get_network_version();
+
+    if (m_max_sync_height && blk_height >= m_max_sync_height) {
+        auto lvl = log::Level::debug;
+        if (auto now = std::chrono::steady_clock::now(); m_max_sync_last_log < now - 10min) {
+            lvl = log::Level::critical;
+            m_max_sync_last_log = now;
+        }
+        log::log(
+                logverify,
+                lvl,
+                "--debug-max-sync-height={} was used, so refusing block with height {}",
+                m_max_sync_height,
+                blk_height);
+        return false;
+    }
 
     if (alt_block) {
         if (blk.get_height() == 0) {
