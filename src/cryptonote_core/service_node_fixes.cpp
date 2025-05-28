@@ -161,6 +161,33 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
 
         case cryptonote::network_type::TESTNET:
             // FIXME - add dummy values for testing
+            fixups = {
+
+                    // clang-format off
+
+                {HF22Fix::Purge, 790188, 0, 0, "84271c77e6863190f7a2d088088083d7439fd17e45b93906aed3e62d626123bb"_edpk, "0xB0CefD61ddB88176Fb972955341adC6c1d05230e"_eth, 20'000'000'000'000},
+                {HF22Fix::Purge, 790188, 1, 0, "d6957e48b0053e36f3fcba8c37f4db00842544a229f80ec888fab31f00f15672"_edpk, "0x00979F83287a7eD917faA37bB1DA51f9f7aEb767"_eth, 20'000'000'000'000},
+
+                {HF22Fix::Reg, 789456, 0, 0, "32889030dc8cde311d691c68263882d9a62b087b920d53725b781517b41fbae7"_edpk, "0xB0CefD61ddB88176Fb972955341adC6c1d05230e"_eth, 5'000'000'000'000},
+                {HF22Fix::Reg, 789456, 0, 1, "32889030dc8cde311d691c68263882d9a62b087b920d53725b781517b41fbae7"_edpk, "0xB7649B5A5DfABAA0713ACFB3040945035b0bBD9e"_eth, 2'308'497'000'000},
+                {HF22Fix::Reg, 789456, 0, 2, "32889030dc8cde311d691c68263882d9a62b087b920d53725b781517b41fbae7"_edpk, "0xb82Cd271CE0E498e4203AC4db801698Bd720f6AF"_eth, 2'986'821'000'000},
+                {HF22Fix::Reg, 789456, 0, 3, "32889030dc8cde311d691c68263882d9a62b087b920d53725b781517b41fbae7"_edpk, "0x00979F83287a7eD917faA37bB1DA51f9f7aEb767"_eth, 2'233'690'000'000},
+                {HF22Fix::Reg, 789456, 0, 4, "32889030dc8cde311d691c68263882d9a62b087b920d53725b781517b41fbae7"_edpk, "0xfe288fc67cea4014f7fe47054352f559badd281e"_eth, 2'810'648'000'000},
+                {HF22Fix::Reg, 789456, 0, 5, "32889030dc8cde311d691c68263882d9a62b087b920d53725b781517b41fbae7"_edpk, "0x8850214b39f70b36d5c81e08d746a0fc3d89d2d5"_eth, 2'153'906'300'000},
+                {HF22Fix::Reg, 789456, 0, 6, "32889030dc8cde311d691c68263882d9a62b087b920d53725b781517b41fbae7"_edpk, "0x684de77897a2038b77a76ab4794ca2f627268039"_eth, 2'506'437'700'000},
+
+                {HF22Fix::Reg, 789567, 0, 0, "ab3236f70b37ca974ea5783dc5e84e8ae0e58b9642a2dab93ed595b4ace7af50"_edpk, "0xB0CefD61ddB88176Fb972955341adC6c1d05230e"_eth, 5'666'666'666'667},
+                {HF22Fix::Reg, 789567, 0, 1, "ab3236f70b37ca974ea5783dc5e84e8ae0e58b9642a2dab93ed595b4ace7af50"_edpk, "0xb7649b5a5dfabaa0713acfb3040945035b0bbd9e"_eth, 14'333'333'333'333},
+
+                // This one (a denied contract liquidation) was actually on chain (using a hacked up oxend to deliberately introduce to l2 vote denial bug):
+                // Blk 790037/0 state change tx 5ee77e298ab4927ffd858b96ee0349c3de0408572e2d12fa1cddd31d67ef25c9 denied by vote, was exit
+                // (op: 0xFe288fC67cEa4014F7fE47054352f559BAdD281E; key: f4a895743bd4171ed97bdf162be9f6f4a1013a757dfedfdc7f12a125a74c08d7; returned: 19960000000000)
+                {HF22Fix::Exit, 790037, 0, 0, "f4a895743bd4171ed97bdf162be9f6f4a1013a757dfedfdc7f12a125a74c08d7"_edpk, "0xFe288fC67cEa4014F7fE47054352f559BAdD281E"_eth, 19'960'000'000'000},
+
+                    // clang-format on
+
+            };
+            pks_to_remove = {"f4a895743bd4171ed97bdf162be9f6f4a1013a757dfedfdc7f12a125a74c08d7"_pk};
             break;
 
         default: break;
