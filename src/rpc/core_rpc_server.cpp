@@ -163,14 +163,6 @@ namespace {
     constexpr uint64_t round_up(uint64_t value, uint64_t quantum) {
         return (value + quantum - 1) / quantum * quantum;
     }
-
-    void rename_key(nlohmann::json& obj, std::string_view old_key, std::string_view new_key) {
-        if (auto it = obj.find(old_key); it != obj.end()) {
-            auto val = std::move(*it);
-            obj.erase(it);
-            obj[std::string{new_key}] = std::move(val);
-        }
-    }
 }  // namespace
 
 const std::unordered_map<std::string, std::shared_ptr<const rpc_command>> rpc_commands =
@@ -2708,63 +2700,30 @@ void core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
-    auto list = nlohmann::json::array();
+    rpc.response = json::array();
     using node_t = service_nodes::service_node_list::recently_removed_node;
-    m_core.service_node_list.for_each_recently_removed_node([&list, is_bt = rpc.is_bt()](
-                                                                    const node_t& elem) {
-        // NOTE: Serialise to JSON
-        serialization::json_archiver ar{
-                is_bt ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex};
-        serialize(ar, const_cast<node_t&>(elem));
-        nlohmann::json serialized = std::move(ar).json();
-        nlohmann::json& sn_info = serialized["info"];
+    const auto removable = m_core.blockchain.get_removable_nodes();
+    m_core.service_node_list.for_each_recently_removed_node(
+            [this, &rpc, &removable](const node_t& elem) {
+                rpc.response.push_back(json{
+                        {"height", elem.height},
+                        {"liquidation_height", elem.liquidation_height},
+                        {"type",
+                         elem.type == node_t::type_t::voluntary_exit ? "exit"
+                         : elem.type == node_t::type_t::deregister   ? "deregister"
+                                                                     : "unknown"},
+                });
+                rpc.response_hex.back()["service_node_pubkey"] = elem.service_node_pubkey;
 
-        // NOTE: Remove implementation details from the contributor JSON
-        for (auto& contrib_it : sn_info["contributors"]) {
-            constexpr std::string_view ERASE_FIELDS_CONTRIBUTOR[] = {
-                    "address",  // Cryptonote address  (not used in L2, use ETH addresses)
-                    "locked_contributions",  // $OXEN contributions (not used in L2, use $SESH)
-            };
-
-            for (const auto& field : ERASE_FIELDS_CONTRIBUTOR) {
-                auto it = contrib_it.find(field);
-                assert(it != contrib_it.end());
-                contrib_it.erase(it);
-            }
-
-            // NOTE: Remove operator cryptonote address and replace with ethereum address
-            rename_key(contrib_it, "ethereum_address", "address");
-        }
-
-        // NOTE: Remove operator cryptonote address and replace with ethereum address
-        rename_key(sn_info, "operator_ethereum_address", "operator_address");
-
-        // NOTE: Remove implementation details from the output JSON
-        constexpr std::string_view ERASE_FIELDS[] = {
-                "public_ip",
-                "qnet_port",
-                "type",
-        };
-
-        for (const auto& field : ERASE_FIELDS) {
-            auto it = serialized.find(field);
-            assert(it != serialized.end());
-            serialized.erase(it);
-        }
-
-        // NOTE: Assign the type
-        switch (elem.type) {
-            case node_t::type_t::voluntary_exit: serialized["type"] = "exit"; break;
-            case node_t::type_t::deregister: serialized["type"] = "deregister"; break;
-            case node_t::type_t::purged:
-                assert(!"Internal error: found invalid purged node in recently_removed_nodes");
-        }
-
-        // NOTE: Store the object into the RPC response array
-        list.push_back(std::move(serialized));
-    });
-
-    rpc.response = std::move(list);
+                fill_sn_response_entry(
+                        rpc.response.back()["info"] = json::object(),
+                        rpc.is_bt(),
+                        rpc.request.fields,
+                        elem.service_node_pubkey,
+                        elem.info,
+                        m_core.blockchain.get_tail_id().first,
+                        &removable);
+            });
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
@@ -3139,18 +3098,19 @@ void core_rpc_server::fill_sn_response_entry(
             if (contributor.ethereum_address) {
                 c["address"] = "{}"_format(contributor.ethereum_address);
                 c["beneficiary"] = "{}"_format(contributor.ethereum_beneficiary);
-            } else
+            } else {
                 c["address"] = cryptonote::get_account_address_as_str(
                         m_core.get_nettype(), false /*subaddress*/, contributor.address);
-            if (contributor.reserved && contributor.reserved != contributor.amount)
-                c["reserved"] = contributor.reserved;
-            if (want_locked_c) {
-                auto& locked = (c["locked_contributions"] = json::array());
-                for (const auto& src : contributor.locked_contributions) {
-                    auto& lc = locked.emplace_back(json{{"amount", src.amount}});
-                    json_binary_proxy lc_binary{lc, binary_format};
-                    lc_binary["key_image"] = src.key_image;
-                    lc_binary["key_image_pub_key"] = src.key_image_pub_key;
+                if (contributor.reserved && contributor.reserved != contributor.amount)
+                    c["reserved"] = contributor.reserved;
+                if (want_locked_c) {
+                    auto& locked = (c["locked_contributions"] = json::array());
+                    for (const auto& src : contributor.locked_contributions) {
+                        auto& lc = locked.emplace_back(json{{"amount", src.amount}});
+                        json_binary_proxy lc_binary{lc, binary_format};
+                        lc_binary["key_image"] = src.key_image;
+                        lc_binary["key_image_pub_key"] = src.key_image_pub_key;
+                    }
                 }
             }
         }
@@ -3955,9 +3915,16 @@ void core_rpc_server::invoke(ONS_RESOLVE& resolve, rpc_context) {
 
 static nlohmann::json wallet_info_to_json(
         std::string address, const BlockchainSQLite::wallet_info& wallet_info) {
+
+    if (eth::address addr; tools::try_load_from_hex_guts(address, addr))
+        // The database always stores the lower-case 0xabc123... version of eth addresses, but we
+        // want to return the proper checksum-formatted version, which we get by putting it back
+        // into an eth::address and running it through the formatter:
+        address = "{}"_format(addr);
+
     nlohmann::json result = {
             {"found", wallet_info.found},
-            {"address", address},
+            {"address", std::move(address)},
             {"amount", wallet_info.amount.to_coin()},
             {"lifetime_locked_stakes", wallet_info.lifetime_locked_stakes.to_coin()},
             {"lifetime_unlocked_stakes", wallet_info.lifetime_unlocked_stakes.to_coin()},
