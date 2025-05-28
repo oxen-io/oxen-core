@@ -6039,8 +6039,9 @@ bool service_node_list::handle_uptime_proof(
     }
 
     // BLS pubkey and verification: these only get sent during the HF20 transition; for HF21+ the
-    // data will be stored in the SN registration data itself.
-    if (vers.first == feature::ETH_TRANSITION) {
+    // data will be stored in the SN registration data itself. BLS verification is reenabled from
+    // HF22 onwards to detect nodes with mismatching BLS keys from their initial registration.
+    if (vers.first == feature::ETH_TRANSITION || vers.first >= cryptonote::hf::hf22_eth_fixup) {
         // BLS pubkey and signature verification
         if (!proof->pubkey_bls || !proof->pop_bls) {
             log::debug(
