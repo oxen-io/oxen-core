@@ -112,6 +112,10 @@ static const command_line::arg_descriptor<uint64_t> arg_test_drop_download_heigh
         "test-drop-download-height",
         "Like test-drop-download but discards only after around certain height",
         0};
+static const command_line::arg_descriptor<uint64_t> arg_max_sync_height = {
+        "debug-max-sync-height",
+        "DEBUG option: rejects any incoming blocks with heights >= the given value",
+        0};
 static const command_line::arg_descriptor<uint64_t> arg_fast_block_sync = {
         "fast-block-sync", "Sync up most of the way by using embedded, known block hashes.", 1};
 static const command_line::arg_descriptor<uint64_t> arg_prep_blocks_threads = {
@@ -337,6 +341,7 @@ void core::init_options(boost::program_options::options_description& desc) {
 
     command_line::add_arg(desc, arg_test_drop_download);
     command_line::add_arg(desc, arg_test_drop_download_height);
+    command_line::add_arg(desc, arg_max_sync_height);
     command_line::add_network_args(desc);
     command_line::add_arg(desc, arg_keep_fakechain);
     command_line::add_arg(desc, arg_fixed_difficulty);
@@ -389,6 +394,7 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
     m_config_folder = tools::utf8_path(command_line::get_arg(vm, arg_data_dir));
 
     test_drop_download_height(command_line::get_arg(vm, arg_test_drop_download_height));
+    blockchain.max_sync_height(get_arg(vm, arg_max_sync_height));
     m_pad_transactions = get_arg(vm, arg_pad_transactions);
     m_offline = get_arg(vm, arg_offline);
     m_has_ip_check_disabled = get_arg(vm, arg_disable_ip_check);
