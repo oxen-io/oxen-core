@@ -13,6 +13,7 @@ using rpc_input = std::variant<std::monostate, nlohmann::json, oxenc::bt_dict_co
 inline void parse_request(NO_ARGS&, rpc_input) {}
 
 void parse_request(BANNED& banned, rpc_input in);
+void parse_request(BLS_EXIT_LIQUIDATION_LIST& cmd, rpc_input in);
 void parse_request(BLS_EXIT_LIQUIDATION_REQUEST& cmd, rpc_input in);
 void parse_request(BLS_REWARDS_REQUEST& cmd, rpc_input in);
 void parse_request(CONTRACT_REGISTRATION& reg, rpc_input in);

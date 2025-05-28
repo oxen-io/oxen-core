@@ -2419,11 +2419,27 @@ struct GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES : PUBLIC, NO_ARGS {
 /// Get the list of nodes that are eligible to be removed or liquidated from the network using an
 /// aggregated signature. This request can never fail.
 ///
+/// Inputs:
+/// - `fields` -- specifies a list of service node info keys to return (see get_service_nodes).
+///   Note that this only takes an array of keys, not the backwards compatible dict of fields that
+///   older get_service_nodes used.
+///
 /// Outputs:
 ///
-/// - `list` -- The list of nodes that can be removed or liquidated
-struct BLS_EXIT_LIQUIDATION_LIST : PUBLIC, NO_ARGS {
+/// - `list` -- The list of nodes that can be removed or liquidated.  Contains keys:
+///   - `height` -- the height at which this node left the active service node list.
+///   - `liquidation_height` -- the earliest height at which this node may be liquidated.
+///   - `service_node_pubkey` -- the service node pubkey of the node
+///   - `type` -- string indicating how this node left the service node list: `"exit"` if it
+///     successfully completed an unlock gracefully, or `"deregister"` if the node was deregistered.
+///   - `info` -- the service node details; this is the same data that would be returned in the
+///     get_service_nodes call for this node.
+struct BLS_EXIT_LIQUIDATION_LIST : PUBLIC {
     static constexpr auto names() { return NAMES("bls_exit_liquidation_list"); }
+
+    struct request_parameters {
+        std::unordered_set<std::string> fields;
+    } request;
 };
 
 /// RPC: service_node/bls_rewards_request
