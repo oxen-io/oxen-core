@@ -2679,26 +2679,32 @@ void core::do_uptime_proof_call() {
                     return;
                 }
 
+                // Allow the synced blocks to be up to L2_TRACKER_SAFE_BLOCKS, because that's what
+                // we require for proper pulse participation, and so it is a valid refresh period to
+                // be slightly under that interval.  We need the threshold here to be longer than
+                // the refresh interval because otherwise it's entirely possible for this code to
+                // land in between a height update and a getLogs call, and trigger spurious
+                // instances of this error.  (Or worse: with both on the same interval, this timer
+                // could get stuck in between height+getLogs calls and never seen proofs).
                 eth::L2Tracker::L2Heights l2_heights = l2_tracker().get_l2_heights();
-                assert(l2_heights.latest >= l2_heights.synced);
-                size_t allowed_height_delta = 10s / config::L2_BLOCK_TIME;
-                size_t min_height = l2_heights.latest - allowed_height_delta;
-
-                // Allow some block buffer because these are individual network requests which take
-                // time
-                if (l2_heights.synced < min_height) {
-                    log::error(
+                if (l2_heights.latest >= l2_heights.synced + netconf.L2_TRACKER_SAFE_BLOCKS) {
+                    // Don't log this as an error in the first couple minutes, because L2 rate log
+                    // size and rate limiting often needs 30s+ to fetch all logs from the past 30
+                    // minutes of L2 blocks on startup.
+                    auto level = std::chrono::seconds{time(nullptr) - get_start_time()} >= 2min
+                                       ? log::Level::err
+                                       : log::Level::debug;
+                    log::log(
                             globallogcat,
+                            level,
                             fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                            "Failed to submit uptime proof: the L2 RPC provider has not synced the "
-                            "logs from Arbitrum to a sufficient height of {} to be considered "
-                            "synced. The L2's latest known/synced height is {}/{}. Check your "
+                            "Failed to submit uptime proof: L2 events are not yet synced "
+                            "to the latest known L2 height {} ({} blocks behind). Check your "
                             "L2 provider's dashboard for request health or the logs of "
                             "your local Arbitrum node to ensure the getLogs requests are being "
                             "handled successfully",
-                            min_height,
                             l2_heights.latest,
-                            l2_heights.synced);
+                            l2_heights.latest - l2_heights.synced);
                     return;
                 }
             }
