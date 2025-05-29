@@ -3784,11 +3784,12 @@ static void apply_fixups(
                     state.recently_removed_nodes.begin(),
                     state.recently_removed_nodes.end(),
                     [&key](const service_node_list::recently_removed_node& entry) {
-                        bool result = entry.service_node_pubkey == key;
-                        return result;
+                        return entry.service_node_pubkey == key;
                     });
-            assert(it != state.recently_removed_nodes.end());
-            state.recently_removed_nodes.erase(it);
+            if (it == state.recently_removed_nodes.end())
+                log::error(logcat, "Did not find expected key '{}' in recently_removed_nodes", key);
+            else
+                state.recently_removed_nodes.erase(it);
         }
 
         // Credit the denied exits, purges and registrations
@@ -3835,8 +3836,13 @@ static void apply_fixups(
                 cryptonote::print_money(total_credited_sesh),
                 payments.size());
 
-        sql_db->submit_stakes_metadata(block_add);
-        sql_db->add_sn_rewards(block.major_version, payments, false /*rewards_payment*/);
+        try {
+            sql_db->submit_stakes_metadata(block_add);
+            sql_db->add_sn_rewards(block.major_version, payments, false /*rewards_payment*/);
+        } catch (const std::exception& e) {
+            log::error(logcat, "Failed to submit fixup batch data: {}", e.what());
+            throw;
+        }
 
         for (const auto& entry : fixups)
             book_keeping[entry.addr].after = sql_db->get_accrued_rewards(entry.addr).amount;

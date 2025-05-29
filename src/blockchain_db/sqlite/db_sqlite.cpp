@@ -138,6 +138,12 @@ bool BlockchainSQLite::trigger_exists(const std::string& trigger_name) {
             trigger_name);
 }
 
+std::optional<SQLite::Transaction> BlockchainSQLite::begin_tx(SQLite::TransactionBehavior behave) {
+    if (rescan_tx)
+        return std::nullopt;
+    return std::make_optional<SQLite::Transaction>(db, behave);
+}
+
 void BlockchainSQLite::upgrade_schema() {
     bool have_offset = false;
     SQLite::Statement msg_cols{db, "PRAGMA main.table_info(batched_payments_accrued)"};
@@ -147,10 +153,7 @@ void BlockchainSQLite::upgrade_schema() {
             have_offset = true;
     }
 
-    std::optional<SQLite::Transaction> transaction{std::nullopt};
-    if (!rescan_tx) {
-        transaction.emplace(db, SQLite::TransactionBehavior::DEFERRED);
-    }
+    auto transaction = begin_tx();
     // NOTE: Rename 'batched_payments_accrued_archive' 'archive_height' column to 'height'. This
     // unifies the height label across the batch payment, recent and archive table making querying
     // from them require less code.
@@ -807,7 +810,7 @@ size_t BlockchainSQLite::batch_payments_accrued_row_count(
 
 void BlockchainSQLite::rescan_start() {
     assert(!rescan_tx);
-    log::debug(logcat, "(re)-starting rescan tx");
+    log::debug(logcat, "(re)starting rescan tx");
     rescan_tx.emplace(db, SQLite::TransactionBehavior::IMMEDIATE);
 }
 
@@ -1200,7 +1203,8 @@ block_payments BlockchainSQLite::get_delayed_payments(const delayed_payments_req
     return result;
 }
 
-void BlockchainSQLite::submit_stakes_metadata(const service_nodes::block_add_result& block_add) {
+void BlockchainSQLite::submit_stakes_metadata(
+        const service_nodes::block_add_result& block_add, bool _no_transaction) {
     // NOTE: Submit (locked) stakes information
     // New ETH addresses that are staking may not exist in the table yet if it's their first time
     // because they haven't received rewards yet. The adding of locked stakes has to account for
@@ -1216,16 +1220,19 @@ void BlockchainSQLite::submit_stakes_metadata(const service_nodes::block_add_res
             " ON CONFLICT(address) DO UPDATE SET"
             "  lifetime_locked_stakes = lifetime_locked_stakes + excluded.lifetime_locked_stakes;");
 
-    // NOTE: Submit locked stakes
-    for (auto it : block_add.locked_stakes) {
-        assert(it.amount.to_db() > 0);
+    std::optional<SQLite::Transaction> transaction =
+            _no_transaction ? std::nullopt : begin_tx(SQLite::TransactionBehavior::DEFERRED);
 
-        std::string address = eth_address_to_sql_address(it.addr);
+    // NOTE: Submit locked stakes
+    for (const auto& stake : block_add.locked_stakes) {
+        assert(stake.amount.to_db() > 0);
+
+        std::string address = eth_address_to_sql_address(stake.addr);
         BlockchainSQLite::wallet_info wallet_info_before = get_accrued_rewards_impl(*this, address);
 
         // NOTE: Add the locked SESH
         int rows_changed = exec_query(
-                lifetime_locked_stakes, static_cast<int64_t>(it.amount.to_db()), address);
+                lifetime_locked_stakes, static_cast<int64_t>(stake.amount.to_db()), address);
         lifetime_locked_stakes->reset();
         assert(rows_changed == 1);
 
@@ -1237,11 +1244,11 @@ void BlockchainSQLite::submit_stakes_metadata(const service_nodes::block_add_res
                 "SN contributor {} at height {} locked {} SESH ({} => {} total) into SN {}",
                 address,
                 height + 1,
-                cryptonote::print_money(it.amount.to_coin()),
+                cryptonote::print_money(stake.amount.to_coin()),
                 cryptonote::print_money(wallet_info_before.lifetime_locked_stakes.to_coin()),
                 cryptonote::print_money(wallet_info_after.lifetime_locked_stakes.to_coin()),
-                it.sn);
-        assert(wallet_info_before.locked_stakes.to_coin() + it.amount.to_coin() ==
+                stake.sn);
+        assert(wallet_info_before.locked_stakes.to_coin() + stake.amount.to_coin() ==
                wallet_info_after.locked_stakes.to_coin());
     }
 
@@ -1291,6 +1298,9 @@ void BlockchainSQLite::submit_stakes_metadata(const service_nodes::block_add_res
                 cryptonote::print_money(wallet_info_after.locked_stakes.to_coin()),
                 it.sn);
     }
+
+    if (transaction)
+        transaction->commit();
 }
 
 bool BlockchainSQLite::add_block(
@@ -1342,9 +1352,7 @@ bool BlockchainSQLite::add_block(
             miner_tx_vouts.emplace_back(std::get<txout_to_key>(vout.target).key, vout.amount);
 
     try {
-        std::optional<SQLite::Transaction> transaction{std::nullopt};
-        if (!rescan_tx)
-            transaction.emplace(db, SQLite::TransactionBehavior::IMMEDIATE);
+        auto transaction = begin_tx();
 
         // Goes through the miner transactions vouts checks they are right and marks them as paid in
         // the database
@@ -1353,7 +1361,7 @@ bool BlockchainSQLite::add_block(
 
         reward_handler(block, service_nodes_state, block_add);
         if (hf_version >= hf::hf21_eth)
-            submit_stakes_metadata(block_add);
+            submit_stakes_metadata(block_add, true);
         update_height(
                 height + 1);  // NOTE: Update height which synchronises the archive/recent tables
 
@@ -1385,10 +1393,7 @@ bool BlockchainSQLite::add_delayed_payments(
     ZoneScoped;
     log::trace(logcat, "BlockchainSQLite::{} called", __func__);
     try {
-        std::optional<SQLite::Transaction> transaction{std::nullopt};
-        if (!rescan_tx) {
-            transaction.emplace(db, SQLite::TransactionBehavior::IMMEDIATE);
-        }
+        auto transaction = begin_tx();
 
         // Basic checks can be done here
         // if (amount > max_staked_amount)
