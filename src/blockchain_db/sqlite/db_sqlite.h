@@ -93,7 +93,8 @@ class BlockchainSQLite : public db::Database {
 
     // Submit locked and purged stakes to the DB to update the non-consensus metadata that tracks
     // the lifetime total locked stakes for a given ethereum address.
-    void submit_stakes_metadata(const service_nodes::block_add_result& block_add);
+    void submit_stakes_metadata(
+            const service_nodes::block_add_result& block_add, bool _no_transaction = false);
 
     enum class delayed_payments_type {
         all,
@@ -142,6 +143,11 @@ class BlockchainSQLite : public db::Database {
     std::optional<SQLite::Transaction> rescan_tx{std::nullopt};
     size_t rescan_count{0};
     uint64_t rescan_target{0};
+
+    // Returns a new transaction *unless* the rescan_tx is already active, in which case you get
+    // nullopt.
+    std::optional<SQLite::Transaction> begin_tx(
+            SQLite::TransactionBehavior behave = SQLite::TransactionBehavior::IMMEDIATE);
 
   public:
     struct wallet_info {
