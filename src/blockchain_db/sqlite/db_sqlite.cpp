@@ -1228,7 +1228,9 @@ void BlockchainSQLite::submit_stakes_metadata(
         assert(stake.amount.to_db() > 0);
 
         std::string address = eth_address_to_sql_address(stake.addr);
+#ifndef NDEBUG
         BlockchainSQLite::wallet_info wallet_info_before = get_accrued_rewards_impl(*this, address);
+#endif
 
         // NOTE: Add the locked SESH
         int rows_changed = exec_query(
@@ -1236,6 +1238,7 @@ void BlockchainSQLite::submit_stakes_metadata(
         lifetime_locked_stakes->reset();
         assert(rows_changed == 1);
 
+#ifndef NDEBUG
         // NOTE: Verify the DB operations did what we expected
         BlockchainSQLite::wallet_info wallet_info_after = get_accrued_rewards_impl(*this, address);
         assert(wallet_info_after.found);
@@ -1250,6 +1253,7 @@ void BlockchainSQLite::submit_stakes_metadata(
                 stake.sn);
         assert(wallet_info_before.locked_stakes.to_coin() + stake.amount.to_coin() ==
                wallet_info_after.locked_stakes.to_coin());
+#endif
     }
 
     // NOTE: Submit purge stakes
@@ -1285,6 +1289,7 @@ void BlockchainSQLite::submit_stakes_metadata(
         assert(rows_changed == 1);
         purged_stakes->reset();
 
+#ifndef NDEBUG
         // NOTE: Verify the DB operations did what we expected
         BlockchainSQLite::wallet_info wallet_info_after = get_accrued_rewards_impl(*this, address);
         assert(wallet_info_after.found);
@@ -1297,6 +1302,7 @@ void BlockchainSQLite::submit_stakes_metadata(
                 cryptonote::print_money(wallet_info_before.locked_stakes.to_coin()),
                 cryptonote::print_money(wallet_info_after.locked_stakes.to_coin()),
                 it.sn);
+#endif
     }
 
     if (transaction)
