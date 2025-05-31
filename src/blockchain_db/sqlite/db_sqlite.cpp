@@ -87,6 +87,10 @@ BlockchainSQLite::BlockchainSQLite(
             height);
 }
 
+// Used in queries.  NOTE: does not include `height`!
+static constexpr auto BATCHED_PAYMENTS_COLS =
+        "address, amount, payout_offset, lifetime_locked_stakes, lifetime_unlocked_stakes, "
+        "lifetime_liquidated_stakes, lifetime_rewards"sv;
 static std::string CREATE_BATCHED_PAYMENTS(std::string_view table_name, bool with_height) {
     std::string result = R"(CREATE TABLE {table}(
   address                    TEXT NOT NULL,
@@ -109,6 +113,10 @@ static std::string CREATE_BATCHED_PAYMENTS(std::string_view table_name, bool wit
     return result;
 }
 
+// Used in queries.
+static constexpr auto DELAYED_PAYMENTS_COLS =
+        "eth_address, amount, payout_height, height, block_height, block_tx_index, "
+        "contributor_index, liquidation_amount"sv;
 static std::string CREATE_DELAYED_PAYMENTS(std::string_view table_name) {
     return R"(
 CREATE TABLE {table}(
@@ -467,15 +475,14 @@ void BlockchainSQLite::upgrade_schema() {
         CREATE TRIGGER           make_recent AFTER UPDATE ON batch_db_info
         FOR EACH ROW WHEN NEW.height > OLD.height BEGIN
             -- Batched payments
-            INSERT INTO batched_payments_accrued_recent
-                SELECT address, amount, payout_offset, NEW.height, lifetime_locked_stakes,
-                    lifetime_unlocked_stakes, lifetime_liquidated_stakes, lifetime_rewards
-                FROM batched_payments_accrued;
+            INSERT INTO batched_payments_accrued_recent ({batched_fields}, height)
+                SELECT {batched_fields}, NEW.height FROM batched_payments_accrued;
 
             DELETE FROM batched_payments_accrued_recent WHERE height < (NEW.height - {recent_keep});
 
             -- Delayed payments
-            INSERT INTO delayed_payments_recent SELECT * FROM  delayed_payments WHERE height == NEW.height;
+            INSERT INTO delayed_payments_recent ({delayed_fields})
+                SELECT {delayed_fields} FROM delayed_payments WHERE height == NEW.height;
             DELETE FROM delayed_payments_recent WHERE height < (NEW.height - {recent_keep});
 
         END;
@@ -494,16 +501,16 @@ void BlockchainSQLite::upgrade_schema() {
         FOR EACH ROW WHEN (NEW.height % {archive_interval}) = 0 AND NEW.height > OLD.height BEGIN
 
             -- Batch payments
-            INSERT INTO batched_payments_accrued_archive
-                SELECT address, amount, payout_offset, NEW.height, lifetime_locked_stakes,
-                    lifetime_unlocked_stakes, lifetime_liquidated_stakes, lifetime_rewards
+            INSERT INTO batched_payments_accrued_archive ({batched_fields}, height)
+                SELECT {batched_fields}, NEW.height
                 FROM batched_payments_accrued;
 
             DELETE FROM batched_payments_accrued_archive
                 WHERE height < (NEW.height - {archive_keep});
 
             -- Delayed payments
-            INSERT INTO delayed_payments_archive SELECT * FROM delayed_payments;
+            INSERT INTO delayed_payments_archive ({delayed_fields})
+                SELECT {delayed_fields} FROM delayed_payments;
             DELETE FROM delayed_payments_archive WHERE height < (NEW.height - {archive_keep});
 
         END;
@@ -541,7 +548,9 @@ void BlockchainSQLite::upgrade_schema() {
         DROP TRIGGER IF EXISTS batch_payments_delete_empty;
         )"_format("recent_keep"_a = netconf.HISTORY_RECENT_KEEP_WINDOW,
                   "archive_interval"_a = netconf.HISTORY_ARCHIVE_INTERVAL,
-                  "archive_keep"_a = netconf.HISTORY_ARCHIVE_KEEP_WINDOW));
+                  "archive_keep"_a = netconf.HISTORY_ARCHIVE_KEEP_WINDOW,
+                  "batched_fields"_a = BATCHED_PAYMENTS_COLS,
+                  "delayed_fields"_a = DELAYED_PAYMENTS_COLS));
     }
 
     // NOTE: Add new liquidation field to delayed payment table
@@ -631,17 +640,17 @@ void BlockchainSQLite::blockchain_detached(
                 rows_restored = batch_payments_accrued_row_count(history, new_height);
                 prepared_exec("DELETE FROM batched_payments_accrued");
                 prepared_exec(
-                        "INSERT INTO batched_payments_accrued "
-                        "SELECT address, amount, payout_offset, lifetime_locked_stakes,"
-                        " lifetime_unlocked_stakes, lifetime_liquidated_stakes, lifetime_rewards"
-                        " FROM batched_payments_accrued_{}"
-                        " WHERE height = ?"_format(suffix),
+                        "INSERT INTO batched_payments_accrued ({batched_fields}) "
+                        "SELECT {batched_fields} FROM batched_payments_accrued_{suffix}"
+                        " WHERE height = ?"_format(
+                                "batched_fields"_a = BATCHED_PAYMENTS_COLS, "suffix"_a = suffix),
                         static_cast<int64_t>(new_height));
                 prepared_exec("DELETE FROM delayed_payments");
                 prepared_exec(
-                        "INSERT INTO delayed_payments "
-                        " SELECT * FROM delayed_payments_{}"
-                        " WHERE ? BETWEEN height AND payout_height"_format(suffix),
+                        "INSERT INTO delayed_payments ({delayed_fields})"
+                        " SELECT {delayed_fields} FROM delayed_payments_{suffix}"
+                        " WHERE ? BETWEEN height AND payout_height"_format(
+                                "delayed_fields"_a = DELAYED_PAYMENTS_COLS, "suffix"_a = suffix),
                         static_cast<int64_t>(new_height));
             } break;
         }
