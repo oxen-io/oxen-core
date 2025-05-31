@@ -20,6 +20,11 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
                 // Blk 1852106/0 state change tx 29cbbd7c683efa10323f9971de69d22a05701e136eb5928a201f68fa143a6f99 confirmed by votes, was sn purge
                 // (bls: 081b6d52379146b0127b06875577a83b82f4362a92b8afc99d0697d669c7001d2e1338be37d8d6407e37fa4f80e2ec2a1c2c9cfcbcd54f5d09826a6dc15ce090, key: 488b88449534170e93b6f695840b9f3040239ec7045d9c82ec3e18cba16e3261)
                 //   00 0x3adA97D64272aC01cF832E930259f078f337e5A5: 25000.000000000
+                //
+                // Note that this purge did *not* get properly accounted for in the lifetime stakes
+                // accounting because of a different bug that only counted the last one.  This
+                // accounting value is corrected in db_sqlite.cpp when upgrading the database upon
+                // first 11.4.0 load of an earlier database.
                 {HF22Fix::Purge, 1852106, 0, 0, "488b88449534170e93b6f695840b9f3040239ec7045d9c82ec3e18cba16e3261"_edpk, "0x3adA97D64272aC01cF832E930259f078f337e5A5"_eth, 25'000'000'000'000},
 
                 // Blk 1852106/1 state change tx b27eebff80b6187ef5868a5c1c941ae4603c2acfaab258d3282731f3f63216e5 confirmed by votes, was sn purge
