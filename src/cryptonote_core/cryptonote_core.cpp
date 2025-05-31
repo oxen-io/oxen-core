@@ -1178,11 +1178,19 @@ bool core::init_service_keys() {
                                   }))
         return false;
 
-    // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
-    // for the primary SN keypair.  (This key predates the Ed25519 keys and so is needed for
-    // backwards compatibility with existing active service nodes.)  The legacy key consists of
-    // *just* the private point, but not the seed, and so cannot be used for full Ed25519 signatures
-    // (which rely on the seed for signing).
+    // Our primary SN pubkey used to be different from our Ed25519 key, and lived in its own `key`
+    // file, and up until HF21 we communicated the Ed25519 key via uptime proofs, which could be
+    // different.  Starting in HF21 (and Oxen 11.3) we rewrote all SN entries to use the Ed25519 key
+    // as the pubkey, forcing unification, and so now completely ignore the `key` file, always
+    // deriving it from the Ed25519 key.  Unlike key_ed25519 which does get used for other purposes,
+    // this primary key was only used for service nodes and so has no effect on non-service nodes,
+    // so we don't set it unless running in service node mode.
+    //
+    // The reason for this mess is that Monero didn't implement Ed25519 properly, and saved the
+    // private scalar instead of the seed, from which you cannot go back to the seed to do proper
+    // Ed25519, and so rather than fix that mistake Monero also implemented their own non-standard
+    // signatures using Ed25519 cryptography, negating one of EdDSA's fundmental properties of not
+    // relying on randomness for signature generation.  Yay Monero!
     if (m_service_node) {
         keys.key = crypto::ed25519_to_monero_secret_key(keys.key_ed25519);
         if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
@@ -1203,7 +1211,12 @@ bool core::init_service_keys() {
             fg(fmt::terminal_color::cyan) | fmt::emphasis::bold,
             "{} public keys:",
             m_service_node ? "Service node" : "Node");
-    log::info(globallogcat, style, "- {}ed25519: {:x}", m_service_node ? "primary/" : "", keys.pub);
+    log::info(
+            globallogcat,
+            style,
+            "- {}ed25519: {:x}",
+            m_service_node ? "primary/" : "",
+            keys.pub_ed25519);
     log::info(globallogcat, style, "- x25519: {:x}", keys.pub_x25519);
     // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
     if (m_service_node) {
