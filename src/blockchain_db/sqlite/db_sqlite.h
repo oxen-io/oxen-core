@@ -126,12 +126,13 @@ class BlockchainSQLite : public db::Database {
     //
     // This function must be called with the address_str_cache_mutex held!
     const std::string& get_address_str(const cryptonote::batch_sn_payment& addr);
-    std::pair<int, std::string> get_address_str(
+    std::pair<std::optional<int>, std::string> get_address_str(
             const std::variant<eth::address, cryptonote::account_public_address>& addr,
             uint64_t batching_interval);
     std::mutex address_str_cache_mutex;
 
     bool table_exists(const std::string& name);
+    bool index_exists(const std::string& name);
     bool trigger_exists(const std::string& name);
 
     // Long rescans can take quite a while to process.  Batching block inserts into one database
