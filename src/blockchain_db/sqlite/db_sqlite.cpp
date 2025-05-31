@@ -227,6 +227,14 @@ void BlockchainSQLite::upgrade_schema() {
         }
     }
 
+    // Remove old deprecated tables.
+    db.exec(R"(
+        DROP TABLE IF EXISTS batched_payments_raw;
+        DROP VIEW  IF EXISTS batched_payments_paid;
+        DROP TABLE IF EXISTS batched_payments_accrued_raw;
+        DROP VIEW  IF EXISTS batched_payments_accrued_paid;
+    )");
+
     // delayed_payments: Stores time-locked payments that will be paid out once 'payout_height' is
     // met. This is typically then for when SN's exit the network, their stake is locked for X
     // amount of time before the network merges these payments into 'batch_payments_accrued`.
@@ -564,11 +572,6 @@ void BlockchainSQLite::upgrade_schema() {
                         it, field));
         }
     }
-
-    // NOTE: Remove deprecated tables, this can be removed post HF21 as everyone
-    // will have upgraded.
-    db.exec(R"(DROP TABLE IF EXISTS batched_payments_accrued_raw;
-               DROP VIEW  IF EXISTS batched_payments_accrued_paid;)");
 
     if (transaction)
         transaction->commit();
