@@ -42,6 +42,8 @@
 
 namespace cryptonote {
 
+using namespace fmt::literals;
+
 static auto logcat = log::Cat("blockchain.db.sqlite");
 
 BlockchainSQLite::BlockchainSQLite(
@@ -86,10 +88,10 @@ BlockchainSQLite::BlockchainSQLite(
 }
 
 static std::string CREATE_BATCHED_PAYMENTS(std::string_view table_name, bool with_height) {
-    std::string result = R"(CREATE TABLE {}(
+    std::string result = R"(CREATE TABLE {table}(
   address                    TEXT NOT NULL,
   amount                     INTEGER NOT NULL DEFAULT 0, -- Claimable amount (lifetime rewards and unlocked stakes)
-  payout_offset              INTEGER,)"_format(table_name);
+  payout_offset              INTEGER,)"_format("table"_a = table_name);
 
     if (with_height)
         result += R"(
@@ -100,16 +102,16 @@ static std::string CREATE_BATCHED_PAYMENTS(std::string_view table_name, bool wit
   lifetime_unlocked_stakes   INTEGER NOT NULL DEFAULT 0,
   lifetime_liquidated_stakes INTEGER NOT NULL DEFAULT 0,
   lifetime_rewards           INTEGER NOT NULL DEFAULT 0, -- Lifetime accumulated rewards (i.e. not including unlocked stakes)
-  PRIMARY KEY({})
+  PRIMARY KEY({pk})
   CHECK(amount >= 0)
-);)"_format(with_height ? "height, address" : "address");
+);)"_format("table"_a = table_name, "pk"_a = with_height ? "height, address" : "address");
 
     return result;
 }
 
 static std::string CREATE_DELAYED_PAYMENTS(std::string_view table_name) {
     return R"(
-CREATE TABLE {0}(
+CREATE TABLE {table}(
   eth_address        TEXT    NOT NULL,
   amount             INTEGER NOT NULL,           -- Original amount the 'eth_address' staked
   payout_height      INTEGER NOT NULL,           -- Height that the payment was given to 'eth_address' and removed from this table
@@ -126,8 +128,8 @@ CREATE TABLE {0}(
   CHECK(block_tx_index    >= 0)
   CHECK(contributor_index >= 0)
 );
-CREATE INDEX {0}_height_idx ON {0}(height);
-   )"_format(table_name);
+CREATE INDEX {table}_height_idx ON {table}(height);
+   )"_format("table"_a = table_name);
 }
 
 void BlockchainSQLite::create_schema() {
@@ -366,11 +368,12 @@ void BlockchainSQLite::upgrade_schema() {
         db.exec(CREATE_BATCHED_PAYMENTS(
                 "{}_tmp"_format(table),
                 /*with_height=*/!is_primary));
-        db.exec("INSERT INTO {0}_tmp ({1}{2}) SELECT {1}{2} FROM {0}"_format(
-                table,
-                is_primary ? "" : "height, ",
-                "address, amount, payout_offset, lifetime_locked_stakes, lifetime_unlocked_stakes, "
-                "lifetime_liquidated_stakes, lifetime_rewards"));
+        db.exec("INSERT INTO {table}_tmp ({base_cols}{maybe_height}) SELECT {base_cols}{maybe_height} FROM {table}"_format(
+                "table"_a = table,
+                "base_cols"_a = "address, amount, payout_offset, lifetime_locked_stakes, "
+                                "lifetime_unlocked_stakes, "
+                                "lifetime_liquidated_stakes, lifetime_rewards",
+                "maybe_height"_a = is_primary ? "" : ", height"));
 
         if (!dropped_accrued_triggers) {
             // Drop the potentially referencing triggers (they will get recreated below)
@@ -384,13 +387,13 @@ void BlockchainSQLite::upgrade_schema() {
             dropped_accrued_triggers = true;
         }
         db.exec(R"(
-            DROP TABLE {0};
-            ALTER TABLE {0}_tmp RENAME TO {0};
-            UPDATE {0} SET payout_offset = NULL WHERE length(address) = 42; -- eth address rows
-        )"_format(table));
+            DROP TABLE {table};
+            ALTER TABLE {table}_tmp RENAME TO {table};
+            UPDATE {table} SET payout_offset = NULL WHERE length(address) = 42; -- eth address rows
+        )"_format("table"_a = table));
         if (is_primary)
-            db.exec("CREATE INDEX IF NOT EXISTS {0}_payout_offset_idx ON {0}(payout_offset)"_format(
-                    table));
+            db.exec("CREATE INDEX IF NOT EXISTS {table}_payout_offset_idx ON {table}(payout_offset)"_format(
+                    "table"_a = table));
 
         // HF22 accounting fixup.  See cryptonote_core/service_node_fixes.cpp for details.  This
         // really belongs there, but we can't easily get there from here (in terms of available
@@ -456,11 +459,6 @@ void BlockchainSQLite::upgrade_schema() {
     // Triggers to maintain the table when blocks are added or the blockchain
     // detaches with the following format specifiers. Note that _order_ of the
     // triggers is important as the operations has side effects on tables.
-    //
-    // {0} => Recent window    => HISTORY_RECENT_KEEP_WINDOW
-    // {1} => Archive interval => HISTORY_ARCHIVE_INTERVAL
-    // {2} => Archive window   => HISTORY_ARCHIVE_KEEP_WINDOW
-    //
     {
         db.exec(
                 R"(
@@ -474,11 +472,11 @@ void BlockchainSQLite::upgrade_schema() {
                     lifetime_unlocked_stakes, lifetime_liquidated_stakes, lifetime_rewards
                 FROM batched_payments_accrued;
 
-            DELETE FROM batched_payments_accrued_recent WHERE height < (NEW.height - {0});
+            DELETE FROM batched_payments_accrued_recent WHERE height < (NEW.height - {recent_keep});
 
             -- Delayed payments
             INSERT INTO delayed_payments_recent SELECT * FROM  delayed_payments WHERE height == NEW.height;
-            DELETE FROM delayed_payments_recent WHERE height < (NEW.height - {0});
+            DELETE FROM delayed_payments_recent WHERE height < (NEW.height - {recent_keep});
 
         END;
 
@@ -493,7 +491,7 @@ void BlockchainSQLite::upgrade_schema() {
         -- pruning math ('cull_height') in the SNL at 'process_block()'.
         DROP   TRIGGER IF EXISTS make_archive;
         CREATE TRIGGER           make_archive AFTER UPDATE ON batch_db_info
-        FOR EACH ROW WHEN (NEW.height % {1}) = 0 AND NEW.height > OLD.height BEGIN
+        FOR EACH ROW WHEN (NEW.height % {archive_interval}) = 0 AND NEW.height > OLD.height BEGIN
 
             -- Batch payments
             INSERT INTO batched_payments_accrued_archive
@@ -502,11 +500,11 @@ void BlockchainSQLite::upgrade_schema() {
                 FROM batched_payments_accrued;
 
             DELETE FROM batched_payments_accrued_archive
-                WHERE height < (NEW.height - {2});
+                WHERE height < (NEW.height - {archive_keep});
 
             -- Delayed payments
             INSERT INTO delayed_payments_archive SELECT * FROM delayed_payments;
-            DELETE FROM delayed_payments_archive WHERE height < (NEW.height - {2});
+            DELETE FROM delayed_payments_archive WHERE height < (NEW.height - {archive_keep});
 
         END;
 
@@ -541,9 +539,9 @@ void BlockchainSQLite::upgrade_schema() {
         -- Remove old trigger from pre-ETH hardfork. It is replaced with a manual delete of rows
         -- when the correct conditions are met.
         DROP TRIGGER IF EXISTS batch_payments_delete_empty;
-        )"_format(netconf.HISTORY_RECENT_KEEP_WINDOW,
-                  netconf.HISTORY_ARCHIVE_INTERVAL,
-                  netconf.HISTORY_ARCHIVE_KEEP_WINDOW));
+        )"_format("recent_keep"_a = netconf.HISTORY_RECENT_KEEP_WINDOW,
+                  "archive_interval"_a = netconf.HISTORY_ARCHIVE_INTERVAL,
+                  "archive_keep"_a = netconf.HISTORY_ARCHIVE_KEEP_WINDOW));
     }
 
     // NOTE: Add new liquidation field to delayed payment table
