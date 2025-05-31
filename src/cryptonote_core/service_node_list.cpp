@@ -3804,9 +3804,9 @@ static void apply_fixups(
         block_add_result block_add = {};
         uint64_t total_credited_sesh = 0;
         for (const auto& entry : fixups) {
-            // Denied registrations need to add to the lifetime total lock stakes which we can
-            // do by accumulating these into the block_add result for correct book-keeping
-            if (entry.type == HF22Fix::Reg) {
+            // Denied registrations and purges need to add to the lifetime total lock stakes which
+            // we can do by accumulating these into the block_add result for correct book-keeping
+            if (entry.type == HF22Fix::Reg || entry.type == HF22Fix::Purge) {
                 eth_stake stake = {
                         .sn = entry.sn_pubkey,
                         .addr = entry.addr,
