@@ -37,6 +37,8 @@
 #include <zstd.h>
 
 #include <algorithm>
+#include <boost/random/mersenne_twister.hpp>
+#include <boost/random/seed_seq.hpp>
 #include <chrono>
 #include <limits>
 #include <mutex>
@@ -3271,16 +3273,17 @@ void service_node_list::block_add(
     }
 }
 
-static std::mt19937_64 quorum_rng(hf hf_version, crypto::hash const& hash, quorum_type type) {
+static boost::random::mt19937_64 quorum_rng(
+        hf hf_version, crypto::hash const& hash, quorum_type type) {
     ZoneScoped;
-    std::mt19937_64 result;
+    boost::random::mt19937_64 result;
     if (hf_version >= hf::hf16_pulse) {
         std::array<uint32_t, (sizeof(hash) / sizeof(uint32_t)) + 1> src = {
                 static_cast<uint32_t>(type)};
         std::memcpy(&src[1], &hash, sizeof(hash));
         for (uint32_t& val : src)
             oxenc::little_to_host_inplace(val);
-        std::seed_seq sequence(src.begin(), src.end());
+        boost::random::seed_seq sequence(src.begin(), src.end());
         result.seed(sequence);
     } else {
         uint64_t seed = 0;
@@ -3303,7 +3306,7 @@ static std::vector<size_t> generate_shuffled_service_node_index_list(
     ZoneScoped;
     std::vector<size_t> result(list_size);
     std::iota(result.begin(), result.end(), 0);
-    std::mt19937_64 rng = quorum_rng(hf_version, block_hash, type);
+    auto rng = quorum_rng(hf_version, block_hash, type);
 
     //       Shuffle 2
     //       |=================================|
@@ -3470,7 +3473,7 @@ static service_nodes::quorum generate_pulse_quorum_with_candidates(
     if (pulse_round == 0) {
         block_producer = block_leader;
     } else {
-        std::mt19937_64 rng = quorum_rng(hf_version, pulse_entropy[0], quorum_type::pulse);
+        auto rng = quorum_rng(hf_version, pulse_entropy[0], quorum_type::pulse);
         size_t producer_index = tools::uniform_distribution_portable(rng, pulse_candidates.size());
         block_producer = pulse_candidates[producer_index].first;
         pulse_candidates.erase(pulse_candidates.begin() + producer_index);
@@ -3488,7 +3491,7 @@ static service_nodes::quorum generate_pulse_quorum_with_candidates(
     } else {
         for (size_t i = 0; i < service_nodes::PULSE_QUORUM_NUM_VALIDATORS; i++) {
             crypto::hash const& entropy = pulse_entropy[i + 1];
-            std::mt19937_64 rng = quorum_rng(hf_version, entropy, quorum_type::pulse);
+            auto rng = quorum_rng(hf_version, entropy, quorum_type::pulse);
             size_t validators_available = std::distance(running_it, pulse_candidates.end());
             size_t swap_index = tools::uniform_distribution_portable(
                     rng, std::min(partition_index, validators_available));
@@ -3635,7 +3638,7 @@ static void generate_other_quorums(
                 }
 
                 if (pub_keys_indexes.size() >= BLINK_MIN_VOTES) {
-                    std::mt19937_64 rng = quorum_rng(hf_version, state.block_hash, type);
+                    auto rng = quorum_rng(hf_version, state.block_hash, type);
                     tools::shuffle_portable(pub_keys_indexes.begin(), pub_keys_indexes.end(), rng);
                     num_validators =
                             std::min<size_t>(pub_keys_indexes.size(), BLINK_SUBQUORUM_SIZE);
