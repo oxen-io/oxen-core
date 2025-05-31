@@ -383,6 +383,56 @@ void BlockchainSQLite::upgrade_schema() {
         if (is_primary)
             db.exec("CREATE INDEX IF NOT EXISTS {0}_payout_offset_idx ON {0}(payout_offset)"_format(
                     table));
+
+        // HF22 accounting fixup.  See cryptonote_core/service_node_fixes.cpp for details.  This
+        // really belongs there, but we can't easily get there from here (in terms of available
+        // objects, or linkage).  Note that these fields are only used to distinguish between
+        // rewards and stakes, and don't actually award anything, but keep the accounting code
+        // consistent.
+        int64_t fixup_height = 0;
+        cryptonote::reward_money fixup_amount;
+        std::string fixup_addr;
+        switch (m_nettype) {
+            case cryptonote::network_type::MAINNET:
+                fixup_height = 1852106;
+                fixup_amount = cryptonote::reward_money::coin_amount(25000'000000000);
+                fixup_addr = "0x3ada97d64272ac01cf832e930259f078f337e5a5";
+                break;
+            case cryptonote::network_type::TESTNET:
+                fixup_height = 790188;
+                fixup_amount = cryptonote::reward_money::coin_amount(20000'000000000);
+                fixup_addr = "0xb0cefd61ddb88176fb972955341adc6c1d05230e";
+                break;
+            default: break;
+        }
+
+        if (fixup_height) {
+            if (is_primary) {
+                if (prepared_get<int64_t>("SELECT height FROM batch_db_info") > fixup_height) {
+                    // This amount should have been subtracted when processing the purge in block
+                    // 1852106, but if the database didn't have this new table yet then it also had
+                    // the same bug that missed this subtraction (because it was the first purge in
+                    // a block with two purges, and only the last purge was being properly accounted
+                    // for):
+                    db::exec_query(
+                            db,
+                            "UPDATE {} SET lifetime_locked_stakes = lifetime_locked_stakes - ? "
+                            "WHERE address = ?"_format(table),
+                            static_cast<int64_t>(fixup_amount.to_db()),
+                            fixup_addr);
+                    log::debug(logcat, "Applied block 1852106 purge accounting fixup to {}", table);
+                }
+            } else {
+                db::exec_query(
+                        db,
+                        "UPDATE {} SET lifetime_locked_stakes = lifetime_locked_stakes - ? "
+                        "WHERE address = ? AND height >= ?"_format(table),
+                        static_cast<int64_t>(fixup_amount.to_db()),
+                        fixup_addr,
+                        fixup_height);
+                log::debug(logcat, "Applied block 1852106 purge accounting fixup to {}", table);
+            }
+        }
     }
 
     // This code block could be moved, someday, into schema creation to avoid needing to recreate
