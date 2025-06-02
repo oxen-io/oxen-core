@@ -2112,10 +2112,6 @@ struct GET_SERVICE_NODES : PUBLIC {
     } request;
 };
 
-struct HF21_DRY_RUN : PUBLIC, NO_ARGS {
-    static constexpr auto names() { return NAMES("hf21_dry_run"); }
-};
-
 struct GET_ALL_UPTIME_PROOFS : PUBLIC, NO_ARGS {
     static constexpr auto names() { return NAMES("get_all_uptime_proofs"); }
 };
@@ -3029,7 +3025,6 @@ using core_rpc_types = tools::type_list<
         GET_QUORUM_STATE,
         GET_SERVICE_KEYS,
         GET_SERVICE_NODES,
-        HF21_DRY_RUN,
         GET_ALL_UPTIME_PROOFS,
         GET_SERVICE_NODE_BLACKLISTED_KEY_IMAGES,
         BLS_REWARDS_REQUEST,

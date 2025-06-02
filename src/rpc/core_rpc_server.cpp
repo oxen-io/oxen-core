@@ -3203,56 +3203,6 @@ void core_rpc_server::invoke(GET_SERVICE_NODES& sns, rpc_context) {
                 sns.request.oxen10_compat_fields);
 }
 
-void core_rpc_server::invoke(HF21_DRY_RUN& req, rpc_context) {
-    req.response["status"] = STATUS_OK;
-
-    auto sn_infos_before = m_core.service_node_list.get_service_node_list_state();
-    auto [top_height, top_hash] = m_core.blockchain.get_tail_id();
-    const auto removable = m_core.blockchain.get_removable_nodes();
-
-    auto transition_result = m_core.service_node_list.hf21_dry_run(m_core.get_nettype());
-
-    req.response["before"] = json::object();
-    req.response["after"] = json::object();
-    auto& sns_before = (req.response["before"]["sns"] = json::array());
-    auto& sns_after = (req.response["after"]["sns"] = json::array());
-    auto& rewards_before = (req.response["before"]["rewards"] = json::object());
-    auto& rewards_after = (req.response["after"]["rewards"] = json::object());
-
-    auto rewards_before_pair = m_core.blockchain.sqlite_db().get_all_accrued_rewards();
-    for (size_t i = 0; i < rewards_before_pair.first.size(); i++) {
-        const auto& addr = rewards_before_pair.first[i];
-        const auto& amt = rewards_before_pair.second[i];
-        rewards_before[addr] = amt.amount.to_coin();
-    }
-    for (size_t i = 0; i < transition_result.rewards_after.first.size(); i++) {
-        const auto& addr = transition_result.rewards_after.first[i];
-        const auto& amt = transition_result.rewards_after.second[i];
-        rewards_after[addr] = amt.to_coin();
-    }
-
-    std::unordered_set<std::string> reqed;
-    reqed.insert("all");
-    for (const auto& pubkey_info : sn_infos_before)
-        fill_sn_response_entry(
-                sns_before.emplace_back(json::object()),
-                req.is_bt(),
-                reqed,
-                pubkey_info.pubkey,
-                *pubkey_info.info,
-                top_height,
-                &removable);
-    for (const auto& [pubkey, info] : transition_result.sns_after)
-        fill_sn_response_entry(
-                sns_after.emplace_back(json::object()),
-                req.is_bt(),
-                reqed,
-                pubkey,
-                *info,
-                top_height,
-                &removable);
-}
-
 void core_rpc_server::invoke(GET_ALL_UPTIME_PROOFS& req, rpc_context) {
     req.response["status"] = STATUS_OK;
     req.response["proofs"] = json::array();
