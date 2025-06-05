@@ -2346,7 +2346,7 @@ service_node_list::state_t::confirm_result service_node_list::state_t::process_c
             auto& item = result.exit_stakes.emplace_back();
             item.sn = crypto::ed25519_public_key{node->service_node_pubkey};
             item.addr = contributor.ethereum_address;
-            item.amount = cryptonote::reward_money::coin_amount(contributor.amount);
+            item.amount = cryptonote::reward_money::from_coin(contributor.amount);
             item.block_height = confirm.height;
             item.tx_index = confirm.tx_index;
             item.contributor_index = index;
@@ -2386,7 +2386,7 @@ service_node_list::state_t::confirm_result service_node_list::state_t::process_c
             return result;
         }
 
-        result.exit_stakes[0].liquidation = cryptonote::reward_money::coin_amount(slash_amount);
+        result.exit_stakes[0].liquidation = cryptonote::reward_money::from_coin(slash_amount);
 
         std::string exit_label = "";
         if (slash_amount)
@@ -2514,7 +2514,7 @@ service_node_list::state_t::confirm_result service_node_list::state_t::process_c
         eth_stake& stake = result.exit_stakes.emplace_back();
         stake.sn = crypto::ed25519_public_key{it->first};
         stake.addr = contributor.ethereum_address;
-        stake.amount = cryptonote::reward_money::coin_amount(contributor.amount);
+        stake.amount = cryptonote::reward_money::from_coin(contributor.amount);
         stake.block_height = confirm.height;
         stake.tx_index = confirm.tx_index;
         stake.contributor_index = contrib_index;
@@ -3778,6 +3778,9 @@ static void apply_fixups(
                 cryptonote::hard_fork_begins(nettype, cryptonote::hf::hf22_eth_fixup)) {
 
         assert(sql_db);
+
+        sql_db->convert_hf22();
+
         const auto [fixups, pubkeys_to_remove] = get_hf22_fixups(nettype);
 
         for (const auto& key : pubkeys_to_remove) {
@@ -3798,7 +3801,8 @@ static void apply_fixups(
             cryptonote::reward_money before;
             cryptonote::reward_money after;
         };
-        std::unordered_map<eth::address, BeforeAndAfter> book_keeping;
+        // Ordered map so that the final bookkeeping list prints the same everywhere.
+        std::map<eth::address, BeforeAndAfter> book_keeping;
 
         cryptonote::block_payments payments = {};
         block_add_result block_add = {};
@@ -3810,7 +3814,7 @@ static void apply_fixups(
                 eth_stake stake = {
                         .sn = entry.sn_pubkey,
                         .addr = entry.addr,
-                        .amount = cryptonote::reward_money::coin_amount(entry.amount),
+                        .amount = cryptonote::reward_money::from_coin(entry.amount),
                         .liquidation = cryptonote::reward_money{},
                         .block_height = static_cast<uint32_t>(entry.block),
                         .tx_index = static_cast<uint32_t>(entry.tx_index),
@@ -3822,9 +3826,14 @@ static void apply_fixups(
             // Exits, purges and registration will be recorded as block payments which correctly
             // update the amount that address is due as well as update the total lifetime
             // unlocked stakes count
-            payments[entry.addr].amount += cryptonote::reward_money::coin_amount(entry.amount);
+            payments[entry.addr].amount += cryptonote::reward_money::from_coin(entry.amount);
             total_credited_sesh += entry.amount;
-            book_keeping[entry.addr].before = sql_db->get_accrued_rewards(entry.addr).amount;
+            // Override the hard fork version for get_accrued_rewards before we're still in the
+            // middle of updating rewards, etc., and so the block number hasn't been updated yet,
+            // and so get_accrued_rewards's default behaviour of applying the current hf based on
+            // the current db height will apply the wrong hf rules for db amount calculations.
+            book_keeping[entry.addr].before =
+                    sql_db->get_accrued_rewards(entry.addr, block.major_version).amount;
         }
 
         // Submit and credit the address to fixup
@@ -3846,20 +3855,21 @@ static void apply_fixups(
         }
 
         for (const auto& entry : fixups)
-            book_keeping[entry.addr].after = sql_db->get_accrued_rewards(entry.addr).amount;
+            book_keeping[entry.addr].after =
+                    sql_db->get_accrued_rewards(entry.addr, block.major_version).amount;
 
         size_t book_index = 0;
-        for (auto it : book_keeping)
+        for (const auto& [addr, amounts] : book_keeping)
             fmt::format_to(
                     std::back_inserter(buffer),
                     "\n  {:2d} {}: {:<16} => {:<16} (+{})",
                     book_index++,
-                    it.first,
-                    cryptonote::print_money(it.second.before.to_coin()),
-                    cryptonote::print_money(it.second.after.to_coin()),
-                    cryptonote::print_money((it.second.after - it.second.before).to_coin()));
+                    addr,
+                    amounts.before,
+                    amounts.after,
+                    amounts.after - amounts.before);
 
-        log::info(logcat, "{}", fmt::to_string(buffer));
+        log::info(globallogcat, "{}", fmt::to_string(buffer));
     }
 }
 
@@ -4287,7 +4297,7 @@ block_add_result service_node_list::state_t::update_from_block(
                         eth_stake stake = {
                                 .sn = crypto::ed25519_public_key{ptr->sn_pubkey},
                                 .addr = it.address,
-                                .amount = cryptonote::reward_money::coin_amount(it.amount),
+                                .amount = cryptonote::reward_money::from_coin(it.amount),
                                 .liquidation = cryptonote::reward_money{},
                                 .block_height = static_cast<uint32_t>(block.get_height()),
                                 .tx_index = static_cast<uint32_t>(tx_index),
@@ -4682,9 +4692,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
     // type at the requested height.
     const auto sqlite_begins = hard_fork_begins(blockchain.nettype(), hf::hf19_reward_batching)
                                        .value_or(std::numeric_limits<uint64_t>::max());
-    auto sql_db_has = [this, sqlite_begins](
-                              uint64_t height,
-                              cryptonote::BlockchainSQLite::PaymentTableType table_type) {
+    auto sql_db_has = [this, sqlite_begins](uint64_t height, bool recent) {
         // NOTE: If we're below HF19 then anything is fine because the correct SQLite DB is
         // empty:
         if (height < sqlite_begins)
@@ -4695,7 +4703,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
             return true;
 
         // NOTE: Accept if SQL has payment rows for the requested height:
-        return sql_db.batch_payments_accrued_row_count(table_type, height) > 0;
+        return sql_db.batch_payments_accrued_has_any(recent, height) > 0;
     };
 
     // NOTE: Lookup desired SNL state from recent backups
@@ -4707,7 +4715,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
             if (it->only_loaded_quorums || it->height > target_height)
                 continue;
 
-            if (sql_db_has(it->height, cryptonote::BlockchainSQLite::PaymentTableType::Recent)) {
+            if (sql_db_has(it->height, true)) {
                 history = cryptonote::BlockchainSQLite::PaymentTableType::Recent;
                 target_height = it->height;
                 break;
@@ -4727,7 +4735,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
                 ((it->height % netconf.HISTORY_ARCHIVE_INTERVAL) != 0))
                 continue;
 
-            if (sql_db_has(it->height, cryptonote::BlockchainSQLite::PaymentTableType::Archive)) {
+            if (sql_db_has(it->height, false)) {
                 history = cryptonote::BlockchainSQLite::PaymentTableType::Archive;
                 archive_height = it->height;
                 break;
@@ -5247,13 +5255,9 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
         } break;
 
         case verify_mode::batched_sn_rewards: {
-            cryptonote::reward_money total_payout_in_our_db = std::accumulate(
-                    batched_sn_payments.begin(),
-                    batched_sn_payments.end(),
-                    cryptonote::reward_money{},
-                    [](auto&& a, auto&& b) {
-                        return cryptonote::reward_money::db_amount(a.to_db() + b.amount.to_db());
-                    });
+            cryptonote::reward_money total_payout_in_our_db{};
+            for (const auto& pmt : batched_sn_payments)
+                total_payout_in_our_db += pmt.amount;
 
             uint64_t total_payout_in_vouts = 0;
             const auto deterministic_keypair =
@@ -5272,7 +5276,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                     throw oxen::traced<std::runtime_error>{
                             "Batched reward payout invalid: exceeds maximum possible payout size"};
 
-                auto paid_amount = cryptonote::reward_money::coin_amount(vout.amount);
+                auto paid_amount = cryptonote::reward_money::from_coin(vout.amount);
                 total_payout_in_vouts += paid_amount.to_coin();
                 if (paid_amount != batch_payment.amount)
                     throw oxen::traced<std::runtime_error>{

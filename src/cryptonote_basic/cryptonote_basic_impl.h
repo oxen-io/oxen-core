@@ -75,43 +75,141 @@ struct address_parse_info {
 };
 
 // Strongly-typed money amount used to calculate rewards at a higher precision by a factor of
-// `BATCH_REWARD_FACTOR`. Money amounts are stored at the higher precision in the DB.
+// `BATCH_REWARD_FACTOR`.  Before HF22, these money amounts are stored at the higher precision in
+// the DB for some fields; starting at HF22 the higher precision values are only used for
+// intermediate reward calculations (to avoid potential int64 database overflow).
 struct reward_money {
 
     // Construct a money value from an atomic $COIN amount.
-    static reward_money coin_amount(uint64_t amount) {
-        return {._amount = amount * BATCH_REWARD_FACTOR};
+    static constexpr reward_money from_coin(int64_t amount) { return {amount, 0}; }
+
+    // Construct a money value from an amount value stored in the database (which will either be a
+    // coin value, or an intermediate value, depending on the hard fork of the height the value
+    // comes from).  This is used for fields like `batched_payments_accrued.amount` and
+    // `.lifetime_rewards` that can (before HF22) have subatomic amounts.
+    static constexpr reward_money from_db_amount(int64_t amount, hf hf_version) {
+        int_fast16_t subatomic;
+        if (hf_version >= hf::hf22_eth_fixup)
+            subatomic = 0;
+        else {
+            subatomic = amount % BATCH_REWARD_FACTOR;
+            amount /= BATCH_REWARD_FACTOR;
+        }
+        return {amount, subatomic};
     }
 
-    // Construct a money value from an atomic $COIN amount denoted with the extra precision
-    // (pre-multiplied with `BATCH_REWARD_FACTOR`) suitable for storing in the DB. There is more
-    // precision to minimise integer division errors in reward calculations.
-    static reward_money db_amount(uint64_t amount) { return {._amount = amount}; }
+    // Construct a money value from an atomic SESH amount value stored in the database.  This is for
+    // fields that are always stored as atomic (not subatomic) values such as
+    // `batched_payments_accrued.lifetime_locked_stakes` and the amounts in the delayed_payments
+    // table.  This is effectively the same thing as from_coin, but is more descriptive and takes an
+    // sqlite-compatible signed int64 instead of unsigned.
+    static constexpr reward_money from_db_atomic(int64_t amount) {
+        return from_coin(static_cast<int64_t>(amount));
+    }
 
-    constexpr uint64_t to_coin() const { return _amount / BATCH_REWARD_FACTOR; }
+    // Construct a money value from an intermediate amount as returned by `to_intermediate()`.  This
+    // is always denominated in milli-atomics and is used for higher-precision reward calculations,
+    // but is not suitable for cumulative values (which could overflow the uint64_t).
+    static constexpr reward_money from_intermediate(uint64_t amount) {
+        return {static_cast<int64_t>(amount / BATCH_REWARD_FACTOR),
+                static_cast<int64_t>(amount % BATCH_REWARD_FACTOR)};
+    }
 
-    constexpr uint64_t to_db() const { return _amount; }
+    // Returns the atomic coin amount of the value, i.e. without the extra precision, cast to
+    // uint64_t.
+    constexpr uint64_t to_coin() const { return static_cast<uint64_t>(_atomic); }
+
+    // Returns an intermediate reward calculation value, which is the value computed in
+    // milli-atomics (to reduce rounding error on each block's reward).  This value can overflow
+    // (both negative or positive), and returns std::nullopt if the result would not fit in a
+    // uint64_t: this value is intended for use only with block rewards (which will fit) but not for
+    // cumulative amounts.
+    constexpr std::optional<uint64_t> to_intermediate() const {
+        if (negative())
+            return std::nullopt;
+        auto uatomic = static_cast<uint64_t>(_atomic);
+        // < instead of <= here because we need room to add the subatomic amount without overflowing
+        if (uatomic < std::numeric_limits<uint64_t>::max() / BATCH_REWARD_FACTOR)
+            return uatomic * BATCH_REWARD_FACTOR + _subatomic;
+        return std::nullopt;
+    }
+
+    // Returns a truncated money_reward, i.e. a value with the same atomic value but with any
+    // subatomic value dropped.
+    [[nodiscard]] constexpr reward_money truncate() const { return {_atomic, 0}; }
+
+    // Returns true if this value amount has sub-atomic components.
+    constexpr bool has_subatomic() const { return _subatomic != 0; }
+
+    // Returns a "db" amount value for database fields that (depending on the hardfork) sometimes
+    // have extra precision (see from_db_amount).  Up to HF22, this is milli-atomics, but from HF22
+    // onward we store atomic values in the db (but still compute intermediate reward values in
+    // milli-atomics).  Returns the value cast as int64_t because that's what actually goes into the
+    // db.
+    constexpr int64_t to_db_amount(hf hf_version) const {
+        return hf_version >= hf::hf22_eth_fixup ? _atomic
+                                                : _atomic * BATCH_REWARD_FACTOR + _subatomic;
+    }
+
+    // Returns a db amount for database fields that are always stored in atomic units, such as stake
+    // accounting and delayed payments.  This is effectively the same as `to_coin()`, but with a
+    // more descriptive name and a static_cast to signed for sqlite API compatibility.
+    constexpr int64_t to_db_atomic() const { return static_cast<int64_t>(to_coin()); }
 
     constexpr auto operator<=>(const reward_money& rhs) const = default;
 
+    constexpr bool negative() const { return _atomic < 0 || _subatomic < 0; }
+
     constexpr reward_money operator+(const reward_money& rhs) const {
-        return {._amount = _amount + rhs._amount};
-    }
-    constexpr reward_money operator-(const reward_money& rhs) const {
-        return {._amount = _amount - rhs._amount};
+        auto result = *this;
+        result += rhs;
+        return result;
     }
     constexpr reward_money& operator+=(const reward_money& rhs) {
-        _amount += rhs._amount;
+        _subatomic += rhs._subatomic;
+        _atomic += rhs._atomic;
+        _atomic += _subatomic / BATCH_REWARD_FACTOR;
+        _subatomic %= BATCH_REWARD_FACTOR;
+        if (_atomic > 0 && _subatomic < 0) {
+            _atomic--;
+            _subatomic += BATCH_REWARD_FACTOR;
+        } else if (_atomic < 0 && _subatomic > 0) {
+            _atomic++;
+            _subatomic -= BATCH_REWARD_FACTOR;
+        }
         return *this;
     }
-    constexpr reward_money& operator-=(const reward_money& rhs) {
-        _amount -= rhs._amount;
+    constexpr reward_money operator-() const { return {-_atomic, -_subatomic}; }
+    constexpr reward_money operator-(const reward_money& rhs) const { return *this + -rhs; }
+    constexpr reward_money& operator-=(const reward_money& rhs) { return *this += -rhs; }
+    constexpr reward_money operator/(int64_t N) const {
+        auto result = *this;
+        result /= N;
+        return result;
+    }
+    constexpr reward_money& operator/=(int64_t N) {
+        auto remainder = _atomic % N;
+        _atomic /= N;
+        _subatomic = (remainder * 1000 + _subatomic) / N;
         return *this;
     }
-
-    uint64_t _amount{0};
 
     std::string to_string() const;
+
+    constexpr reward_money() = default;
+    constexpr reward_money(const reward_money&) = default;
+    constexpr reward_money(reward_money&&) = default;
+    reward_money& operator=(const reward_money&) = default;
+    reward_money& operator=(reward_money&&) = default;
+
+  private:
+    // Construction with a value is private: use the from_coin/_intermediate/_db_amount/_db_atomic
+    // factory functions instead.
+    constexpr reward_money(int64_t atomic_, int_fast16_t subatomic) :
+            _atomic{atomic_}, _subatomic{subatomic} {}
+
+    int64_t _atomic{0};
+    int_fast16_t _subatomic{0};
 };
 
 struct batch_sn_payment {
@@ -123,7 +221,6 @@ struct batch_sn_payment {
             address_info{addr_info}, amount{amt} {}
     batch_sn_payment(const cryptonote::account_public_address& addr, reward_money amt) :
             address_info{addr, 0}, amount{amt} {}
-    uint64_t coin_amount() const { return amount.to_coin(); }
 };
 
 #pragma pack(push, 1)

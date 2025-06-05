@@ -1829,11 +1829,8 @@ bool Blockchain::validate_block_rewards(
     uint64_t max_base_reward = reward_parts.governance_paid + 1;
 
     if (version >= hf::hf19_reward_batching) {
-        max_base_reward += std::accumulate(
-                batched_sn_payments.begin(),
-                batched_sn_payments.end(),
-                uint64_t{0},
-                [&](auto a, auto b) { return a + b.coin_amount(); });
+        for (const auto& pymt : batched_sn_payments)
+            max_base_reward += pymt.amount.to_coin();
     } else {
         max_base_reward += reward_parts.base_miner + reward_parts.service_node_total;
     }

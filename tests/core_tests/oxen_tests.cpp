@@ -3829,7 +3829,7 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
       // Check that the database has a lower amount that does not include the popped block
       batched_rewards_earned = MK_COINS(1) * 16.5 * (more_blocks - conf.SERVICE_NODE_PAYABLE_AFTER_BLOCKS - 1);
       CHECK_EQ((*records)[0].amount,
-              cryptonote::reward_money::coin_amount(batched_rewards_earned));
+              cryptonote::reward_money::from_coin(batched_rewards_earned));
       CHECK_EQ(tools::view_guts((*records)[0].address_info.address), tools::view_guts(alice.get_keys().m_account_address));
     }
     else
@@ -3916,7 +3916,7 @@ bool oxen_batch_sn_rewards_pop_blocks_after_big_cycle::generate(std::vector<test
 
     auto records = sqliteDB.get_sn_payments(curr_height);
     CHECK_EQ(records.size(), 1);
-    CHECK_EQ(records[0].amount, cryptonote::reward_money::coin_amount(amount));
+    CHECK_EQ(records[0].amount, cryptonote::reward_money::from_coin(amount));
     CHECK_EQ(tools::view_guts(records[0].address_info.address), tools::view_guts(alice.get_keys().m_account_address));
 
     return true;
