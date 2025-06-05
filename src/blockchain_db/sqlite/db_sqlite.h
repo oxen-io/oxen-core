@@ -77,11 +77,11 @@ class BlockchainSQLite : public db::Database {
     // detach.
     void blockchain_detached(PaymentTableType type, uint64_t height, uint64_t target_height = 0);
 
-    // Return the number of rows for the desired batched payments accrued table. The row count will
-    // be for the 'height' specified. 'height' is ignored if type is nil as the default accrued
-    // table only stores state for the current DB's height already. If 'height' is nullopt then the
-    // row count of the entire table will be returned.
-    size_t batch_payments_accrued_row_count(PaymentTableType type, std::optional<uint64_t> height);
+    // Return the number of rows for the current payments accrued table.
+    int batch_payments_accrued_row_count();
+    // Returns true if the recent (recent=true) or archive (recent=false) table has any stored
+    // payments for the given height.
+    bool batch_payments_accrued_has_any(bool recent, uint64_t height);
 
     // Add payments to the specified addresses to the SQL rewards table. The function throws if
     // insertion into the DB fails.
@@ -102,13 +102,12 @@ class BlockchainSQLite : public db::Database {
         address,
     };
 
-    struct delayed_payments_request {
-        delayed_payments_type type;
-        uint64_t height;
-        eth::address address;
-    };
-
-    block_payments get_delayed_payments(const delayed_payments_request& request);
+    // Retrieves all delayed payments:
+    block_payments get_delayed_payments();
+    // Retrieves delayed payments for a single ETH address:
+    block_payments get_delayed_payments(const eth::address& addr);
+    // Retrieves delayed payments due at the given height
+    block_payments get_delayed_payments(uint64_t height);
 
   private:
     // This function throws if adding the rewards to the SQL tables for 'block'
@@ -184,10 +183,19 @@ class BlockchainSQLite : public db::Database {
         // (e.g. an exit has been processed and the stake is under a time lock before being
         // claimable by the address)
         cryptonote::reward_money timelocked_stakes;
+
+        wallet_info() = default;
+        wallet_info(
+                BlockchainSQLite& db,
+                std::string_view address,
+                std::optional<std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t>> metadata,
+                std::optional<hf> hf_version = std::nullopt);
+        wallet_info(uint64_t height, bool found);
     };
 
     // See `wallet_info`
-    wallet_info get_accrued_rewards(const eth::address& address);
+    wallet_info get_accrued_rewards(
+            const eth::address& address, std::optional<hf> hf_version = std::nullopt);
 
     // See `wallet_info`
     wallet_info get_accrued_rewards(const account_public_address& address);
@@ -258,10 +266,13 @@ class BlockchainSQLite : public db::Database {
     // batched_payments_paid database as height_paid.
     bool save_payments(uint64_t block_height, std::span<const batch_sn_payment> paid_amounts);
 
-    uint64_t height;
+    // Applies the subatomic -> atomic value conversion of amount and lifetime_reward values; this
+    // must be called once (and only once!) at the HF22 fork height to convert milli-atomic values
+    // (for HF21 and earlier blocks) into atomics (expected for HF22+ blocks).
+    void convert_hf22();
 
-  protected:
-    cryptonote::network_type m_nettype;
+    uint64_t height;
+    const cryptonote::network_type nettype;
 };
 
 }  // namespace cryptonote

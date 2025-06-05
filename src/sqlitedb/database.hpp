@@ -13,7 +13,6 @@
 #include <unordered_set>
 
 #include "common/exception.h"
-#include "common/fs.h"
 #include "common/guts.h"
 #include "logging/oxen_logger.h"
 
@@ -329,7 +328,7 @@ class Database {
         return exec_and_maybe_get<T...>(prepared_st(query), bind...);
     }
 
-    explicit Database(const fs::path& db_path, const std::string_view db_password);
+    explicit Database(const std::filesystem::path& db_path, const std::string_view db_password);
 
     ~Database() = default;
 };

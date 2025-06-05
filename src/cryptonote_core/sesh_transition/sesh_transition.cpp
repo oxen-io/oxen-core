@@ -506,7 +506,7 @@ void transition(
                 cryptonote::reward_money total = {};
                 for (const auto& lc : contributor.locked_contributions) {
                     permanent_stakes.push_back(lc.key_image);
-                    total += cryptonote::reward_money::coin_amount(lc.amount);
+                    total += cryptonote::reward_money::from_coin(lc.amount);
                 }
                 unallocated[it->second] += oxen_to_sesh(total);
                 log::debug(
@@ -804,7 +804,7 @@ void transition(
         cryptonote::block_payments rewards_payments;
         for (const auto& [eth_addr, amt] : unallocated) {
             cryptonote::sql_payment payment = {};
-            payment.amount = cryptonote::reward_money::coin_amount(amt);
+            payment.amount = cryptonote::reward_money::from_coin(amt);
             rewards_payments[eth_addr] = payment;
         }
         sql.add_sn_rewards(cryptonote::hf::hf21_eth, rewards_payments, /*rewards_payment=*/true);
@@ -859,7 +859,7 @@ void transition(
             auto& s = add_result.locked_stakes.emplace_back();
             s.sn = crypto::ed25519_public_key{it.pkey};
             s.addr = contrib.ethereum_address;
-            s.amount = cryptonote::reward_money::coin_amount(contrib.amount);
+            s.amount = cryptonote::reward_money::from_coin(contrib.amount);
             s.liquidation = cryptonote::reward_money{};
             s.block_height = static_cast<uint32_t>(snl_state.height);
             s.tx_index = synthetic_tx_index++;

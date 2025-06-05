@@ -407,7 +407,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
             if (hard_fork_version >= hf::hf19_reward_batching) {
                 for (size_t i = 0; i < p_payouts.size(); i++)
                     batched_rewards.emplace_back(
-                            p_payouts[i].address, reward_money::coin_amount(split_rewards[i]));
+                            p_payouts[i].address, reward_money::from_coin(split_rewards[i]));
             } else {
                 for (size_t i = 0; i < p_payouts.size(); i++)
                     rewards.emplace_back(
@@ -420,7 +420,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
         if (hard_fork_version >= hf::hf19_reward_batching) {
             for (size_t i = 0; i < leader.payouts.size(); i++)
                 batched_rewards.emplace_back(
-                        leader.payouts[i].address, reward_money::coin_amount(split_rewards[i]));
+                        leader.payouts[i].address, reward_money::from_coin(split_rewards[i]));
         } else {
             for (size_t i = 0; i < leader.payouts.size(); i++)
                 rewards.emplace_back(
@@ -439,7 +439,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
             if (hard_fork_version >= hf::hf19_reward_batching) {
                 batched_rewards.emplace_back(
                         miner_tx_context.miner_block_producer,
-                        reward_money::coin_amount(miner_amount));
+                        reward_money::from_coin(miner_amount));
             } else {
                 rewards.emplace_back(
                         reward_type::miner, miner_tx_context.miner_block_producer, miner_amount);
@@ -454,7 +454,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
             if (hard_fork_version >= hf::hf19_reward_batching) {
                 for (size_t i = 0; i < leader.payouts.size(); i++)
                     batched_rewards.emplace_back(
-                            leader.payouts[i].address, reward_money::coin_amount(split_rewards[i]));
+                            leader.payouts[i].address, reward_money::from_coin(split_rewards[i]));
             } else {
                 for (size_t i = 0; i < leader.payouts.size(); i++)
                     rewards.emplace_back(
@@ -491,9 +491,9 @@ std::pair<bool, uint64_t> construct_miner_tx(
     if (!sn_rwds.empty()) {
         assert(hard_fork_version >= hf::hf19_reward_batching);
         for (const auto& reward : sn_rwds) {
-            assert(reward.amount.to_db() % BATCH_REWARD_FACTOR == 0 &&
+            assert(!reward.amount.has_subatomic() &&
                    "Check that the thousandth's OXEN has been truncated off");
-            auto atomic_amt = reward.coin_amount();
+            auto atomic_amt = reward.amount.to_coin();
             rewards.emplace_back(reward_type::snode, reward.address_info.address, atomic_amt);
             total_sn_rewards += atomic_amt;
         }
@@ -574,7 +574,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
 
     block_rewards = std::accumulate(
             batched_rewards.begin(), batched_rewards.end(), uint64_t{0}, [](uint64_t x, auto&& y) {
-                return x + y.coin_amount();
+                return x + y.amount.to_coin();
             });
 
     // lock
