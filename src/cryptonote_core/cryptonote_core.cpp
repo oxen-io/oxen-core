@@ -137,7 +137,7 @@ static const command_line::arg_flag arg_service_node = {
         "service-node", "Run as a service node, option 'service-node-public-ip' must be set"};
 static const command_line::arg_descriptor<std::string> arg_public_ip = {
         "service-node-public-ip",
-        "Public IP address on which this service node's services (such as the Loki "
+        "Public IP address on which this service node's services (such as the Session "
         "storage server) are accessible. This IP address will be advertised to the "
         "network via the service node uptime proofs. Required if operating as a "
         "service node."};
@@ -2657,7 +2657,7 @@ void core::do_uptime_proof_call() {
                             fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                             "Failed to submit uptime proof: have not heard from the storage server "
                             "recently. Make sure that it is running! It is required to run "
-                            "alongside the Loki daemon");
+                            "alongside the Oxen daemon");
                     return;
                 }
                 if (!check_external_ping(
@@ -2669,7 +2669,7 @@ void core::do_uptime_proof_call() {
                             fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                             "Failed to submit uptime proof: have not heard from lokinet recently. "
                             "Make sure that it is running! It is required to run alongside the "
-                            "Loki daemon");
+                            "Oxen daemon");
                     return;
                 }
             }
@@ -2737,7 +2737,7 @@ bool core::on_idle() {
         std::string main_message;
         if (m_offline)
             main_message =
-                    "The daemon is running offline and will not attempt to sync to the Loki "
+                    "The daemon is running offline and will not attempt to sync to the Session "
                     "network.";
         else
             main_message =
