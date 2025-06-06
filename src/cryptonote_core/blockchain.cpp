@@ -919,7 +919,10 @@ bool Blockchain::init(
         log::error(logcat, "ONS failed to initialise");
         return false;
     }
-    hook_blockchain_detached([this](const auto& info) { m_ons_db.prune_db(info.height); });
+    hook_blockchain_detached([this](const auto& info) {
+        uint64_t top_height = info.height - 1;
+        m_ons_db.prune_db(top_height, get_block_id_by_height(top_height));
+    });
 
     hook_block_add([this](const auto& info) { m_checkpoints.block_add(info); });
     hook_blockchain_detached(
