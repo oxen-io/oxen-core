@@ -117,18 +117,7 @@ class BlockchainSQLite : public db::Database {
             const service_nodes::service_node_list::state_t& service_nodes_state,
             const service_nodes::block_add_result& block_add);
 
-    std::unordered_map<account_public_address, std::string> address_str_cache;
     std::pair<hf, cryptonote::address_parse_info> parsed_governance_addr = {hf::none, {}};
-
-    // Returns a reference to the underlying string, reference must not be held
-    // onto, only transiently in the same frame as the string is requested.
-    //
-    // This function must be called with the address_str_cache_mutex held!
-    const std::string& get_address_str(const cryptonote::batch_sn_payment& addr);
-    std::pair<std::optional<int>, std::string> get_address_str(
-            const std::variant<eth::address, cryptonote::account_public_address>& addr,
-            uint64_t batching_interval);
-    std::mutex address_str_cache_mutex;
 
     bool table_exists(const std::string& name);
     bool index_exists(const std::string& name);
@@ -187,7 +176,7 @@ class BlockchainSQLite : public db::Database {
         wallet_info() = default;
         wallet_info(
                 BlockchainSQLite& db,
-                std::string_view address,
+                std::span<const unsigned char> addr_bytes,
                 std::optional<std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t>> metadata,
                 std::optional<hf> hf_version = std::nullopt);
         wallet_info(uint64_t height, bool found);
@@ -211,8 +200,10 @@ class BlockchainSQLite : public db::Database {
     wallet_info get_accrued_rewards(const account_public_address& address, uint64_t at_height);
 
     // get_all_accrued_rewards -> queries the database for all the amounts that have been accrued to
-    // nodes and will return 2 vectors corresponding to the addresses's wallet info.
-    std::pair<std::vector<std::string>, std::vector<wallet_info>> get_all_accrued_rewards();
+    // nodes and will return a of addresses and wallet info pairs.
+    std::vector<
+            std::pair<std::variant<eth::address, cryptonote::account_public_address>, wallet_info>>
+    get_all_accrued_rewards();
 
     // get_payments -> passing a block height will return an array of payments that should be
     // created in a coinbase transaction on that block given the current batching DB state.

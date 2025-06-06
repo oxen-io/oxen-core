@@ -223,14 +223,12 @@ struct reward_money {
 };
 
 struct batch_sn_payment {
-    cryptonote::address_parse_info address_info{};
-    reward_money amount;
+    cryptonote::account_public_address address{};
+    reward_money amount{};
 
     batch_sn_payment() = default;
-    batch_sn_payment(const cryptonote::address_parse_info& addr_info, reward_money amt) :
-            address_info{addr_info}, amount{amt} {}
     batch_sn_payment(const cryptonote::account_public_address& addr, reward_money amt) :
-            address_info{addr, 0}, amount{amt} {}
+            address{addr}, amount{amt} {}
 };
 
 #pragma pack(push, 1)

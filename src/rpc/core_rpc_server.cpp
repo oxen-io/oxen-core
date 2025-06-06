@@ -3863,16 +3863,19 @@ void core_rpc_server::invoke(ONS_RESOLVE& resolve, rpc_context) {
     }
 }
 
+static std::string address_str(
+        cryptonote::network_type nettype,
+        const std::variant<eth::address, cryptonote::account_public_address>& addr) {
+    std::string address;
+    if (auto* eth = std::get_if<eth::address>(&addr))
+        return "{}"_format(*eth);
+    return get_account_address_as_str(
+            nettype, false, std::get<cryptonote::account_public_address>(addr));
+}
+
 static nlohmann::json wallet_info_to_json(
         std::string address, const BlockchainSQLite::wallet_info& wallet_info) {
-
-    if (eth::address addr; tools::try_load_from_hex_guts(address, addr))
-        // The database always stores the lower-case 0xabc123... version of eth addresses, but we
-        // want to return the proper checksum-formatted version, which we get by putting it back
-        // into an eth::address and running it through the formatter:
-        address = "{}"_format(addr);
-
-    nlohmann::json result = {
+    return nlohmann::json{
             {"found", wallet_info.found},
             {"address", std::move(address)},
             {"amount", wallet_info.amount.to_coin()},
@@ -3883,14 +3886,13 @@ static nlohmann::json wallet_info_to_json(
             {"locked_stakes", wallet_info.locked_stakes.to_coin()},
             {"timelocked_stakes", wallet_info.timelocked_stakes.to_coin()},
     };
-    return result;
 }
 
 void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, rpc_context) {
     auto& balances = rpc.response["balances"];
     balances = json::array();
 
-    const auto& req = rpc.request;
+    auto& req = rpc.request;
     auto net = nettype();
     BlockchainSQLite& sql_db = m_core.blockchain.sqlite_db();
 
@@ -3898,26 +3900,26 @@ void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, rpc_context) {
     uint64_t height = 0;
     if (req.addresses.size() > 0) {
         array.reserve(req.addresses.size());
-        for (const auto& address : req.addresses) {
+        for (auto& address : req.addresses) {
             BlockchainSQLite::wallet_info wallet_info = {};
             if (eth::address eth{}; tools::try_load_from_hex_guts<eth::address>(address, eth)) {
+                address = "{}"_format(eth);  // Reformat so that we use the proper checksum even if
+                                             // a non-checksummed value was in the request.
                 wallet_info = sql_db.get_accrued_rewards(eth);
             } else if (address_parse_info oxen{};
                        get_account_address_from_str(oxen, net, address)) {
                 wallet_info = sql_db.get_accrued_rewards(oxen.address);
             }
-            array.push_back(wallet_info_to_json(address, wallet_info));
+            array.push_back(wallet_info_to_json(std::move(address), wallet_info));
             if (height == 0)
                 height = wallet_info.height;
             assert(wallet_info.height == height);
         }
     } else {
-        auto [addresses, wallets] = sql_db.get_all_accrued_rewards();
-        array.reserve(addresses.size());
-        for (size_t i = 0; i < addresses.size(); i++) {
-            const std::string& address = addresses[i];
-            const BlockchainSQLite::wallet_info& wallet_info = wallets[i];
-            array.push_back(wallet_info_to_json(address, wallet_info));
+        auto accrued = sql_db.get_all_accrued_rewards();
+        array.reserve(accrued.size());
+        for (const auto& [addr, wallet_info] : accrued) {
+            array.push_back(wallet_info_to_json(address_str(nettype(), addr), wallet_info));
 
             if (height == 0)
                 height = wallet_info.height;

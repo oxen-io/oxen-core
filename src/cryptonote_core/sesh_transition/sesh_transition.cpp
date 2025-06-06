@@ -464,16 +464,15 @@ void transition(
     // batching db.  (If there is SESH left over at the end we'll put it back in, but under the
     // converted ETH address).
 
-    auto [accrued_addr, accrued_value] = sql.get_all_accrued_rewards();
-    assert(accrued_addr.size() == accrued_value.size());
-    for (size_t i = 0; i < accrued_addr.size(); i++) {
-        auto& addr = accrued_addr[i];
-        auto& val = accrued_value[i];
+    auto accrued = sql.get_all_accrued_rewards();
+    for (const auto& [addr, val] : accrued) {
+        auto* oxen_addr = std::get_if<cryptonote::account_public_address>(&addr);
+        if (!oxen_addr)
+            throw std::runtime_error{
+                    "Unable to perform SESH transition: batching database already contains"
+                    " SESH address: {}!"_format(std::get<eth::address>(addr))};
 
-        auto api = address_info_from_str(addr);
-        const auto& oxen_addr = api.address;
-
-        auto it = sesh_addrs.find(oxen_addr);
+        auto it = sesh_addrs.find(*oxen_addr);
         if (it == sesh_addrs.end())
             continue;
 
@@ -482,7 +481,7 @@ void transition(
         log::debug(
                 logcat,
                 "oxen -> sesh ({} -> {}) accrued unpaid oxen rewards: {}",
-                addr,
+                get_account_address_as_str(net, 0, *oxen_addr),
                 eth_addr,
                 val.amount);
     }

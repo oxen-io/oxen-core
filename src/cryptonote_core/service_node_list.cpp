@@ -4703,7 +4703,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
             return true;
 
         // NOTE: Accept if SQL has payment rows for the requested height:
-        return sql_db.batch_payments_accrued_has_any(recent, height) > 0;
+        return sql_db.batch_payments_accrued_has_any(recent, height);
     };
 
     // NOTE: Lookup desired SNL state from recent backups
@@ -5285,7 +5285,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
 
                 crypto::public_key out_eph_public_key{};
                 if (!cryptonote::get_deterministic_output_key(
-                            batch_payment.address_info.address,
+                            batch_payment.address,
                             deterministic_keypair,
                             vout_index,
                             out_eph_public_key))

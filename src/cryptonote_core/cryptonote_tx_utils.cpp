@@ -494,7 +494,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
             assert(!reward.amount.has_subatomic() &&
                    "Check that the thousandth's OXEN has been truncated off");
             auto atomic_amt = reward.amount.to_coin();
-            rewards.emplace_back(reward_type::snode, reward.address_info.address, atomic_amt);
+            rewards.emplace_back(reward_type::snode, reward.address, atomic_amt);
             total_sn_rewards += atomic_amt;
         }
     }

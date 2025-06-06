@@ -9,6 +9,7 @@
 #include <shared_mutex>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -37,6 +38,8 @@ inline constexpr bool is_cstr<const char*> = true;
 struct blob_binder {
     std::string_view data;
     explicit blob_binder(std::string_view d) : data{d} {}
+    explicit blob_binder(std::span<const unsigned char> d) :
+            data{reinterpret_cast<const char*>(d.data()), d.size()} {}
 };
 
 // Binds a string_view as a no-copy blob at parameter index i.
@@ -58,11 +61,19 @@ struct blob {
     blob(SQLite::Column&& col) :
             data{static_cast<const char*>(col.getBlob()), static_cast<size_t>(col.getBytes())} {}
 };
+// Same as above, but delivers in a span<const unsigned char>
+struct blob_span {
+    std::span<const unsigned char> data;
+    blob_span(SQLite::Column&& col) :
+            data{static_cast<const unsigned char*>(col.getBlob()),
+                 static_cast<size_t>(col.getBytes())} {}
+};
 
 // Takes a primitive struct from which we can directly initialize from the stored blob value.  The
 // type `T` must be usable with `make_from_guts`.  Unlike `blob` this value *is* suitable for use
 // in a one-shot method.
 template <typename T>
+    requires std::is_trivially_copyable_v<T>
 struct blob_guts {
     T value;
     blob_guts(SQLite::Column&& col) : value{tools::make_from_guts<T>(blob(std::move(col)).data)} {}
@@ -72,6 +83,14 @@ struct blob_guts {
     // `std::tuple<..., T>`.
     operator T&&() && { return std::move(value); }
 };
+
+// Helper to make a blob_binder that binds the memory contents of a trivially copyable type as a
+// blob parameter.
+template <typename T>
+    requires std::is_trivially_copyable_v<T>
+blob_binder bind_guts(const T& v) {
+    return blob_binder{tools::span_guts(v)};
+}
 
 namespace detail {
     template <typename T>
