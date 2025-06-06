@@ -1351,7 +1351,8 @@ class Blockchain {
     uint64_t m_sync_counter;
     uint64_t m_bytes_to_sync;
     uint64_t m_max_sync_height = 0;
-    std::chrono::steady_clock::time_point m_max_sync_last_log = std::chrono::steady_clock::now() - 1h;
+    std::chrono::steady_clock::time_point m_max_sync_last_log =
+            std::chrono::steady_clock::now() - 1h;
 
     uint64_t m_long_term_block_weights_window;
     uint64_t m_long_term_effective_median_block_weight;
