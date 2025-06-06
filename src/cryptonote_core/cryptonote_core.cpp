@@ -2768,6 +2768,10 @@ Use "help <command>" to see a command's documentation.
         snl.cleanup_proofs();
         return true;
     });
+    m_sn_archive_state_interval.do_call([&snl = service_node_list] {
+        snl.store();
+        return true;
+    });
 
     std::chrono::seconds lifetime{time(nullptr) - get_start_time()};
     if (m_service_node &&
