@@ -77,7 +77,8 @@ struct address_parse_info {
 // Strongly-typed money amount used to calculate rewards at a higher precision by a factor of
 // `BATCH_REWARD_FACTOR`.  Before HF22, these money amounts are stored at the higher precision in
 // the DB for some fields; starting at HF22 the higher precision values are only used for
-// intermediate reward calculations (to avoid potential int64 database overflow).
+// intermediate reward calculations (to avoid potential int64 database overflow), and the final
+// amount is the rounded atomic value.
 struct reward_money {
 
     // Construct a money value from an atomic $COIN amount.
@@ -138,6 +139,15 @@ struct reward_money {
     // subatomic value dropped.
     [[nodiscard]] constexpr reward_money truncate() const { return {_atomic, 0}; }
 
+    // Returns a rounded money_reward, i.e. a value with no subatomic units.  If subatomic is 0-499,
+    // this is the same as truncate, otherwise (500-999) the returned value is 1 atomic unit higher.
+    [[nodiscard]] constexpr reward_money round() const {
+        return {_subatomic >= BATCH_REWARD_FACTOR / 2    ? _atomic + 1
+                : _subatomic <= -BATCH_REWARD_FACTOR / 2 ? _atomic - 1
+                                                         : _atomic,
+                0};
+    }
+
     // Returns true if this value amount has sub-atomic components.
     constexpr bool has_subatomic() const { return _subatomic != 0; }
 
@@ -147,7 +157,7 @@ struct reward_money {
     // milli-atomics).  Returns the value cast as int64_t because that's what actually goes into the
     // db.
     constexpr int64_t to_db_amount(hf hf_version) const {
-        return hf_version >= hf::hf22_eth_fixup ? _atomic
+        return hf_version >= hf::hf22_eth_fixup ? round()._atomic
                                                 : _atomic * BATCH_REWARD_FACTOR + _subatomic;
     }
 
