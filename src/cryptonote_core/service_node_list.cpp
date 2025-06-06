@@ -339,12 +339,8 @@ static void verify_rewards_db_values(
 
         // NOTE: Enumerate payments sitting in the timelocked queue (considered locked until
         // expired)
-        cryptonote::BlockchainSQLite::delayed_payments_request request = {};
-        request.type = cryptonote::BlockchainSQLite::delayed_payments_type::all;
-
-        cryptonote::block_payments locked_payments = db.get_delayed_payments(request);
-        for (const auto& [addr, payment] : locked_payments) {
-            auto& dest = eth_to_locked_stakes[*std::get_if<eth::address>(&addr)];
+        for (const auto& [addr, payment] : db.get_delayed_payments()) {
+            auto& dest = eth_to_locked_stakes[std::get<eth::address>(addr)];
             dest.total += payment.amount.to_coin();
         }
 

@@ -1368,7 +1368,7 @@ void BlockchainSQLite::submit_stakes_metadata(
 
     // NOTE: Submit locked stakes
     for (const auto& stake : block_add.locked_stakes) {
-        assert(stake.amount.to_db() > 0);
+        assert(stake.amount.to_coin() > 0);
 
 #ifndef NDEBUG
         BlockchainSQLite::wallet_info wallet_info_before =
@@ -1389,7 +1389,7 @@ void BlockchainSQLite::submit_stakes_metadata(
         log::trace(
                 logcat,
                 "SN contributor {} at height {} locked {} SESH ({} => {} total) into SN {}",
-                log_addr{address},
+                log_addr{stake.addr},
                 height + 1,
                 stake.amount,
                 wallet_info_before.lifetime_locked_stakes,
@@ -1410,7 +1410,7 @@ void BlockchainSQLite::submit_stakes_metadata(
             WHERE address = ?)");
 
     for (const auto& purge : block_add.purged_stakes) {
-        assert(purge.amount.to_db() > 0);
+        assert(purge.amount.to_coin() > 0);
 
         // NOTE: Verify remaining locked stakes don't go below 0
         auto wallet_info_before = get_accrued_rewards_impl(*this, purge.addr);
@@ -1441,10 +1441,10 @@ void BlockchainSQLite::submit_stakes_metadata(
                 "SN contributor {} at height {} purged {} SESH ({} => {} total) into SN {}",
                 log_addr{purge.addr},
                 height + 1,
-                it.amount,
+                purge.amount,
                 wallet_info_before.locked_stakes,
                 wallet_info_after.locked_stakes,
-                it.sn);
+                purge.sn);
 #endif
     }
 
