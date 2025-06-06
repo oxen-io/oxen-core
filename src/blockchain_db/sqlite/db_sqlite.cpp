@@ -1217,20 +1217,15 @@ void BlockchainSQLite::add_rewards(
     }
 
     // Pay the balance to all the contributors (including the operator again)
-    uint64_t total_contributed_to_sn = std::accumulate(
-            sn_info.contributors.begin(),
-            sn_info.contributors.end(),
-            uint64_t(0),
-            [](auto&& a, auto&& b) { return a + b.amount; });
-
     uint64_t milli_post_fee_amt = *(distribution_amount - operator_fee).to_intermediate();
 
     for (auto& contributor : sn_info.contributors) {
-        // This calculates (contributor.amount / total_contributed_to_winner_sn) *
-        // (distribution_amount - operator_fee) but using 128 bit integer math
+        // This calculates:
+        // (contributor.amount / staking_requirement) * (distribution_amount - operator_fee)
+        // but using 128 bit integer math
 
         auto c_reward = reward_money::from_intermediate(
-                mul128_div64(contributor.amount, milli_post_fee_amt, total_contributed_to_sn));
+                mul128_div64(contributor.amount, milli_post_fee_amt, sn_info.staking_requirement));
 
         if (c_reward > zero) {
             // NOTE: At minimum, when we parsed the contributor if no benficiary is set, it
@@ -1668,8 +1663,6 @@ bool BlockchainSQLite::save_payments(
         uint64_t block_height, std::span<const batch_sn_payment> paid_amounts) {
     ZoneScoped;
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
-
-    // FIXME: can optimize this to one query instead of 2
 
     auto select_sum = prepared_st("SELECT amount FROM batched_payments_accrued WHERE address = ?");
     auto update_paid = prepared_st(
