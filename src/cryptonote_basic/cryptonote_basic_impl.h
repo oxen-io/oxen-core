@@ -113,7 +113,7 @@ struct reward_money {
     // but is not suitable for cumulative values (which could overflow the uint64_t).
     static constexpr reward_money from_intermediate(uint64_t amount) {
         return {static_cast<int64_t>(amount / BATCH_REWARD_FACTOR),
-                static_cast<int64_t>(amount % BATCH_REWARD_FACTOR)};
+                static_cast<int_fast16_t>(amount % BATCH_REWARD_FACTOR)};
     }
 
     // Returns the atomic coin amount of the value, i.e. without the extra precision, cast to
@@ -189,7 +189,9 @@ struct reward_money {
         }
         return *this;
     }
-    constexpr reward_money operator-() const { return {-_atomic, -_subatomic}; }
+    constexpr reward_money operator-() const {
+        return {-_atomic, static_cast<int_fast16_t>(-_subatomic)};
+    }
     constexpr reward_money operator-(const reward_money& rhs) const { return *this + -rhs; }
     constexpr reward_money& operator-=(const reward_money& rhs) { return *this += -rhs; }
     constexpr reward_money operator/(int64_t N) const {

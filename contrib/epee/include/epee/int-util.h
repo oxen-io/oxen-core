@@ -30,6 +30,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -231,4 +235,8 @@ inline void memcpy_swap64le(void *dst, const void *src, size_t n) {
   }
 }
 
+#endif
+
+#ifdef __cplusplus
+}  // extern "C"
 #endif
