@@ -5620,7 +5620,8 @@ bool service_node_list::store(uint64_t state_height) {
             }
         }
         log::debug(logcat, "SNL store, waiting on serialization");
-        blockchain.extend_watchdog_timeout(state_height);
+        if (state_height)
+            blockchain.extend_watchdog_timeout(state_height);
     }
     // Print the final one if we started printing but didn't finish in the wait loop above
     if (reporting_long_term)
@@ -5647,7 +5648,8 @@ bool service_node_list::store(uint64_t state_height) {
             TracyCZoneEnd(serialize_step);
             db.set_service_node_data(db_blob, /*long_term = */ true);
             log::debug(logcat, "SNL store, finished storing long term state");
-            blockchain.extend_watchdog_timeout(state_height);
+            if (state_height)
+                blockchain.extend_watchdog_timeout(state_height);
         }
 
         {
