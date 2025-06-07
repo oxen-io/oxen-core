@@ -359,9 +359,9 @@ struct name_system_db {
             std::optional<int64_t> backup_owner_id);
     bool save_settings(uint64_t top_height, crypto::hash const& top_hash, int version);
 
-    // Delete all mappings that are registered on height or newer followed by deleting all owners no
-    // longer referenced in the DB
-    bool prune_db(uint64_t height);
+    // Delete all mappings that are registered after height followed by deleting all owners no
+    // longer referenced in the DB.  Updates the state to the given height and hash.
+    bool prune_db(uint64_t top_height, const crypto::hash& top_hash);
 
     owner_record get_owner_by_key(generic_owner const& owner);
     owner_record get_owner_by_id(int64_t owner_id);
