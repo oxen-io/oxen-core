@@ -28,6 +28,7 @@
 
 #pragma once
 
+#include <boost/random/mersenne_twister.hpp>
 #include <iterator>
 #include <random>
 
@@ -41,11 +42,13 @@ extern thread_local std::mt19937_64 rng;
 /// equivalent to `std::uniform_int_distribution<uint64_t>{0, n}(rng)`, but that is not guaranteed
 /// to be unique across platforms/compilers, while this is.
 uint64_t uniform_distribution_portable(std::mt19937_64& rng, uint64_t n);
+uint64_t uniform_distribution_portable(boost::random::mt19937_64& rng, uint64_t n);
 
-/// Uniformly shuffles all the elements in [begin, end) in a deterministic method so that, given the
-/// same seed, this will always produce the same result on any platform/compiler/etc.
-template <std::random_access_iterator It>
-void shuffle_portable(It begin, It end, std::mt19937_64& rng) {
+/// Uniformly shuffles all the elements in [begin, end) in a deterministic method so that, given an
+/// rng with the same output sequence, this will always produce the same result on any
+/// platform/compiler/etc.
+template <std::random_access_iterator It, typename RNG>
+void shuffle_portable(It begin, It end, RNG& rng) {
     if (end <= begin + 1)
         return;
     const size_t size = std::distance(begin, end);

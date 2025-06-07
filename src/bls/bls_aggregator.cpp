@@ -483,8 +483,20 @@ namespace {
                 single_callback{std::move(callback)},
                 final_callback{std::move(final_callback)} {
 
-            core.service_node_list.copy_reachable_service_node_addresses(
-                    std::back_inserter(snodes), core.get_nettype());
+            std::lock_guard lock{bad_signer_mutex};
+            const auto expiry = std::chrono::steady_clock::now() - BAD_SIGNER_TIMEOUT;
+            for (auto it = recent_bad_signers.begin(); it != recent_bad_signers.end();)
+                if (it->second < expiry)
+                    it = recent_bad_signers.erase(it);
+                else
+                    ++it;
+
+            core.service_node_list.for_each_reachable_service_node_address(
+                    [this](service_nodes::service_node_address&& addr) {
+                        if (!recent_bad_signers.contains(addr.bls_pubkey))
+                            snodes.push_back(std::move(addr));
+                    },
+                    core.get_nettype());
         }
 
         cryptonote::core& core;
@@ -517,6 +529,14 @@ namespace {
         // The number of service nodes to which requests have been initiated (i.e. this is the count
         // of reachable nodes at the time the request was initiated).
         size_t snode_count() { return snodes.size(); }
+
+        // Stores the pubkeys of nodes that have given us bad BLS signatures recently, so that we
+        // can skip them if we do another signature.  We retry them if at least 5 mins has passed
+        // since the last time they gave us a bad signature.
+        inline static std::unordered_map<eth::bls_public_key, std::chrono::steady_clock::time_point>
+                recent_bad_signers{};
+        constexpr static auto BAD_SIGNER_TIMEOUT = 5min;
+        inline static std::mutex bad_signer_mutex{};
 
       private:
         void send_requests(
@@ -656,6 +676,11 @@ namespace {
                         sig);
                 agg_sig.subtract(sig);
                 agg_pub.subtract(blspk);
+                {
+                    std::lock_guard lock{nodes_request_data::bad_signer_mutex};
+                    nodes_request_data::recent_bad_signers[blspk] =
+                            std::chrono::steady_clock::now();
+                }
 
                 result.signature = agg_sig.get();
                 result.aggregate_pubkey = agg_pub.get();

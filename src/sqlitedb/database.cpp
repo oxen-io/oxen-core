@@ -35,7 +35,7 @@ Database::StatementWrapper Database::prepared_st(const std::string& query) {
     return StatementWrapper{sts->try_emplace(query, db, query).first->second};
 }
 
-Database::Database(const fs::path& db_path, const std::string_view db_password) :
+Database::Database(const std::filesystem::path& db_path, const std::string_view db_password) :
         db{db_path,
            SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE | SQLite::OPEN_FULLMUTEX,
            5000 /*ms*/} {

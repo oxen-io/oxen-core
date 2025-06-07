@@ -30,6 +30,10 @@
 
 #pragma once
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -57,43 +61,43 @@
 #if defined(_MSC_VER)
 #include <stdlib.h>
 
-static inline uint32_t rol32(uint32_t x, int r) {
+inline uint32_t rol32(uint32_t x, int r) {
   static_assert(sizeof(uint32_t) == sizeof(unsigned int), "this code assumes 32-bit integers");
   return _rotl(x, r);
 }
 
-static inline uint64_t rol64(uint64_t x, int r) {
+inline uint64_t rol64(uint64_t x, int r) {
   return _rotl64(x, r);
 }
 
 #else
 
-static inline uint32_t rol32(uint32_t x, int r) {
+inline uint32_t rol32(uint32_t x, int r) {
   return (x << (r & 31)) | (x >> (-r & 31));
 }
 
-static inline uint64_t rol64(uint64_t x, int r) {
+inline uint64_t rol64(uint64_t x, int r) {
   return (x << (r & 63)) | (x >> (-r & 63));
 }
 
 #endif
 
 #ifndef __SIZEOF_INT128__
-static inline uint64_t hi_dword(uint64_t val) {
+inline uint64_t hi_dword(uint64_t val) {
   return val >> 32;
 }
 
-static inline uint64_t lo_dword(uint64_t val) {
+inline uint64_t lo_dword(uint64_t val) {
   return val & 0xFFFFFFFF;
 }
 
-static inline uint64_t div_with_remainder(uint64_t dividend, uint32_t divisor, uint32_t* remainder) {
+inline uint64_t div_with_remainder(uint64_t dividend, uint32_t divisor, uint32_t* remainder) {
   dividend |= ((uint64_t)*remainder) << 32;
   *remainder = dividend % divisor;
   return dividend / divisor;
 }
 
-static inline bool shl128(uint64_t* hi, uint64_t* lo) {
+inline bool shl128(uint64_t* hi, uint64_t* lo) {
   bool carry = ((*hi) >> 63);
   *hi <<= 1;
   *hi += ((*lo) >> 63);
@@ -102,7 +106,7 @@ static inline bool shl128(uint64_t* hi, uint64_t* lo) {
 }
 #endif
 
-static inline uint64_t mul128(uint64_t multiplier, uint64_t multiplicand, uint64_t* product_hi) {
+inline uint64_t mul128(uint64_t multiplier, uint64_t multiplicand, uint64_t* product_hi) {
 #ifdef __SIZEOF_INT128__
   unsigned __int128 result = (unsigned __int128) multiplier * (unsigned __int128) multiplicand;
   *product_hi = result >> 64;
@@ -135,7 +139,7 @@ static inline uint64_t mul128(uint64_t multiplier, uint64_t multiplicand, uint64
 }
 
 // Long division with 2^32 base
-static inline void div128_32(uint64_t dividend_hi, uint64_t dividend_lo, uint32_t divisor, uint64_t* quotient_hi, uint64_t* quotient_lo) {
+inline void div128_32(uint64_t dividend_hi, uint64_t dividend_lo, uint32_t divisor, uint64_t* quotient_hi, uint64_t* quotient_lo) {
 #ifdef __SIZEOF_INT128__
   unsigned __int128 result = (((unsigned __int128) dividend_hi) << 64 | ((unsigned __int128) dividend_lo)) / divisor;
   *quotient_lo = (uint64_t) result;
@@ -158,7 +162,7 @@ static inline void div128_32(uint64_t dividend_hi, uint64_t dividend_lo, uint32_
 
 
 // Long division with 2^64 base
-static inline void div128_64(uint64_t dividend_hi, uint64_t dividend_lo, uint64_t divisor, uint64_t* quotient_hi, uint64_t* quotient_lo) {
+inline void div128_64(uint64_t dividend_hi, uint64_t dividend_lo, uint64_t divisor, uint64_t* quotient_hi, uint64_t* quotient_lo) {
 #ifdef __SIZEOF_INT128__
   unsigned __int128 result = (((unsigned __int128) dividend_hi) << 64 | ((unsigned __int128) dividend_lo)) / divisor;
   *quotient_lo = (uint64_t) result;
@@ -183,7 +187,7 @@ static inline void div128_64(uint64_t dividend_hi, uint64_t dividend_lo, uint64_
 // Calculates a*b/c, using 128-bit precision to avoid overflow.  This assumes that the result is
 // 64-bits, but only checks it (via assertion) in debug builds.  As such you should only call this
 // when this is true: for instance, when c is known to be greater than either a or b.
-static inline uint64_t mul128_div64(uint64_t a, uint64_t b, uint64_t c) {
+inline uint64_t mul128_div64(uint64_t a, uint64_t b, uint64_t c) {
 #ifdef __SIZEOF_INT128__
   return (uint64_t) ((unsigned __int128) a) * ((unsigned __int128) b) / ((unsigned __int128) c);
 #else
@@ -213,7 +217,7 @@ static_assert(false, "BYTE_ORDER is undefined. Perhaps, GNU extensions are not e
 #define SWAP32LE(x) ((uint32_t) (x))
 #define SWAP32BE(x) epee_int_utils_bswap_32
 
-static inline void memcpy_swap64le(void *dst, const void *src, size_t n) {
+inline void memcpy_swap64le(void *dst, const void *src, size_t n) {
   memcpy(dst, src, 8 * n);
 }
 
@@ -224,11 +228,15 @@ static inline void memcpy_swap64le(void *dst, const void *src, size_t n) {
 #define SWAP32BE(x) ((uint32_t) (x))
 #define SWAP32LE(x) epee_int_utils_bswap_32
 
-static inline void memcpy_swap64le(void *dst, const void *src, size_t n) {
+inline void memcpy_swap64le(void *dst, const void *src, size_t n) {
   size_t i;
   for (i = 0; i < n; i++) {
     ((uint64_t *) dst)[i] = swap64(((const uint64_t *) src)[i]);
   }
 }
 
+#endif
+
+#ifdef __cplusplus
+}  // extern "C"
 #endif

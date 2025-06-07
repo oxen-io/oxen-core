@@ -42,6 +42,7 @@
 #include <cstdio>
 #include <limits>
 #include <mutex>
+#include <random>
 #include <stdexcept>
 
 #include "blockchain_db/blockchain_db.h"
@@ -51,6 +52,7 @@
 #include "common/lock.h"
 #include "common/median.h"
 #include "common/pruning.h"
+#include "common/random.h"
 #include "common/rules.h"
 #include "common/sha256sum.h"
 #include "common/string_util.h"
@@ -534,7 +536,17 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
     dseconds ons_duration{}, ons_interval_duration{};
     dseconds snl_duration{}, snl_interval_duration{};
     dseconds get_block_data_duration{}, get_block_data_interval_duration{};
-    dseconds store_accumulator{};
+
+    // We store the archive state once every 5 minutes during a rescan, but we adjust the first
+    // store interval to a random value in [2m30, 7m30), so that if you restart several oxend's at
+    // once (and all have to rescan) they don't all try to slam the disk at once with a large data
+    // dump, which seems to induce particularly bad performance with lmdb.  Spreading them out helps
+    // avoid that sudden I/O surge.
+    constexpr auto store_interval = 5min;
+    auto next_store =
+            work_start +
+            std::chrono::milliseconds{std::uniform_int_distribution<int>{
+                    0, std::chrono::milliseconds{store_interval}.count() - 1}(tools::rng)};
 
     // NOTE: Stats
     uint64_t work_blocks = 0;
@@ -582,25 +594,33 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
         get_block_data_interval_duration += now - get_block_data_start;
         dseconds interval_duration = now - work_start;
 
+        // TODO: Storing is very slow as the chain progresses because of full serialisation of
+        // SNL state. On a block-to-block basis, there's typically not many events however we
+        // currently store the entire SNL state per block. We can save a lot of serialisation
+        // compute and space required by optimising for the common case which is storing SNL
+        // deltas between heights and a full state every defined interval.
+        //
+        // That's a big change but would be worthwhile on the next pass over speeding up
+        // rescans. For now a cheaper lever we can tweak is storing data much less frequently
+        // to avoid this serial bottleneck in the rescanning process.
+        if (now >= next_store) {
+            service_node_list.store(chunk.height);
+            auto now2 = clock::now();
+            auto elapsed = now2 - now;
+            log::log(
+                    globallogcat,
+                    elapsed >= 1s ? log::Level::info : log::Level::debug,
+                    "... stored SN state snapshot @ {} in {:.2f}s",
+                    chunk.height,
+                    dseconds{elapsed}.count());
+            now = now2;
+            next_store = now + store_interval;
+        }
+
         bool every_10s = interval_duration >= 10s;  // NOTE: Log progress every 10s
         uint64_t height = chunk.height;
         if (height + chunk.blocks.size() >= end_height || every_10s) {
             ZoneScopedN("Rescan progress update");
-
-            // TODO: Storing is very slow as the chain progresses because of full serialisation of
-            // SNL state. On a block-to-block basis, there's typically not many events however we
-            // currently store the entire SNL state per block. We can save a lot of serialisation
-            // compute and space required by optimising for the common case which is storing SNL
-            // deltas between heights and a full state every defined interval.
-            //
-            // That's a big change but would be worthwhile on the next pass over speeding up
-            // rescans. For now a cheaper lever we can tweak is storing data much less frequently
-            // to avoid this serial bottleneck in the rescanning process.
-            store_accumulator += interval_duration;
-            if (store_accumulator >= 60s) {
-                store_accumulator -= 60s;
-                service_node_list.store(height);
-            }
 
             float blocks_per_s = static_cast<float>(work_blocks) / interval_duration.count();
             float bytes_per_s = static_cast<float>(work_bytes) / interval_duration.count();
@@ -919,7 +939,10 @@ bool Blockchain::init(
         log::error(logcat, "ONS failed to initialise");
         return false;
     }
-    hook_blockchain_detached([this](const auto& info) { m_ons_db.prune_db(info.height); });
+    hook_blockchain_detached([this](const auto& info) {
+        uint64_t top_height = info.height - 1;
+        m_ons_db.prune_db(top_height, get_block_id_by_height(top_height));
+    });
 
     hook_block_add([this](const auto& info) { m_checkpoints.block_add(info); });
     hook_blockchain_detached(
@@ -1826,11 +1849,8 @@ bool Blockchain::validate_block_rewards(
     uint64_t max_base_reward = reward_parts.governance_paid + 1;
 
     if (version >= hf::hf19_reward_batching) {
-        max_base_reward += std::accumulate(
-                batched_sn_payments.begin(),
-                batched_sn_payments.end(),
-                uint64_t{0},
-                [&](auto a, auto b) { return a + b.coin_amount(); });
+        for (const auto& pymt : batched_sn_payments)
+            max_base_reward += pymt.amount.to_coin();
     } else {
         max_base_reward += reward_parts.base_miner + reward_parts.service_node_total;
     }
@@ -5246,11 +5266,35 @@ Blockchain::block_pow_verified Blockchain::verify_block_pow(
     return result;
 }
 
+void Blockchain::max_sync_height(uint64_t max_height) {
+    m_max_sync_height = max_height;
+    if (m_max_sync_height > 0)
+        log::warning(
+                logcat,
+                "Blockchain max sync height enabled; oxend will not sync beyond height {}",
+                m_max_sync_height);
+}
+
 bool Blockchain::basic_block_checks(cryptonote::block const& blk, bool alt_block) {
     const crypto::hash blk_hash = cryptonote::get_block_hash(blk);
     const uint64_t blk_height = blk.get_height();
     const uint64_t chain_height = get_current_blockchain_height();
     const auto hf_version = get_network_version();
+
+    if (m_max_sync_height && blk_height >= m_max_sync_height) {
+        auto lvl = log::Level::debug;
+        if (auto now = std::chrono::steady_clock::now(); m_max_sync_last_log < now - 10min) {
+            lvl = log::Level::critical;
+            m_max_sync_last_log = now;
+        }
+        log::log(
+                logverify,
+                lvl,
+                "--debug-max-sync-height={} was used, so refusing block with height {}",
+                m_max_sync_height,
+                blk_height);
+        return false;
+    }
 
     if (alt_block) {
         if (blk.get_height() == 0) {
