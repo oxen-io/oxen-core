@@ -49,7 +49,8 @@ Proof::Proof(
         qnet_port{quorumnet_port},
         version_tag(OXEN_VERSION_TAG) {
 
-    if (hardfork == feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV) {
+    if (hardfork == feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV ||
+        hardfork >= hf::hf22_eth_fixup) {
 
         assert(keys.pub_bls);
         pop_bls = eth::sign(
@@ -88,7 +89,8 @@ Proof::Proof(
     auto proof = oxenc::bt_dict_consumer{serialized_proof};
     // NB: we must consume in sorted key order
 
-    if (hardfork == feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV) {
+    if (hardfork == feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV ||
+        hardfork >= hf::hf22_eth_fixup) {
         pubkey_bls =
                 tools::make_from_guts<eth::bls_public_key>(proof.require<std::string_view>("bk"sv));
         pop_bls =
@@ -177,7 +179,7 @@ std::string Proof::bt_encode_uptime_proof(hf hardfork, cryptonote::network_type 
     oxenc::bt_dict_producer proof;
 
     if (hardfork == cryptonote::feature::ETH_TRANSITION ||
-        nettype == cryptonote::network_type::LOCALDEV) {
+        nettype == cryptonote::network_type::LOCALDEV || hardfork >= hf::hf22_eth_fixup) {
         proof.append("bk", tools::view_guts(pubkey_bls));
         proof.append("bp", tools::view_guts(pop_bls));
     }

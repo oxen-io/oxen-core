@@ -894,6 +894,12 @@ class core final {
     tools::periodic_task m_service_node_vote_relayer{"vote relay", 2min, false};
     /// interval for when we drop expired uptime proofs
     tools::periodic_task m_sn_proof_cleanup_interval{"proof cleanup", 1h, false};
+    /// interval for storing long-term service node state archive.  This is saved on normal exit,
+    /// and so this extra timer is intended as a guard against crashing (or an unexpected server
+    /// reboot), particularly if oxend was previously running for a very long time.  This is
+    /// randomized in 6-7d between calls so that different oxends don't all trigger it at the same
+    /// time.
+    tools::periodic_task m_sn_archive_state_interval{"sn state storage", 6 * 24h, false, 24h};
     /// interval for systemd watchdog pings & updating the service Status line
     tools::periodic_task m_systemd_notify_interval{"systemd notifier", 10s};
 

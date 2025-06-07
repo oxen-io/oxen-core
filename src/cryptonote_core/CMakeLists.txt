@@ -35,6 +35,7 @@ oxen_add_library(cryptonote_core
   sesh_transition/sesh_transition.cpp
   service_node_rules.cpp
   service_node_list.cpp
+  service_node_fixes.cpp
   service_node_voting.cpp
   service_node_quorum_cop.cpp
   service_node_swarm.cpp

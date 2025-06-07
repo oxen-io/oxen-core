@@ -9,11 +9,11 @@
 #include <shared_mutex>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
 #include "common/exception.h"
-#include "common/fs.h"
 #include "common/guts.h"
 #include "logging/oxen_logger.h"
 
@@ -38,6 +38,8 @@ inline constexpr bool is_cstr<const char*> = true;
 struct blob_binder {
     std::string_view data;
     explicit blob_binder(std::string_view d) : data{d} {}
+    explicit blob_binder(std::span<const unsigned char> d) :
+            data{reinterpret_cast<const char*>(d.data()), d.size()} {}
 };
 
 // Binds a string_view as a no-copy blob at parameter index i.
@@ -59,11 +61,19 @@ struct blob {
     blob(SQLite::Column&& col) :
             data{static_cast<const char*>(col.getBlob()), static_cast<size_t>(col.getBytes())} {}
 };
+// Same as above, but delivers in a span<const unsigned char>
+struct blob_span {
+    std::span<const unsigned char> data;
+    blob_span(SQLite::Column&& col) :
+            data{static_cast<const unsigned char*>(col.getBlob()),
+                 static_cast<size_t>(col.getBytes())} {}
+};
 
 // Takes a primitive struct from which we can directly initialize from the stored blob value.  The
 // type `T` must be usable with `make_from_guts`.  Unlike `blob` this value *is* suitable for use
 // in a one-shot method.
 template <typename T>
+    requires std::is_trivially_copyable_v<T>
 struct blob_guts {
     T value;
     blob_guts(SQLite::Column&& col) : value{tools::make_from_guts<T>(blob(std::move(col)).data)} {}
@@ -74,13 +84,33 @@ struct blob_guts {
     operator T&&() && { return std::move(value); }
 };
 
+// Helper to make a blob_binder that binds the memory contents of a trivially copyable type as a
+// blob parameter.
+template <typename T>
+    requires std::is_trivially_copyable_v<T>
+blob_binder bind_guts(const T& v) {
+    return blob_binder{tools::span_guts(v)};
+}
+
 namespace detail {
+    template <typename T>
+    constexpr bool is_optional = false;
+    template <typename T>
+    constexpr bool is_optional<std::optional<T>> = true;
+
     template <typename T>
     void bind_oneshot_single(SQLite::Statement& st, int i, const T& val) {
         if constexpr (std::is_same_v<T, std::string> || is_cstr<T>)
             st.bindNoCopy(i, val);
         else if constexpr (std::is_same_v<T, blob_binder>)
             bind_blob_ref(st, i, val.data);
+        else if constexpr (is_optional<T>) {
+            if (val)
+                bind_oneshot_single(st, i, *val);
+            else
+                st.bind(i);  // binds NULL
+        } else if constexpr (std::same_as<T, std::nullptr_t>)
+            st.bind(i);
         else
             st.bind(i, val);
     }
@@ -93,8 +123,9 @@ namespace detail {
 }  // namespace detail
 
 // Called from exec_query and similar to bind statement parameters for immediate execution.
-// strings (and c strings) use no-copy binding; integer values are bound by value.  You can bind a
-// blob (by reference, like strings) by passing `blob_binder{data}`.
+// strings (and c strings) use no-copy binding; integer values are bound by value; nullptr binds to
+// NULL, and a std::optional binds to NULL (if empty) else the contained value.  You can bind a blob
+// (by reference, like strings) by passing `blob_binder{data}`.
 template <typename... T>
 void bind_oneshot(SQLite::Statement& st, const T&... bind) {
     detail::bind_oneshot(st, std::make_integer_sequence<int, sizeof...(T)>{}, bind...);
@@ -111,7 +142,7 @@ int exec_query(SQLite::Statement& st, const T&... bind) {
 // Same as above, but prepares a literal query on the fly for use with queries that are only used
 // once.
 template <typename... T>
-int exec_query(SQLite::Database& db, const char* query, const T&... bind) {
+int exec_query(SQLite::Database& db, const std::string& query, const T&... bind) {
     SQLite::Statement st{db, query};
     return exec_query(st, bind...);
 }
@@ -316,7 +347,7 @@ class Database {
         return exec_and_maybe_get<T...>(prepared_st(query), bind...);
     }
 
-    explicit Database(const fs::path& db_path, const std::string_view db_password);
+    explicit Database(const std::filesystem::path& db_path, const std::string_view db_password);
 
     ~Database() = default;
 };
