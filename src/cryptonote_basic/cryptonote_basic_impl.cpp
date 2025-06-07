@@ -249,10 +249,13 @@ bool get_account_address_from_str(
 }
 
 std::string reward_money::to_string() const {
-    static_assert(BATCH_REWARD_FACTOR * oxen::COIN == 1'000'000'000'000);
-    return "{:d}.{:012d}"_format(
-            _amount / (BATCH_REWARD_FACTOR * oxen::COIN),
-            _amount % (BATCH_REWARD_FACTOR * oxen::COIN));
+    constexpr auto COIN = static_cast<int64_t>(oxen::COIN);
+    static_assert(BATCH_REWARD_FACTOR * COIN == 1'000'000'000'000);
+    return "{}{:d}.{:09d}{}"_format(
+            negative() ? "-" : "",
+            std::abs(_atomic / COIN),
+            std::abs(_atomic % COIN),
+            _subatomic ? "{:03d}"_format(std::abs(_subatomic)) : "");
 }
 
 //--------------------------------------------------------------------------------

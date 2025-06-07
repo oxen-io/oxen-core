@@ -30,6 +30,7 @@ oxen_add_library(epee
     buffer.cpp
     connection_basic.cpp
     levin_base.cpp
+    int-util.c
     memwipe.c
     mlocker.cpp
     net_utils_base.cpp
