@@ -48,7 +48,7 @@ TEST(SQLITE, AddSNRewards)
 {
   test::BlockchainSQLiteTest sqliteDB(cryptonote::network_type::FAKECHAIN, ":memory:");
 
-  EXPECT_EQ(sqliteDB.batching_count(), 0);
+  EXPECT_EQ(sqliteDB.batching_count(cryptonote::hf::hf19_reward_batching), 0);
 
   cryptonote::block_payments t1;
 
@@ -56,10 +56,10 @@ TEST(SQLITE, AddSNRewards)
 
   cryptonote::get_account_address_from_str(wallet_address, cryptonote::network_type::FAKECHAIN, "LCFxT37LAogDn1jLQKf4y7aAqfi21DjovX9qyijaLYQSdrxY1U5VGcnMJMjWrD9RhjeK5Lym67wZ73uh9AujXLQ1RKmXEyL");
 
-  t1[wallet_address.address].amount = cryptonote::reward_money::db_amount(16500000001'789/2);
+  t1[wallet_address.address].amount = cryptonote::reward_money::from_intermediate(16'500000001'789/2);
 
-  EXPECT_NO_THROW(sqliteDB.add_sn_rewards(cryptonote::hf::_next, t1, false));
-  EXPECT_EQ(sqliteDB.batching_count(), 1);
+  EXPECT_NO_THROW(sqliteDB.add_sn_rewards(cryptonote::hf::hf19_reward_batching, t1, true));
+  EXPECT_EQ(sqliteDB.batching_count(cryptonote::hf::hf19_reward_batching), 1);
 
   std::vector<cryptonote::batch_sn_payment> p1;
   const auto expected_payout = wallet_address.address.next_payout_height(0, cryptonote::config::mainnet::config.BATCHING_INTERVAL);
@@ -70,25 +70,25 @@ TEST(SQLITE, AddSNRewards)
   p2 = sqliteDB.get_sn_payments(expected_payout);
   EXPECT_EQ(p2.size(), 1);
   // We shouldn't get a fractional atomic OXEN amount in the payment amount:
-  auto expected_amount = cryptonote::reward_money::coin_amount(8'250'000'000);
+  auto expected_amount = cryptonote::reward_money::from_coin(8'250000000);
   EXPECT_EQ(p2[0].amount, expected_amount);
 
   // Pay an amount less than the database expects and test for failure
   std::vector<cryptonote::batch_sn_payment> t2;
-  t2.emplace_back(wallet_address.address, expected_amount - cryptonote::reward_money::coin_amount(1));
+  t2.emplace_back(wallet_address.address, expected_amount - cryptonote::reward_money::from_coin(1));
   EXPECT_FALSE(sqliteDB.save_payments(expected_payout, t2));
 
   // Pay the amount back out and expect the database to be empty
   std::vector<cryptonote::batch_sn_payment> t3;
   t3.emplace_back(wallet_address.address, expected_amount);
   EXPECT_NO_THROW(sqliteDB.save_payments(expected_payout, t3));
-  EXPECT_EQ(sqliteDB.batching_count(), 0);
+  EXPECT_EQ(sqliteDB.batching_count(cryptonote::hf::hf19_reward_batching), 0);
 }
 
 TEST(SQLITE, CalculateRewards)
 {
   test::BlockchainSQLiteTest sqliteDB(cryptonote::network_type::TESTNET, ":memory:");
-  auto reward = cryptonote::reward_money::coin_amount(200);
+  auto reward = cryptonote::reward_money::from_coin(200);
   auto hf_version = cryptonote::hf::hf19_reward_batching;
 
   // Check that a single contributor receives 100% of the block reward
@@ -103,6 +103,7 @@ TEST(SQLITE, CalculateRewards)
     contributor.address = first_address.address;
     contributor.reserved = 0;
     contributor.amount = reward.to_coin();
+    single_contributor.staking_requirement = contributor.amount;
 
     sqliteDB.add_rewards(hf_version, reward, single_contributor, rewards);
     EXPECT_EQ(rewards[first_address.address].amount.to_coin(), reward.to_coin());
@@ -127,6 +128,8 @@ TEST(SQLITE, CalculateRewards)
   contributor3.address = third_address.address;
   contributor3.reserved = 0;
   contributor3.amount = 34;
+  for (const auto& c : multiple_contributors.contributors)
+      multiple_contributors.staking_requirement += c.amount;
 
   rewards.clear();
   sqliteDB.add_rewards(hf_version, reward, multiple_contributors, rewards);
@@ -141,7 +144,7 @@ TEST(SQLITE, CalculateRewards)
   // Check that 3 contributors receives their portion of the block reward when the operator takes a 10% fee
   multiple_contributors.portions_for_operator = cryptonote::old::STAKING_PORTIONS/10;
   multiple_contributors.operator_address = first_address.address;
-  reward = cryptonote::reward_money::coin_amount(1000);
+  reward = cryptonote::reward_money::from_coin(1000);
   rewards.clear();
   sqliteDB.add_rewards(hf_version, reward, multiple_contributors, rewards);
   // Operator gets 10%, remainder split among operator and contributors:
