@@ -58,7 +58,7 @@ TEST(SQLITE, AddSNRewards)
 
   t1[wallet_address.address].amount = cryptonote::reward_money::from_intermediate(16'500000001'789/2);
 
-  EXPECT_NO_THROW(sqliteDB.add_sn_rewards(cryptonote::hf::_next, t1, false));
+  EXPECT_NO_THROW(sqliteDB.add_sn_rewards(cryptonote::hf::hf19_reward_batching, t1, true));
   EXPECT_EQ(sqliteDB.batching_count(), 1);
 
   std::vector<cryptonote::batch_sn_payment> p1;
@@ -103,6 +103,7 @@ TEST(SQLITE, CalculateRewards)
     contributor.address = first_address.address;
     contributor.reserved = 0;
     contributor.amount = reward.to_coin();
+    single_contributor.staking_requirement = contributor.amount;
 
     sqliteDB.add_rewards(hf_version, reward, single_contributor, rewards);
     EXPECT_EQ(rewards[first_address.address].amount.to_coin(), reward.to_coin());
@@ -127,6 +128,8 @@ TEST(SQLITE, CalculateRewards)
   contributor3.address = third_address.address;
   contributor3.reserved = 0;
   contributor3.amount = 34;
+  for (const auto& c : multiple_contributors.contributors)
+      multiple_contributors.staking_requirement += c.amount;
 
   rewards.clear();
   sqliteDB.add_rewards(hf_version, reward, multiple_contributors, rewards);
