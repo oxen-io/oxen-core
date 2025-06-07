@@ -102,6 +102,9 @@ static constexpr std::array mainnet_hard_forks = {
         // Oxen 11.3: SESH TGE and completion of the Oxen network transition to SESH
         hard_fork{hf::hf21_eth, 0, 1852079, 1747785600 /*Wed, 21 May 2025 00:00*/},
 
+        // Oxen 11.4: Enforce BLS key signature in proofs
+        hard_fork{hf::hf22_eth_fixup, 0, 1866479, 1749513600 /*Tue, 10 Jun 2025 00:00*/},
+
         // NOTE: See contrib/hardfork-calc.py to aid with new HF block/date calculations!
 };
 
@@ -121,6 +124,7 @@ static constexpr std::array testnet_hard_forks = {
         hard_fork{hf::hf19_reward_batching, 3, 161000, 1673385120},  // 2023-01-10T21:12:00.000Z UTC
         hard_fork{hf::hf20_eth_transition, 0, 629500, 1729215000},   // 2024-10-17T01:30:00.000Z UTC
         hard_fork{hf::hf21_eth, 0, 689990, 1736459037},  // 2025-01-09T20:45:00.000Z UTC (ish)
+        hard_fork{hf::hf22_eth_fixup, 0, 790226, 1748664600 /*Sat, 31 May 2025 04:10*/},
 };
 
 static constexpr std::array devnet_hard_forks = {

@@ -172,7 +172,7 @@ inline constexpr uint64_t STAKING_FEE_BASIS = 10'000;
 
 // We calculate and store batch rewards in thousanths of atomic OXEN/SESH, to reduce the size of
 // errors from integer division of rewards.
-constexpr uint64_t BATCH_REWARD_FACTOR = 1000;
+constexpr int64_t BATCH_REWARD_FACTOR = 1000;
 
 // If we don't hear any SS ping/lokinet session test failures for more than this long then we
 // start considering the SN as passing for the purpose of obligation testing until we get
@@ -259,6 +259,7 @@ enum class hf : uint8_t {
     hf19_reward_batching,
     hf20_eth_transition,  // Temp period: registrations disabled, BLS pubkeys in proofs
     hf21_eth,             // Full transition: registrations from ETH
+    hf22_eth_fixup,       // Re-enforce BLS in proofs, fixup reward payments
 
     _next,
     none = 0
@@ -274,7 +275,7 @@ constexpr auto hf_prev(hf x) {
 
 // This is here to make sure the numeric value of the top hf enum value is correct (i.e.
 // hf21_sent == 21 numerically); bump this when adding a new hf.
-static_assert(static_cast<uint8_t>(hf_max) == 21);
+static_assert(static_cast<uint8_t>(hf_max) == 22);
 
 // Constants for which hardfork activates various features:
 namespace feature {
