@@ -48,7 +48,7 @@ TEST(SQLITE, AddSNRewards)
 {
   test::BlockchainSQLiteTest sqliteDB(cryptonote::network_type::FAKECHAIN, ":memory:");
 
-  EXPECT_EQ(sqliteDB.batching_count(), 0);
+  EXPECT_EQ(sqliteDB.batching_count(cryptonote::hf::hf19_reward_batching), 0);
 
   cryptonote::block_payments t1;
 
@@ -59,7 +59,7 @@ TEST(SQLITE, AddSNRewards)
   t1[wallet_address.address].amount = cryptonote::reward_money::from_intermediate(16'500000001'789/2);
 
   EXPECT_NO_THROW(sqliteDB.add_sn_rewards(cryptonote::hf::hf19_reward_batching, t1, true));
-  EXPECT_EQ(sqliteDB.batching_count(), 1);
+  EXPECT_EQ(sqliteDB.batching_count(cryptonote::hf::hf19_reward_batching), 1);
 
   std::vector<cryptonote::batch_sn_payment> p1;
   const auto expected_payout = wallet_address.address.next_payout_height(0, cryptonote::config::mainnet::config.BATCHING_INTERVAL);
@@ -82,7 +82,7 @@ TEST(SQLITE, AddSNRewards)
   std::vector<cryptonote::batch_sn_payment> t3;
   t3.emplace_back(wallet_address.address, expected_amount);
   EXPECT_NO_THROW(sqliteDB.save_payments(expected_payout, t3));
-  EXPECT_EQ(sqliteDB.batching_count(), 0);
+  EXPECT_EQ(sqliteDB.batching_count(cryptonote::hf::hf19_reward_batching), 0);
 }
 
 TEST(SQLITE, CalculateRewards)

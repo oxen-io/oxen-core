@@ -945,7 +945,6 @@ void BlockchainSQLite::add_sn_rewards(
     const auto& netconf = get_config(nettype);
 
     for (const auto& [vaddr, payment] : payments) {
-        // auto [offset, address_str] = get_address_str(addr, netconf.BATCHING_INTERVAL);
         auto amount = payment.amount - payment.liquidation;
 
         log::trace(
