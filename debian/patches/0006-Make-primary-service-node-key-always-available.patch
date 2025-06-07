@@ -8,17 +8,26 @@ and get keys from lokid, but lokid hasn't yet been reconfigured into
 service node mode.  This makes the primary keys always available to
 simplify that greatly.
 ---
- src/cryptonote_core/cryptonote_core.cpp | 2 +-
- 1 file changed, 1 insertion(+), 1 deletion(-)
+ src/cryptonote_core/cryptonote_core.cpp | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/src/cryptonote_core/cryptonote_core.cpp b/src/cryptonote_core/cryptonote_core.cpp
-index cc935b3..4756f4f 100644
+index 155a616..ef8002d 100644
 --- a/src/cryptonote_core/cryptonote_core.cpp
 +++ b/src/cryptonote_core/cryptonote_core.cpp
-@@ -1177,7 +1177,7 @@ bool core::init_service_keys() {
-     // backwards compatibility with existing active service nodes.)  The legacy key consists of
-     // *just* the private point, but not the seed, and so cannot be used for full Ed25519 signatures
-     // (which rely on the seed for signing).
+@@ -1162,7 +1162,7 @@ bool core::init_service_keys() {
+     crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519.data(), keys.key_ed25519.data());
+ 
+     // BLS pubkey, used by service nodes when interacting with the Ethereum smart contract
+-    if (m_service_node && !init_key(
++    if (/*m_service_node &&*/ !init_key(
+                                   m_config_folder / "key_bls",
+                                   keys.key_bls,
+                                   keys.pub_bls,
+@@ -1191,7 +1191,7 @@ bool core::init_service_keys() {
+     // Ed25519, and so rather than fix that mistake Monero also implemented their own non-standard
+     // signatures using Ed25519 cryptography, negating one of EdDSA's fundmental properties of not
+     // relying on randomness for signature generation.  Yay Monero!
 -    if (m_service_node) {
 +    if (true || m_service_node) {
          keys.key = crypto::ed25519_to_monero_secret_key(keys.key_ed25519);
