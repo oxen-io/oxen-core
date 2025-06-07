@@ -112,6 +112,10 @@ static const command_line::arg_descriptor<uint64_t> arg_test_drop_download_heigh
         "test-drop-download-height",
         "Like test-drop-download but discards only after around certain height",
         0};
+static const command_line::arg_descriptor<uint64_t> arg_max_sync_height = {
+        "debug-max-sync-height",
+        "DEBUG option: rejects any incoming blocks with heights >= the given value",
+        0};
 static const command_line::arg_descriptor<uint64_t> arg_fast_block_sync = {
         "fast-block-sync", "Sync up most of the way by using embedded, known block hashes.", 1};
 static const command_line::arg_descriptor<uint64_t> arg_prep_blocks_threads = {
@@ -133,7 +137,7 @@ static const command_line::arg_flag arg_service_node = {
         "service-node", "Run as a service node, option 'service-node-public-ip' must be set"};
 static const command_line::arg_descriptor<std::string> arg_public_ip = {
         "service-node-public-ip",
-        "Public IP address on which this service node's services (such as the Loki "
+        "Public IP address on which this service node's services (such as the Session "
         "storage server) are accessible. This IP address will be advertised to the "
         "network via the service node uptime proofs. Required if operating as a "
         "service node."};
@@ -337,6 +341,7 @@ void core::init_options(boost::program_options::options_description& desc) {
 
     command_line::add_arg(desc, arg_test_drop_download);
     command_line::add_arg(desc, arg_test_drop_download_height);
+    command_line::add_arg(desc, arg_max_sync_height);
     command_line::add_network_args(desc);
     command_line::add_arg(desc, arg_keep_fakechain);
     command_line::add_arg(desc, arg_fixed_difficulty);
@@ -389,6 +394,7 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
     m_config_folder = tools::utf8_path(command_line::get_arg(vm, arg_data_dir));
 
     test_drop_download_height(command_line::get_arg(vm, arg_test_drop_download_height));
+    blockchain.max_sync_height(get_arg(vm, arg_max_sync_height));
     m_pad_transactions = get_arg(vm, arg_pad_transactions);
     m_offline = get_arg(vm, arg_offline);
     m_has_ip_check_disabled = get_arg(vm, arg_disable_ip_check);
@@ -1172,11 +1178,19 @@ bool core::init_service_keys() {
                                   }))
         return false;
 
-    // Legacy primary SN key file; we only load this if it exists, otherwise we use `key_ed25519`
-    // for the primary SN keypair.  (This key predates the Ed25519 keys and so is needed for
-    // backwards compatibility with existing active service nodes.)  The legacy key consists of
-    // *just* the private point, but not the seed, and so cannot be used for full Ed25519 signatures
-    // (which rely on the seed for signing).
+    // Our primary SN pubkey used to be different from our Ed25519 key, and lived in its own `key`
+    // file, and up until HF21 we communicated the Ed25519 key via uptime proofs, which could be
+    // different.  Starting in HF21 (and Oxen 11.3) we rewrote all SN entries to use the Ed25519 key
+    // as the pubkey, forcing unification, and so now completely ignore the `key` file, always
+    // deriving it from the Ed25519 key.  Unlike key_ed25519 which does get used for other purposes,
+    // this primary key was only used for service nodes and so has no effect on non-service nodes,
+    // so we don't set it unless running in service node mode.
+    //
+    // The reason for this mess is that Monero didn't implement Ed25519 properly, and saved the
+    // private scalar instead of the seed, from which you cannot go back to the seed to do proper
+    // Ed25519, and so rather than fix that mistake Monero also implemented their own non-standard
+    // signatures using Ed25519 cryptography, negating one of EdDSA's fundmental properties of not
+    // relying on randomness for signature generation.  Yay Monero!
     if (m_service_node) {
         keys.key = crypto::ed25519_to_monero_secret_key(keys.key_ed25519);
         if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
@@ -1197,7 +1211,12 @@ bool core::init_service_keys() {
             fg(fmt::terminal_color::cyan) | fmt::emphasis::bold,
             "{} public keys:",
             m_service_node ? "Service node" : "Node");
-    log::info(globallogcat, style, "- {}ed25519: {:x}", m_service_node ? "primary/" : "", keys.pub);
+    log::info(
+            globallogcat,
+            style,
+            "- {}ed25519: {:x}",
+            m_service_node ? "primary/" : "",
+            keys.pub_ed25519);
     log::info(globallogcat, style, "- x25519: {:x}", keys.pub_x25519);
     // .snode address is the ed25519 pubkey, encoded with base32z and with .snode appended:
     if (m_service_node) {
@@ -2638,7 +2657,7 @@ void core::do_uptime_proof_call() {
                             fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                             "Failed to submit uptime proof: have not heard from the storage server "
                             "recently. Make sure that it is running! It is required to run "
-                            "alongside the Loki daemon");
+                            "alongside the Oxen daemon");
                     return;
                 }
                 if (!check_external_ping(
@@ -2650,7 +2669,7 @@ void core::do_uptime_proof_call() {
                             fg(fmt::terminal_color::red) | fmt::emphasis::bold,
                             "Failed to submit uptime proof: have not heard from lokinet recently. "
                             "Make sure that it is running! It is required to run alongside the "
-                            "Loki daemon");
+                            "Oxen daemon");
                     return;
                 }
             }
@@ -2673,26 +2692,32 @@ void core::do_uptime_proof_call() {
                     return;
                 }
 
+                // Allow the synced blocks to be up to L2_TRACKER_SAFE_BLOCKS, because that's what
+                // we require for proper pulse participation, and so it is a valid refresh period to
+                // be slightly under that interval.  We need the threshold here to be longer than
+                // the refresh interval because otherwise it's entirely possible for this code to
+                // land in between a height update and a getLogs call, and trigger spurious
+                // instances of this error.  (Or worse: with both on the same interval, this timer
+                // could get stuck in between height+getLogs calls and never seen proofs).
                 eth::L2Tracker::L2Heights l2_heights = l2_tracker().get_l2_heights();
-                assert(l2_heights.latest >= l2_heights.synced);
-                size_t allowed_height_delta = 10s / config::L2_BLOCK_TIME;
-                size_t min_height = l2_heights.latest - allowed_height_delta;
-
-                // Allow some block buffer because these are individual network requests which take
-                // time
-                if (l2_heights.synced < min_height) {
-                    log::error(
+                if (l2_heights.latest >= l2_heights.synced + netconf.L2_TRACKER_SAFE_BLOCKS) {
+                    // Don't log this as an error in the first couple minutes, because L2 rate log
+                    // size and rate limiting often needs 30s+ to fetch all logs from the past 30
+                    // minutes of L2 blocks on startup.
+                    auto level = std::chrono::seconds{time(nullptr) - get_start_time()} >= 2min
+                                       ? log::Level::err
+                                       : log::Level::debug;
+                    log::log(
                             globallogcat,
+                            level,
                             fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                            "Failed to submit uptime proof: the L2 RPC provider has not synced the "
-                            "logs from Arbitrum to a sufficient height of {} to be considered "
-                            "synced. The L2's latest known/synced height is {}/{}. Check your "
+                            "Failed to submit uptime proof: L2 events are not yet synced "
+                            "to the latest known L2 height {} ({} blocks behind). Check your "
                             "L2 provider's dashboard for request health or the logs of "
                             "your local Arbitrum node to ensure the getLogs requests are being "
                             "handled successfully",
-                            min_height,
                             l2_heights.latest,
-                            l2_heights.synced);
+                            l2_heights.latest - l2_heights.synced);
                     return;
                 }
             }
@@ -2712,7 +2737,7 @@ bool core::on_idle() {
         std::string main_message;
         if (m_offline)
             main_message =
-                    "The daemon is running offline and will not attempt to sync to the Loki "
+                    "The daemon is running offline and will not attempt to sync to the Session "
                     "network.";
         else
             main_message =
@@ -2741,6 +2766,10 @@ Use "help <command>" to see a command's documentation.
     m_check_disk_space_interval.do_call([this] { return check_disk_space(); });
     m_sn_proof_cleanup_interval.do_call([&snl = service_node_list] {
         snl.cleanup_proofs();
+        return true;
+    });
+    m_sn_archive_state_interval.do_call([&snl = service_node_list] {
+        snl.store();
         return true;
     });
 

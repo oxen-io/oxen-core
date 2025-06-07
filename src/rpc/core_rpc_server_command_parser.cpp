@@ -544,6 +544,16 @@ void parse_request(BLS_REWARDS_REQUEST& cmd, rpc_input in) {
     get_values(in, "address", required{cmd.request.address}, "height", cmd.request.height);
 }
 
+void parse_request(BLS_EXIT_LIQUIDATION_LIST& cmd, rpc_input in) {
+    std::vector<std::string_view> fields;
+    get_values(in, "fields", fields);
+    for (const auto& f : fields)
+        cmd.request.fields.emplace(f);
+    // If the only thing given is "all" then just clear it (as a small optimization):
+    if (cmd.request.fields.size() == 1 && *cmd.request.fields.begin() == "all")
+        cmd.request.fields.clear();
+}
+
 void parse_request(BLS_EXIT_LIQUIDATION_REQUEST& cmd, rpc_input in) {
     crypto::public_key sn_pubkey{};
     eth::bls_public_key bls_pubkey{};

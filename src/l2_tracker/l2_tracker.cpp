@@ -824,7 +824,7 @@ void L2Tracker::update_done(bool changes) {
     uint64_t l2_height, purge_height;
     {
         std::unique_lock lock{mutex};
-        l2_height = state.latest_height;
+        l2_height = state.synced_height;
         purge_height = purge_state.latest_height;
         update_in_progress = false;
     }
