@@ -1309,11 +1309,13 @@ void BlockchainSQLite::reward_handler(
                 *sn_state.service_nodes_infos.at(node_pubkey),
                 payments);
 
-    add_sn_rewards(
-            block.major_version,
-            get_delayed_payments(block.get_height()),
-            false /*rewards_payment*/);
-    add_sn_rewards(block.major_version, payments, true /*rewards_payment*/);
+    auto delayed = get_delayed_payments(block.get_height());
+    if (block.major_version >= hf::hf21_eth)
+        add_sn_rewards(block.major_version, std::move(delayed), false /*rewards_payment*/);
+    else
+        assert(delayed.empty());  // There should be no delayed payments before HF21!
+
+    add_sn_rewards(block.major_version, std::move(payments), true /*rewards_payment*/);
 }
 
 template <typename Results>
