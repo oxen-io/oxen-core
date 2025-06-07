@@ -92,7 +92,7 @@ void throw0(const T& e) {
 
 template <typename T>
 void throw1(const T& e) {
-    log::error(logcat, "{}", e.what());
+    log::info(logcat, "{}", e.what());
     throw e;
 }
 

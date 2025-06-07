@@ -34,7 +34,8 @@ namespace tools {
 
 thread_local std::mt19937_64 rng{std::random_device{}()};
 
-uint64_t uniform_distribution_portable(std::mt19937_64& rng, const uint64_t n) {
+template <typename RNG>
+static uint64_t uniform_distribution_portable_impl(RNG& rng, const uint64_t n) {
     assert(n > 0);
     const uint64_t secureMax = rng.max() - rng.max() % n;
     uint64_t x;
@@ -42,6 +43,14 @@ uint64_t uniform_distribution_portable(std::mt19937_64& rng, const uint64_t n) {
         x = rng();
     while (x >= secureMax);
     return x / (secureMax / n);
+}
+
+uint64_t uniform_distribution_portable(std::mt19937_64& rng, const uint64_t n) {
+    return uniform_distribution_portable_impl(rng, n);
+}
+
+uint64_t uniform_distribution_portable(boost::random::mt19937_64& rng, const uint64_t n) {
+    return uniform_distribution_portable_impl(rng, n);
 }
 
 }  // namespace tools

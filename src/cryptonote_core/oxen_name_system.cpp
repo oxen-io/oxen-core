@@ -2124,7 +2124,7 @@ WHERE type = ? AND name_hash = ? AND)" +
     constexpr auto GET_OWNER_BY_KEY_STR = "SELECT * FROM owner WHERE address = ?"sv;
 
     // Prune queries used when we need to rollback to remove records added after the detach point:
-    constexpr auto PRUNE_MAPPINGS_STR = "DELETE FROM mappings WHERE update_height >= ?"sv;
+    constexpr auto PRUNE_MAPPINGS_STR = "DELETE FROM mappings WHERE update_height > ?"sv;
     constexpr auto PRUNE_OWNERS_STR = R"(
 DELETE FROM owner
 WHERE NOT EXISTS (SELECT * FROM mappings WHERE owner.id = mappings.owner_id)
@@ -2620,22 +2620,25 @@ bool name_system_db::save_settings(uint64_t top_height, crypto::hash const& top_
     return result;
 }
 
-bool name_system_db::prune_db(uint64_t height) {
+bool name_system_db::prune_db(uint64_t top_height, const crypto::hash& top_hash) {
     bool result = false;
     if (db) {
-        if (bind_and_run(ons_sql_type::pruning, prune_mappings_sql, nullptr, height))
+        if (bind_and_run(ons_sql_type::pruning, prune_mappings_sql, nullptr, top_height))
             if (sql_run_statement(ons_sql_type::pruning, prune_owners_sql, nullptr))
                 result = true;
 
         log::debug(
                 logcat,
-                "Detach request for ONS (last processed is {}), {} to {}",
+                "Detach request for ONS (last processed was {}), {} to {} ({})",
                 last_processed_height,
                 result ? "detached" : "failed to detach",
-                height);
+                top_height,
+                top_hash);
 
-        if (result && height <= last_processed_height)
-            last_processed_height = height - 1;
+        if (result && top_height < last_processed_height) {
+            last_processed_height = top_height;
+            last_processed_hash = top_hash;
+        }
     }
     return result;
 }
