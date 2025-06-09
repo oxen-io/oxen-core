@@ -595,7 +595,7 @@ void BlockchainSQLite::upgrade_schema() {
                     R"(
             INSERT INTO {table}_tmp
                 (eth_address, amount, liquidation_amount,
-                    payout_height, height, block_height, block_tx_index contributor_index)
+                    payout_height, height, block_height, block_tx_index, contributor_index)
             SELECT
                 oxen_upgrade_addr_to_blob(eth_address),
                 amount / {factor},
