@@ -1,3 +1,9 @@
+oxen (11.4.0-1~deb12) bookworm; urgency=medium
+
+  * 11.4.0
+
+ -- Jason Rhinelander <jason@session.foundation>  Mon, 09 Jun 2025 15:29:41 -0300
+
 oxen (11.4.0~rc3-1~deb12) bookworm; urgency=medium
 
   [ Jason Rhinelander ]
