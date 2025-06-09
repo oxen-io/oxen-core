@@ -163,14 +163,6 @@ namespace {
     constexpr uint64_t round_up(uint64_t value, uint64_t quantum) {
         return (value + quantum - 1) / quantum * quantum;
     }
-
-    void rename_key(nlohmann::json& obj, std::string_view old_key, std::string_view new_key) {
-        if (auto it = obj.find(old_key); it != obj.end()) {
-            auto val = std::move(*it);
-            obj.erase(it);
-            obj[std::string{new_key}] = std::move(val);
-        }
-    }
 }  // namespace
 
 const std::unordered_map<std::string, std::shared_ptr<const rpc_command>> rpc_commands =
@@ -2708,63 +2700,30 @@ void core_rpc_server::invoke(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
-    auto list = nlohmann::json::array();
+    rpc.response = json::array();
     using node_t = service_nodes::service_node_list::recently_removed_node;
-    m_core.service_node_list.for_each_recently_removed_node([&list, is_bt = rpc.is_bt()](
-                                                                    const node_t& elem) {
-        // NOTE: Serialise to JSON
-        serialization::json_archiver ar{
-                is_bt ? json_binary_proxy::fmt::bt : json_binary_proxy::fmt::hex};
-        serialize(ar, const_cast<node_t&>(elem));
-        nlohmann::json serialized = std::move(ar).json();
-        nlohmann::json& sn_info = serialized["info"];
+    const auto removable = m_core.blockchain.get_removable_nodes();
+    m_core.service_node_list.for_each_recently_removed_node(
+            [this, &rpc, &removable](const node_t& elem) {
+                rpc.response.push_back(json{
+                        {"height", elem.height},
+                        {"liquidation_height", elem.liquidation_height},
+                        {"type",
+                         elem.type == node_t::type_t::voluntary_exit ? "exit"
+                         : elem.type == node_t::type_t::deregister   ? "deregister"
+                                                                     : "unknown"},
+                });
+                rpc.response_hex.back()["service_node_pubkey"] = elem.service_node_pubkey;
 
-        // NOTE: Remove implementation details from the contributor JSON
-        for (auto& contrib_it : sn_info["contributors"]) {
-            constexpr std::string_view ERASE_FIELDS_CONTRIBUTOR[] = {
-                    "address",  // Cryptonote address  (not used in L2, use ETH addresses)
-                    "locked_contributions",  // $OXEN contributions (not used in L2, use $SESH)
-            };
-
-            for (const auto& field : ERASE_FIELDS_CONTRIBUTOR) {
-                auto it = contrib_it.find(field);
-                assert(it != contrib_it.end());
-                contrib_it.erase(it);
-            }
-
-            // NOTE: Remove operator cryptonote address and replace with ethereum address
-            rename_key(contrib_it, "ethereum_address", "address");
-        }
-
-        // NOTE: Remove operator cryptonote address and replace with ethereum address
-        rename_key(sn_info, "operator_ethereum_address", "operator_address");
-
-        // NOTE: Remove implementation details from the output JSON
-        constexpr std::string_view ERASE_FIELDS[] = {
-                "public_ip",
-                "qnet_port",
-                "type",
-        };
-
-        for (const auto& field : ERASE_FIELDS) {
-            auto it = serialized.find(field);
-            assert(it != serialized.end());
-            serialized.erase(it);
-        }
-
-        // NOTE: Assign the type
-        switch (elem.type) {
-            case node_t::type_t::voluntary_exit: serialized["type"] = "exit"; break;
-            case node_t::type_t::deregister: serialized["type"] = "deregister"; break;
-            case node_t::type_t::purged:
-                assert(!"Internal error: found invalid purged node in recently_removed_nodes");
-        }
-
-        // NOTE: Store the object into the RPC response array
-        list.push_back(std::move(serialized));
-    });
-
-    rpc.response = std::move(list);
+                fill_sn_response_entry(
+                        rpc.response.back()["info"] = json::object(),
+                        rpc.is_bt(),
+                        rpc.request.fields,
+                        elem.service_node_pubkey,
+                        elem.info,
+                        m_core.blockchain.get_tail_id().first,
+                        &removable);
+            });
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
@@ -3139,18 +3098,19 @@ void core_rpc_server::fill_sn_response_entry(
             if (contributor.ethereum_address) {
                 c["address"] = "{}"_format(contributor.ethereum_address);
                 c["beneficiary"] = "{}"_format(contributor.ethereum_beneficiary);
-            } else
+            } else {
                 c["address"] = cryptonote::get_account_address_as_str(
                         m_core.get_nettype(), false /*subaddress*/, contributor.address);
-            if (contributor.reserved && contributor.reserved != contributor.amount)
-                c["reserved"] = contributor.reserved;
-            if (want_locked_c) {
-                auto& locked = (c["locked_contributions"] = json::array());
-                for (const auto& src : contributor.locked_contributions) {
-                    auto& lc = locked.emplace_back(json{{"amount", src.amount}});
-                    json_binary_proxy lc_binary{lc, binary_format};
-                    lc_binary["key_image"] = src.key_image;
-                    lc_binary["key_image_pub_key"] = src.key_image_pub_key;
+                if (contributor.reserved && contributor.reserved != contributor.amount)
+                    c["reserved"] = contributor.reserved;
+                if (want_locked_c) {
+                    auto& locked = (c["locked_contributions"] = json::array());
+                    for (const auto& src : contributor.locked_contributions) {
+                        auto& lc = locked.emplace_back(json{{"amount", src.amount}});
+                        json_binary_proxy lc_binary{lc, binary_format};
+                        lc_binary["key_image"] = src.key_image;
+                        lc_binary["key_image_pub_key"] = src.key_image_pub_key;
+                    }
                 }
             }
         }
@@ -3241,56 +3201,6 @@ void core_rpc_server::invoke(GET_SERVICE_NODES& sns, rpc_context) {
                 top_height,
                 &removable,
                 sns.request.oxen10_compat_fields);
-}
-
-void core_rpc_server::invoke(HF21_DRY_RUN& req, rpc_context) {
-    req.response["status"] = STATUS_OK;
-
-    auto sn_infos_before = m_core.service_node_list.get_service_node_list_state();
-    auto [top_height, top_hash] = m_core.blockchain.get_tail_id();
-    const auto removable = m_core.blockchain.get_removable_nodes();
-
-    auto transition_result = m_core.service_node_list.hf21_dry_run(m_core.get_nettype());
-
-    req.response["before"] = json::object();
-    req.response["after"] = json::object();
-    auto& sns_before = (req.response["before"]["sns"] = json::array());
-    auto& sns_after = (req.response["after"]["sns"] = json::array());
-    auto& rewards_before = (req.response["before"]["rewards"] = json::object());
-    auto& rewards_after = (req.response["after"]["rewards"] = json::object());
-
-    auto rewards_before_pair = m_core.blockchain.sqlite_db().get_all_accrued_rewards();
-    for (size_t i = 0; i < rewards_before_pair.first.size(); i++) {
-        const auto& addr = rewards_before_pair.first[i];
-        const auto& amt = rewards_before_pair.second[i];
-        rewards_before[addr] = amt.amount.to_coin();
-    }
-    for (size_t i = 0; i < transition_result.rewards_after.first.size(); i++) {
-        const auto& addr = transition_result.rewards_after.first[i];
-        const auto& amt = transition_result.rewards_after.second[i];
-        rewards_after[addr] = amt.to_coin();
-    }
-
-    std::unordered_set<std::string> reqed;
-    reqed.insert("all");
-    for (const auto& pubkey_info : sn_infos_before)
-        fill_sn_response_entry(
-                sns_before.emplace_back(json::object()),
-                req.is_bt(),
-                reqed,
-                pubkey_info.pubkey,
-                *pubkey_info.info,
-                top_height,
-                &removable);
-    for (const auto& [pubkey, info] : transition_result.sns_after)
-        fill_sn_response_entry(
-                sns_after.emplace_back(json::object()),
-                req.is_bt(),
-                reqed,
-                pubkey,
-                *info,
-                top_height,
-                &removable);
 }
 
 void core_rpc_server::invoke(GET_ALL_UPTIME_PROOFS& req, rpc_context) {
@@ -3953,11 +3863,21 @@ void core_rpc_server::invoke(ONS_RESOLVE& resolve, rpc_context) {
     }
 }
 
+static std::string address_str(
+        cryptonote::network_type nettype,
+        const std::variant<eth::address, cryptonote::account_public_address>& addr) {
+    std::string address;
+    if (auto* eth = std::get_if<eth::address>(&addr))
+        return "{}"_format(*eth);
+    return get_account_address_as_str(
+            nettype, false, std::get<cryptonote::account_public_address>(addr));
+}
+
 static nlohmann::json wallet_info_to_json(
         std::string address, const BlockchainSQLite::wallet_info& wallet_info) {
-    nlohmann::json result = {
+    return nlohmann::json{
             {"found", wallet_info.found},
-            {"address", address},
+            {"address", std::move(address)},
             {"amount", wallet_info.amount.to_coin()},
             {"lifetime_locked_stakes", wallet_info.lifetime_locked_stakes.to_coin()},
             {"lifetime_unlocked_stakes", wallet_info.lifetime_unlocked_stakes.to_coin()},
@@ -3966,14 +3886,13 @@ static nlohmann::json wallet_info_to_json(
             {"locked_stakes", wallet_info.locked_stakes.to_coin()},
             {"timelocked_stakes", wallet_info.timelocked_stakes.to_coin()},
     };
-    return result;
 }
 
 void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, rpc_context) {
     auto& balances = rpc.response["balances"];
     balances = json::array();
 
-    const auto& req = rpc.request;
+    auto& req = rpc.request;
     auto net = nettype();
     BlockchainSQLite& sql_db = m_core.blockchain.sqlite_db();
 
@@ -3981,26 +3900,26 @@ void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, rpc_context) {
     uint64_t height = 0;
     if (req.addresses.size() > 0) {
         array.reserve(req.addresses.size());
-        for (const auto& address : req.addresses) {
+        for (auto& address : req.addresses) {
             BlockchainSQLite::wallet_info wallet_info = {};
             if (eth::address eth{}; tools::try_load_from_hex_guts<eth::address>(address, eth)) {
+                address = "{}"_format(eth);  // Reformat so that we use the proper checksum even if
+                                             // a non-checksummed value was in the request.
                 wallet_info = sql_db.get_accrued_rewards(eth);
             } else if (address_parse_info oxen{};
                        get_account_address_from_str(oxen, net, address)) {
                 wallet_info = sql_db.get_accrued_rewards(oxen.address);
             }
-            array.push_back(wallet_info_to_json(address, wallet_info));
+            array.push_back(wallet_info_to_json(std::move(address), wallet_info));
             if (height == 0)
                 height = wallet_info.height;
             assert(wallet_info.height == height);
         }
     } else {
-        auto [addresses, wallets] = sql_db.get_all_accrued_rewards();
-        array.reserve(addresses.size());
-        for (size_t i = 0; i < addresses.size(); i++) {
-            const std::string& address = addresses[i];
-            const BlockchainSQLite::wallet_info& wallet_info = wallets[i];
-            array.push_back(wallet_info_to_json(address, wallet_info));
+        auto accrued = sql_db.get_all_accrued_rewards();
+        array.reserve(accrued.size());
+        for (const auto& [addr, wallet_info] : accrued) {
+            array.push_back(wallet_info_to_json(address_str(nettype(), addr), wallet_info));
 
             if (height == 0)
                 height = wallet_info.height;

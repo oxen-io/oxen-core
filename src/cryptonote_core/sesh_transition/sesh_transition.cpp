@@ -293,8 +293,9 @@ static void dump_transition_outcome_csv(
 
             // NOTE: Write the CSV line
             file.print(
-                    "redacted_{:04d},{},{},{},{},{},{}\n",
-                    index++,
+                    "{}_{:04d},{},{},{},{},{},{}\n",
+                    sorted_it.addr,
+                    index,
                     sorted_it.oxen_sn_count,
                     sorted_it.sesh_sn_count,
                     cryptonote::print_money(bonus_tokens),
@@ -374,18 +375,18 @@ static void dump_transition_outcome_csv(
         for (const node_transition& it : node_list) {
             bool transitioned = it.tokens_allocated >= context.staking_requirement;
             file.print(
-                    "{:06d},"           // registration_height
-                    "redacted_{:04d},"  // pkey
-                    "{},"               // tokens_allocated
-                    "{},"               // transitioned
-                    "{},"               // missing_ed25519_key
-                    "{},"               // missing_bls_key
-                    "{},"               // partially_funded
-                    "{},"               // contributor_not_registered_for_swap
-                    "{},"               // insufficient_sesh
+                    "{:06d},"  // registration_height
+                    "{},"      // pkey
+                    "{},"      // tokens_allocated
+                    "{},"      // transitioned
+                    "{},"      // missing_ed25519_key
+                    "{},"      // missing_bls_key
+                    "{},"      // partially_funded
+                    "{},"      // contributor_not_registered_for_swap
+                    "{},"      // insufficient_sesh
                     "\n",
                     it.sn_info->registration_height,
-                    count++,
+                    it.pkey,
                     cryptonote::print_money(it.tokens_allocated),
                     transitioned,
                     it.missing_ed25519_key,
@@ -463,16 +464,15 @@ void transition(
     // batching db.  (If there is SESH left over at the end we'll put it back in, but under the
     // converted ETH address).
 
-    auto [accrued_addr, accrued_value] = sql.get_all_accrued_rewards();
-    assert(accrued_addr.size() == accrued_value.size());
-    for (size_t i = 0; i < accrued_addr.size(); i++) {
-        auto& addr = accrued_addr[i];
-        auto& val = accrued_value[i];
+    auto accrued = sql.get_all_accrued_rewards();
+    for (const auto& [addr, val] : accrued) {
+        auto* oxen_addr = std::get_if<cryptonote::account_public_address>(&addr);
+        if (!oxen_addr)
+            throw std::runtime_error{
+                    "Unable to perform SESH transition: batching database already contains"
+                    " SESH address: {}!"_format(std::get<eth::address>(addr))};
 
-        auto api = address_info_from_str(addr);
-        const auto& oxen_addr = api.address;
-
-        auto it = sesh_addrs.find(oxen_addr);
+        auto it = sesh_addrs.find(*oxen_addr);
         if (it == sesh_addrs.end())
             continue;
 
@@ -481,7 +481,7 @@ void transition(
         log::debug(
                 logcat,
                 "oxen -> sesh ({} -> {}) accrued unpaid oxen rewards: {}",
-                addr,
+                get_account_address_as_str(net, 0, *oxen_addr),
                 eth_addr,
                 val.amount);
     }
@@ -505,7 +505,7 @@ void transition(
                 cryptonote::reward_money total = {};
                 for (const auto& lc : contributor.locked_contributions) {
                     permanent_stakes.push_back(lc.key_image);
-                    total += cryptonote::reward_money::coin_amount(lc.amount);
+                    total += cryptonote::reward_money::from_coin(lc.amount);
                 }
                 unallocated[it->second] += oxen_to_sesh(total);
                 log::debug(
@@ -803,7 +803,7 @@ void transition(
         cryptonote::block_payments rewards_payments;
         for (const auto& [eth_addr, amt] : unallocated) {
             cryptonote::sql_payment payment = {};
-            payment.amount = cryptonote::reward_money::coin_amount(amt);
+            payment.amount = cryptonote::reward_money::from_coin(amt);
             rewards_payments[eth_addr] = payment;
         }
         sql.add_sn_rewards(cryptonote::hf::hf21_eth, rewards_payments, /*rewards_payment=*/true);
@@ -858,7 +858,7 @@ void transition(
             auto& s = add_result.locked_stakes.emplace_back();
             s.sn = crypto::ed25519_public_key{it.pkey};
             s.addr = contrib.ethereum_address;
-            s.amount = cryptonote::reward_money::coin_amount(contrib.amount);
+            s.amount = cryptonote::reward_money::from_coin(contrib.amount);
             s.liquidation = cryptonote::reward_money{};
             s.block_height = static_cast<uint32_t>(snl_state.height);
             s.tx_index = synthetic_tx_index++;
