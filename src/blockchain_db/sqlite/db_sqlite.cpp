@@ -268,8 +268,13 @@ void BlockchainSQLite::upgrade_schema() {
         }
     }
 
-    // Remove old deprecated tables.
+    // Remove old no-longer-used tables and triggers
     db.exec(R"(
+        DROP TRIGGER IF EXISTS batch_payments_prune;
+        DROP TRIGGER IF EXISTS batch_payments_delete_empty;
+        DROP TRIGGER IF EXISTS clear_archive;
+        DROP TRIGGER IF EXISTS clear_recent;
+        DROP TRIGGER IF EXISTS rollback_payment;
         DROP TABLE IF EXISTS batched_payments_raw;
         DROP VIEW  IF EXISTS batched_payments_paid;
         DROP TABLE IF EXISTS batched_payments_accrued_raw;
@@ -404,6 +409,7 @@ void BlockchainSQLite::upgrade_schema() {
             DROP TRIGGER IF EXISTS make_recent;
             DROP TRIGGER IF EXISTS make_archive;
             DROP TRIGGER IF EXISTS clear_recent_and_archive;
+            DROP TRIGGER IF EXISTS delayed_payments_prune;
         )");
 
         db.createFunction(
@@ -667,11 +673,6 @@ void BlockchainSQLite::upgrade_schema() {
 
         -- On re-org to a lower height, delete all recent rows that are newer
         -- than the re-org height in all the tables
-        --
-        -- We rename the trigger to be more apt for its new role of handling
-        -- both archive and recent tables.
-        DROP   TRIGGER IF EXISTS clear_archive;
-        DROP   TRIGGER IF EXISTS clear_recent;
         DROP   TRIGGER IF EXISTS clear_recent_and_archive;
         CREATE TRIGGER           clear_recent_and_archive AFTER UPDATE ON batch_db_info
         FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
@@ -692,10 +693,6 @@ void BlockchainSQLite::upgrade_schema() {
         FOR EACH ROW WHEN NEW.height > OLD.height BEGIN
             DELETE FROM delayed_payments WHERE payout_height <= NEW.height;
         END;
-
-        -- Remove old trigger from pre-ETH hardfork. It is replaced with a manual delete of rows
-        -- when the correct conditions are met.
-        DROP TRIGGER IF EXISTS batch_payments_delete_empty;
         )"_format("recent_keep"_a = netconf.HISTORY_RECENT_KEEP_WINDOW,
                   "archive_interval"_a = netconf.HISTORY_ARCHIVE_INTERVAL,
                   "archive_keep"_a = netconf.HISTORY_ARCHIVE_KEEP_WINDOW,
