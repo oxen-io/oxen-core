@@ -1,3 +1,75 @@
+oxen (11.4.0~rc3-1~ubuntu2204) jammy; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Add last_ip_change_height to get_service_nodes result
+  * BLS: do not retry node for 5 mins after a bad signature
+  * reachable nodes: don't return 0-ip values
+
+  [ Thomas Winget ]
+  * fix zombie nodes getting stuck in recently removed
+
+  [ Jason Rhinelander ]
+  * Add --debug-max-sync-height
+  * fix - debug max sync
+
+  [ doylet ]
+  * Add TX description to L2 TX event logs
+  * Require BLS in the proofs again at 11.4.0 to guard against configuration err
+  * Fix mocknet error w/ new get_round_timings API
+  * Setup fixup code for SNL on arriving to HF22
+  * Add contributor info to eth_tx_info logs
+  * Add fixup information to credit denied regs, exits and purges
+  * Improve formatting, remove debug code of fixup output
+  * Fix incorrect revision applied to hf22 min uptime proof version
+  * Produce ETH log only with sufficient log-level
+  * Re-enable BLS sig/key verification at HF22 in the SNL
+
+  [ Jason Rhinelander ]
+  * formatting
+  * Extract fixup list into separate file
+  * Add testnet HF22 fixups & hardfork
+  * fix L2 vote mismatch warning
+  * RPC formatting fixes
+  * Use a transaction for submit_stakes_metadata
+  * Avoid useless query in release builds
+  * Fix raciness in uptime proof blocking
+  * Fix Ed25519 0 key printed during startup, and update obsolete comment
+  * Accrued rewards consistency fixes & drop account constraints
+  * Fix lifetime stake accounting on upgrade
+
+  [ doylet ]
+  * Fix issue with only tracking last purge in a block for SQL rewards metadata
+  * Unredact the CSV reports from the HF21 transition
+  * Use recent table for accrued rewards when height is requested
+  * Avoid zombie-nodes when dispatching BLS request
+  * Fix linting for sesh_transition.cpp
+
+  [ Jason Rhinelander ]
+  * Add/fix sqlite table/view clean up
+  * Fix purge fixups not properly increasing lifetime_locked_stakes
+  * Use fmt named args for complex format strings
+  * Use explicit columns in INSERT INTO ... SELECT
+  * Remove harmful "static" from int util inline functions
+  * Remove HF21 pre-fork debug code
+  * Fix ONS rescan after pop_blocks & restart
+  * rebranding!
+  * Avoid potential long-term claimed amount overflow
+  * HF22: use rounding instead of truncation for rewards
+  * Use blob addresses in sqlite
+  * Optimization: Don't recompute known value
+  * Optimization: use boost instead of std for quorum rng
+  * Tweak SN state storage
+  * reschedule mainnet hardfork
+  * Build fixes:
+  * test suite fixes
+  * Don't call add_sn_rewards before HF21
+  * Revert log bump in lmdb
+  * Fix cursed² issues in sqlite tests for BLOB addresses
+  * Fix upgrading by properly removing all old triggers
+  * fix broken upgrade sql
+
+ -- Jason Rhinelander <jason@session.foundation>  Mon, 09 Jun 2025 15:05:29 -0300
+
 oxen (11.4.0~rc2-1~ubuntu2204) jammy; urgency=medium
 
   [ Jason Rhinelander ]
