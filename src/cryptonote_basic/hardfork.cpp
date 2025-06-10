@@ -103,7 +103,7 @@ static constexpr std::array mainnet_hard_forks = {
         hard_fork{hf::hf21_eth, 0, 1852079, 1747785600 /*Wed, 21 May 2025 00:00*/},
 
         // Oxen 11.4: Enforce BLS key signature in proofs
-        hard_fork{hf::hf22_eth_fixup, 0, 1866479, 1749513600 /*Tue, 10 Jun 2025 00:00*/},
+        hard_fork{hf::hf22_eth_fixup, 0, 1871519, 1750118400 /*Tue, 17 Jun 2025 00:00*/},
 
         // NOTE: See contrib/hardfork-calc.py to aid with new HF block/date calculations!
 };
