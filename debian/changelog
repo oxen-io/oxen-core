@@ -1,5 +1,11 @@
 oxen (11.4.0-1) sid; urgency=medium
 
+  * Fix HF22 height
+
+ -- Jason Rhinelander <jason@session.foundation>  Mon, 09 Jun 2025 21:08:32 -0300
+
+oxen (11.4.0-1) sid; urgency=medium
+
   * 11.4.0
 
  -- Jason Rhinelander <jason@session.foundation>  Mon, 09 Jun 2025 15:29:23 -0300
