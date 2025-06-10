@@ -1,5 +1,11 @@
 oxen (11.4.0-1~deb13) trixie; urgency=medium
 
+  * Fix HF22 height
+
+ -- Jason Rhinelander <jason@session.foundation>  Mon, 09 Jun 2025 21:08:39 -0300
+
+oxen (11.4.0-1~deb13) trixie; urgency=medium
+
   * 11.4.0
 
  -- Jason Rhinelander <jason@session.foundation>  Mon, 09 Jun 2025 15:29:32 -0300
