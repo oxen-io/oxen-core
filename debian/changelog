@@ -1,5 +1,11 @@
 oxen (11.4.0-1~ubuntu2404) noble; urgency=medium
 
+  * Fix HF22 height
+
+ -- Jason Rhinelander <jason@session.foundation>  Mon, 09 Jun 2025 21:11:31 -0300
+
+oxen (11.4.0-1~ubuntu2404) noble; urgency=medium
+
   * 11.4.0
 
  -- Jason Rhinelander <jason@session.foundation>  Mon, 09 Jun 2025 15:30:04 -0300
