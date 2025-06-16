@@ -831,7 +831,7 @@ class core final {
     std::unordered_map<crypto::x25519_public_key, oxenmq::AuthLevel>& _omq_auth_level_map() {
         return m_omq_auth;
     }
-    oxenmq::TaggedThreadID const& pulse_thread_id() const { return *m_pulse_thread_id; }
+    oxenmq::TaggedThreadID pulse_thread_id() const { return *m_pulse_thread_id; }
 
     /// Service Node's storage server, lokinet, and Sesion Router versions
     std::array<uint16_t, 3> ss_version;
