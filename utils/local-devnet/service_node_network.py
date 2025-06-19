@@ -609,21 +609,31 @@ def test_storage_server_replication(all_nodes: list[Daemon]):
     print(f"Killing SN {swarm_sn_for_pubkey[0].name}'s storage@{swarm_sn_for_pubkey[0].storage_server_https_port}")
     swarm_sn_for_pubkey[0].stop_storage_server()
 
-    # Send a message to 1 storage server to test message replication w/ 1 dead node
-    store_params = {
-        "method": "store",
-        "params": {
-            "pubkey": ed25519_pkey_hex,
-            "timestamp": int(time.time()) * 1000,
-            "data": base64.b64encode(f"test msg is replicated w/ 1 dead node".encode('utf-8')).decode(),
-            "ttl": f"{30_000 * 60}", # 30 minutes
+    # Send messages to 1 storage server to test message replication w/ 1 dead node
+    for index in range(4):
+        store_params = {
+            "method": "store",
+            "params": {
+                "pubkey": ed25519_pkey_hex,
+                "timestamp": int(time.time()) * 1000,
+                "data": base64.b64encode(f"{index} test msg is replicated w/ 1 dead node".encode('utf-8')).decode(),
+                "ttl": f"{30_000 * 60}", # 30 minutes
+            }
         }
-    }
-    expected_msg_count += 1
-    print(f"Store another message into SN {swarm_sn_for_pubkey[1].name}'s storage@{swarm_sn_for_pubkey[1].storage_server_https_port}/storage_rpc/v1")
-    response = swarm_sn_for_pubkey[1].storage_rpc(path="/storage_rpc/v1", params=store_params)
-    assert response.status_code == 200
-    time.sleep(2) # Sleep abit to allow the message to get replicated across the swarm
+        expected_msg_count += 1
+
+        print(f"Store another message into SN {swarm_sn_for_pubkey[1].name}'s storage@{swarm_sn_for_pubkey[1].storage_server_https_port}/storage_rpc/v1")
+        response = swarm_sn_for_pubkey[1].storage_rpc(path="/storage_rpc/v1", params=store_params)
+        assert response.status_code == 200
+
+    time.sleep(5) # Sleep abit to allow the message to get replicated across the swarm
+
+    # Kill SN 1's storage server to test the serialisation and deserialisation of retryable requests
+    print(f"Killing SN {swarm_sn_for_pubkey[1].name}'s storage@{swarm_sn_for_pubkey[0].storage_server_https_port} to test serialisation of retryable request to {swarm_sn_for_pubkey[0].name}'s storage@{swarm_sn_for_pubkey[0].storage_server_https_port}")
+    swarm_sn_for_pubkey[1].stop_storage_server()
+
+    time.sleep(5) # Sleep then restart the server
+    swarm_sn_for_pubkey[1].start_storage_server()
 
     # Start up the server we killed
     swarm_sn_for_pubkey[0].start_storage_server()
@@ -635,8 +645,11 @@ def test_storage_server_replication(all_nodes: list[Daemon]):
     prev_msg_replicated_to_sn_count = 0
     sn_retrieve_list                = swarm_sn_for_pubkey[:]
     attempts                        = 0
-    while attempts < 3:
+    while attempts < 99:
         index = 0
+        if attempts > 0:
+            print(f"  Attempt #{attempts}")
+
         while index < len(sn_retrieve_list):
             retrieve_ts = int(time.time()) * 1000
             retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
@@ -674,11 +687,51 @@ def test_storage_server_replication(all_nodes: list[Daemon]):
         if msg_replicated_to_sn_count == len(swarm_sn_for_pubkey):
             break
 
-        time.sleep(2)
+        time.sleep(5)
         attempts += 1
 
     if msg_replicated_to_sn_count != len(swarm_sn_for_pubkey):
         print(f"  Message replication failed after {attempts} attempts. {msg_replicated_to_sn_count}/{len(swarm_sn_for_pubkey)} received the message")
+
+    sn = swarm_sn_for_pubkey[2]
+    print(f"  Kill storage@{sn.storage_server_https_port} and delete their DB. That server's handshake with the swarm should request a DB dump due to a deleted DB")
+
+    sn.stop_storage_server()
+    sn_db_path = pathlib.Path("{}/storage/storage.db".format(sn.datadir))
+    sn_db_path.unlink()
+
+    print(f"  Starting storage@{sn.storage_server_https_port} aftering deleting their DB, checking if we synced the messages")
+    sn.start_storage_server()
+
+    # Sleep abit to give some time for the SS to startup
+    time.sleep(3)
+
+    while attempts < 99:
+        if attempts > 0:
+            print(f"  Attempt #{attempts}")
+
+        retrieve_ts = int(time.time()) * 1000
+        retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
+        retrieve_params = {
+            "method": "retrieve",
+            "params": {
+                "pubkey": ed25519_pkey_hex,
+                "timestamp": retrieve_ts,
+                "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
+            }
+        }
+        response = sn.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
+        if response.status_code == 200:
+            json       = response.json();
+            msgs_array = json["messages"]
+            print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code}) message count {len(msgs_array)}/{expected_msg_count}")
+            if len(msgs_array) == expected_msg_count:
+                break
+        else:
+            print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code})")
+
+        time.sleep(5)
+        attempts += 1
 
 
 def print_unicode_table(rows: List[List[str]]) -> None:
