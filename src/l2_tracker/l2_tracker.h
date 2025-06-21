@@ -183,7 +183,8 @@ class L2Tracker {
             std::optional<uint64_t> state_height,
             std::optional<uint64_t> purge_state_height);
     void proxy_request_state(oxenmq::ConnectionID conn, bool purge_state);
-    uint64_t l2_state_requested = 0, l2_purge_state_requested = 0;
+    uint64_t l2_state_requested_height = 0, l2_purge_state_requested_height = 0;
+    std::chrono::steady_clock::time_point l2_state_requested_at, l2_purge_state_requested_at;
     void proxy_update_state(L2State&& new_state, std::string_view from);
     void proxy_update_state(L2PurgeState&& new_state, std::string_view from);
 

@@ -81,7 +81,7 @@ Wallet::Wallet(
 void Wallet::init() {
     keys->expand_subaddresses(
             {config.general.subaddress_lookahead_major, config.general.subaddress_lookahead_minor});
-    oxen::log::reset_level(*oxen::logging::parse_level(config.logging.level));
+    oxen::logging::apply_categories_string(config.logging.level);
     fs::path log_location = "";
     if (config.logging.save_logs_in_subdirectory)
         log_location /= config.logging.logdir;
