@@ -3102,9 +3102,7 @@ SET_DAEMON::response wallet_rpc_server::invoke(SET_DAEMON::request&& req) {
 SET_LOG_LEVEL::response wallet_rpc_server::invoke(SET_LOG_LEVEL::request&& req) {
     if (req.level < 0 || req.level > 4)
         throw wallet_rpc_error{error_code::INVALID_LOG_LEVEL, "Error: log level not valid"};
-    auto log_level = oxen::logging::parse_level(req.level);
-    if (log_level.has_value())
-        log::reset_level(*log_level);
+    log::reset_level(oxen::logging::parse_level(req.level));
     return {};
 }
 //------------------------------------------------------------------------------------------------------------------------------
