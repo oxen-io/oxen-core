@@ -44,7 +44,6 @@ namespace {
             mpz_clear(p_plus_1_over_4);
         }
     };
-    const gmp_const_impl gmp_const;
 
     const auto two = bn256::new_gfp(2);
     const auto half = two.invert();
@@ -60,6 +59,8 @@ namespace {
     using bn256::gfp2;
 
     std::optional<gfp> sqrt(const gfp& x_sq_in) {
+        static const gmp_const_impl gmp_const{};
+
         std::optional<gfp> result;
         mpz_t x_sq;
         mpz_init(x_sq);

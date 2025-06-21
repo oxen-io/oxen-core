@@ -101,46 +101,59 @@ if (STATIC AND BUILD_STATIC_DEPS)
     if(TARGET device_trezor)
       list(APPEND optional_deps device_trezor)
     endif()
+    if(NOT APPLE AND NOT WIN32)
+      list(APPEND optional_deps OpenSSL::SSL OpenSSL::Crypto)
+    endif()
 
     combine_archives(wallet_merged
             wallet_api
-            wallet
-            multisig
-            cryptonote_core
-            sesh_transition_data
-            cryptonote_basic
-            cryptonote_protocol
-            sqlitedb
-            mnemonics
-            common
+
+            blockchain_db
+            bls_aggregator
+            bls_crypto
+            bn256
+            checkpoints
             cncrypto
+            common
+            cryptonote_basic
+            cryptonote_core
+            cryptonote_protocol
             device
+            epee
+            l2_tracker
+            logging
+            mnemonics
+            multisig
+            net
             ringct
             ringct_basic
-            checkpoints
-            version
-            net
-            epee
-            blockchain_db
-            rpc_http_client
             rpc_commands
+            rpc_http_client
+            sesh_transition_data
+            sqlitedb
+            version
+            wallet
 
             ${optional_deps}
 
             # Static deps:
             Boost::program_options Boost::serialization Boost::system Boost::thread
-            zlib
+            CURL::libcurl
             SQLite::SQLite3
             SQLiteCpp
-            sodium
+            cpr::cpr
+            ethyl
+            fmt::fmt
+            gmp::gmp
             libzmq
-            CURL::libcurl
-            oxenmq::oxenmq
             lmdb
+            oxen::logging
+            oxenmq::oxenmq
             randomx
-            uSockets
-            cpr
-            fmt
+            sodium
+            spdlog::spdlog
+            zlib
+            zstd::zstd
             )
 
     if(IOS)
