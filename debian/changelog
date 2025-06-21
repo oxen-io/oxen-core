@@ -1,3 +1,23 @@
+oxen (11.4.1-1~ubuntu2004) focal; urgency=medium
+
+  * fix zstd build on android
+  * Update wallet_merged targets
+  * disable randomx jit for wallet_api builds
+  * add local logging lib
+  * Android: add -DANDROID_STL=c++_shared, PIC
+  * try random stuff
+  * maybe?
+  * Update ethyl
+  * Defer gmp constant initialization until needed
+  * Disable gmp assembly for armv7
+  * Always use synced_height for L2 proxy updates
+  * Update required oxen-mq to 1.2.22
+  * 11.4.1 version bump
+  * Switch to oxen-logging category parser
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Sat, 21 Jun 2025 00:01:57 -0300
+
 oxen (11.4.0-1~ubuntu2004) focal; urgency=medium
 
   * Fix HF22 height
