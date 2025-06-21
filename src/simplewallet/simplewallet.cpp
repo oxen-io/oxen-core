@@ -3340,14 +3340,8 @@ bool simple_wallet::set_log(const std::vector<std::string>& args) {
         PRINT_USAGE(USAGE_SET_LOG);
         return true;
     }
-    if (!args.empty()) {
-        auto log_level = oxen::logging::parse_level(args[0]);
-        if (log_level.has_value())
-            log::reset_level(*log_level);
-        else {
-            oxen::logging::apply_categories_string(args[0]);
-        }
-    }
+    if (!args.empty())
+        oxen::logging::apply_categories_string(args[0]);
 
     success_msg_writer() << "Log categories updated";
     return true;
