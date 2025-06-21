@@ -309,6 +309,7 @@ void L2Proxy::subscribe(oxenmq::Message& msg) {
         return;
 
     bool renewal = false;
+    uint64_t h_state, h_purge;
     {
         std::unique_lock lock{mutex};
         auto expiry = std::chrono::steady_clock::now() + SUBSCRIBE_TIMEOUT;
@@ -316,6 +317,9 @@ void L2Proxy::subscribe(oxenmq::Message& msg) {
         if (!ins) {
             it->second = expiry;
             renewal = true;
+        } else {
+            h_state = last_notify_height;
+            h_purge = last_notify_purge_height;
         }
     }
 
@@ -324,10 +328,7 @@ void L2Proxy::subscribe(oxenmq::Message& msg) {
     if (renewal)
         msg.send_reply("RENEWED");
     else
-        msg.send_reply(
-                "SUBSCRIBED",
-                "{}"_format(last_notify_height),
-                "{}"_format(last_notify_purge_height));
+        msg.send_reply("SUBSCRIBED", "{}"_format(h_state), "{}"_format(h_purge));
 }
 
 void L2Proxy::notify(uint64_t state_height, uint64_t purge_state_height) {
@@ -624,23 +625,25 @@ static bool check_state_update(const T& new_state, const T& state, std::string_v
                 from);
         return false;
     }
-    if (new_state.latest_height <= state.latest_height) {
+    uint64_t h_new, h_curr;
+    if constexpr (std::same_as<T, L2State>) {
+        h_new = new_state.synced_height;
+        h_curr = state.synced_height;
+    } else {
+        h_new = new_state.latest_height;
+        h_curr = state.latest_height;
+    }
+    if (h_new <= h_curr) {
         log::debug(
                 logcat,
-                "Ignoring new L2 {} from {}: l2 height {} <= current {}",
+                "Ignoring new L2 {} from {}: L2 height {} <= current {}",
                 type,
                 from,
-                new_state.latest_height,
-                state.latest_height);
+                h_new,
+                h_curr);
         return false;
     }
-    log::debug(
-            logcat,
-            "Updating L2 {} ({} -> {}) from {}",
-            type,
-            state.latest_height,
-            new_state.latest_height,
-            from);
+    log::debug(logcat, "Updating L2 {} ({} -> {}) from {}", type, h_curr, h_new, from);
 
     return true;
 }
@@ -688,14 +691,28 @@ void L2Tracker::proxy_request_if_newer(
     bool make_state_req = false, make_purge_req = false;
     {
         std::unique_lock lock{mutex};
-        if (state_height && *state_height > state.latest_height &&
-            *state_height > l2_state_requested) {
-            l2_state_requested = *state_height;
+        auto now = std::chrono::steady_clock::now();
+
+        // If a proxy ever sent an erroneously high height because of some error or bug, we want to
+        // be sure that we don't get stuck thinking that such a new synced height is going to be
+        // arriving and rejecting everything else, and so we reset our requested height tracking if
+        // it has been more than 30s since the request went out so that we can't get stuck waiting
+        // forever for a state update that isn't going to arrive.
+        if (l2_state_requested_at < now - 30s)
+            l2_state_requested_height = 0;
+        if (l2_purge_state_requested_at < now - 30s)
+            l2_state_requested_height = 0;
+
+        if (state_height && *state_height > state.synced_height &&
+            *state_height > l2_state_requested_height) {
+            l2_state_requested_height = *state_height;
+            l2_state_requested_at = now;
             make_state_req = true;
         }
         if (state_purge_height && *state_purge_height > purge_state.latest_height &&
-            *state_purge_height > l2_purge_state_requested) {
-            l2_purge_state_requested = *state_purge_height;
+            *state_purge_height > l2_purge_state_requested_height) {
+            l2_purge_state_requested_height = *state_purge_height;
+            l2_purge_state_requested_at = now;
             make_purge_req = true;
         }
     }
