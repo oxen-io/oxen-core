@@ -1374,7 +1374,7 @@ void core_rpc_server::invoke(GET_PEER_LIST& pl, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(SET_LOG_LEVEL& set_log_level, rpc_context) {
-    auto cats = oxen::logging::extract_categories(set_log_level.request.categories);
+    auto cats = oxen::log::extract_categories(set_log_level.request.categories);
     if (cats.empty()) {
         log::error(
                 logcat,
@@ -1384,7 +1384,7 @@ void core_rpc_server::invoke(SET_LOG_LEVEL& set_log_level, rpc_context) {
         return;
     }
 
-    auto applied = cats.apply();
+    auto applied = cats.apply(oxen::logging::set_additional_log_categories);
 
     set_log_level.response["applied"] = std::move(applied);
     set_log_level.response["status"] = STATUS_OK;

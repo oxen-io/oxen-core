@@ -283,9 +283,7 @@ WalletManagerBase* WalletManagerFactory::getWalletManager() {
 
 EXPORT
 void WalletManagerFactory::setLogLevel(int level) {
-    auto log_level = oxen::logging::parse_level(level);
-    if (log_level.has_value())
-        log::reset_level(*log_level);
+    log::reset_level(oxen::logging::parse_level(level));
 }
 
 EXPORT
