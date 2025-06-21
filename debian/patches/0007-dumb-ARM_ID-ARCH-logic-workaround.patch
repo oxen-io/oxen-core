@@ -7,7 +7,7 @@ Subject: dumb ARM_ID/ARCH logic workaround
  1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 2b6c9b9..9b79812 100644
+index d694651..3bcfad4 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -207,7 +207,9 @@ else()
