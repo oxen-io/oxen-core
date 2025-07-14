@@ -1474,8 +1474,8 @@ def run():
                                   'running at localhost:8545.'),
                             type=pathlib.Path,
                             required=True)
-    arg_parser.add_argument('--eth-sn-contracts-dir',
-                            help=('Set the path to Oxen\'s `eth-sn-contracts` repository is '
+    arg_parser.add_argument('--session-token-contracts-dir',
+                            help=('Set the path to Session\'s `session-token-contracts` repository is '
                                   'located. The script will programmatically launch and deploy the '
                                   'contracts specified via `make deploy-local`. If omitted, the '
                                   'private Ethereum blockchain must already be deployed with the '

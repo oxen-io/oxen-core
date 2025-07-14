@@ -473,10 +473,9 @@ python3 ./utils/local-devnet/service_node_network.py \
     --anvil-path ~/anvil \
     --cache-at-hf20 \
     --data-dir Build/localdevnet \
-    --eth-sn-contracts-dir ~/eth-sn-contracts \
-    --integration-tests \
     --listen-ip 127.171.63.108 \
     --oxen-bin-dir Build/bin \
+    --session-token-contracts-dir ~/session-token-contracts \
     --storage-server-path ~/oxen-storage-server/Build/gcc-debug-static/oxen-storage
 ```
 
