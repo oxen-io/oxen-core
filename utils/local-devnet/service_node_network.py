@@ -1101,7 +1101,7 @@ class SNNetwork:
         futures.clear()
 
         # NOTE: Storage server tests
-        if storage_server_path:
+        if storage_server_path and integration_tests:
             test_storage_server_replication(self.all_nodes)
 
         # NOTE: Tests complete

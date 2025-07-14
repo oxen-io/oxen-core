@@ -470,12 +470,14 @@ looks like:
 
 ```bash
 python3 ./utils/local-devnet/service_node_network.py \
-    --oxen-bin-dir Build/bin \
-    --anvil-path ~/2024-06-11/anvil \
+    --anvil-path ~/anvil \
+    --cache-at-hf20 \
+    --data-dir Build/localdevnet \
     --eth-sn-contracts-dir ~/eth-sn-contracts \
-    --storage-server-path ~/oxen-storage-server/Build/gcc-debug-static/oxen-storage \
+    --integration-tests \
     --listen-ip 127.171.63.108 \
-    --integration-tests
+    --oxen-bin-dir Build/bin \
+    --storage-server-path ~/oxen-storage-server/Build/gcc-debug-static/oxen-storage
 ```
 
 If you just need a private network, it's recommended to skip the integration
