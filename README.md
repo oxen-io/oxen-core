@@ -497,6 +497,8 @@ will be deployed on the local EVM based chain.
 4. Having the storage server binary ready to run in tandem on the bootstrapped
 network (https://github.com/session-foundation/session-storage-server).
 
+5. The cryptography package for python3 `pip install cryptography`
+
 # Known Issues
 
 ## Protocols
