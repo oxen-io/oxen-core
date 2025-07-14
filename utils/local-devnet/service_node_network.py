@@ -788,7 +788,7 @@ class SNNetwork:
                  *,
                  oxen_bin_dir: pathlib.Path,
                  anvil_path: pathlib.Path | None,
-                 eth_sn_contracts_dir: pathlib.Path,
+                 session_token_contracts_dir: pathlib.Path,
                  storage_server_path: pathlib.Path | None,
                  cache_at_hf20=False,
                  integration_tests: bool,
@@ -799,10 +799,10 @@ class SNNetwork:
         begin_time = time.perf_counter()
 
         # Setup directories
-        self.anvil_path           = anvil_path
-        self.eth_sn_contracts_dir = eth_sn_contracts_dir
-        self.data_dir             = datadir
-        self.oxen_bin_dir         = oxen_bin_dir
+        self.anvil_path                  = anvil_path
+        self.session_token_contracts_dir = session_token_contracts_dir
+        self.data_dir                    = datadir
+        self.oxen_bin_dir                = oxen_bin_dir
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir)
         vprint("Using '{}' for data files and logs".format(datadir))
@@ -1233,10 +1233,10 @@ class SNNetwork:
                 w.name, b[0] * 1e-9, b[1] * 1e-9))
 
     def do_hf21_transition(self):
-        eth_sn_contracts_makefile_path = self.eth_sn_contracts_dir / 'Makefile'
-        if os.path.exists(eth_sn_contracts_makefile_path):
+        session_token_contracts_makefile_path = self.session_token_contracts_dir / 'Makefile'
+        if os.path.exists(session_token_contracts_makefile_path):
             subprocess.run(['make', 'deploy-local'],
-                           cwd=self.eth_sn_contracts_dir,
+                           cwd=self.session_token_contracts_dir,
                            check=True)
 
         sn_rewards_json:         dict = {}
@@ -1245,19 +1245,19 @@ class SNNetwork:
         erc20_contract_json:     dict = {}
         sn_contrib_json:         dict = {}
 
-        with open(self.eth_sn_contracts_dir / 'artifacts/contracts/ServiceNodeRewards.sol/ServiceNodeRewards.json', 'r') as file:
+        with open(self.session_token_contracts_dir / 'artifacts/contracts/ServiceNodeRewards.sol/ServiceNodeRewards.json', 'r') as file:
             sn_rewards_json = json.load(file)
 
-        with open(self.eth_sn_contracts_dir / 'artifacts/contracts/ServiceNodeContributionFactory.sol/ServiceNodeContributionFactory.json', 'r') as file:
+        with open(self.session_token_contracts_dir / 'artifacts/contracts/ServiceNodeContributionFactory.sol/ServiceNodeContributionFactory.json', 'r') as file:
             sn_contrib_factory_json = json.load(file)
 
-        with open(self.eth_sn_contracts_dir / 'artifacts/contracts/RewardRatePool.sol/RewardRatePool.json', 'r') as file:
+        with open(self.session_token_contracts_dir / 'artifacts/contracts/RewardRatePool.sol/RewardRatePool.json', 'r') as file:
             reward_rate_pool_json = json.load(file)
 
-        with open(self.eth_sn_contracts_dir / 'artifacts/contracts/SESH.sol/SESH.json', 'r') as file:
+        with open(self.session_token_contracts_dir / 'artifacts/contracts/SESH.sol/SESH.json', 'r') as file:
             erc20_contract_json = json.load(file)
 
-        with open(self.eth_sn_contracts_dir / 'artifacts/contracts/ServiceNodeContribution.sol/ServiceNodeContribution.json', 'r') as file:
+        with open(self.session_token_contracts_dir / 'artifacts/contracts/ServiceNodeContribution.sol/ServiceNodeContribution.json', 'r') as file:
             sn_contrib_json = json.load(file)
 
         # Multi-contrib Factory
@@ -1483,11 +1483,7 @@ def run():
                             type=pathlib.Path,
                             required=True)
     arg_parser.add_argument('--data-dir',
-                            help=('Set the path to Oxen\'s `eth-sn-contracts` repository is '
-                                  'located. The script will programmatically launch and deploy the '
-                                  'contracts specified via `make deploy-local`. If omitted, the '
-                                  'private Ethereum blockchain must already be deployed with the '
-                                  'smart contracts prior to invoking this script.'),
+                            help=('Set the path to  where the blockchain will be stored'),
                             type=pathlib.Path,
                             default=os.getcwd() + "/testdata")
     arg_parser.add_argument('--cache-at-hf20',
@@ -1508,8 +1504,8 @@ def run():
     args = arg_parser.parse_args()
 
     if args.anvil_path is not None:
-        if args.eth_sn_contracts_dir is None:
-            raise RuntimeError('--eth-sn-contracts-dir must be specified when --anvil-path is set')
+        if args.session_token_contracts_dir is None:
+            raise RuntimeError('--session-token-contracts-dir must be specified when --anvil-path is set')
 
     args.data_dir = args.data_dir.resolve(); # Make into absolute path
     atexit.register(cleanup)
@@ -1528,7 +1524,7 @@ def run():
         snn = SNNetwork(datadir=args.data_dir,
                         oxen_bin_dir=args.oxen_bin_dir,
                         anvil_path=args.anvil_path,
-                        eth_sn_contracts_dir=args.eth_sn_contracts_dir,
+                        session_token_contracts_dir=args.session_token_contracts_dir,
                         storage_server_path=args.storage_server_path,
                         cache_at_hf20=args.cache_at_hf20,
                         integration_tests=args.integration_tests,
