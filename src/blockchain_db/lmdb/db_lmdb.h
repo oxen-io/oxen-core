@@ -355,7 +355,6 @@ class BlockchainLMDB : public BlockchainDB {
 
     void set_batch_transactions(bool batch_transactions) override;
     bool batch_start(uint64_t bytes_required = 0) override;
-    void batch_commit();
     void batch_stop() override;
     void batch_abort() override;
 
