@@ -105,6 +105,9 @@ static constexpr std::array mainnet_hard_forks = {
         // Oxen 11.4: Enforce BLS key signature in proofs
         hard_fork{hf::hf22_eth_fixup, 0, 1871519, 1750118400 /*Tue, 17 Jun 2025 00:00*/},
 
+        // Oxen 11.5: Mandatory upgrade to fix reward database calculations
+        hard_fork{hf::hf22_eth_fixup, 1, 1901759, 1753747200 /*Tue, 29 Jul 2025 00:00*/},
+
         // NOTE: See contrib/hardfork-calc.py to aid with new HF block/date calculations!
 };
 

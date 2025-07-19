@@ -742,7 +742,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
 
 static bool exec_detach_hooks(
         Blockchain& blockchain,
-        uint64_t detach_height,
+        uint64_t detach_height,  // The new blockchain height, i.e. top block number is this - 1
         std::span<BlockchainDetachedHook> hooks,
         bool by_pop_blocks,
         bool load_missing_blocks = true,
@@ -963,6 +963,10 @@ bool Blockchain::init(
             detach_height = std::max(detach_height, static_cast<uint64_t>(1));
         }
 
+        auto fixup_detach = m_sqlite_db->fixup();
+        if (fixup_detach)
+            detach_height = std::min(detach_height, *fixup_detach + 1);
+
         if (!exec_detach_hooks(
                     *this,
                     detach_height,
@@ -972,6 +976,17 @@ bool Blockchain::init(
                     abort,
                     /*use_threaded_load*/ true)) {
             return false;
+        }
+
+        // Only check the rewards values are correct, just once afterwards, on the initial migration
+        if (fixup_detach) {
+            if (m_sqlite_db->fixup(/*recheck=*/true))
+                log::critical(
+                        globallogcat,
+                        "Invalid rewards were detected. A rescan was attempted but the incorrect "
+                        "values are still present. Please notify the developers");
+            else
+                log::info(globallogcat, "Database fixup and reward rescan applied and confirmed");
         }
     }
 
@@ -1045,10 +1060,20 @@ bool Blockchain::deinit() {
 // It starts a batch and calls private method pop_block_from_db().
 void Blockchain::pop_blocks(uint64_t nblocks) {
     ZoneScoped;
-    uint64_t i = 0;
     auto lock = tools::unique_locks(tx_pool, *this);
-    bool stop_batch = m_db->batch_start();
 
+    bool stop_batch = m_db->batch_start();
+    bool pop_error = false;
+    auto on_exit = oxen::defer([&] {
+        if (stop_batch) {
+            if (pop_error)
+                m_db->batch_abort();
+            else
+                m_db->batch_stop();
+        }
+    });
+
+    uint64_t i = 0;
     try {
         const uint64_t blockchain_height = m_db->height();
         if (blockchain_height > 0)
@@ -1075,14 +1100,11 @@ void Blockchain::pop_blocks(uint64_t nblocks) {
         }
     } catch (const std::exception& e) {
         log::error(logcat, "Error when popping blocks after processing {} blocks: {}", i, e.what());
-        if (stop_batch)
-            m_db->batch_abort();
+        pop_error = true;
         return;
     }
 
     exec_detach_hooks(*this, m_db->height(), m_blockchain_detached_hooks, /*by_pop_blocks=*/true);
-    if (stop_batch)
-        m_db->batch_stop();
 }
 //------------------------------------------------------------------
 // This function tells BlockchainDB to remove the top block from the
@@ -1386,10 +1408,13 @@ bool Blockchain::rollback_blockchain_switching(
 bool Blockchain::blink_rollback(uint64_t rollback_height) {
     auto lock = tools::unique_locks(tx_pool, *this);
     bool stop_batch = m_db->batch_start();
+    auto on_exit = oxen::defer([&] {
+        if (stop_batch)
+            m_db->batch_stop();
+    });
+
     log::debug(logcat, "Rolling back to height {}", rollback_height);
     bool ret = rollback_blockchain_switching({}, rollback_height);
-    if (stop_batch)
-        m_db->batch_stop();
     return ret;
 }
 //------------------------------------------------------------------
@@ -6072,6 +6097,10 @@ bool Blockchain::update_checkpoints_from_json_file(const fs::path& file_path) {
     {
         std::unique_lock lock{*this};
         bool stop_batch = m_db->batch_start();
+        auto on_exit = oxen::defer([&] {
+            if (stop_batch)
+                m_db->batch_stop();
+        });
 
         for (std::vector<height_to_hash>::const_iterator it = first_to_check;
              it != one_past_last_to_check;
@@ -6090,9 +6119,6 @@ bool Blockchain::update_checkpoints_from_json_file(const fs::path& file_path) {
                 result = false;
             }
         }
-
-        if (stop_batch)
-            m_db->batch_stop();
     }
 
     return result;
@@ -6387,267 +6413,283 @@ bool Blockchain::prepare_handle_incoming_blocks(
         total_txs += entry.txs.size();
     }
     m_bytes_to_sync += bytes;
-    while (!m_db->batch_start(bytes)) {
-        unlock();
-        tx_pool.unlock();
-        std::this_thread::sleep_for(100ms);
-        std::lock(tx_pool, *this);
-    }
-    m_batch_success = true;
 
-    const uint64_t height = m_db->height();
-    if ((height + blocks_entry.size()) < m_blocks_hash_check.size())
-        return true;
+    // It's important that any exception thrown here is caught to return false once we have the
+    // lock and attempt to start the batch because we need to call cleanup_handle_incoming_blocks
+    // to ensure we release the locks and do general cleanup (otherwise we deadlock the system).
+    //
+    // We don't expect an exception to be thrown here so we log an error if we do to investigate if
+    // it does.
+    try {
+        while (!m_db->batch_start(bytes)) {
+            unlock();
+            tx_pool.unlock();
+            std::this_thread::sleep_for(100ms);
+            std::lock(tx_pool, *this);
+        }
+        m_batch_success = true;
 
-    bool blocks_exist = false;
-    tools::threadpool& tpool = tools::threadpool::getInstance();
-    unsigned threads = tpool.get_max_concurrency();
-    blocks.resize(blocks_entry.size());
+        const uint64_t height = m_db->height();
+        if ((height + blocks_entry.size()) < m_blocks_hash_check.size())
+            return true;
 
-    {
-        // limit threads, default limit = 4
-        if (threads > m_max_prepare_blocks_threads)
-            threads = m_max_prepare_blocks_threads;
+        bool blocks_exist = false;
+        tools::threadpool& tpool = tools::threadpool::getInstance();
+        unsigned threads = tpool.get_max_concurrency();
+        blocks.resize(blocks_entry.size());
 
-        unsigned int batches = blocks_entry.size() / threads;
-        unsigned int extra = blocks_entry.size() % threads;
-        log::debug(logcat, "block_batches: {}", batches);
-        std::vector<std::unordered_map<crypto::hash, crypto::hash>> maps(threads);
-        auto it = blocks_entry.begin();
-        unsigned blockidx = 0;
+        {
+            // limit threads, default limit = 4
+            if (threads > m_max_prepare_blocks_threads)
+                threads = m_max_prepare_blocks_threads;
 
-        const crypto::hash tophash = m_db->top_block_hash();
-        for (unsigned i = 0; i < threads; i++) {
-            for (unsigned int j = 0; j < batches; j++, ++blockidx) {
+            unsigned int batches = blocks_entry.size() / threads;
+            unsigned int extra = blocks_entry.size() % threads;
+            log::debug(logcat, "block_batches: {}", batches);
+            std::vector<std::unordered_map<crypto::hash, crypto::hash>> maps(threads);
+            auto it = blocks_entry.begin();
+            unsigned blockidx = 0;
+
+            const crypto::hash tophash = m_db->top_block_hash();
+            for (unsigned i = 0; i < threads; i++) {
+                for (unsigned int j = 0; j < batches; j++, ++blockidx) {
+                    block& block = blocks[blockidx];
+                    crypto::hash block_hash;
+
+                    if (!parse_and_validate_block_from_blob(it->block, block, block_hash))
+                        return false;
+
+                    // check first block and skip all blocks if its not chained properly
+                    if (blockidx == 0) {
+                        if (block.prev_id != tophash) {
+                            log::debug(
+                                    logcat,
+                                    "Skipping prepare blocks. New blocks don't belong to "
+                                    "chain.");
+                            blocks.clear();
+                            return true;
+                        }
+                    }
+                    if (have_block(block_hash))
+                        blocks_exist = true;
+
+                    std::advance(it, 1);
+                }
+            }
+
+            for (unsigned i = 0; i < extra && !blocks_exist; i++, blockidx++) {
                 block& block = blocks[blockidx];
                 crypto::hash block_hash;
 
                 if (!parse_and_validate_block_from_blob(it->block, block, block_hash))
                     return false;
 
-                // check first block and skip all blocks if its not chained properly
-                if (blockidx == 0) {
-                    if (block.prev_id != tophash) {
-                        log::debug(
-                                logcat,
-                                "Skipping prepare blocks. New blocks don't belong to chain.");
-                        blocks.clear();
-                        return true;
-                    }
-                }
                 if (have_block(block_hash))
                     blocks_exist = true;
 
                 std::advance(it, 1);
             }
-        }
 
-        for (unsigned i = 0; i < extra && !blocks_exist; i++, blockidx++) {
-            block& block = blocks[blockidx];
-            crypto::hash block_hash;
+            if (!blocks_exist && blocks[0].major_version < feature::PULSE) {
+                // This code multi-threads the pow hash cache (m_blocks_longhash_table), but in
+                // pulse we rarely use those values (and if isn't set all that happens is that
+                // the pow hash gets computed later), so skip this entirely post-pulse.
+                m_blocks_longhash_table.clear();
+                uint64_t thread_height = height;
+                tools::threadpool::waiter waiter;
+                m_prepare_height = height;
+                m_prepare_nblocks = blocks_entry.size();
+                m_prepare_blocks = &blocks;
+                for (unsigned int i = 0; i < threads; i++) {
+                    unsigned nblocks = batches;
+                    if (i < extra)
+                        ++nblocks;
+                    tpool.submit(
+                            &waiter,
+                            [this,
+                             thread_height,
+                             blocks = epee::span<const block>(
+                                     &blocks[thread_height - height], nblocks),
+                             &map = maps[i]] { block_longhash_worker(thread_height, blocks, map); },
+                            true);
+                    thread_height += nblocks;
+                }
 
-            if (!parse_and_validate_block_from_blob(it->block, block, block_hash))
-                return false;
+                waiter.wait(&tpool);
+                m_prepare_height = 0;
 
-            if (have_block(block_hash))
-                blocks_exist = true;
+                if (m_cancel)
+                    return false;
 
-            std::advance(it, 1);
-        }
-
-        if (!blocks_exist && blocks[0].major_version < feature::PULSE) {
-            // This code multi-threads the pow hash cache (m_blocks_longhash_table), but in pulse we
-            // rarely use those values (and if isn't set all that happens is that the pow hash gets
-            // computed later), so skip this entirely post-pulse.
-            m_blocks_longhash_table.clear();
-            uint64_t thread_height = height;
-            tools::threadpool::waiter waiter;
-            m_prepare_height = height;
-            m_prepare_nblocks = blocks_entry.size();
-            m_prepare_blocks = &blocks;
-            for (unsigned int i = 0; i < threads; i++) {
-                unsigned nblocks = batches;
-                if (i < extra)
-                    ++nblocks;
-                tpool.submit(
-                        &waiter,
-                        [this,
-                         thread_height,
-                         blocks = epee::span<const block>(&blocks[thread_height - height], nblocks),
-                         &map = maps[i]] { block_longhash_worker(thread_height, blocks, map); },
-                        true);
-                thread_height += nblocks;
+                for (const auto& map : maps) {
+                    m_blocks_longhash_table.insert(map.begin(), map.end());
+                }
             }
+        }
 
-            waiter.wait(&tpool);
-            m_prepare_height = 0;
+        if (m_cancel)
+            return false;
 
+        if (blocks_exist) {
+            log::debug(logcat, "Skipping remainder of prepare blocks. Blocks exist.");
+            return true;
+        }
+
+        m_fake_scan_time = 0ns;
+        m_fake_pow_calc_time = 0ns;
+
+        m_scan_table.clear();
+
+        auto prepare_elapsed = std::chrono::steady_clock::now() - prepare;
+        m_fake_pow_calc_time = prepare_elapsed / blocks_entry.size();
+
+        if (blocks_entry.size() > 1 && threads > 1 && m_show_time_stats)
+            log::debug(
+                    logcat, "Prepare blocks took: {}", tools::friendly_duration(prepare_elapsed));
+
+        auto scantable = std::chrono::steady_clock::now();
+
+        // [input] stores all absolute_offsets for each amount
+        std::vector<uint64_t> offsets;
+        // [output] stores all output_data_t for each absolute_offset
+        std::vector<output_data_t> txs;
+        std::vector<std::pair<cryptonote::transaction, crypto::hash>> txes(total_txs);
+
+        // generate absolute offsets
+        size_t tx_index = 0;
+        for (const auto& entry : blocks_entry) {
             if (m_cancel)
                 return false;
 
-            for (const auto& map : maps) {
-                m_blocks_longhash_table.insert(map.begin(), map.end());
-            }
-        }
-    }
+            for (const auto& tx_blob : entry.txs) {
+                if (tx_index >= txes.size()) {
+                    log::error(logverify, "tx_index is out of sync");
+                    m_scan_table.clear();
+                    return false;
+                }
+                transaction& tx = txes[tx_index].first;
+                crypto::hash& tx_prefix_hash = txes[tx_index].second;
+                ++tx_index;
 
-    if (m_cancel)
-        return false;
+                if (!parse_and_validate_tx_base_from_blob(tx_blob, tx)) {
+                    log::error(logverify, "Could not parse tx from incoming blocks");
+                    m_scan_table.clear();
+                    return false;
+                }
+                cryptonote::get_transaction_prefix_hash(tx, tx_prefix_hash);
 
-    if (blocks_exist) {
-        log::debug(logcat, "Skipping remainder of prepare blocks. Blocks exist.");
-        return true;
-    }
-
-    m_fake_scan_time = 0ns;
-    m_fake_pow_calc_time = 0ns;
-
-    m_scan_table.clear();
-
-    auto prepare_elapsed = std::chrono::steady_clock::now() - prepare;
-    m_fake_pow_calc_time = prepare_elapsed / blocks_entry.size();
-
-    if (blocks_entry.size() > 1 && threads > 1 && m_show_time_stats)
-        log::debug(logcat, "Prepare blocks took: {}", tools::friendly_duration(prepare_elapsed));
-
-    auto scantable = std::chrono::steady_clock::now();
-
-    // [input] stores all absolute_offsets for each amount
-    std::vector<uint64_t> offsets;
-    // [output] stores all output_data_t for each absolute_offset
-    std::vector<output_data_t> txs;
-    std::vector<std::pair<cryptonote::transaction, crypto::hash>> txes(total_txs);
-
-    // generate absolute offsets
-    size_t tx_index = 0;
-    for (const auto& entry : blocks_entry) {
-        if (m_cancel)
-            return false;
-
-        for (const auto& tx_blob : entry.txs) {
-            if (tx_index >= txes.size()) {
-                log::error(logverify, "tx_index is out of sync");
-                m_scan_table.clear();
-                return false;
-            }
-            transaction& tx = txes[tx_index].first;
-            crypto::hash& tx_prefix_hash = txes[tx_index].second;
-            ++tx_index;
-
-            if (!parse_and_validate_tx_base_from_blob(tx_blob, tx)) {
-                log::error(logverify, "Could not parse tx from incoming blocks");
-                m_scan_table.clear();
-                return false;
-            }
-            cryptonote::get_transaction_prefix_hash(tx, tx_prefix_hash);
-
-            auto [its, ins] = m_scan_table.emplace(
-                    tx_prefix_hash,
-                    std::unordered_map<crypto::key_image, std::vector<output_data_t>>{});
-            if (!ins) {
-                log::error(logverify, "Duplicate tx found from incoming blocks.");
-                m_scan_table.clear();
-                return false;
-            }
-
-            // check all tx.vin(s)
-            if (!tx.is_miner_tx()) {
-                for (const auto& txin : tx.vin) {
-                    const auto& in_to_key = std::get<txin_to_key>(txin);
-
-                    // check for duplicate
-                    auto it = its->second.find(in_to_key.k_image);
-                    if (it != its->second.end()) {
-                        log::error(logverify, "Duplicate key_image found from incoming blocks.");
-                        m_scan_table.clear();
-                        return false;
-                    }
+                auto [its, ins] = m_scan_table.emplace(
+                        tx_prefix_hash,
+                        std::unordered_map<crypto::key_image, std::vector<output_data_t>>{});
+                if (!ins) {
+                    log::error(logverify, "Duplicate tx found from incoming blocks.");
+                    m_scan_table.clear();
+                    return false;
                 }
 
-                // add new absolute offsets to offsets
-                if (!tx.is_miner_tx())
-                    for (const auto& txin : tx.vin)
-                        for (auto off : relative_output_offsets_to_absolute(
-                                     std::get<txin_to_key>(txin).key_offsets))
-                            offsets.push_back(off);
+                // check all tx.vin(s)
+                if (!tx.is_miner_tx()) {
+                    for (const auto& txin : tx.vin) {
+                        const auto& in_to_key = std::get<txin_to_key>(txin);
+
+                        // check for duplicate
+                        auto it = its->second.find(in_to_key.k_image);
+                        if (it != its->second.end()) {
+                            log::error(
+                                    logverify, "Duplicate key_image found from incoming blocks.");
+                            m_scan_table.clear();
+                            return false;
+                        }
+                    }
+
+                    // add new absolute offsets to offsets
+                    if (!tx.is_miner_tx())
+                        for (const auto& txin : tx.vin)
+                            for (auto off : relative_output_offsets_to_absolute(
+                                         std::get<txin_to_key>(txin).key_offsets))
+                                offsets.push_back(off);
+                }
             }
         }
-    }
 
-    // sort and remove duplicate absolute_offsets in offset_map
-    std::sort(offsets.begin(), offsets.end());
-    auto last = std::unique(offsets.begin(), offsets.end());
-    offsets.erase(last, offsets.end());
+        // sort and remove duplicate absolute_offsets in offset_map
+        std::sort(offsets.begin(), offsets.end());
+        auto last = std::unique(offsets.begin(), offsets.end());
+        offsets.erase(last, offsets.end());
 
-    try {
-        constexpr uint64_t amount{0};
-        m_db->get_output_key(epee::span<const uint64_t>(&amount, 1), offsets, txs, true);
-    } catch (const std::exception& e) {
-        log::error(logverify, "EXCEPTION: {}", e.what());
-    } catch (...) {
-    }
+        try {
+            constexpr uint64_t amount{0};
+            m_db->get_output_key(epee::span<const uint64_t>(&amount, 1), offsets, txs, true);
+        } catch (const std::exception& e) {
+            log::error(logverify, "EXCEPTION: {}", e.what());
+        } catch (...) {
+        }
 
-    // now generate a table for each tx_prefix and k_image hashes
-    tx_index = 0;
-    for (const auto& entry : blocks_entry) {
-        if (m_cancel)
-            return false;
-
-        for (const auto& tx_blob : entry.txs) {
-            if (tx_index >= txes.size()) {
-                log::error(logverify, "tx_index is out of sync");
-                m_scan_table.clear();
+        // now generate a table for each tx_prefix and k_image hashes
+        tx_index = 0;
+        for (const auto& entry : blocks_entry) {
+            if (m_cancel)
                 return false;
-            }
-            const auto& [tx, tx_prefix_hash] = txes[tx_index++];
 
-            auto its = m_scan_table.find(tx_prefix_hash);
-            if (its == m_scan_table.end()) {
-                log::error(logverify, "Tx not found on scan table from incoming blocks.");
-                m_scan_table.clear();
-                return false;
-            }
+            for (const auto& tx_blob : entry.txs) {
+                if (tx_index >= txes.size()) {
+                    log::error(logverify, "tx_index is out of sync");
+                    m_scan_table.clear();
+                    return false;
+                }
+                const auto& [tx, tx_prefix_hash] = txes[tx_index++];
 
-            if (!tx.is_miner_tx()) {
-                for (const auto& txin : tx.vin) {
-                    const txin_to_key& in_to_key = std::get<txin_to_key>(txin);
-                    auto needed_offsets =
-                            relative_output_offsets_to_absolute(in_to_key.key_offsets);
+                auto its = m_scan_table.find(tx_prefix_hash);
+                if (its == m_scan_table.end()) {
+                    log::error(logverify, "Tx not found on scan table from incoming blocks.");
+                    m_scan_table.clear();
+                    return false;
+                }
 
-                    std::vector<output_data_t> outputs;
-                    for (const uint64_t& offset_needed : needed_offsets) {
-                        size_t pos = 0;
-                        bool found = false;
+                if (!tx.is_miner_tx()) {
+                    for (const auto& txin : tx.vin) {
+                        const txin_to_key& in_to_key = std::get<txin_to_key>(txin);
+                        auto needed_offsets =
+                                relative_output_offsets_to_absolute(in_to_key.key_offsets);
 
-                        for (const uint64_t& offset_found : offsets) {
-                            if (offset_needed == offset_found) {
-                                found = true;
-                                break;
+                        std::vector<output_data_t> outputs;
+                        for (const uint64_t& offset_needed : needed_offsets) {
+                            size_t pos = 0;
+                            bool found = false;
+
+                            for (const uint64_t& offset_found : offsets) {
+                                if (offset_needed == offset_found) {
+                                    found = true;
+                                    break;
+                                }
+
+                                ++pos;
                             }
 
-                            ++pos;
+                            if (found && pos < txs.size())
+                                outputs.push_back(txs.at(pos));
+                            else
+                                break;
                         }
 
-                        if (found && pos < txs.size())
-                            outputs.push_back(txs.at(pos));
-                        else
-                            break;
+                        its->second.emplace(in_to_key.k_image, outputs);
                     }
-
-                    its->second.emplace(in_to_key.k_image, outputs);
                 }
             }
         }
-    }
 
-    if (total_txs > 0) {
-        auto scantable_elapsed = std::chrono::steady_clock::now() - scantable;
-        m_fake_scan_time = scantable_elapsed / total_txs;
-        if (m_show_time_stats)
-            log::debug(
-                    logcat,
-                    "Prepare scantable took: {}",
-                    tools::friendly_duration(scantable_elapsed));
+        if (total_txs > 0) {
+            auto scantable_elapsed = std::chrono::steady_clock::now() - scantable;
+            m_fake_scan_time = scantable_elapsed / total_txs;
+            if (m_show_time_stats)
+                log::debug(
+                        logcat,
+                        "Prepare scantable took: {}",
+                        tools::friendly_duration(scantable_elapsed));
+        }
+    } catch (const std::exception& e) {
+        log::error(logcat, "Prepare to handle incoming blocks failed: {}", e.what());
+        return false;
     }
 
     return true;

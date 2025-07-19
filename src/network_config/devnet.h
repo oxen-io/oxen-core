@@ -6,7 +6,8 @@
 namespace cryptonote::config::devnet {
 
 inline constexpr std::array seeds = {
-        "144.76.164.202:38856"sv,  // public-eu.optf.ngo
+        "37.27.236.229:34602"sv,  // public.session.foundation
+        "104.243.40.38:34619"sv,  // angus.oxen.io
 };
 
 inline constexpr network_config config{
