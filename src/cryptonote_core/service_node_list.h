@@ -425,6 +425,7 @@ struct service_node_address {
     crypto::x25519_public_key x_pubkey;
     uint32_t ip;
     uint16_t port;
+    std::array<uint16_t, 3> version{};
 };
 
 using pubkey_and_sninfo = std::pair<crypto::public_key, std::shared_ptr<const service_node_info>>;
@@ -814,7 +815,8 @@ class service_node_list {
                     pk_info.second->bls_public_key,
                     sn_pk_is_ed25519_hf ? snpk_to_xpk(pk_info.first) : it->second.pubkey_x25519,
                     proof.public_ip,
-                    proof.qnet_port});
+                    proof.qnet_port,
+                    proof.version});
         }
 
         if (sn_pk_is_ed25519_hf) {
@@ -830,7 +832,8 @@ class service_node_list {
                             recently_removed_it.info.bls_public_key,
                             it->second.pubkey_x25519,
                             proof.public_ip,
-                            proof.qnet_port});
+                            proof.qnet_port,
+                            proof.version});
                     continue;
                 }
 
@@ -842,7 +845,8 @@ class service_node_list {
                         recently_removed_it.info.bls_public_key,
                         snpk_to_xpk(recently_removed_it.service_node_pubkey),
                         recently_removed_it.public_ip,
-                        recently_removed_it.qnet_port});
+                        recently_removed_it.qnet_port,
+                        recently_removed_it.version});
             }
         }
     }
@@ -932,17 +936,18 @@ class service_node_list {
             purged,
         };
 
-        uint64_t height;              // Height at which the SN exited/deregistered
-        uint64_t liquidation_height;  // Height at which the SN is eligible for liquidation
-        type_t type;                  // Event that occurred to remove this SN
-        uint32_t public_ip;           // Last known public IP of this SN (may be outdated)
-        uint16_t qnet_port;           // Last known quorumnet port of this SN (may be outdated)
+        uint64_t height;                  // Height at which the SN exited/deregistered
+        uint64_t liquidation_height;      // Height at which the SN is eligible for liquidation
+        type_t type;                      // Event that occurred to remove this SN
+        uint32_t public_ip;               // Last known public IP of this SN (may be outdated)
+        uint16_t qnet_port;               // Last known quorumnet port of this SN (may be outdated)
+        std::array<uint16_t, 3> version;  // Last known version of this SN (may be outdated)
         crypto::public_key service_node_pubkey;  // SN primary ed25519 key
         service_node_info info;  // Info copied from the SNL and frozen at point of exit
 
         template <class Archive>
         void serialize_object(Archive& ar) {
-            uint8_t version = 1;
+            uint8_t version = 2;
             field_varint(ar, "version", version);
             if (version == 0) {  // NOTE: v0 we completely discard and force a full-rescan
                 crypto::public_key pubkey;
@@ -962,6 +967,9 @@ class service_node_list {
             if (version >= 1) {
                 field(ar, "service_node_pubkey", service_node_pubkey);
                 field(ar, "info", info);
+            }
+            if (version >= 2) {
+                field(ar, "version", version);
             }
         }
     };

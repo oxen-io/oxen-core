@@ -47,8 +47,8 @@ static constexpr std::string_view to_string(bls_exit_type type) {
 
 std::string bytes_to_hex_dot_truncate_middle(std::span<const unsigned char> bytes) {
     size_t dot_size = 3;  // How many dots to show in the middle
-    size_t head_hex = 6;  // How many hex characters to preserve from head of string
-    size_t tail_hex = 6;  // How many hex characters to preserve from tail of string
+    size_t head_hex = 3;  // How many hex characters to preserve from head of string
+    size_t tail_hex = 3;  // How many hex characters to preserve from tail of string
 
     std::string hex = oxenc::to_hex(bytes.begin(), bytes.end());
 
@@ -56,7 +56,7 @@ std::string bytes_to_hex_dot_truncate_middle(std::span<const unsigned char> byte
     std::string_view head = tools::string_safe_substr(hex, 0, head_hex);
 
     tail_hex = std::min(tail_hex, head.size());
-    std::string_view tail = tools::string_safe_substr(head, head.size() - tail_hex, tail_hex);
+    std::string_view tail = tools::string_safe_substr(hex, hex.size() - tail_hex, tail_hex);
 
     std::string result = fmt::format("{}{:.>{}}{}", head, "", dot_size, tail);
     return result;
@@ -309,11 +309,22 @@ namespace {
                 continue;
 
             fmt::format_to(
-                    std::back_inserter(buffer), "{} runs:\n", success ? "Successful" : "Failed");
-            for (const auto& item : list) {
+                    std::back_inserter(buffer),
+                    "{} runs ({}):\n",
+                    success ? "Successful" : "Failed",
+                    list.size());
+            for (size_t index = 0; index < list.size(); index++) {
+                const auto& item = list[index];
+
+                const std::array<uint16_t, 3>& ver = item.addr.version;
+                std::string ver_str = ver == std::array<uint16_t, 3>{0, 0, 0}
+                                            ? "Unknown"
+                                            : "{}.{}.{}"_format(ver[0], ver[1], ver[2]);
                 fmt::format_to(
                         std::back_inserter(buffer),
-                        "  - SN {} BLS {} XKEY {} @ {:<21} => {}\n",
+                        "  {:<4d} SN {} {} BLS {} XKEY {} @ {:<21} => {}\n",
+                        index,
+                        ver_str,
                         bytes_to_hex_dot_truncate_middle(item.addr.sn_pubkey),
                         bytes_to_hex_dot_truncate_middle(item.addr.bls_pubkey),
                         bytes_to_hex_dot_truncate_middle(item.addr.x_pubkey),

@@ -9,9 +9,9 @@ namespace cryptonote::config::mainnet {
 inline constexpr std::array seeds = {
         "116.203.196.12:22022"sv,  // Hetzner seed node
         "185.150.191.51:22022"sv,  // Jason's seed node
-        "199.127.61.170:22022"sv,  // Oxen Foundation server "holstein"
+        "199.127.61.170:22022"sv,  // Session Foundation server "holstein"
         "23.88.6.250:22022"sv,     // Session project server "chianina"
-        "104.194.8.115:22000"sv,   // Oxen Foundation server "brahman"
+        "104.194.8.115:22000"sv,   // Session Foundation server "brahman"
 };
 
 inline constexpr auto TARGET_BLOCK_TIME = 2min;
