@@ -102,11 +102,12 @@ class BlockchainSQLite : public db::Database {
         address,
     };
 
-    // Retrieves all delayed payments:
+    // Retrieves all pending delayed payments
     block_payments get_delayed_payments();
-    // Retrieves delayed payments for a single ETH address:
+    // Retrieves pending delayed payments for a single ETH address:
     block_payments get_delayed_payments(const eth::address& addr);
-    // Retrieves delayed payments due at the given height
+    // Retrieves delayed payments due at the given height.  Note that this will return
+    // already-applied payments for a height if given a height <= the current db height.
     block_payments get_delayed_payments(uint64_t height);
 
   private:
@@ -261,6 +262,19 @@ class BlockchainSQLite : public db::Database {
     // must be called once (and only once!) at the HF22 fork height to convert milli-atomic values
     // (for HF21 and earlier blocks) into atomics (expected for HF22+ blocks).
     void convert_hf22();
+
+    // Checks the database for any needed fixes and applies them, returning an optional detach
+    // block number that should be applied to rescan the chain if non-nullopt.
+    //
+    // NB: the returned value is the block number of the block that we want to *keep*, that is,
+    // after the detach, the "lmdb blockchain height" should be that number plus 1.
+    //
+    // `recheck` is used to confirm that the fixups worked as expected, after a detach induced by a
+    // first call to fixup() that returns a non-nullopt value.  If fixup(recheck=true) returns
+    // nullopt then all is good; if it returns a value then that means the rescan did *not* resolve
+    // the problem it was supposed to resolve!  (The actual value returned by such a failed recheck
+    // call is meaningless).
+    std::optional<uint64_t> fixup(bool recheck = false);
 
     uint64_t height;
     const cryptonote::network_type nettype;
