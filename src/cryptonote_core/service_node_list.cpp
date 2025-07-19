@@ -5547,7 +5547,11 @@ bool service_node_list::store(uint64_t state_height) {
         return true;
 
     // NOTE: Convert the runtime SNL data into a format suitable for serialization into the DB
-    std::lock_guard lock(m_sn_mutex);
+    // NOTE: Must lock blockchain to prevent other threads from opening a batch whilst we have a
+    // db_wtxn_guard open which breaks LMDB.
+    // TODO: db_wtxn_guard looks like it could be replaced with an RAII class that does
+    // batch_start and batch_stop, consider repurposing LockedTXN and or merging them all into one.
+    auto locks = tools::unique_locks(m_sn_mutex, blockchain);
 
     std::vector<std::string> archive_blob_list;
     std::vector<std::string> history_blob_list;
@@ -6454,11 +6458,13 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
 
             uint32_t public_ip = 0;
             uint16_t qnet_port = 0;
+            std::array<uint16_t, 3> version = {};
             if (sn_list) {
                 auto proof_it = sn_list->proofs.find(snpk);
                 if (proof_it != sn_list->proofs.end()) {
                     const std::unique_ptr<uptime_proof::Proof>& proof = proof_it->second.proof;
                     if (proof) {
+                        version = proof->version;
                         public_ip = proof->public_ip;
                         qnet_port = proof->qnet_port;
                     }
@@ -6476,6 +6482,7 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
                     .type = exit_type,
                     .public_ip = public_ip,
                     .qnet_port = qnet_port,
+                    .version = version,
                     .service_node_pubkey = snpk,
                     .info = *it->second});
         }
