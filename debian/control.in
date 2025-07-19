@@ -84,7 +84,7 @@ Description: Oxen development files
 Package: session-service-node
 Architecture: all
 Pre-Depends: curl
-Depends: oxend (=${binary:Version}), oxen-storage-server (>= 2.10.0), lokinet-router (>= 0.9.13~), ucf
+Depends: oxend (=${binary:Version}), oxen-storage-server (>= 2.11.0~), lokinet-router (>= 0.9.14~), ucf
 Replaces: oxen-service-node (<< 11.2.0-1~)
 Breaks: oxen-service-node (<< 11.2.0-1~)
 Description: Session service node metapackage
