@@ -35,6 +35,7 @@
 #include <fmt/chrono.h>
 #include <fmt/color.h>
 #include <fmt/core.h>
+#include <fmt/ostream.h>
 #include <oxenc/base32z.h>
 #include <oxenmq/connections.h>
 
@@ -1747,12 +1748,6 @@ bool rpc_command_executor::sync_info() {
     return true;
 }
 
-static std::string to_string_rounded(double d, int precision) {
-    std::ostringstream ss;
-    ss << std::fixed << std::setprecision(precision) << d;
-    return ss.str();
-}
-
 template <typename E, typename EPrinter>
 void print_votes(std::ostream& o, const json& elem, const std::string& key, EPrinter eprint) {
     std::vector<E> voted, missed;
@@ -1780,6 +1775,7 @@ static void append_printable_service_node_list_entry(
         uint64_t blockchain_height,
         uint64_t entry_index,
         const json& entry,
+        bool is_self,
         std::string& buffer) {
     const char indent1[] = "  ";
     const char indent2[] = "    ";
@@ -1846,16 +1842,12 @@ static void append_printable_service_node_list_entry(
 
     if (detailed_view)  // Print operator information
     {
-        // MERGEFIX: figure out what this *should* do and check the corresponding RPC method
-        stream << indent2
-               << "Operator Fee: " << to_string_rounded(entry["operator_fee"].get<int>() / 1000., 3)
-               << "%\n";
-        stream << indent2
-               << "Operator Address: " << entry["operator_address"].get<std::string_view>() << "\n";
-        // stream << indent2 << "Operator Cut (\% Of Reward): " <<
-        // to_string_rounded((entry.portions_for_operator /
-        // (double)cryptonote::old::STAKING_PORTIONS) * 100.0, 2) << "%\n"; stream << indent2 <<
-        // "Operator Address: " << entry.operator_address << "\n";
+        fmt::print(
+                stream,
+                "{0}Operator Fee: {1:.02f}%\n{0}Operator Address: {2}\n",
+                indent2,
+                entry["operator_fee"].get<int>() / (double)cryptonote::STAKING_FEE_BASIS,
+                entry["operator_address"].get<std::string_view>());
     }
 
     if (is_funded)  // Print service node tests
@@ -1886,7 +1878,7 @@ static void append_printable_service_node_list_entry(
         if (auto quorumnet_port_it = entry.find("quorumnet_port");
             quorumnet_port_it != entry.end()) {
             uint16_t quorumnet_port = *quorumnet_port_it;
-            stream << ": {} (oxen quorums)"_format(quorumnet_port);
+            stream << ":{} (oxen quorums)"_format(quorumnet_port);
         } else {
             stream << ": (oxen quorums port not received yet)";
         }
@@ -1894,17 +1886,16 @@ static void append_printable_service_node_list_entry(
         stream << "\n";
         if (detailed_view) {
             auto ed_pk = entry.value("pubkey_ed25519", ""sv);
-            // OXEN11 TODO FIXME: add BLS key
-            stream << indent2 << "Auxiliary Public Keys:\n"
-                   << indent3 << (ed_pk.empty() ? "(not yet received)"sv : ed_pk) << " (Ed25519)\n";
-            if (conf.HAVE_STORAGE_AND_LOKINET) {
-                stream << indent3
-                       << (ed_pk.empty() ? "(not yet received)"s
-                                         : oxenc::to_base32z(oxenc::from_hex(ed_pk)) + ".snode")
-                       << " (Lokinet)\n";
-            }
-            stream << indent3 << entry.value("pubkey_x25519", "(not yet received)"sv)
-                   << " (X25519)\n";
+            fmt::print(stream, "{}Auxiliary Public Keys/Addresses:\n", indent2);
+            fmt::print(stream, "{}BLS: {}\n", indent3, entry.value("pubkey_bls", ""sv));
+            if (conf.HAVE_STORAGE_AND_LOKINET)
+                fmt::print(
+                        stream,
+                        "{}Lokinet: {}\n",
+                        indent3,
+                        ed_pk.empty() ? "(not yet received)"s
+                                      : oxenc::to_base32z(oxenc::from_hex(ed_pk)) + ".snode");
+            fmt::print(stream, "{}X25519: {}\n", indent3, entry.value("pubkey_x25519", ""sv));
         }
 
         if (conf.HAVE_STORAGE_AND_LOKINET) {
@@ -1938,23 +1929,28 @@ static void append_printable_service_node_list_entry(
                 }
                 stream << '\n';
             };
-            stream << indent2 << "Storage Server Reachable: ";
-            print_reachable(entry, "storage_server");
-            stream << indent2 << "Lokinet Reachable: ";
-            print_reachable(entry, "lokinet");
+            if (!is_self) {
+                stream << indent2 << "Storage Server Reachable: ";
+                print_reachable(entry, "storage_server");
+                stream << indent2 << "Lokinet Reachable: ";
+                print_reachable(entry, "lokinet");
+            }
 
             //
             // NOTE: Component Versions
             //
             auto show_component_version = [](const json& j, std::string_view name) {
                 if (!j.is_array() || j.front().get<int>() == 0)
-                    return "("s + std::string{name} + " ping not yet received)"s;
-                return tools::join(".", j.get<std::array<int, 3>>());
+                    return "({} ping not yet received)"_format(name);
+                return "{}"_format(fmt::join(j.get<std::array<int, 3>>(), "."));
             };
-            stream << indent2 << "Storage Server / Lokinet Router versions: "
-                   << show_component_version(entry["storage_server_version"], "Storage Server")
-                   << " / " << show_component_version(entry["storage_server_version"], "Lokinet")
-                   << "\n";
+
+            fmt::print(
+                    stream,
+                    "{}Storage Server / Lokinet Router versions: {} / {}\n",
+                    indent2,
+                    show_component_version(entry["storage_server_version"], "Storage Server"),
+                    show_component_version(entry["lokinet_version"], "Lokinet"));
         }
 
         //
@@ -2021,15 +2017,18 @@ static void append_printable_service_node_list_entry(
     // NOTE: Overall status
     //
     if (entry["active"].get<bool>()) {
-        stream << indent2 << "Current Status: ACTIVE\n";
         auto downtime = entry["earned_downtime_blocks"].get<uint64_t>();
-        stream << indent2 << "Downtime Credits: " << downtime << " blocks"
-               << " (about " << to_string_rounded(downtime / (double)conf.BLOCKS_PER_HOUR(), 2)
-               << " hours)";
-        if (uint64_t min_blocks = conf.BLOCKS_IN(service_nodes::DECOMMISSION_MINIMUM);
-            downtime < min_blocks)
-            stream << " (Note: " << min_blocks
-                   << " blocks required to enable deregistration delay)";
+        uint64_t min_blocks = conf.BLOCKS_IN(service_nodes::DECOMMISSION_MINIMUM);
+        fmt::print(
+                stream,
+                "{0}Current Status: ACTIVE\n{0}Downtime Credits: {1} blocks"
+                " (about {2:.1f} hours){3}",
+                indent2,
+                downtime,
+                downtime / (double)conf.BLOCKS_PER_HOUR(),
+                downtime < min_blocks
+                        ? " (NOTE: {} blocks required to avoid deregistration)"_format(min_blocks)
+                        : "");
     } else if (is_funded) {
         stream << indent2 << "Current Status: DECOMMISSIONED";
         auto reason_all = entry.value<uint16_t>("last_decommission_reason_consensus_all", 0);
@@ -2049,7 +2048,7 @@ static void append_printable_service_node_list_entry(
         stream << indent2 << "Remaining Decommission Time Until DEREGISTRATION: "
                << entry["earned_downtime_blocks"].get<uint64_t>() << " blocks";
     } else {
-        stream << indent2 << "Current Status: awaiting contributions\n";
+        stream << indent2 << "Current Status: awaiting contributions";
     }
     stream << "\n";
 
@@ -2162,14 +2161,14 @@ bool rpc_command_executor::print_sn(const std::vector<std::string>& args, bool s
         if (i > 0)
             awaiting_print_data += '\n';
         append_printable_service_node_list_entry(
-                nettype, detailed_view, curr_height, i, awaiting[i], awaiting_print_data);
+                nettype, detailed_view, curr_height, i, awaiting[i], self, awaiting_print_data);
     }
 
     for (size_t i = 0; i < registered.size(); i++) {
         if (i > 0)
             registered_print_data += '\n';
         append_printable_service_node_list_entry(
-                nettype, detailed_view, curr_height, i, registered[i], registered_print_data);
+                nettype, detailed_view, curr_height, i, registered[i], self, registered_print_data);
     }
 
     if (awaiting.size() > 0)
