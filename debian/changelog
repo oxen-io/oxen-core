@@ -1,3 +1,47 @@
+oxen (11.5.0-1~ubuntu2004) focal; urgency=medium
+
+  [ doylet ]
+  * Blk 1871518 assertion work-around for bad lifetime payments value
+  * Remove unused function BlockchainLMDB::batch_commit
+  * Use oxen::defer to BlockchainLMDB::cleanup_batch on batch exit
+  * Simplify LMDB do_resize, active batch is not allowed during resize
+  * Use defer to guarantee that batch_stop/abort runs on thrown exception
+  * Guard against thrown exception in handle incoming blocks from deadlocking the system
+  * Fix BLS dump repeating hex in truncation. Show SN version in diagnostics
+  * Fix deadlock after 6-7 days from SNL+Blockchain opening conflicting write TXs
+
+  [ Jason Rhinelander ]
+  * Fix testnet/devnet seed nodes
+
+  [ doylet ]
+  * On detach, require '< payout_height" instead of '<='
+  * Correctly ignore duplicate delayed payment rows in the archive
+  * Add fixup to patch DBs w/ incorrect rewards value in retrospect
+
+  [ Doyle ]
+  * Use DO NOTHING clause to ensure constraint errors bubble up
+  * Use indexed binding notation (?NNN) to DRY new_height binding
+
+  [ doylet ]
+  * Suffix SQL SELECT on UPSERT w/ WHERE true to avoid parser ambiguity
+  * Add SQL rewards fixup for 1890k and table drive fixup via array
+  * Sort records by oldest to rescan from newest height
+  * Move SQL fixup into BlockchainSQLite function
+
+  [ Jason Rhinelander ]
+  * Fixes to print_sn / print_sn_status daemon CLI commands
+
+  [ doylet ]
+  * Reverse the fixup order, add some post-failure checks, merge rescan checks
+
+  [ Jason Rhinelander ]
+  * Deeper checks, rescans, and add rescan snapshot
+  * Schedule mandatory SN update to fix reward calcs
+  * 11.5.0
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Fri, 18 Jul 2025 21:09:32 -0300
+
 oxen (11.4.1-1~ubuntu2004) focal; urgency=medium
 
   * fix zstd build on android
