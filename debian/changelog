@@ -1,3 +1,9 @@
+oxen (11.5.0-1~deb14) forky; urgency=medium
+
+  * forky deb
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 27 Aug 2025 14:39:46 -0300
+
 oxen (11.5.0-1) sid; urgency=medium
 
   [ doylet ]
