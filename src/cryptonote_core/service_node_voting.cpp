@@ -34,9 +34,11 @@
 #include "checkpoints/checkpoints.h"
 #include "common/util.h"
 #include "cryptonote_basic/connection_context.h"
+#include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_basic/verification_context.h"
+#include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "epee/misc_log_ex.h"
 #include "epee/string_tools.h"
@@ -107,9 +109,9 @@ static bool bounds_check_worker_index(
             vvc->m_worker_index_out_of_bounds = true;
         log::info(
                 logcat,
-                "Quorum worker index in was out of bounds: {}, expected to be in range of: [0, {}",
+                "Quorum worker index in was out of bounds: {}, expected 0-{}",
                 worker_index,
-                quorum.workers.size());
+                quorum.workers.size()-1);
         return false;
     }
     return true;
@@ -124,9 +126,9 @@ static bool bounds_check_validator_index(
             vvc->m_validator_index_out_of_bounds = true;
         log::info(
                 logcat,
-                "Validator's index was out of bounds: {}, expected to be in range of: [0, {}",
+                "Validator's index {} out of bounds: expected 0-{}",
                 validator_index,
-                quorum.validators.size());
+                quorum.validators.size() - 1);
         return false;
     }
     return true;
@@ -245,86 +247,26 @@ bool verify_tx_state_change(
     return true;
 }
 
-bool verify_quorum_signatures(
-        service_nodes::quorum const& quorum,
-        service_nodes::quorum_type type,
-        hf hf_version,
+// Checks a set of quorum signatures for:
+// - uniqueness of voter indices
+// - bounds check (i.e. all voter indices less than `num_indices`)
+// - optionally also checks ascending order of voter indices
+// warns and returns false on violation, returns true if everything passes.
+static bool check_voter_indices(
+        std::span<const quorum_signature> signatures,
         uint64_t height,
-        crypto::hash const& hash,
-        std::vector<quorum_signature> const& signatures,
-        const cryptonote::block* block) {
-    bool enforce_vote_ordering = true;
-    constexpr size_t MAX_QUORUM_SIZE =
-            std::max<size_t>(CHECKPOINT_QUORUM_SIZE, PULSE_QUORUM_NUM_VALIDATORS);
-    std::array<size_t, MAX_QUORUM_SIZE> unique_vote_set = {};
-
-    switch (type) {
-        default:
-            assert(!"Invalid Code Path");
-            break;
-
-            // TODO(oxen): DRY quorum verification with state change obligations.
-
-        case quorum_type::checkpointing: {
-            if (signatures.size() < service_nodes::CHECKPOINT_MIN_VOTES) {
-                log::warning(
-                        globallogcat,
-                        "Checkpoint has insufficient signatures to be considered at height: {}",
-                        height);
-                return false;
-            }
-
-            if (signatures.size() > service_nodes::CHECKPOINT_QUORUM_SIZE) {
-                log::warning(
-                        globallogcat,
-                        "Checkpoint has too many signatures to be considered at height: {}",
-                        height);
-                return false;
-            }
-
-            enforce_vote_ordering = hf_version >= hf::hf13_enforce_checkpoints;
-        } break;
-
-        case quorum_type::pulse: {
-            if (signatures.size() != PULSE_BLOCK_REQUIRED_SIGNATURES) {
-                log::warning(
-                        globallogcat,
-                        "Pulse block has {} signatures but requires {}",
-                        signatures.size(),
-                        PULSE_BLOCK_REQUIRED_SIGNATURES);
-                return false;
-            }
-
-            if (!block) {
-                log::warning(
-                        globallogcat,
-                        "Internal Error: Wrong type passed in any object, expected block.");
-                return false;
-            }
-
-            if (block->pulse.validator_bitset >= (1 << PULSE_QUORUM_NUM_VALIDATORS)) {
-                auto mask = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(
-                        pulse_validator_bit_mask());
-                auto other = std::bitset<sizeof(pulse_validator_bit_mask()) * 8>(
-                        block->pulse.validator_bitset);
-                log::warning(
-                        globallogcat,
-                        "Pulse block specifies validator participation bits out of bounds. "
-                        "Expected the bit mask: {}, block: {}",
-                        mask.to_string(),
-                        other.to_string());
-                return false;
-            }
-        } break;
-    }
-
-    for (size_t i = 0; i < signatures.size(); i++) {
-        service_nodes::quorum_signature const& quorum_signature = signatures[i];
-        if (enforce_vote_ordering && i < (signatures.size() - 1)) {
-            auto curr = signatures[i].voter_index;
-            auto next = signatures[i + 1].voter_index;
-
-            if (curr >= next) {
+        bool ascending,
+        size_t num_indices) {
+    constexpr auto MAX_QUORUM_SIZE =
+            std::max<size_t>(CHECKPOINT_QUORUM_SIZE, PULSE_QUORUM_MAX_SIZE);
+    assert(num_indices <= MAX_QUORUM_SIZE);
+    using seen_t = uint32_t;
+    seen_t seen = 0;
+    assert(MAX_QUORUM_SIZE <= 8 * sizeof(seen_t));
+    bool index_oob = false;
+    if (ascending) {
+        for (size_t i = 1; i < signatures.size(); i++) {
+            if (signatures[i - 1].voter_index >= signatures[i].voter_index) {
                 log::warning(
                         globallogcat,
                         "Voters in signatures are not given in ascending order, failed "
@@ -333,58 +275,52 @@ bool verify_quorum_signatures(
                 return false;
             }
         }
+        index_oob = !signatures.empty() && signatures.back().voter_index >= num_indices;
+    } else {
+        index_oob =
+                std::any_of(signatures.begin(), signatures.end(), [&num_indices](const auto& s) {
+                    return s.voter_index >= num_indices;
+                });
+    }
 
-        if (!bounds_check_validator_index(quorum, quorum_signature.voter_index, nullptr))
-            return false;
+    if (index_oob) {
+        log::warning(
+                globallogcat,
+                "Invalid quorum voters: voter indices out of bounds, failed verification at height "
+                "{}",
+                height);
+        return false;
+    }
 
-        if (type == quorum_type::pulse) {
-            if (!block) {
-                log::error(
-                        globallogcat,
-                        "Internal Error: Wrong type passed in any object, expected block.");
-                return false;
-            }
-
-            uint16_t bit = 1 << quorum_signature.voter_index;
-            if ((block->pulse.validator_bitset & bit) == 0) {
-                log::warning(
-                        globallogcat,
-                        "Received pulse signature from validator {} that is not participating in "
-                        "round {}",
-                        static_cast<int>(quorum_signature.voter_index),
-                        static_cast<int>(block->pulse.round));
-                return false;
-            }
-        }
-
-        crypto::public_key const& key = quorum.validators[quorum_signature.voter_index];
-        if (quorum_signature.voter_index >= unique_vote_set.size()) {
+    for (auto& s : signatures) {
+        seen_t bit = 1 << s.voter_index;
+        if (seen & bit) {
             log::warning(
                     globallogcat,
-                    "Internal Error: Voter Index indexes out of bounds of the vote set, index: "
-                    "{}vote set size: {}",
-                    quorum_signature.voter_index,
-                    unique_vote_set.size());
-            return false;
-        }
-
-        if (unique_vote_set[quorum_signature.voter_index]++) {
-            log::warning(
-                    globallogcat,
-                    "Voter: {}, quorum index is duplicated: {}, failed verification at block {} "
-                    "({})",
-                    key,
-                    quorum_signature.voter_index,
-                    hash,
+                    "Duplicate quorum voter index {} ({} total), failed verification at block {}",
+                    s.voter_index,
+                    signatures.size(),
                     height);
             return false;
         }
+        seen |= bit;
+    }
+    return true;
+}
 
-        if (!crypto::check_signature(hash, key, quorum_signature.signature)) {
+static bool verify_voter_signatures(
+        const service_nodes::quorum& quorum,
+        uint64_t height,
+        const crypto::hash& hash,
+        std::span<const quorum_signature> signatures) {
+
+    for (auto& sig : signatures) {
+        const auto& key = quorum.validators[sig.voter_index];
+        if (!crypto::check_signature(hash, key, sig.signature)) {
             log::warning(
                     globallogcat,
-                    "Incorrect signature for vote, failed verification at block {} ({}) for voter: "
-                    "{}\n{}",
+                    "Incorrect signature for vote, failed verification at block {} ({}) "
+                    "for voter: {}\n{}",
                     hash,
                     height,
                     key,
@@ -392,14 +328,91 @@ bool verify_quorum_signatures(
             return false;
         }
     }
-
     return true;
 }
 
-bool verify_pulse_quorum_sizes(service_nodes::quorum const& quorum) {
-    bool result =
-            quorum.workers.size() == 1 && quorum.validators.size() == PULSE_QUORUM_NUM_VALIDATORS;
-    return result;
+bool verify_checkpoint_signatures(
+        const service_nodes::quorum& quorum,
+        hf hf_version,
+        uint64_t height,
+        const crypto::hash& hash,
+        std::span<const quorum_signature> signatures) {
+
+    if (signatures.size() < CHECKPOINT_MIN_VOTES || signatures.size() > CHECKPOINT_QUORUM_SIZE) {
+        log::warning(
+                globallogcat,
+                "Checkpoint has invalid signatures ({} not in [{}, {}]) to be considered at height "
+                "{}",
+                signatures.size(),
+                CHECKPOINT_MIN_VOTES,
+                CHECKPOINT_QUORUM_SIZE,
+                height);
+        return false;
+    }
+
+    if (!check_voter_indices(
+                signatures,
+                height,
+                hf_version >= hf::hf13_enforce_checkpoints,
+                service_nodes::CHECKPOINT_QUORUM_SIZE))
+        return false;
+
+    return verify_voter_signatures(quorum, height, hash, signatures);
+}
+
+bool verify_pulse_signatures(
+        const service_nodes::quorum& quorum,
+        hf hf_version,
+        uint64_t height,
+        const crypto::hash& hash,
+        std::span<const quorum_signature> signatures,
+        const cryptonote::block& block,
+        size_t active_nodes) {
+
+    const auto n_validators = PULSE_QUORUM_NUM_VALIDATORS(hf_version, active_nodes);
+    const auto n_sigs = PULSE_BLOCK_REQUIRED_SIGNATURES(hf_version, n_validators);
+    if (signatures.size() != n_sigs) {
+        log::warning(
+                globallogcat,
+                "Pulse block has {} signatures but requires {}",
+                signatures.size(),
+                n_sigs);
+        return false;
+    }
+
+    if (const auto bitmask = pulse_validator_bit_mask(n_validators);
+        block.pulse.validator_bitset > bitmask) {
+        log::warning(
+                globallogcat,
+                "Pulse block specifies invalid validator participation bits: expected max "
+                "validator index {}, block has {}",
+                n_validators,
+                std::bit_width(block.pulse.validator_bitset));
+        return false;
+    }
+
+    if (!check_voter_indices(signatures, height, true, n_validators))
+        return false;
+
+    for (auto& sig : signatures) {
+        pulse::bitset_t bit = 1 << sig.voter_index;
+        if (!(block.pulse.validator_bitset & bit)) {
+            log::warning(
+                    globallogcat,
+                    "Received pulse signature from validator {:d} that is not participating in "
+                    "round {:d}",
+                    sig.voter_index,
+                    block.pulse.round);
+            return false;
+        }
+    }
+
+    return verify_voter_signatures(quorum, height, hash, signatures);
+}
+
+bool verify_pulse_quorum_sizes(const quorum& q, cryptonote::hf hf, size_t active_nodes) {
+    return q.workers.size() == 1 &&
+           q.validators.size() == PULSE_QUORUM_NUM_VALIDATORS(hf, active_nodes);
 }
 
 bool verify_checkpoint(
@@ -415,9 +428,8 @@ bool verify_checkpoint(
             return false;
         }
 
-        if (!verify_quorum_signatures(
+        if (!verify_checkpoint_signatures(
                     quorum,
-                    quorum_type::checkpointing,
                     hf_version,
                     checkpoint.height,
                     checkpoint.block_hash,

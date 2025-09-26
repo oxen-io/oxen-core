@@ -42,7 +42,9 @@
 #include <chrono>
 #include <limits>
 #include <mutex>
+#include <ranges>
 #include <stdexcept>
+#include <tuple>
 #include <type_traits>
 
 #include "blockchain.h"
@@ -63,6 +65,7 @@
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_basic/txtypes.h"
 #include "cryptonote_config.h"
+#include "cryptonote_core/service_node_voting.h"
 #include "cryptonote_core/uptime_proof.h"
 #include "cryptonote_tx_utils.h"
 #include "epee/int-util.h"
@@ -449,6 +452,14 @@ static std::vector<service_nodes::pubkey_and_sninfo> sort_and_filter(
                 return a.first < b.first;
             });
     return result;
+}
+
+size_t service_node_list::state_t::active_service_nodes_count() const {
+    ZoneScoped;
+    return std::count_if(
+            service_nodes_infos.begin(), service_nodes_infos.end(), [](const auto& info) {
+                return info.second->is_active();
+            });
 }
 
 std::vector<pubkey_and_sninfo> service_node_list::state_t::active_service_nodes_infos() const {
@@ -2808,6 +2819,7 @@ static bool verify_block_components(
         bool alt_block,
         bool log_errors,
         pulse::timings& timings,
+        size_t active_nodes,
         std::shared_ptr<const quorum> pulse_quorum,
         std::vector<std::shared_ptr<const quorum>>& alt_pulse_quorums) {
     ZoneScoped;
@@ -2922,14 +2934,14 @@ static bool verify_block_components(
                         "Verifying alt-block {}:{} against main chain quorum",
                         height,
                         hash);
-                failed_quorum_verify = service_nodes::verify_quorum_signatures(
-                                               *pulse_quorum,
-                                               quorum_type::pulse,
-                                               block.major_version,
-                                               height,
-                                               hash,
-                                               block.signatures,
-                                               &block) == false;
+                failed_quorum_verify = !service_nodes::verify_pulse_signatures(
+                        *pulse_quorum,
+                        block.major_version,
+                        height,
+                        hash,
+                        block.signatures,
+                        block,
+                        active_nodes);
             }
 
             // NOTE: Check alt pulse quorums
@@ -2940,14 +2952,14 @@ static bool verify_block_components(
                         height,
                         hash);
                 for (auto const& alt_quorum : alt_pulse_quorums) {
-                    if (service_nodes::verify_quorum_signatures(
+                    if (service_nodes::verify_pulse_signatures(
                                 *alt_quorum,
-                                quorum_type::pulse,
                                 block.major_version,
                                 height,
                                 hash,
                                 block.signatures,
-                                &block)) {
+                                block,
+                                active_nodes)) {
                         failed_quorum_verify = false;
                         break;
                     }
@@ -2970,23 +2982,29 @@ static bool verify_block_components(
                 return false;
             }
 
-            quorum_verified = service_nodes::verify_quorum_signatures(
+            quorum_verified = service_nodes::verify_pulse_signatures(
                     *pulse_quorum,
-                    quorum_type::pulse,
                     block.major_version,
                     block.get_height(),
                     cryptonote::get_block_hash(block),
                     block.signatures,
-                    &block);
+                    block,
+                    active_nodes);
         }
 
         if (quorum_verified) {
             // NOTE: These invariants are already checked in verify_quorum_signatures
             if (alt_block)
                 log::info(logcat, "Alt-block {}:{} verified successfully", height, hash);
+#ifndef NDEBUG
+            auto num_validators =
+                    service_nodes::PULSE_QUORUM_NUM_VALIDATORS(block.major_version, active_nodes);
+            auto num_sigs = service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(
+                    block.major_version, num_validators);
+#endif
             assert(block.pulse.validator_bitset != 0);
-            assert(block.pulse.validator_bitset < (1 << PULSE_QUORUM_NUM_VALIDATORS));
-            assert(block.signatures.size() == service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES);
+            assert(block.pulse.validator_bitset < (1 << num_validators));
+            assert(block.signatures.size() == num_sigs);
         } else {
             if (log_errors)
                 log::warning(
@@ -3026,7 +3044,8 @@ static bool find_block_in_db(
 void service_node_list::verify_block(
         const cryptonote::block& block,
         bool alt_block,
-        cryptonote::checkpoint_t const* checkpoint) const {
+        cryptonote::checkpoint_t const* checkpoint,
+        size_t active_node_count) const {
     ZoneScoped;
     if (block.major_version < hf::hf9_service_nodes)
         return;
@@ -3163,6 +3182,7 @@ void service_node_list::verify_block(
                     true /*alt_block*/,
                     false /*log_errors*/,
                     timings,
+                    active_node_count,
                     pulse_quorum,
                     alt_pulse_quorums);
 
@@ -3174,6 +3194,7 @@ void service_node_list::verify_block(
                     true /*alt_block*/,
                     false /*log_errors*/,
                     timings,
+                    active_node_count,
                     pulse_quorum,
                     alt_pulse_quorums);
     } else {
@@ -3189,6 +3210,7 @@ void service_node_list::verify_block(
                 false /*alt_block*/,
                 true /*log_errors*/,
                 timings,
+                active_node_count,
                 pulse_quorum,
                 alt_pulse_quorums);
     }
@@ -3219,9 +3241,10 @@ void service_node_list::block_add(
         }
 
         std::lock_guard lock(m_sn_mutex);
+        auto active_sn_count = active_service_nodes_count();
         result = process_block(block, txs);
         if (!rescan || !rescan->skip_verify)
-            verify_block(block, false /*alt_block*/, checkpoint);
+            verify_block(block, false /*alt_block*/, checkpoint, active_sn_count);
         if (block.has_pulse()) {
             // NOTE: Only record participation if its a block we recently received.
             // Otherwise processing blocks in retrospect/re-loading on restart seeds
@@ -3232,6 +3255,8 @@ void service_node_list::block_add(
             const auto target_block_time = get_config(blockchain.nettype()).TARGET_BLOCK_TIME;
             auto earliest_time = std::chrono::seconds(block.timestamp) - target_block_time;
             auto latest_time = std::chrono::seconds(block.timestamp) + target_block_time;
+            const size_t num_validators =
+                    PULSE_QUORUM_NUM_VALIDATORS(block.major_version, active_sn_count);
 
             if (newest_block && (now >= earliest_time && now <= latest_time)) {
                 std::shared_ptr<const quorum> quorum =
@@ -3242,10 +3267,9 @@ void service_node_list::block_add(
                 if (quorum->validators.empty())
                     throw oxen::traced<std::runtime_error>{
                             "Unexpected Pulse error: quorum was empty"};
-                for (size_t validator_index = 0;
-                     validator_index < service_nodes::PULSE_QUORUM_NUM_VALIDATORS;
+                for (size_t validator_index = 0; validator_index < num_validators;
                      validator_index++) {
-                    uint16_t bit = 1 << validator_index;
+                    pulse::bitset_t bit = 1 << validator_index;
                     bool participated = block.pulse.validator_bitset & bit;
                     record_pulse_participation(
                             quorum->validators[validator_index],
@@ -3364,33 +3388,45 @@ static std::vector<crypto::hash> make_pulse_entropy_from_blocks(
 
 std::vector<crypto::hash> get_pulse_entropy_for_next_block(
         cryptonote::BlockchainDB const& db,
+        cryptonote::hf hf,
         cryptonote::block const& top_block,
-        uint8_t pulse_round) {
+        uint8_t pulse_round,
+        size_t active_snodes) {
     ZoneScoped;
-    uint64_t const top_height = top_block.get_height();
-    if (top_height < PULSE_QUORUM_ENTROPY_LAG) {
+
+    // PULSE_QUORUM_ENTROPY_MIN_LAG defines the most recent block we are willing to use for pulse
+    // entropy.  From there, we walk backwards over the previous blocks to have N distinct entropy
+    // values, where N is our pulse quorum size.
+    //
+    // (In previous releases with always-12 quorum size, the lag was defined by the *starting*
+    // point, but at HF23 that changes so that our *last* entropy block remains the same, and we
+    // just walk backwards more or less depending on our needed quorum size; and so HF22 and earlier
+    // quorum entropy remains unchanged for the pre-HF23 12 member quorums).
+
+    uint64_t const next_height = top_block.get_height() + 1;
+    const uint64_t end_height = next_height - PULSE_QUORUM_ENTROPY_MIN_LAG;
+    const auto quorum_size = PULSE_QUORUM_SIZE(hf, active_snodes);
+    const uint64_t start_height = end_height - quorum_size + 1;
+    if (start_height > next_height || start_height == 0) {
+        // Overflow
         log::error(
                 logcat,
-                "Insufficient blocks to get quorum entropy for Pulse, height is {}, we need {} "
-                "blocks.",
-                top_height,
-                PULSE_QUORUM_ENTROPY_LAG);
+                "Insufficient blocks for pulse at height {}: "
+                "we need at least {} previous blocks for pulse entropy",
+                next_height,
+                quorum_size + PULSE_QUORUM_ENTROPY_MIN_LAG + 1);
         return {};
     }
 
-    uint64_t const start_height = top_height - PULSE_QUORUM_ENTROPY_LAG;
-    uint64_t const end_height = start_height + PULSE_QUORUM_SIZE;
-
     std::vector<cryptonote::block> blocks;
-    blocks.reserve(PULSE_QUORUM_SIZE);
+    blocks.reserve(quorum_size);
 
-    // NOTE: Go backwards from the block and retrieve the blocks for entropy.
-    // We search by block so that this function handles alternatives blocks as
-    // well as mainchain blocks.
+    // NOTE: Walk backwards from the given block by hash rather than retrieving by height because
+    // this function needs to be able to work for altchain blocks as well as mainchain blocks.
     crypto::hash prev_hash = top_block.prev_id;
-    uint64_t prev_height = top_height;
-    while (prev_height > start_height) {
-        cryptonote::block block;
+    for (uint64_t prev_height = next_height - 1; prev_height >= start_height; prev_height--) {
+        cryptonote::block tmp_block;
+        auto& block = prev_height <= end_height ? blocks.emplace_back() : tmp_block;
         if (!find_block_in_db(db, prev_hash, block)) {
             log::error(
                     logcat,
@@ -3399,19 +3435,18 @@ std::vector<crypto::hash> get_pulse_entropy_for_next_block(
                     prev_hash);
             return {};
         }
-
         prev_hash = block.prev_id;
-        if (prev_height >= start_height && prev_height <= end_height)
-            blocks.push_back(block);
-
-        prev_height--;
     }
 
     return make_pulse_entropy_from_blocks(blocks.rbegin(), blocks.rend(), pulse_round);
 }
 
 std::vector<crypto::hash> get_pulse_entropy_for_next_block(
-        cryptonote::BlockchainDB const& db, crypto::hash const& top_hash, uint8_t pulse_round) {
+        cryptonote::BlockchainDB const& db,
+        cryptonote::hf hf,
+        crypto::hash const& top_hash,
+        uint8_t pulse_round,
+        size_t active_nodes) {
     ZoneScoped;
     cryptonote::block top_block;
     if (!find_block_in_db(db, top_hash, top_block)) {
@@ -3420,12 +3455,18 @@ std::vector<crypto::hash> get_pulse_entropy_for_next_block(
         return {};
     }
 
-    return get_pulse_entropy_for_next_block(db, top_block, pulse_round);
+    return get_pulse_entropy_for_next_block(db, hf, top_block, pulse_round, active_nodes);
 }
 
 std::vector<crypto::hash> get_pulse_entropy_for_next_block(
-        cryptonote::BlockchainDB const& db, uint8_t pulse_round) {
-    return get_pulse_entropy_for_next_block(db, db.get_top_block(), pulse_round);
+        const cryptonote::Blockchain& bc, uint8_t pulse_round) {
+    auto top = bc.db().get_top_block();
+    return get_pulse_entropy_for_next_block(
+            bc.db(),
+            bc.get_network_version(top.get_height() + 1),
+            top,
+            pulse_round,
+            bc.service_node_list.active_service_nodes_count());
 }
 
 static bool pulse_candidates_sorter(const pubkey_and_sninfo& a, const pubkey_and_sninfo& b) {
@@ -3449,7 +3490,8 @@ static service_nodes::quorum generate_pulse_quorum_with_candidates(
         uint8_t pulse_round,
         uint64_t block_height) {
     service_nodes::quorum result = {};
-    const size_t MIN_NODE_COUNT = get_config(nettype).PULSE_MIN_SERVICE_NODES;
+    const size_t MIN_NODE_COUNT = service_nodes::PULSE_MIN_ACTIVE_NODES(
+            hf_version, get_config(nettype).PULSE_NETWORK_MINIMUM);
     if (active_snode_list_size < MIN_NODE_COUNT) {
         log::debug(
                 logcat,
@@ -3460,7 +3502,7 @@ static service_nodes::quorum generate_pulse_quorum_with_candidates(
         return result;
     }
 
-    if (pulse_entropy.size() != PULSE_QUORUM_SIZE) {
+    if (pulse_entropy.size() != PULSE_QUORUM_SIZE(hf_version, active_snode_list_size)) {
         log::debug(logcat, "Blockchain has insufficient blocks to generate Pulse data");
         return result;
     }
@@ -3482,11 +3524,13 @@ static service_nodes::quorum generate_pulse_quorum_with_candidates(
     TracyCZoneN(pick_pulse_candidates, "Pick pulse quorum members", true);
     auto running_it = pulse_candidates.begin();
     size_t const partition_index = (pulse_candidates.size() - 1) / 2;
+
+    const size_t num_validators = pulse_entropy.size() - 1;
+
     if (partition_index == 0) {
-        running_it += service_nodes::PULSE_QUORUM_NUM_VALIDATORS;
+        running_it += num_validators;
     } else {
-        for (size_t i = 0; i < service_nodes::PULSE_QUORUM_NUM_VALIDATORS; i++) {
-            crypto::hash const& entropy = pulse_entropy[i + 1];
+        for (const auto& entropy : pulse_entropy | std::views::drop(1)) {
             auto rng = quorum_rng(hf_version, entropy, quorum_type::pulse);
             size_t validators_available = std::distance(running_it, pulse_candidates.end());
             size_t swap_index = tools::uniform_distribution_portable(
@@ -3498,7 +3542,7 @@ static service_nodes::quorum generate_pulse_quorum_with_candidates(
     TracyCZoneEnd(pick_pulse_candidates);
 
     result.workers.push_back(block_producer);
-    result.validators.reserve(PULSE_QUORUM_NUM_VALIDATORS);
+    result.validators.reserve(num_validators);
     for (auto it = pulse_candidates.begin(); it != running_it; it++)
         result.validators.push_back(it->first);
 
@@ -4001,23 +4045,32 @@ block_add_result service_node_list::state_t::update_from_block(
     TracyCZoneN(get_winner_and_gen_pulse_quorum, "Get winner and generate pulse quorum", true);
     crypto::public_key winner_pubkey = get_next_block_leader().key;
     if (hf_version >= hf::hf16_pulse) {
+        auto pulse_q_size = PULSE_QUORUM_SIZE(hf_version, pre_block_precomputed.active_snode_size);
         std::vector<crypto::hash> pulse_entropy_storage;
         std::span<const crypto::hash> pulse_entropy;
-        if (pulse_entropy_feed) {
-            pulse_entropy = pulse_entropy_feed->get_window();
+        if (pulse_entropy_feed && block.pulse.round == 0) {
+            pulse_entropy = pulse_entropy_feed->get_round0_entropy(pulse_q_size);
             // NOTE: In debug mode, test that the entropy window is correct
 #if !defined(NDEBUG)
             for (static bool once = true; once; once = false) {
-                pulse_entropy_storage =
-                        get_pulse_entropy_for_next_block(db, block_hash, block.pulse.round);
+                pulse_entropy_storage = get_pulse_entropy_for_next_block(
+                        db,
+                        hf_version,
+                        block_hash,
+                        block.pulse.round,
+                        pre_block_precomputed.active_snode_size);
                 for (size_t index = 0; index < pulse_entropy.size(); index++) {
                     assert(pulse_entropy[index] == pulse_entropy_storage[index]);
                 }
             }
 #endif
         } else {
-            pulse_entropy_storage =
-                    get_pulse_entropy_for_next_block(db, block_hash, block.pulse.round);
+            pulse_entropy_storage = get_pulse_entropy_for_next_block(
+                    db,
+                    hf_version,
+                    block_hash,
+                    block.pulse.round,
+                    pre_block_precomputed.active_snode_size);
             pulse_entropy = pulse_entropy_storage;
         }
 
@@ -4031,7 +4084,8 @@ block_add_result service_node_list::state_t::update_from_block(
                 block.pulse.round,
                 block.get_height());
 
-        if (verify_pulse_quorum_sizes(pulse_quorum)) {
+        if (verify_pulse_quorum_sizes(
+                    pulse_quorum, hf_version, pre_block_precomputed.active_snode_size)) {
             // NOTE: Send candidate to the back of the list
             for (size_t quorum_index = 0; quorum_index < pulse_quorum.validators.size();
                  quorum_index++) {
@@ -4457,45 +4511,60 @@ bool pulse_entropy_feeder::add_block(
     if (cryptonote::get_block_hash(block) == last_hash)  // Already added
         return true;
 
-    bool seed_window = !init;
-    seed_window |= pulse_round != block.pulse.round;
-    seed_window |= last_hash != block.prev_id;
-
-    if (seed_window) {
-        // NOTE: Seed the entire window with the last window of blocks needed for pulse
-        *this = {};
-        init = true;
+    if (block.prev_id != last_hash) {
+        // We were called with something that *didn't* continue from the last block we added, which
+        // likely means a reorg or we are starting from scratch, so recalculate the full window.
+        // (This isn't hugely expensive, and such reorgs are rare, so it probably isn't worth trying
+        // to pop results off to save a few block fetches in such cases.)
 
         cryptonote::block it;
         it.prev_id = cryptonote::get_block_hash(block);
 
-        for (size_t index = oxen::array_count(data) - 1; index < oxen::array_count(data); index--) {
+        data_offset = 0;
+        for (auto& entropy : data | std::views::take(ENTROPY_NEEDED) | std::views::reverse) {
             if (!find_block_in_db(db, it.prev_id, it)) {
-                *this = {};
+                last_hash = crypto::null<crypto::hash>;
                 return false;
             }
-            data[index] = make_pulse_entropy_from_blocks(&it, &it + 1, block.pulse.round)[0];
+            entropy = make_pulse_entropy_from_blocks(&it, &it + 1, 0)[0];
         }
+
     } else {
-        // NOTE: It is seeded, shift everything down by 1
-        std::memmove(data, data + 1, sizeof(data) - sizeof(data[0]));
+        // NOTE: The previous seed is mostly usable, so we just need to add one to the end and shift
+        // our data offset up by one so that, effectively, we shift our valid entropy window to drop
+        // the oldest off the beginning and append the newest on the end.
+
+        if (data_offset + ENTROPY_NEEDED < data.size())
+            data_offset++;
+        else {
+            // Our current data_offset puts our entropy values at the very end of data, so we need
+            // to shift it back to the beginning (and drop off the first value) so that we have a
+            // spot to append the new block's entropy into.
+            static_assert(
+                    (ENTROPY_NEEDED - 1) * 2 <= std::tuple_size_v<decltype(data)>,
+                    "non-overlapping data is safe to memcpy");
+            std::memcpy(
+                    data.data(),
+                    data.data() + data_offset + 1,
+                    (ENTROPY_NEEDED - 1) * sizeof(decltype(data)::value_type));
+            data_offset = 0;
+        }
 
         // NOTE: Add the block to the end of the window
-        data[oxen::array_count(data) - 1] =
-                make_pulse_entropy_from_blocks(&block, &block + 1, block.pulse.round)[0];
+        data[data_offset + ENTROPY_NEEDED - 1] =
+                make_pulse_entropy_from_blocks(&block, &block + 1, 0)[0];
     }
 
     last_hash = cryptonote::get_block_hash(block);
-    pulse_round = block.pulse.round;
-    assert(init);
+
     return true;
 }
 
-std::span<const crypto::hash> pulse_entropy_feeder::get_window() const {
-    std::span<const crypto::hash> result = {};
-    if (init)
-        result = std::span<const crypto::hash>(data, PULSE_QUORUM_SIZE);
-    return result;
+std::span<const crypto::hash> pulse_entropy_feeder::get_round0_entropy(size_t quorum_size) const {
+    assert(quorum_size <= PULSE_QUORUM_MAX_SIZE);
+    if (!last_hash)
+        return {};
+    return std::span{data.data() + data_offset, PULSE_QUORUM_MAX_SIZE}.last(quorum_size);
 }
 
 block_add_result service_node_list::process_block(
@@ -4619,7 +4688,9 @@ block_add_result service_node_list::process_block(
             old.erase(old.begin(), old.begin() + (old.size() - m_store_quorum_history));
     }
 
+    auto pulse_quorum_size = PULSE_QUORUM_SIZE(block.major_version, active_service_nodes_count());
     pulse_entropy_feed.add_block(blockchain.db(), block);
+
     result = m_state.update_from_block(
             blockchain.db(),
             blockchain.maybe_sqlite_db(),
@@ -4874,15 +4945,17 @@ std::optional<quorum> service_node_list::state_t::get_next_pulse_quorum(
     std::optional<quorum> result;
 
     auto winner_pubkey = get_next_block_leader().key;
+    auto active_snodes = active_service_nodes_infos();
     result = generate_pulse_quorum(
             nettype,
             winner_pubkey,
             hf_version,
-            active_service_nodes_infos(),
-            get_pulse_entropy_for_next_block(db, block_hash, round),
+            active_snodes,
+            get_pulse_entropy_for_next_block(
+                    db, hf_version, block_hash, round, active_snodes.size()),
             round,
             height + 1);
-    if (!verify_pulse_quorum_sizes(*result))
+    if (!verify_pulse_quorum_sizes(*result, hf_version, active_snodes.size()))
         result.reset();
     return result;
 }
@@ -4905,15 +4978,21 @@ std::optional<quorum> service_node_list::state_t::get_pulse_quorum() const {
         return std::nullopt;
     }
 
+    auto active_snodes = prev_state->active_service_nodes_infos();
     auto quorum = generate_pulse_quorum(
             bc.nettype(),
             get_block_leader(&block),
             block.major_version,
-            prev_state->active_service_nodes_infos(),
-            get_pulse_entropy_for_next_block(bc.db(), block.prev_id, block.pulse.round),
+            active_snodes,
+            get_pulse_entropy_for_next_block(
+                    bc.db(),
+                    bc.get_network_version(block.get_height()),
+                    block.prev_id,
+                    block.pulse.round,
+                    active_snodes.size()),
             block.pulse.round,
             block.get_height());
-    if (!verify_pulse_quorum_sizes(quorum))
+    if (!verify_pulse_quorum_sizes(quorum, block.major_version, active_snodes.size()))
         return std::nullopt;
     return quorum;
 }
@@ -5039,17 +5118,22 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
     // NOTE: Setup pulse components
     //
     if (block.has_pulse()) {
-        std::vector<crypto::hash> entropy =
-                get_pulse_entropy_for_next_block(blockchain.db(), block.prev_id, block.pulse.round);
+        auto active_snodes = m_state.active_service_nodes_infos();
+        std::vector<crypto::hash> entropy = get_pulse_entropy_for_next_block(
+                blockchain.db(),
+                hf_version,
+                block.prev_id,
+                block.pulse.round,
+                active_snodes.size());
         quorum pulse_quorum = generate_pulse_quorum(
                 blockchain.nettype(),
                 block_leader.key,
                 hf_version,
-                m_state.active_service_nodes_infos(),
+                active_snodes,
                 entropy,
                 block.pulse.round,
                 block.get_height());
-        if (!verify_pulse_quorum_sizes(pulse_quorum))
+        if (!verify_pulse_quorum_sizes(pulse_quorum, hf_version, active_snodes.size()))
             throw oxen::traced<std::runtime_error>{
                     "Pulse block received but Pulse has insufficient nodes for quorum, block hash {}, height {}"_format(
                             cryptonote::get_block_hash(block), height)};
@@ -5358,6 +5442,7 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
 
     // NOTE: Generate the next Service Node list state from this Alt block.
     state_t alt_state = *starting_state;
+    auto alt_sn_count = alt_state.active_service_nodes_count();
     alt_state.update_from_block(
             blockchain.db(),
             blockchain.maybe_sqlite_db(),
@@ -5375,7 +5460,7 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     else
         m_transient->alt_state.emplace(block_hash, std::move(alt_state));
 
-    verify_block(block, true /*alt_block*/, info.checkpoint);
+    verify_block(block, true /*alt_block*/, info.checkpoint, alt_sn_count);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

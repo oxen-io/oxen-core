@@ -1949,12 +1949,12 @@ namespace {
                        : "Invalid pulse validator bit: missing required field '"sv;
         bt_dict_consumer data{m.data[0]};
         auto type =
-                (bitset) ? pulse::message_type::handshake_bitset : pulse::message_type::handshake;
+                bitset ? pulse::message_type::handshake_bitset : pulse::message_type::handshake;
         pulse::message msg = pulse_parse_msg_header_fields(type, data, INVALID_ARG_PREFIX);
 
         if (bitset) {
             if (auto const& tag = PULSE_TAG_VALIDATOR_BITSET; data.skip_until(tag))
-                msg.payload = data.consume_integer<uint16_t>();
+                msg.payload = data.consume_integer<pulse::bitset_t>();
             else
                 throw oxen::traced<std::invalid_argument>{"{}{}'"_format(INVALID_ARG_PREFIX, tag)};
         }

@@ -2,6 +2,8 @@
 
 #include <chrono>
 
+#include "cryptonote_basic/cryptonote_basic.h"
+#include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "oxen_economy.h"
 #include "service_node_voting.h"
@@ -13,27 +15,58 @@ struct invalid_registration : std::invalid_argument {
     using std::invalid_argument::invalid_argument;
 };
 
-inline constexpr size_t PULSE_QUORUM_ENTROPY_LAG =
-        21;  // How many blocks back from the tip of the Blockchain to source entropy for the Pulse
-             // quorums.
+// Minimum number of blocks back from the tip of the Blockchain to source entropy for the Pulse
+// quorums.  For instance, when this is set to 9, and we need a pulse quorum of 12 then for the
+// pulse quorum for the block with height H we use entropy from blocks [H-10, H-11, ..., H-21] (and
+// this was always the pulse sequence used before HF23).  At HF23 with a quorum of 25 we use [H-10,
+// H-11, ..., H-34] (possibly shortened if there aren't enough active node, which only really
+// matters on testnet/devnet).
+inline constexpr size_t PULSE_QUORUM_ENTROPY_MIN_LAG = 10;
 
-inline constexpr int PULSE_QUORUM_NUM_VALIDATORS = 11;
-inline constexpr int PULSE_QUORUM_SIZE = PULSE_QUORUM_NUM_VALIDATORS + 1 /*Leader*/;
-inline constexpr int PULSE_BLOCK_REQUIRED_SIGNATURES =
-        7;  // A block must have exactly N signatures to be considered properly
+// The largest possible pulse quorum size returnable from PULSE_QUORUM_SIZE
+inline constexpr size_t PULSE_QUORUM_MAX_SIZE = 25;
 
-static_assert(PULSE_QUORUM_NUM_VALIDATORS >= PULSE_BLOCK_REQUIRED_SIGNATURES);
-static_assert(
-        PULSE_QUORUM_ENTROPY_LAG >= PULSE_QUORUM_SIZE,
-        "We need to pull atleast PULSE_QUORUM_SIZE number of blocks from the Blockchain, we can't "
-        "if the amount of blocks to go back from the tip of the Blockchain is less than the blocks "
-        "we need.");
+// The largest number of validators in a pulse quorum
+inline constexpr size_t PULSE_QUORUM_MAX_VALIDATORS = PULSE_QUORUM_MAX_SIZE - 1;
 
-constexpr uint16_t pulse_validator_bit_mask() {
-    uint16_t result = 0;
-    for (int validator_index = 0; validator_index < PULSE_QUORUM_NUM_VALIDATORS; validator_index++)
-        result |= 1 << validator_index;
-    return result;
+// Returns the minimum number of nodes required for pulse, which is at least 12 before HF23 and at
+// last 8 from HF23+ onwards.  Note, however, that the second argument here is the network_config
+// PULSE_MIN_SERVICE_NODES value, and takes precedence if higher than the 12/8 minimum.
+inline constexpr size_t PULSE_MIN_ACTIVE_NODES(
+        cryptonote::hf hf, size_t netconf_pulse_network_minimum) {
+    return std::max<size_t>(
+            hf < cryptonote::hf::hf23_larger_pulse ? 12 : 8, netconf_pulse_network_minimum);
+}
+
+// Before HF23, pulse quorums always use 11 validators (for a quorum size of 12, including the block
+// proposer).  Starting at HF23, pulse quorum sizes typically use 20 validators (total size 21), but
+// can drop as low as 7 validators if there aren't enough active nodes on the network (which happens
+// sometimes on the much smaller testnet/devnet).
+inline constexpr size_t PULSE_QUORUM_NUM_VALIDATORS(cryptonote::hf hf, size_t active_nodes) {
+    if (hf < cryptonote::hf::hf23_larger_pulse)
+        return 11;
+    return std::max<size_t>(7, std::min(active_nodes - 1, PULSE_QUORUM_MAX_SIZE - 1));
+}
+inline constexpr size_t PULSE_QUORUM_SIZE(cryptonote::hf hf, int active_nodes) {
+    return PULSE_QUORUM_NUM_VALIDATORS(hf, active_nodes) + 1 /*Leader*/;
+}
+
+// Before HF23 we always required exactly 7 signatures from the 11 validators; from HF23+ onwards,
+// we require ⌈⅔ V⌉.  (There was a faulty assumption earlier than there was an implicit agreement of
+// the block producer, and so 7/11 really meant 8/12, but that wasn't correct: a compromised quorum
+// could ignore the block producer's block and substitute their own).
+inline constexpr size_t PULSE_BLOCK_REQUIRED_SIGNATURES(cryptonote::hf hf, size_t num_validators) {
+    assert(num_validators <= PULSE_QUORUM_MAX_VALIDATORS);
+    if (hf < cryptonote::hf::hf23_larger_pulse)
+        return 7;
+    // Round up:
+    return (num_validators * 2 + 2) / 3;
+}
+
+// Returns the bitmask for a pulse validator quorum of `num_validators` validators.  (In other
+// words, this is a numeric value with `num_validators` 1 bits set).
+inline constexpr pulse::bitset_t pulse_validator_bit_mask(size_t num_validators) {
+    return (pulse::bitset_t{1} << num_validators) - 1;
 }
 
 // Service node decommissioning: as service nodes stay up they earn "credits" (measured in blocks)

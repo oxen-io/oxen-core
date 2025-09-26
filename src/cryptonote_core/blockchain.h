@@ -462,7 +462,7 @@ class Blockchain {
             block& b,
             const service_nodes::payout& block_producer,
             uint8_t round,
-            uint16_t validator_bitset,
+            pulse::bitset_t validator_bitset,
             uint64_t& height,
             std::vector<std::string>* state_change_txes = nullptr);
 
