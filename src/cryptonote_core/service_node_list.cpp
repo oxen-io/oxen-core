@@ -7192,7 +7192,10 @@ bool service_node_info::can_be_voted_on(uint64_t height) const {
 }
 
 bool service_node_info::can_transition_to_state(
-        hf hf_version, uint64_t height, new_state proposed_state) const {
+        cryptonote::network_type nettype,
+        hf hf_version,
+        uint64_t height,
+        new_state proposed_state) const {
     if (hf_version >= hf::hf13_enforce_checkpoints) {
         if (!can_be_voted_on(height)) {
             log::debug(
@@ -7233,6 +7236,22 @@ bool service_node_info::can_transition_to_state(
         }
     }
 
+    // Before HF23, we didn't have any blockchain-level restriction on deregs: rather the obligation
+    // quorum members decided independently which was the appropriate state to switch to.  Starting
+    // at HF23 we enforce dereg restrictions at the chain level so that a rogue obligation quorum
+    // does not have the theoretical ability to deregister nodes from the network that still have
+    // sufficient decomm credit to become or remain decommissioned.
+    if (proposed_state == new_state::deregister && hf_version >= feature::CONCENSUS_DEREG_CHECK) {
+        auto credit = quorum_cop::calculate_decommission_credit(nettype, *this, height);
+        auto min_credit =
+                is_decommissioned() ? 1 : get_config(nettype).BLOCKS_IN(DECOMMISSION_MINIMUM);
+        if (credit >= min_credit) {
+            log::debug(
+                    logcat, "SN deregister vote invalid: node has {} blocks decomm credit", credit);
+            return false;
+        }
+    }
+
     if (is_decommissioned()) {
         if (proposed_state == new_state::decommission) {
             log::debug(logcat, "SN decommission invalid: already decommissioned");
@@ -7243,9 +7262,10 @@ bool service_node_info::can_transition_to_state(
         }
         return true;  // recomm or dereg
     } else if (proposed_state == new_state::recommission) {
-        log::debug(logcat, "SN recommission invalid: not recommissioned");
+        log::debug(logcat, "SN recommission invalid: not decommissioned");
         return false;
     }
+
     log::trace(logcat, "SN state change is valid");
     return true;
 }

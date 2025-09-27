@@ -4713,11 +4713,11 @@ bool Blockchain::check_tx_inputs(
 
             const auto& service_node_info = *service_node_array[0].info;
             if (!service_node_info.can_transition_to_state(
-                        hf_version, state_change.block_height, state_change.state)) {
+                        nettype(), hf_version, state_change.block_height, state_change.state)) {
                 log::error(
                         logverify,
-                        "State change trying to vote Service Node into the same state is invalid "
-                        "(expired, already applied, or impossible)");
+                        "Invalid state change: Service Node vote is expired, invalid, or already "
+                        "applied");
                 tvc.m_double_spend = true;
                 return false;
             }
@@ -5828,7 +5828,8 @@ bool Blockchain::handle_block_to_main_chain(
 
     abort_block.cancel();
     uint64_t const fee_after_penalty = get_outs_money_amount(bl.miner_tx) - base_reward;
-    if (bl.signatures.size() == service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(hf_version, prev_active_sns)) {
+    if (bl.signatures.size() ==
+        service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(hf_version, prev_active_sns)) {
         log::info(
                 logcat,
                 "\n+++++ PULSE BLOCK SUCCESSFULLY ADDED\n\tid: {}\n\tHEIGHT: {}, v{}.{}\n\tblock "

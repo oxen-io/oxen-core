@@ -298,6 +298,7 @@ namespace feature {
     constexpr auto ETH_TRANSITION = hf::hf20_eth_transition;
     constexpr auto ETH_BLS = hf::hf21_eth;
     constexpr auto SN_PK_IS_ED25519 = hf::hf21_eth;
+    constexpr auto CONCENSUS_DEREG_CHECK = hf::hf23_larger_pulse;
 }  // namespace feature
 
 enum class network_type : uint8_t {

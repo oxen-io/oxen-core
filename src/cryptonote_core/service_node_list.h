@@ -359,7 +359,10 @@ struct service_node_info  // registration information
     }
 
     bool can_transition_to_state(
-            cryptonote::hf hf_version, uint64_t block_height, new_state proposed_state) const;
+            cryptonote::network_type nettype,
+            cryptonote::hf hf_version,
+            uint64_t block_height,
+            new_state proposed_state) const;
     bool can_be_voted_on(uint64_t block_height) const;
     size_t total_num_locked_contributions() const;
 
