@@ -48,4 +48,5 @@ target_link_libraries(daemon
     version
     SQLiteCpp
     systemd
+    jemalloc::jemalloc
     extra)

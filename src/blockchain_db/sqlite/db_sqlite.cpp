@@ -815,7 +815,13 @@ BlockchainSQLite::wallet_info::wallet_info(
         lifetime_unlocked_stakes = reward_money::from_db_atomic(life_unlocked);
         lifetime_liquidated_stakes = reward_money::from_db_atomic(life_liquidated);
         lifetime_rewards = reward_money::from_db_amount(life_rewards, *hf_version);
-        locked_stakes = lifetime_locked_stakes - lifetime_unlocked_stakes;
+        // LOCKED = STAKES_IN - STAKES_OUT, where STAKES_IN are contributions made, and STAKES_OUT
+        // consists of both the amount that got released back to you (lifetime_unlocked_stakes)
+        // *and* any liquidation amounts that got subtracted from your balance in case of a
+        // liquidation (to match the liquidation amount that got transferred into the pool and
+        // liquidator via the SNRewards contract liquidation call).
+        locked_stakes =
+                lifetime_locked_stakes - lifetime_unlocked_stakes - lifetime_liquidated_stakes;
 
         // NOTE: Some of these fields are only enumerated on ETH addresses so gate error
         // checking behind said flag.
@@ -824,8 +830,11 @@ BlockchainSQLite::wallet_info::wallet_info(
             assert(!lifetime_unlocked_stakes.negative());
             assert(!lifetime_rewards.negative());
 
-            auto rederived =
-                    lifetime_unlocked_stakes + lifetime_rewards - lifetime_liquidated_stakes;
+            // Your lifetime claimable amount (`amount`) should equal exactly whatever stakes came
+            // back to you via unlocking, plus whatever rewards you have ever earned.  (But no
+            // liquidated amounts, since those *don't* come back to you and don't enter
+            // `unlocked_stakes`):
+            auto rederived = lifetime_unlocked_stakes + lifetime_rewards;
             if (amount != rederived) {
                 // clang-format off
                 // NOTE: The affected address that we patched up in the fixups in SNL received a
@@ -843,14 +852,15 @@ BlockchainSQLite::wallet_info::wallet_info(
                             logcat,
                             "Internal error: SN contributor {} at height {} lifetime claimable "
                             "mismatch:\n"
-                            "lifetime claimable {} != {} (= {} rewards + {} unlocked - {} "
-                            "liquidated)",
+                            "lifetime claimable {} != {} (= {} rewards + {} unlocked) [lifetime "
+                            "stakes={}, liquidated={}]",
                             log_addr{tools::make_from_guts<eth::address>(addr_bytes)},
                             height,
                             amount,
                             rederived,
                             lifetime_rewards,
                             lifetime_unlocked_stakes,
+                            lifetime_locked_stakes,
                             lifetime_liquidated_stakes);
                     assert(amount == rederived);
                 }
