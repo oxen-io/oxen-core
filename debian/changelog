@@ -1,3 +1,9 @@
+oxen (11.5.0-1~ubuntu2510) questing; urgency=medium
+
+  * questing packaging
+
+ -- Jason Rhinelander <jason@session.foundation>  Fri, 17 Oct 2025 14:48:30 -0300
+
 oxen (11.5.0-1~ubuntu2504) plucky; urgency=medium
 
   [ doylet ]
