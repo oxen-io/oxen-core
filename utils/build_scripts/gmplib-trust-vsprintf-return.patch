@@ -1,0 +1,71 @@
+From: Marco Bodrato <bodrato@mail.dm.unipi.it>
+Date: Mon Mar 25 17:32:22 2024 +0100
+Subject: Trust return value of {v}sprintf, and use it
+
+Forwarded: not-needed
+
+Patch from upstream repo: https://gmplib.org/repo/gmp/raw-rev/4ac76064639e
+Related discussion:
+* https://gmplib.org/list-archives/gmp-bugs/2023-December/005420.html
+* https://gmplib.org/list-archives/gmp-bugs/2024-April/005472.html
+
+
+# HG changeset patch
+# User Marco Bodrato <bodrato@mail.dm.unipi.it>
+# Date 1711384509 -3600
+# Node ID 4ac76064639e5df52967ea1e15d5a8eec94c107e
+# Parent  ecd302aa86e386fb709877c42956979ca7136574
+printf/: Trust return value of {v}sprintf, and use it.
+
+diff -r ecd302aa86e3 -r 4ac76064639e printf/doprntf.c
+--- a/printf/doprntf.c	Mon Mar 25 17:32:22 2024 +0100
++++ b/printf/doprntf.c	Mon Mar 25 17:35:09 2024 +0100
+@@ -267,8 +267,7 @@
+ 	 mean truncation */
+       ASSERT (explen >= 0 && explen < sizeof(exponent)-1);
+ #else
+-      sprintf (exponent, p->expfmt, expsign, expval);
+-      explen = strlen (exponent);
++      explen = sprintf (exponent, p->expfmt, expsign, expval);
+       ASSERT (explen < sizeof(exponent));
+ #endif
+       TRACE (printf ("  expfmt %s gives %s\n", p->expfmt, exponent));
+diff -r ecd302aa86e3 -r 4ac76064639e printf/repl-vsnprintf.c
+--- a/printf/repl-vsnprintf.c	Mon Mar 25 17:32:22 2024 +0100
++++ b/printf/repl-vsnprintf.c	Mon Mar 25 17:35:09 2024 +0100
+@@ -364,16 +364,14 @@
+ 
+   if (total_width <= buf_size)
+     {
+-      vsprintf (buf, orig_fmt, orig_ap);
+-      len = strlen (buf);
++      len = vsprintf (buf, orig_fmt, orig_ap);
+     }
+   else
+     {
+       char  *s;
+ 
+       s = __GMP_ALLOCATE_FUNC_TYPE (total_width, char);
+-      vsprintf (s, orig_fmt, orig_ap);
+-      len = strlen (s);
++      len = vsprintf (s, orig_fmt, orig_ap);
+       if (buf_size != 0)
+ 	{
+ 	  size_t  copylen = MIN (len, buf_size-1);
+diff -r ecd302aa86e3 -r 4ac76064639e printf/sprintffuns.c
+--- a/printf/sprintffuns.c	Mon Mar 25 17:32:22 2024 +0100
++++ b/printf/sprintffuns.c	Mon Mar 25 17:35:09 2024 +0100
+@@ -53,9 +53,9 @@
+ {
+   char  *buf = *bufp;
+   int   ret;
+-  vsprintf (buf, fmt, ap);
+-  ret = strlen (buf);
+-  *bufp = buf + ret;
++  ret = vsprintf (buf, fmt, ap);
++  if (ret > 0)
++    *bufp = buf + ret;
+   return ret;
+ }
+ 
+
