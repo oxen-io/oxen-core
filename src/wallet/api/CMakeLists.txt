@@ -137,7 +137,7 @@ if (STATIC AND BUILD_STATIC_DEPS)
             ${optional_deps}
 
             # Static deps:
-            Boost::program_options Boost::serialization Boost::system Boost::thread
+            Boost::program_options Boost::serialization Boost::thread
             CURL::libcurl
             SQLite::SQLite3
             SQLiteCpp

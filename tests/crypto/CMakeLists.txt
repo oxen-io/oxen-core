@@ -37,7 +37,7 @@ add_executable(cncrypto-tests
 target_link_libraries(cncrypto-tests
   PRIVATE
     common
-    Boost::system
+    Boost::boost
     extra)
 set_property(TARGET cncrypto-tests
   PROPERTY
