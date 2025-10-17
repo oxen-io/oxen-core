@@ -113,7 +113,7 @@ local debian_pipeline(name,
 local clang(version, lto=true) = debian_pipeline(
   'Debian sid/clang-' + version + ' (amd64)',
   docker_base + 'debian-sid-clang',
-  deps=['clang-' + version, 'llvm-' + version] + default_deps_nocxx,
+  deps=['clang-' + version, 'clang-tools-' + version, 'llvm-' + version] + default_deps_nocxx,
   cmake_extra='-DCMAKE_C_COMPILER=clang-' + version + ' -DCMAKE_CXX_COMPILER=clang++-' + version + ' ',
   lto=lto,
   build_everything=true
