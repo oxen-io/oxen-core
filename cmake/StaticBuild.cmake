@@ -741,6 +741,7 @@ set(zstd_cmake_extra)
 foreach(opt IN ITEMS
         CMAKE_C_COMPILER_LAUNCHER
         CMAKE_TOOLCHAIN_FILE
+        CMAKE_OSX_DEPLOYMENT_TARGET
         PLATFORM
         DEPLOYMENT_TARGET
         ENABLE_VISIBILITY
