@@ -10,6 +10,7 @@ Build-Depends: debhelper (>= 11), cmake (>= 3.10), ninja-build, g++, qttools5-de
     libssl-dev,
     libfmt-dev, libspdlog-dev,
     libreadline-dev, libhidapi-dev, libusb-1.0-0-dev, libprotobuf-dev, protobuf-compiler, python3, pkg-config,
+    libjemalloc-dev,
     libsystemd-dev, libsqlite3-dev, liboxenmq-dev (>= 1.2.19), libcurl4-dev
 Standards-Version: 4.1.3
 Homepage: https://oxen.io
