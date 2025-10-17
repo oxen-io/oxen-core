@@ -409,7 +409,8 @@ void serialize_object(Archive& ar, pulse_header& p) {
     field(ar, "round", p.round);
     field_varint(ar, "validator_bitset", p.validator_bitset);
 }
-// Serialization invoked for pre-HF23 blocks, where validator_bitset is a raw little-endian uint16_t.
+// Serialization invoked for pre-HF23 blocks, where validator_bitset is a raw little-endian
+// uint16_t.
 template <typename Archive>
 void serialize_object(Archive& ar, pulse_header_base& p) {
     field(ar, "random_value", p.random_value);

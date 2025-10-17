@@ -548,7 +548,8 @@ struct pulse_entropy_feeder {
     // ENTROPY_NEEDED] are set to the entropy values for the last ENTROPY_NEEDED blocks.  The
     // underlying data array is larger so that we can reduce how often we have to shift elements in
     // it.
-    inline static constexpr size_t ENTROPY_NEEDED = PULSE_QUORUM_MAX_SIZE + PULSE_QUORUM_ENTROPY_MIN_LAG + 1;
+    inline static constexpr size_t ENTROPY_NEEDED =
+            PULSE_QUORUM_MAX_SIZE + PULSE_QUORUM_ENTROPY_MIN_LAG + 1;
 
     std::array<crypto::hash, 2 * ENTROPY_NEEDED - 1> data = {};
     size_t data_offset = 0;

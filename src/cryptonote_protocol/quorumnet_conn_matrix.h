@@ -97,7 +97,7 @@ template <int N>
 constexpr static std::array<bool, N * N> quorum_conn_matrix =
         requested_quorum_size_is_not_defined<N>();
 
-//clang-format off
+// clang-format off
 
 template <>
 inline constexpr std::array<bool, 7 * 7> quorum_conn_matrix<7>{{

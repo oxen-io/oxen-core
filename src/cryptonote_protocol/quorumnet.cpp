@@ -1948,8 +1948,7 @@ namespace {
                 bitset ? "Invalid pulse validator bitset: missing required field '"sv
                        : "Invalid pulse validator bit: missing required field '"sv;
         bt_dict_consumer data{m.data[0]};
-        auto type =
-                bitset ? pulse::message_type::handshake_bitset : pulse::message_type::handshake;
+        auto type = bitset ? pulse::message_type::handshake_bitset : pulse::message_type::handshake;
         pulse::message msg = pulse_parse_msg_header_fields(type, data, INVALID_ARG_PREFIX);
 
         if (bitset) {

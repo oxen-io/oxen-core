@@ -111,7 +111,7 @@ static bool bounds_check_worker_index(
                 logcat,
                 "Quorum worker index in was out of bounds: {}, expected 0-{}",
                 worker_index,
-                quorum.workers.size()-1);
+                quorum.workers.size() - 1);
         return false;
     }
     return true;
