@@ -2,6 +2,7 @@
 
 #include <spdlog/sinks/rotating_file_sink.h>
 
+#include <iostream>
 #include <oxen/log.hpp>
 
 #include "common/format.h"
@@ -47,6 +48,7 @@ void set_additional_log_categories(log::Level log_level) {
             log::set_level("txpool", log::Level::warn);
             log::set_level("construct_tx", log::Level::warn);
             log::set_level("pulse", log::Level::warn);
+            log::set_level("oxenmq", log::Level::warn);
             break;
         case log::Level::debug: break;
         case log::Level::trace: break;
@@ -127,18 +129,6 @@ log::Level parse_level(uint8_t input) {
         case 2: return log::Level::debug;
         default: return log::Level::trace;
     }
-}
-
-log::Level parse_level(oxenmq::LogLevel input) {
-    switch (input) {
-        case oxenmq::LogLevel::trace: return log::Level::trace;
-        case oxenmq::LogLevel::debug: return log::Level::debug;
-        case oxenmq::LogLevel::info: return log::Level::info;
-        case oxenmq::LogLevel::warn: return log::Level::warn;
-        case oxenmq::LogLevel::error: return log::Level::err;
-        case oxenmq::LogLevel::fatal: return log::Level::critical;
-    }
-    return log::Level::trace;
 }
 
 }  // namespace oxen::logging
