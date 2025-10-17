@@ -1,3 +1,16 @@
+oxen (11.6.0-1~deb13) trixie; urgency=medium
+
+  * update service-node metapackage versions
+  * Dependency updates
+  * fix clang builds missing clang-tools
+  * drop older distros from deb snapshot builds
+  * macos static build fix
+  * Optionally link to jemalloc
+  * Fix false positive error logs about liquidation mismatch
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Fri, 17 Oct 2025 14:50:26 -0300
+
 oxen (11.5.0-1~deb13) trixie; urgency=medium
 
   [ doylet ]
