@@ -5,12 +5,12 @@
 
 set(LOCAL_MIRROR "" CACHE STRING "local mirror path/URL for lib downloads")
 
-set(BOOST_VERSION 1.88.0 CACHE STRING "boost version")
+set(BOOST_VERSION 1.89.0 CACHE STRING "boost version")
 set(BOOST_MIRROR ${LOCAL_MIRROR} https://archives.boost.io/release/${BOOST_VERSION}/source
     CACHE STRING "boost download mirror(s)")
 string(REPLACE "." "_" BOOST_VERSION_ ${BOOST_VERSION})
 set(BOOST_SOURCE boost_${BOOST_VERSION_}.tar.bz2)
-set(BOOST_HASH SHA256=46d9d2c06637b219270877c9e16155cbd015b6dc84349af064c088e9b5b12f7b
+set(BOOST_HASH SHA256=85a33fa22621b4f314f8e85e1a5e2a9363d22e4f4992925d4bb3bc631b5a0c7a
     CACHE STRING "boost source hash")
 
 set(NCURSES_VERSION 6.5 CACHE STRING "ncurses version")
@@ -27,11 +27,11 @@ set(READLINE_SOURCE readline-${READLINE_VERSION}.tar.gz)
 set(READLINE_HASH SHA512=0a451d459146bfdeecc9cdd94bda6a6416d3e93abd80885a40b334312f16eb890f8618a27ca26868cebbddf1224983e631b1cbc002c1a4d1cd0d65fba9fea49a
     CACHE STRING "readline source hash")
 
-set(SQLITE3_VERSION 3490100 CACHE STRING "sqlite3 version")
+set(SQLITE3_VERSION 3500400 CACHE STRING "sqlite3 version")
 set(SQLITE3_MIRROR ${LOCAL_MIRROR} https://www.sqlite.org/2025
     CACHE STRING "sqlite3 download mirror(s)")
 set(SQLITE3_SOURCE sqlite-autoconf-${SQLITE3_VERSION}.tar.gz)
-set(SQLITE3_HASH SHA512=ace92f20fb13a28a8be0eb3560ebf79e71e882611108179b45abba6e77ec0964d75a96c1e187c0e5f883b83896fd44074ef244e1f589288b6354bc9db85223ca
+set(SQLITE3_HASH SHA512=5862fc81fc087fd7280d9c7a701f972c35288d9f1fee4863443c35201e8db43a642a5f0d6eb81f8d0637859303a38301b459ffd1c39cd8283e18cbc4ae413aa1
     CACHE STRING "sqlite3 source hash")
 
 if(SQLITE3_VERSION MATCHES "^([0-9]+)(0([0-9])|([1-9][0-9]))(0([0-9])|([1-9][0-9]))[0-9][0-9]$")
@@ -102,10 +102,10 @@ set(CURL_SOURCE curl-${CURL_VERSION}.tar.xz)
 set(CURL_HASH SHA512=d266e460f162ee455b56726e5b7247b2d1aa5265ae12081513fc0c5c79e785a594097bc71d505dc9bcd2c2f6f1ff6f4bab9dbd9d120bb76d06c5be8521a8ca7d
     CACHE STRING "curl source hash")
 
-set(OPENSSL_VERSION 3.5.0 CACHE STRING "openssl version")
+set(OPENSSL_VERSION 3.5.4 CACHE STRING "openssl version")
 set(OPENSSL_MIRROR ${LOCAL_MIRROR} https://github.com/openssl/openssl/releases/download/openssl-${OPENSSL_VERSION} CACHE STRING "openssl download mirror(s)")
 set(OPENSSL_SOURCE openssl-${OPENSSL_VERSION}.tar.gz)
-set(OPENSSL_HASH SHA256=344d0a79f1a9b08029b0744e2cc401a43f9c90acd1044d09a530b4885a8e9fc0
+set(OPENSSL_HASH SHA256=967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99
     CACHE STRING "openssl source hash")
 
 set(LIBICONV_VERSION 1.18 CACHE STRING "libiconv version")
@@ -122,11 +122,11 @@ set(LIBUNISTRING_SOURCE libunistring-${LIBUNISTRING_VERSION}.tar.xz)
 set(LIBUNISTRING_HASH SHA512=864d42b1d4ae4941fe5c8327d6726ab8e3a35d2d5f9d25ce4859a72ab2f549a7b68f58638cf8767d863f58161d1a4053495d185860964a942d6750e42facf931
     CACHE STRING "libunistring source hash")
 
-set(LIBIDN2_VERSION 2.3.4 CACHE STRING "libidn2 version")
+set(LIBIDN2_VERSION 2.3.8 CACHE STRING "libidn2 version")
 set(LIBIDN2_MIRROR ${LOCAL_MIRROR} https://ftp.gnu.org/gnu/libidn
     CACHE STRING "libidn2 mirror(s)")
 set(LIBIDN2_SOURCE libidn2-${LIBIDN2_VERSION}.tar.gz)
-set(LIBIDN2_HASH SHA512=a6e90ccef56cfd0b37e3333ab3594bb3cec7ca42a138ca8c4f4ce142da208fa792f6c78ca00c01001c2bc02831abcbaf1cf9bcc346a5290fd7b30708f5a462f3
+set(LIBIDN2_HASH SHA512=4d8427c0f115268132f7544e80a808c883ab1406338f6c529b1a586b016d57aedb0857f66166eb8d9f37d70efc9dccf907b673b43b17bcf258c8797db1e829ce
     CACHE STRING "libidn2 source hash")
 
 set(LIBTASN1_VERSION 4.19.0 CACHE STRING "libtasn1 version")
@@ -429,12 +429,11 @@ build_external(boost
       threading=multi threadapi=${boost_threadapi} ${boost_buildflags} cxxstd=17 visibility=global
       --disable-icu --user-config=${CMAKE_CURRENT_BINARY_DIR}/user-config.bjam
       --prefix=${DEPS_DESTDIR} --exec-prefix=${DEPS_DESTDIR} --libdir=${DEPS_DESTDIR}/lib --includedir=${DEPS_DESTDIR}/include
-      --with-program_options --with-system --with-thread --with-serialization --layout=system
+      --with-program_options --with-thread --with-serialization --with-asio --layout=system
       install
   BUILD_BYPRODUCTS
     ${DEPS_DESTDIR}/lib/libboost_program_options.a
     ${DEPS_DESTDIR}/lib/libboost_serialization.a
-    ${DEPS_DESTDIR}/lib/libboost_system.a
     ${DEPS_DESTDIR}/lib/libboost_thread.a
     ${DEPS_DESTDIR}/include/boost/version.hpp
 )
@@ -442,7 +441,7 @@ add_library(boost_core INTERFACE)
 add_dependencies(boost_core INTERFACE boost_external)
 target_include_directories(boost_core SYSTEM INTERFACE ${DEPS_DESTDIR}/include)
 add_library(Boost::boost ALIAS boost_core)
-foreach(boostlib program_options serialization system thread)
+foreach(boostlib program_options serialization thread)
   add_static_target(Boost::${boostlib} boost_external libboost_${boostlib}.a)
   target_link_libraries(Boost::${boostlib} INTERFACE boost_core)
 endforeach()
@@ -713,6 +712,7 @@ build_external(libunistring
 add_static_target(libunistring::libunistring libunistring_external libunistring.a libiconv::libiconv)
 
 build_external(libidn2
+    PATCH_COMMAND patch -p1 -i ${CMAKE_CURRENT_LIST_DIR}/../utils/build_scripts/libidn2-no-tools.patch
     CONFIGURE_COMMAND ./configure --disable-shared --disable-doc --prefix=${DEPS_DESTDIR} --with-pic
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cflags_arch}"
         ${sane_cross_host} ${cross_extra}
@@ -725,6 +725,9 @@ if(ANDROID AND ANDROID_ABI STREQUAL "armeabi-v7a")
     list(APPEND gmp_config_extra "--disable-assembly")
 endif()
 build_external(gmp
+    PATCH_COMMAND
+        patch -p1 -i ${CMAKE_CURRENT_LIST_DIR}/../utils/build_scripts/gmplib-fix-acinclude-m4-for-gcc-15.patch &&
+        patch -p1 -i ${CMAKE_CURRENT_LIST_DIR}/../utils/build_scripts/gmplib-trust-vsprintf-return.patch
     CONFIGURE_COMMAND ./configure ${sane_cross_host} --disable-shared --prefix=${DEPS_DESTDIR} --with-pic=yes ${gmp_config_extra}
         "CC=${deps_cc}" "CXX=${deps_cxx}" "CFLAGS=${deps_CFLAGS}${apple_cflags_arch}" "CXXFLAGS=${deps_CXXFLAGS}${apple_cxxflags_arch}"
         "LDFLAGS=-L${DEPS_DESTDIR}/lib${apple_ldflags_arch}" CC_FOR_BUILD=cc CPP_FOR_BUILD=cpp
