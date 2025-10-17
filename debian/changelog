@@ -1,5 +1,19 @@
 oxen (11.6.0-1) sid; urgency=medium
 
+  * Optionally link to jemalloc
+  * Fix false positive error logs about liquidation mismatch
+  * Dependency updates
+  * fix clang builds missing clang-tools
+  * drop older distros from deb snapshot builds
+  * macos static build fix
+  * add jemalloc to build deps
+  * bump version
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Fri, 17 Oct 2025 19:47:06 -0300
+
+oxen (11.6.0-1) sid; urgency=medium
+
   * update service-node metapackage versions
   * Dependency updates
   * fix clang builds missing clang-tools
