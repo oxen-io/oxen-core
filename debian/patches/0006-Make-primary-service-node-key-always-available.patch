@@ -12,7 +12,7 @@ simplify that greatly.
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/src/cryptonote_core/cryptonote_core.cpp b/src/cryptonote_core/cryptonote_core.cpp
-index 912e98d..830491d 100644
+index 5a5532c..36d6f53 100644
 --- a/src/cryptonote_core/cryptonote_core.cpp
 +++ b/src/cryptonote_core/cryptonote_core.cpp
 @@ -1162,7 +1162,7 @@ bool core::init_service_keys() {
