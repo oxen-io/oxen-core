@@ -41,6 +41,5 @@ void set_additional_log_categories(log::Level log_level);
 void apply_categories_string(std::string_view categories);
 
 log::Level parse_level(uint8_t input);
-log::Level parse_level(oxenmq::LogLevel input);
 
 }  // namespace oxen::logging

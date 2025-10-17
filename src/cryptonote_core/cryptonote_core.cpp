@@ -1281,18 +1281,7 @@ void core::init_oxenmq(const boost::program_options::variables_map& vm) {
             m_service_node,
             [this](std::string_view x25519_pk) {
                 return service_node_list.remote_lookup(x25519_pk);
-            },
-            [](LogLevel omqlevel, const char* file, int line, std::string msg) {
-                auto level = oxen::logging::parse_level(omqlevel);
-                if (omqlogcat->should_log(level))
-                    omqlogcat->log({file, line, "omq"}, level, "{}", msg);
-            },
-#ifdef NDEBUG
-            oxenmq::LogLevel::debug
-#else
-            oxenmq::LogLevel::trace
-#endif
-    );
+            });
 
     // ping.ping: a simple debugging target for pinging the omq listener
     m_omq->add_category("ping", Access{AuthLevel::none})
