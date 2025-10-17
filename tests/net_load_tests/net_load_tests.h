@@ -32,8 +32,6 @@
 
 #include <atomic>
 
-#include <boost/asio/io_service.hpp>
-
 #include "epee/net/net_utils_base.h"
 #include "epee/string_tools.h"
 #include "epee/net/levin_protocol_handler_async.h"
