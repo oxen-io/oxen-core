@@ -61,8 +61,14 @@ struct network_config final {
     // failed testing, as deactivating too many at once can cause swarm issues.
     const size_t MAX_DEACTIVATE_PER_BLOCK;
 
-    // True if this network requires storage server and lokinet.
-    const bool HAVE_STORAGE_AND_LOKINET;
+    // True if this network requires storage server
+    const bool HAVE_STORAGE_SERVER;
+
+    // True if this network requires Session Router
+    const bool HAVE_SESSION_ROUTER;
+
+    // True if this network requires lokinet
+    const bool HAVE_LOKINET;
 
     // The ideal block time.  Before the pulse hardfork, the actual block time compared to this
     // determines the difficulty of subsequent blocks; with pulse this determines when each pulse

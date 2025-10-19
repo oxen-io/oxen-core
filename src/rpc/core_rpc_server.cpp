@@ -292,6 +292,7 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
         if (sn) {
             info.response["last_storage_server_ping"] = m_core.m_last_storage_server_ping.load();
             info.response["last_lokinet_ping"] = m_core.m_last_lokinet_ping.load();
+            info.response["last_session_router_ping"] = m_core.m_last_srouter_ping.load();
         }
         info.response["free_space"] = m_core.get_free_space();
     }
@@ -2966,6 +2967,8 @@ void core_rpc_server::fill_sn_response_entry(
                     m_core.lokinet_version,
                     "storage_server_version",
                     m_core.ss_version,
+                    "session_router_version",
+                    m_core.srouter_version,
                     "version_tag",
                     OXEN_VERSION_TAG,
                     "public_ip",
@@ -2995,8 +2998,8 @@ void core_rpc_server::fill_sn_response_entry(
                         proof.proof->lokinet_version,
                         "storage_server_version",
                         proof.proof->storage_server_version,
-                        "version_tag",
-                        proof.proof->version_tag,
+                        "session_router_version",
+                        proof.proof->session_router_version,
                         "public_ip",
                         epee::string_tools::get_ip_string_from_int32(proof.proof->public_ip),
                         "storage_port",
@@ -3005,6 +3008,8 @@ void core_rpc_server::fill_sn_response_entry(
                         proof.proof->storage_omq_port,
                         "quorumnet_port",
                         proof.proof->qnet_port);
+            if (requested(reqed, "version_tag") && !proof.proof->version_tag.empty())
+                entry["version_tag"] = proof.proof->version_tag;
             if (hf < feature::SN_PK_IS_ED25519 && proof.proof->pubkey_ed25519)
                 set_if_requested(
                         reqed,
@@ -3025,41 +3030,35 @@ void core_rpc_server::fill_sn_response_entry(
         auto steady_now = std::chrono::steady_clock::now();
         set_if_requested(reqed, entry, "last_uptime_proof", proof.timestamp);
         if (m_core.service_node()) {
-            set_if_requested(
-                    reqed,
-                    entry,
-                    "storage_server_reachable",
-                    !proof.ss_reachable.unreachable_for(
-                            netconf.UPTIME_PROOF_VALIDITY - netconf.UPTIME_PROOF_FREQUENCY,
-                            steady_now),
-                    "lokinet_reachable",
-                    !proof.lokinet_reachable.unreachable_for(
-                            netconf.UPTIME_PROOF_VALIDITY - netconf.UPTIME_PROOF_FREQUENCY,
-                            steady_now));
-            if (proof.ss_reachable.first_unreachable != service_nodes::NEVER &&
-                requested(reqed, "storage_server_first_unreachable"))
-                entry["storage_server_first_unreachable"] = reachable_to_time_t(
-                        proof.ss_reachable.first_unreachable, system_now, steady_now);
-            if (proof.ss_reachable.last_unreachable != service_nodes::NEVER &&
-                requested(reqed, "storage_server_last_unreachable"))
-                entry["storage_server_last_unreachable"] = reachable_to_time_t(
-                        proof.ss_reachable.last_unreachable, system_now, steady_now);
-            if (proof.ss_reachable.last_reachable != service_nodes::NEVER &&
-                requested(reqed, "storage_server_last_reachable"))
-                entry["storage_server_last_reachable"] = reachable_to_time_t(
-                        proof.ss_reachable.last_reachable, system_now, steady_now);
-            if (proof.lokinet_reachable.first_unreachable != service_nodes::NEVER &&
-                requested(reqed, "lokinet_first_unreachable"))
-                entry["lokinet_first_unreachable"] = reachable_to_time_t(
-                        proof.lokinet_reachable.first_unreachable, system_now, steady_now);
-            if (proof.lokinet_reachable.last_unreachable != service_nodes::NEVER &&
-                requested(reqed, "lokinet_last_unreachable"))
-                entry["lokinet_last_unreachable"] = reachable_to_time_t(
-                        proof.lokinet_reachable.last_unreachable, system_now, steady_now);
-            if (proof.lokinet_reachable.last_reachable != service_nodes::NEVER &&
-                requested(reqed, "lokinet_last_reachable"))
-                entry["lokinet_last_reachable"] = reachable_to_time_t(
-                        proof.lokinet_reachable.last_reachable, system_now, steady_now);
+            auto set_reach_info = [&](std::string_view key_prefix,
+                                      const service_nodes::proof_info::reachable_stats& reachable) {
+                set_if_requested(
+                        reqed,
+                        entry,
+                        "{}_reachable"_format(key_prefix),
+                        !reachable.unreachable_for(
+                                netconf.UPTIME_PROOF_VALIDITY - netconf.UPTIME_PROOF_FREQUENCY,
+                                steady_now));
+
+                if (auto k = "{}_first_unreachable"_format(key_prefix);
+                    reachable.first_unreachable != service_nodes::NEVER && requested(reqed, k))
+                    entry[k] = reachable_to_time_t(
+                            reachable.first_unreachable, system_now, steady_now);
+                if (auto k = "{}_last_unreachable"_format(key_prefix);
+                    reachable.last_unreachable != service_nodes::NEVER && requested(reqed, k))
+                    entry[k] =
+                            reachable_to_time_t(reachable.last_unreachable, system_now, steady_now);
+                if (auto k = "{}_last_reachable"_format(key_prefix);
+                    reachable.last_reachable != service_nodes::NEVER && requested(reqed, k))
+                    entry[k] =
+                            reachable_to_time_t(reachable.last_reachable, system_now, steady_now);
+            };
+            if (netconf.HAVE_STORAGE_SERVER)
+                set_reach_info("storage_server", proof.ss_reachable);
+            if (netconf.HAVE_SESSION_ROUTER)
+                set_reach_info("session_router", proof.sr_reachable);
+            if (netconf.HAVE_LOKINET)
+                set_reach_info("lokinet", proof.lokinet_reachable);
         }
 
         if (requested(reqed, "checkpoint_votes") && !proof.checkpoint_participation.empty()) {
@@ -3207,32 +3206,34 @@ void core_rpc_server::invoke(GET_ALL_UPTIME_PROOFS& req, rpc_context) {
     req.response["status"] = STATUS_OK;
     req.response["proofs"] = json::array();
 
-    m_core.service_node_list.for_each_proof([&req,
-                                             this](const service_nodes::proof_info& proof_info) {
-        const auto& proof = *proof_info.proof;
-        if (!m_core.service_node_list.is_funded_service_node(proof.pubkey)) {
-            log::debug(logcat, "have proof for non-funded service node {}, ignoring", proof.pubkey);
-            return;
-        }
+    m_core.service_node_list.for_each_proof(
+            [&req, this](const service_nodes::proof_info& proof_info) {
+                const auto& proof = *proof_info.proof;
+                if (!m_core.service_node_list.is_funded_service_node(proof.pubkey())) {
+                    log::debug(
+                            logcat,
+                            "have proof for non-funded service node {}, ignoring",
+                            proof.pubkey_ed25519);
+                    return;
+                }
 
-        if (proof.serialized_proof.empty()) {
-            log::debug(
-                    logcat,
-                    "have yet to receive (and keep serialized) proof for {}",
-                    proof.pubkey_ed25519);
-            return;
-        }
-        auto entry = json::object();
-        tools::json_binary_proxy entry_hex{entry, tools::json_binary_proxy::fmt::hex};
-        entry_hex["proof"] = proof.serialized_proof;
-        entry_hex["pubkey"] = proof.pubkey;
-        entry_hex["sig"] = proof.sig;
-        entry_hex["pubkey_ed25519"] = proof.pubkey_ed25519;
-        entry_hex["sig_ed25519"] = proof.sig_ed25519;
-        entry_hex["pubkey_bls"] = proof.pubkey_bls;
-        entry_hex["pop_bls"] = proof.pop_bls;
-        req.response["proofs"].push_back(std::move(entry));
-    });
+                if (proof.serialized_proof.empty()) {
+                    log::debug(
+                            logcat,
+                            "have yet to receive (and keep serialized) proof for {}",
+                            proof.pubkey_ed25519);
+                    return;
+                }
+                auto entry = json::object();
+                tools::json_binary_proxy entry_hex{entry, tools::json_binary_proxy::fmt::hex};
+                entry_hex["proof"] = proof.serialized_proof;
+                entry_hex["pubkey"] = proof.pubkey_ed25519;
+                entry_hex["pubkey_ed25519"] = proof.pubkey_ed25519;
+                entry_hex["sig_ed25519"] = proof.sig_ed25519;
+                entry_hex["pubkey_bls"] = proof.pubkey_bls;
+                entry_hex["pop_bls"] = proof.pop_bls;
+                req.response["proofs"].push_back(std::move(entry));
+            });
 }
 
 // Sets the "registered" or "recently_removed" key to the SN info or recently removed info,
@@ -3491,6 +3492,23 @@ void core_rpc_server::invoke(LOKINET_PING& lokinet_ping, rpc_context) {
             });
 }
 //------------------------------------------------------------------------------------------------------------------------------
+void core_rpc_server::invoke(SESSION_ROUTER_PING& ping, rpc_context) {
+    m_core.srouter_version = ping.request.version;
+    ping.response["status"] = handle_ping(
+            m_core,
+            ping.request.version,
+            service_nodes::MIN_SESSION_ROUTER_VERSION,
+            ping.request.pubkey_ed25519,
+            ping.request.error,
+            "Session Router",
+            m_core.m_last_srouter_ping,
+            m_core.get_net_config().UPTIME_PROOF_FREQUENCY,
+            [this](bool significant) {
+                if (significant)
+                    m_core.reset_proof_interval();
+            });
+}
+//------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_STAKING_REQUIREMENT& get, rpc_context) {
     get.response = {
             {"height", m_core.blockchain.get_current_blockchain_height()},
@@ -3673,14 +3691,14 @@ void core_rpc_server::invoke(REPORT_PEER_STATUS& report_peer_status, rpc_context
     }
 
     bool success = false;
-    if (report_peer_status.request.type == "lokinet")
-        success = m_core.service_node_list.set_lokinet_peer_reachable(
-                pubkey, report_peer_status.request.passed);
-    else if (
-            report_peer_status.request.type == "storage" ||
-            report_peer_status.request.type ==
-                    "reachability" /* TODO: old name, can be removed once SS no longer uses it */)
+    if (report_peer_status.request.type == "storage")
         success = m_core.service_node_list.set_storage_server_peer_reachable(
+                pubkey, report_peer_status.request.passed);
+    else if (report_peer_status.request.type == "srouter")
+        success = m_core.service_node_list.set_session_router_peer_reachable(
+                pubkey, report_peer_status.request.passed);
+    else if (report_peer_status.request.type == "lokinet")
+        success = m_core.service_node_list.set_lokinet_peer_reachable(
                 pubkey, report_peer_status.request.passed);
     else
         throw rpc_error{ERROR_WRONG_PARAM, "Unknown status type"};
