@@ -1,3 +1,13 @@
+oxen (11.6.0-2~ubuntu2510) questing; urgency=medium
+
+  * new boost compilation fix
+  * debug log fix
+  * new boost compilation fix
+  * Add Session Router support
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Sun, 19 Oct 2025 13:03:53 -0300
+
 oxen (11.6.0-1~ubuntu2510) questing; urgency=medium
 
   * Optionally link to jemalloc
