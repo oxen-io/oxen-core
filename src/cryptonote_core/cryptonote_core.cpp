@@ -299,6 +299,7 @@ core::core() :
         m_nettype(network_type::UNDEFINED),
         m_last_storage_server_ping(0),
         m_last_lokinet_ping(0),
+        m_last_srouter_ping{0},
         m_pad_transactions(false),
         ss_version{0},
         lokinet_version{0} {
@@ -555,9 +556,11 @@ std::string core::get_status_string() const {
             s += ", proof: ";
             time_t now = std::time(nullptr);
             s += time_ago_str(now, last_proof);
-            s += ", storage: ";
+            s += ", ss: ";
             s += time_ago_str(now, m_last_storage_server_ping);
-            s += ", lokinet: ";
+            s += ", sr: ";
+            s += time_ago_str(now, m_last_srouter_ping);
+            s += ", ln: ";
             s += time_ago_str(now, m_last_lokinet_ping);
         }
     }
@@ -1979,7 +1982,7 @@ void core::check_service_node_time() {
                 const time_t local_seconds = time(nullptr);
                 log::debug(
                         logcat,
-                        "Timestamp message received: {}, local time is: ",
+                        "Timestamp message received: {}, local time is: {}",
                         data[0],
                         local_seconds);
                 if (success) {
@@ -2236,6 +2239,7 @@ bool core::submit_uptime_proof() {
                 storage_omq_port(),
                 ss_version,
                 m_quorumnet_port,
+                srouter_version,
                 lokinet_version);
         auto req = proof.generate_request(hf_version);
         relayed = get_protocol()->relay_uptime_proof(req, fake_context);
@@ -2298,7 +2302,7 @@ bool core::handle_uptime_proof(
 
         // devnet/stagenet don't have storage server or lokinet, so these should be 0; everywhere
         // else they should be non-zero.
-        if (!get_config(m_nettype).HAVE_STORAGE_AND_LOKINET) {
+        if (!get_config(m_nettype).HAVE_STORAGE_SERVER) {
             if (proof->storage_omq_port != 0 || proof->storage_https_port != 0)
                 throw oxen::traced<std::runtime_error>{
                         "Invalid storage port(s) in proof: devnet storage ports must be 0"};
@@ -2313,13 +2317,9 @@ bool core::handle_uptime_proof(
         return false;
     }
 
-    if (req.sig)
-        proof->sig = tools::make_from_guts<crypto::signature>(*req.sig);
-    else
-        proof->sig = crypto::null<crypto::signature>;
     proof->sig_ed25519 = tools::make_from_guts<crypto::ed25519_signature>(req.ed_sig);
-    auto pubkey = proof->pubkey;
     crypto::x25519_public_key x_pkey{};
+    auto pubkey = proof->pubkey();
     bool result = service_node_list.handle_uptime_proof(
             std::move(proof), my_uptime_proof_confirmation, x_pkey);
     if (result && service_node_list.is_active_service_node(pubkey) && x_pkey) {
@@ -2620,7 +2620,7 @@ void core::do_uptime_proof_call() {
                             if (pk != m_service_keys.pub &&
                                 proof.proof->public_ip == m_sn_public_ip &&
                                 (proof.proof->qnet_port == m_quorumnet_port ||
-                                 (netconf.HAVE_STORAGE_AND_LOKINET &&
+                                 (netconf.HAVE_STORAGE_SERVER &&
                                   (proof.proof->storage_https_port == storage_https_port() ||
                                    proof.proof->storage_omq_port == storage_omq_port()))))
                                 log::error(
@@ -2641,79 +2641,82 @@ void core::do_uptime_proof_call() {
                         });
             }
 
-            if (netconf.HAVE_STORAGE_AND_LOKINET) {
-                if (!check_external_ping(
-                            m_last_storage_server_ping,
-                            get_net_config().UPTIME_PROOF_FREQUENCY,
-                            "the storage server")) {
-                    log::error(
-                            globallogcat,
-                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                            "Failed to submit uptime proof: have not heard from the storage server "
-                            "recently. Make sure that it is running! It is required to run "
-                            "alongside the Oxen daemon");
-                    return;
-                }
-                if (!check_external_ping(
-                            m_last_lokinet_ping,
-                            get_net_config().UPTIME_PROOF_FREQUENCY,
-                            "Lokinet")) {
-                    log::error(
-                            globallogcat,
-                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                            "Failed to submit uptime proof: have not heard from lokinet recently. "
-                            "Make sure that it is running! It is required to run alongside the "
-                            "Oxen daemon");
-                    return;
-                }
+            if (netconf.HAVE_STORAGE_SERVER && !check_external_ping(
+                                                       m_last_storage_server_ping,
+                                                       get_net_config().UPTIME_PROOF_FREQUENCY,
+                                                       "the storage server")) {
+                log::error(
+                        globallogcat,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                        "Failed to submit uptime proof: have not heard from the storage server "
+                        "recently. Make sure that it is running! It is required to run "
+                        "alongside the Oxen daemon");
+                return;
+            }
+            if (netconf.HAVE_LOKINET &&
+                !check_external_ping(
+                        m_last_lokinet_ping, get_net_config().UPTIME_PROOF_FREQUENCY, "Lokinet")) {
+                log::error(
+                        globallogcat,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                        "Failed to submit uptime proof: have not heard from lokinet recently. "
+                        "Make sure that it is running! It is required to run alongside the "
+                        "Oxen daemon");
+                return;
+            }
+            if (netconf.HAVE_SESSION_ROUTER && !check_external_ping(
+                                                       m_last_srouter_ping,
+                                                       get_net_config().UPTIME_PROOF_FREQUENCY,
+                                                       "Session Router")) {
+                log::error(
+                        globallogcat,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                        "Failed to submit uptime proof: have not heard from Session Router "
+                        "recently. Make sure that it is running! It is required to run "
+                        "alongside the Oxen daemon");
+                return;
             }
 
-            if (auto hf = blockchain.get_network_version();
-                hf > feature::ETH_TRANSITION ||
-                (hf == feature::ETH_TRANSITION && !m_skip_proof_l2_check)) {
+            auto l2_update_age = l2_tracker().latest_height_age();
+            if (!l2_update_age || *l2_update_age > netconf.UPTIME_PROOF_FREQUENCY) {
+                log::error(
+                        globallogcat,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                        "Failed to submit uptime proof: the L2 RPC provider has not responded "
+                        "since {}.  Make sure the L2 RPC provider configuration is correct, "
+                        "and consider adding a backup provider for redundancy.",
+                        l2_update_age ? "{} ago"_format(tools::friendly_duration(*l2_update_age))
+                                      : "startup");
+                return;
+            }
 
-                auto l2_update_age = l2_tracker().latest_height_age();
-                if (!l2_update_age || *l2_update_age > netconf.UPTIME_PROOF_FREQUENCY) {
-                    log::error(
-                            globallogcat,
-                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                            "Failed to submit uptime proof: the L2 RPC provider has not responded "
-                            "since {}.  Make sure the L2 RPC provider configuration is correct, "
-                            "and consider adding a backup provider for redundancy.",
-                            l2_update_age
-                                    ? "{} ago"_format(tools::friendly_duration(*l2_update_age))
-                                    : "startup");
-                    return;
-                }
-
-                // Allow the synced blocks to be up to L2_TRACKER_SAFE_BLOCKS, because that's what
-                // we require for proper pulse participation, and so it is a valid refresh period to
-                // be slightly under that interval.  We need the threshold here to be longer than
-                // the refresh interval because otherwise it's entirely possible for this code to
-                // land in between a height update and a getLogs call, and trigger spurious
-                // instances of this error.  (Or worse: with both on the same interval, this timer
-                // could get stuck in between height+getLogs calls and never seen proofs).
-                eth::L2Tracker::L2Heights l2_heights = l2_tracker().get_l2_heights();
-                if (l2_heights.latest >= l2_heights.synced + netconf.L2_TRACKER_SAFE_BLOCKS) {
-                    // Don't log this as an error in the first couple minutes, because L2 rate log
-                    // size and rate limiting often needs 30s+ to fetch all logs from the past 30
-                    // minutes of L2 blocks on startup.
-                    auto level = std::chrono::seconds{time(nullptr) - get_start_time()} >= 2min
-                                       ? log::Level::err
-                                       : log::Level::debug;
-                    log::log(
-                            globallogcat,
-                            level,
-                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                            "Failed to submit uptime proof: L2 events are not yet synced "
-                            "to the latest known L2 height {} ({} blocks behind). Check your "
-                            "L2 provider's dashboard for request health or the logs of "
-                            "your local Arbitrum node to ensure the getLogs requests are being "
-                            "handled successfully",
-                            l2_heights.latest,
-                            l2_heights.latest - l2_heights.synced);
-                    return;
-                }
+            // Allow the synced blocks to be up to L2_TRACKER_SAFE_BLOCKS, because that's what
+            // we require for proper pulse participation, and so it is a valid refresh period to
+            // be slightly under that interval.  We need the threshold here to be longer than
+            // the refresh interval because otherwise it's entirely possible for this code to
+            // land in between a height update and a getLogs call, and trigger spurious
+            // instances of this error.  (Or worse: with both on the same interval, this timer
+            // could get stuck in between height+getLogs calls and never seen proofs).
+            eth::L2Tracker::L2Heights l2_heights = l2_tracker().get_l2_heights();
+            if (l2_heights.latest >= l2_heights.synced + netconf.L2_TRACKER_SAFE_BLOCKS) {
+                // Don't log this as an error in the first couple minutes, because L2 rate log
+                // size and rate limiting often needs 30s+ to fetch all logs from the past 30
+                // minutes of L2 blocks on startup.
+                auto level = std::chrono::seconds{time(nullptr) - get_start_time()} >= 2min
+                                   ? log::Level::err
+                                   : log::Level::debug;
+                log::log(
+                        globallogcat,
+                        level,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                        "Failed to submit uptime proof: L2 events are not yet synced "
+                        "to the latest known L2 height {} ({} blocks behind). Check your "
+                        "L2 provider's dashboard for request health or the logs of "
+                        "your local Arbitrum node to ensure the getLogs requests are being "
+                        "handled successfully",
+                        l2_heights.latest,
+                        l2_heights.latest - l2_heights.synced);
+                return;
             }
 
             submit_uptime_proof();
