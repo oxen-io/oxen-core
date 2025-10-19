@@ -680,18 +680,22 @@ bool rpc_command_executor::show_status() {
                 ", proof: {}",
                 my_sn_last_uptime ? get_human_time_ago(my_sn_last_uptime, now) : "(never)");
 
-        if (netconf.HAVE_STORAGE_AND_LOKINET) {
-            auto last_ss_ping = info["last_storage_server_ping"].get<uint64_t>();
-            auto last_lokinet_ping = info["last_lokinet_ping"].get<uint64_t>();
-
-            msg.append(
-                    ", last pings: {} (storage), {} (lokinet)",
-                    last_ss_ping > 0 ? get_human_time_ago(last_ss_ping, now, true /*abbreviate*/)
-                                     : "NOT RECEIVED",
-                    last_lokinet_ping > 0
-                            ? get_human_time_ago(last_lokinet_ping, now, true /*abbreviate*/)
-                            : "NOT RECEIVED");
-        }
+        std::list<std::string> last_pings;
+        auto add_ping = [&last_pings, &info, &now](std::string_view key, std::string_view display) {
+            auto last_ping = info[key].get<uint64_t>();
+            last_pings.push_back("{} ({})"_format(
+                    last_ping > 0 ? get_human_time_ago(last_ping, now, true /*abbreviate*/)
+                                  : "NOT RECEIVED",
+                    display));
+        };
+        if (netconf.HAVE_STORAGE_SERVER)
+            add_ping("last_storage_server_ping", "ss");
+        if (netconf.HAVE_SESSION_ROUTER)
+            add_ping("last_session_router_ping", "sr");
+        if (netconf.HAVE_LOKINET)
+            add_ping("last_lokinet_ping", "ln");
+        if (!last_pings.empty())
+            msg.append(", last pings: {}", fmt::join(last_pings, ", "));
 
         if (my_sn_registered && my_sn_staked && !my_sn_active && (my_reason_all | my_reason_any)) {
             msg.flush().append("Decomm reasons: ");
@@ -1796,8 +1800,11 @@ static void append_printable_service_node_list_entry(
         else
             stream << "v(unknown)\n";
 
-        if (auto e = entry.find("version_tag"); e != entry.end())
-            stream << "version: " << entry["version_tag"].get<std::string_view>() << "\n";
+        if (auto e = entry.find("version_tag"); e != entry.end()) {
+            auto tag = entry["version_tag"].get<std::string_view>();
+            if (!tag.empty())
+                stream << indent2 << "version: " << tag << "\n";
+        }
 
         if (detailed_view) {
             stream << indent2 << "Total Contributed/Staking Requirement: "
@@ -1869,7 +1876,7 @@ static void append_printable_service_node_list_entry(
             stream << "(Awaiting confirmation from network)";
         else
             stream << entry["public_ip"].get<std::string_view>() << " ";
-        if (conf.HAVE_STORAGE_AND_LOKINET)
+        if (conf.HAVE_STORAGE_SERVER)
             stream << ": {} (storage https), :{} (storage omq), "_format(
                     entry["storage_port"].get<uint16_t>(),
                     entry["storage_lmq_port"].get<uint16_t>());
@@ -1888,24 +1895,39 @@ static void append_printable_service_node_list_entry(
             auto ed_pk = entry.value("pubkey_ed25519", ""sv);
             fmt::print(stream, "{}Auxiliary Public Keys/Addresses:\n", indent2);
             fmt::print(stream, "{}BLS: {}\n", indent3, entry.value("pubkey_bls", ""sv));
-            if (conf.HAVE_STORAGE_AND_LOKINET)
+            if (conf.HAVE_LOKINET || conf.HAVE_SESSION_ROUTER)
                 fmt::print(
                         stream,
-                        "{}Lokinet: {}\n",
+                        "{}{}: {}\n",
                         indent3,
+                        conf.HAVE_LOKINET && conf.HAVE_SESSION_ROUTER ? "Session Router/Lokinet"
+                        : conf.HAVE_SESSION_ROUTER                    ? "Session Router"
+                                                                      : "Lokinet",
                         ed_pk.empty() ? "(not yet received)"s
                                       : oxenc::to_base32z(oxenc::from_hex(ed_pk)) + ".snode");
             fmt::print(stream, "{}X25519: {}\n", indent3, entry.value("pubkey_x25519", ""sv));
         }
 
-        if (conf.HAVE_STORAGE_AND_LOKINET) {
-            //
-            // NOTE: Storage Server Test
-            //
-            auto print_reachable = [&stream, &now](const json& j, const std::string& prefix) {
-                auto first_unreachable = j.value<time_t>(prefix + "_first_unreachable", 0),
-                     last_unreachable = j.value<time_t>(prefix + "_last_unreachable", 0),
-                     last_reachable = j.value<time_t>(prefix + "_last_reachable", 0);
+        //
+        // NOTE: Storage Server/Session Router/Lokinet versions and tests
+        //
+        auto print_aux_service_info = [&](const std::string& prefix, std::string_view name) {
+            fmt::print(stream, "{}{} Version{}: ", indent2, name, is_self ? "" : " / Reachable");
+
+            auto jv = entry[prefix + "_version"];
+            std::array<int, 3> ver;
+            if (jv.is_array())
+                ver = jv.get<std::array<int, 3>>();
+            if (ver == std::array<int, 3>{0, 0, 0})
+                fmt::print(stream, "({} ping not yet received)", name);
+            else
+                fmt::print(stream, "{}", fmt::join(ver, "."));
+
+            if (!is_self) {
+                stream << " / ";
+                auto first_unreachable = entry.value<time_t>(prefix + "_first_unreachable", 0),
+                     last_unreachable = entry.value<time_t>(prefix + "_last_unreachable", 0),
+                     last_reachable = entry.value<time_t>(prefix + "_last_reachable", 0);
 
                 if (first_unreachable == 0) {
                     if (last_reachable == 0)
@@ -1919,7 +1941,7 @@ static void append_printable_service_node_list_entry(
                     }
                 } else {
                     stream << "NO";
-                    if (!j.value(prefix + "_reachable", false))
+                    if (!entry.value(prefix + "_reachable", false))
                         stream << " - FAILING!";
                     stream << " (last tested " << get_human_time_ago(last_unreachable, now)
                            << "; failing since " << get_human_time_ago(first_unreachable, now);
@@ -1927,31 +1949,16 @@ static void append_printable_service_node_list_entry(
                         stream << "; last good " << get_human_time_ago(last_reachable, now);
                     stream << ")";
                 }
-                stream << '\n';
-            };
-            if (!is_self) {
-                stream << indent2 << "Storage Server Reachable: ";
-                print_reachable(entry, "storage_server");
-                stream << indent2 << "Lokinet Reachable: ";
-                print_reachable(entry, "lokinet");
             }
+            stream << '\n';
+        };
 
-            //
-            // NOTE: Component Versions
-            //
-            auto show_component_version = [](const json& j, std::string_view name) {
-                if (!j.is_array() || j.front().get<int>() == 0)
-                    return "({} ping not yet received)"_format(name);
-                return "{}"_format(fmt::join(j.get<std::array<int, 3>>(), "."));
-            };
-
-            fmt::print(
-                    stream,
-                    "{}Storage Server / Lokinet Router versions: {} / {}\n",
-                    indent2,
-                    show_component_version(entry["storage_server_version"], "Storage Server"),
-                    show_component_version(entry["lokinet_version"], "Lokinet"));
-        }
+        if (conf.HAVE_STORAGE_SERVER)
+            print_aux_service_info("storage_server", "Storage Server");
+        if (conf.HAVE_SESSION_ROUTER)
+            print_aux_service_info("session_router", "Session Router");
+        if (conf.HAVE_LOKINET)
+            print_aux_service_info("lokinet", "Lokinet");
 
         //
         // NOTE: Print Voting History
@@ -2394,9 +2401,9 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
     auto nettype = cryptonote::network_type_from_string(info["nettype"].get<std::string_view>());
     auto& netconf = get_config(nettype);
 
-    if (netconf.HAVE_STORAGE_AND_LOKINET)  // Devnet/stagenet don't run storage-server / lokinet
+    auto now = std::chrono::system_clock::now();
+    if (netconf.HAVE_LOKINET)  // Devnet/stagenet don't run storage-server / lokinet
     {
-        auto now = std::chrono::system_clock::now();
         auto last_lokinet_ping_timet = info.value<std::time_t>("last_lokinet_ping", 0);
         if (auto last_lokinet_ping =
                     std::chrono::system_clock::from_time_t(last_lokinet_ping_timet);
@@ -2409,6 +2416,8 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
                             : "since " + get_human_time_ago(now - last_lokinet_ping));
             return false;
         }
+    }
+    if (netconf.HAVE_STORAGE_SERVER) {
         auto last_ss_ping_timet = info.value<std::time_t>("last_storage_server_ping", 0);
         if (auto last_storage_server_ping =
                     std::chrono::system_clock::from_time_t(last_ss_ping_timet);
@@ -2422,6 +2431,8 @@ bool rpc_command_executor::prepare_registration(bool force_registration) {
             return false;
         }
     }
+    // NOTE: not bothering with a netconf.HAVE_SESSION_ROUTER check here because this is dead code
+    // for pre-eth registrations that is only still used by the local devnet.
 
     if (!check_if_node_is_reasonably_synced(this, info))
         return false;

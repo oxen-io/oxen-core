@@ -555,9 +555,12 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 /// - `grey_peerlist_size` -- Grey Peerlist Size
 /// - `service_node` -- Will be true if the node is running in --service-node mode.
 /// - `start_time` -- Start time of the daemon, as UNIX time.
-/// - `last_storage_server_ping` -- Last ping time of the storage server (0 if never or not running
-///   as a service node)
-/// - `last_lokinet_ping` -- Last ping time of lokinet (0 if never or not running as a service node)
+/// - `last_storage_server_ping` -- Last ping time of the storage server (0 if never; omitted if not
+///   running as a service node)
+/// - `last_lokinet_ping` -- Last ping time of lokinet (0 if never; omitted if not running as a
+///   service node)
+/// - `last_session_router_ping` -- Last ping time of the Session Router server (0 if never; omitted
+///   if not running as a service node)
 /// - `free_space` -- Available disk space on the node.
 ///
 /// Example-JSON-Fetch
@@ -2374,6 +2377,34 @@ struct LOKINET_PING : RPC_COMMAND {
     } request;
 };
 
+/// Dev-RPC: service_node/session_router_ping
+///
+/// Endpoint to receive an uptime ping from the connected Session Router server. This is used to
+/// record whether session-router is ready before the service node starts sending uptime proofs.
+/// This is generally called internally from Session Router itself and not invoked directly.
+///
+/// Inputs:
+///
+/// - `version` -- Session Router version (as an array of three integers).
+/// - `pubkey_ed25519` -- Service node Ed25519 pubkey for verifying that session router is running
+///   with the correct service node keys.
+/// - `error` -- If given and non-empty then this is an error message telling oxend to *not* submit
+///   an uptime proof and to report the given (critical) error in the logs instead.  Oxend won't
+///   send proofs after receiving such an error until it gets another ping *without* an error set.
+///
+/// Outputs:
+///
+/// - `status` -- generic RPC error code; "OK" means the request was successful.
+struct SESSION_ROUTER_PING : RPC_COMMAND {
+    static constexpr auto names() { return NAMES("session_router_ping"); }
+
+    struct request_parameters {
+        std::array<uint16_t, 3> version;
+        std::string pubkey_ed25519;
+        std::string error;
+    } request;
+};
+
 /// RPC: service_node/get_staking_requirement
 ///
 /// Get the required amount of Oxen to become a Service Node at the queried height.
@@ -3055,6 +3086,7 @@ using core_rpc_types = tools::type_list<
         PRUNE_BLOCKCHAIN,
         REPORT_PEER_STATUS,
         SAVE_BC,
+        SESSION_ROUTER_PING,
         SET_BANS,
         SET_LIMIT,
         SET_LOG_LEVEL,

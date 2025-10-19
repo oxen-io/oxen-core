@@ -175,6 +175,7 @@ class core_rpc_server {
     void invoke(POP_BLOCKS& pop_blocks, rpc_context context);
     void invoke(LOKINET_PING& lokinet_ping, rpc_context context);
     void invoke(STORAGE_SERVER_PING& storage_server_ping, rpc_context context);
+    void invoke(SESSION_ROUTER_PING& ping, rpc_context context);
     void invoke(PRUNE_BLOCKCHAIN& prune_blockchain, rpc_context context);
     void invoke(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_context context);
     void invoke(GET_L2_TRACKER_STATE& req, rpc_context context);

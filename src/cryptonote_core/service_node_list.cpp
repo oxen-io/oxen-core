@@ -5677,6 +5677,7 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
         uint16_t storage_omq_port,
         std::array<uint16_t, 3> ss_version,
         uint16_t quorumnet_port,
+        std::array<uint16_t, 3> sr_version,
         std::array<uint16_t, 3> lokinet_version) const {
     const auto& keys = *m_service_node_keys;
     return uptime_proof::Proof{
@@ -5687,8 +5688,8 @@ uptime_proof::Proof service_node_list::generate_uptime_proof(
             storage_omq_port,
             ss_version,
             quorumnet_port,
-            hardfork >= feature::ETH_TRANSITION ? blockchain.l2_tracker().get_l2_heights().synced
-                                                : 0,
+            blockchain.l2_tracker().get_l2_heights().synced,
+            sr_version,
             lokinet_version,
             keys};
 }
@@ -5781,6 +5782,11 @@ bool service_node_list::handle_uptime_proof(
     auto& netconf = get_config(blockchain.nettype());
     auto now = std::chrono::system_clock::now();
 
+    if (!proof->pubkey_ed25519) {
+        log::debug(logcat, "Rejecting uptime proof: ed25519 pubkey missing from proof");
+        return false;
+    }
+
     // Validate proof version, timestamp range,
     auto time_deviation = now - std::chrono::system_clock::from_time_t(proof->timestamp);
     if (time_deviation > netconf.UPTIME_PROOF_TOLERANCE ||
@@ -5788,7 +5794,7 @@ bool service_node_list::handle_uptime_proof(
         log::debug(
                 logcat,
                 "Rejecting uptime proof from {}: timestamp is too far from now",
-                proof->pubkey);
+                proof->pubkey_ed25519);
         return false;
     }
 
@@ -5799,35 +5805,44 @@ bool service_node_list::handle_uptime_proof(
                         logcat,
                         "Rejecting uptime proof from {}: v{}+ oxend version is required for "
                         "v{}.{}+ network proofs",
-                        proof->pubkey,
+                        proof->pubkey_ed25519,
                         tools::join(".", min.oxend),
                         static_cast<int>(vers.first),
                         vers.second);
                 return false;
             }
-            if (netconf.HAVE_STORAGE_AND_LOKINET) {
-                if (proof->lokinet_version < min.lokinet) {
-                    log::debug(
-                            logcat,
-                            "Rejecting uptime proof from {}: v{}+ lokinet version is required for "
-                            "v{}.{}+ network proofs",
-                            proof->pubkey,
-                            tools::join(".", min.lokinet),
-                            static_cast<int>(vers.first),
-                            vers.second);
-                    return false;
-                }
-                if (proof->storage_server_version < min.storage_server) {
-                    log::debug(
-                            logcat,
-                            "Rejecting uptime proof from {}: v{}+ storage server version is "
-                            "required for v{}.{}+ network proofs",
-                            proof->pubkey,
-                            tools::join(".", min.storage_server),
-                            static_cast<int>(vers.first),
-                            vers.second);
-                    return false;
-                }
+            if (netconf.HAVE_LOKINET && proof->lokinet_version < min.lokinet) {
+                log::debug(
+                        logcat,
+                        "Rejecting uptime proof from {}: v{}+ lokinet version is required for "
+                        "v{}.{}+ network proofs",
+                        proof->pubkey_ed25519,
+                        tools::join(".", min.lokinet),
+                        static_cast<int>(vers.first),
+                        vers.second);
+                return false;
+            }
+            if (netconf.HAVE_STORAGE_SERVER && proof->storage_server_version < min.storage_server) {
+                log::debug(
+                        logcat,
+                        "Rejecting uptime proof from {}: v{}+ storage server version is "
+                        "required for v{}.{}+ network proofs",
+                        proof->pubkey_ed25519,
+                        tools::join(".", min.storage_server),
+                        static_cast<int>(vers.first),
+                        vers.second);
+                return false;
+            }
+            if (netconf.HAVE_SESSION_ROUTER && proof->storage_server_version < min.session_router) {
+                log::debug(
+                        logcat,
+                        "Rejecting uptime proof from {}: v{}+ storage server version is "
+                        "required for v{}.{}+ network proofs",
+                        proof->pubkey_ed25519,
+                        tools::join(".", min.storage_server),
+                        static_cast<int>(vers.first),
+                        vers.second);
+                return false;
             }
         }
     }
@@ -5836,35 +5851,11 @@ bool service_node_list::handle_uptime_proof(
         log::debug(
                 logcat,
                 "Rejecting uptime proof from {}: public_ip is not actually public",
-                proof->pubkey);
-        return false;
-    }
-
-    if (vers.first >= feature::SN_PK_IS_ED25519) {
-        // Starting at the ETH_BLS hard fork we prohibit proofs with differing pubkey/ed25519
-        // pubkey; any mixed node registrations get updated as part of the HF transition.
-        if (tools::view_guts(proof->pubkey) != tools::view_guts(proof->pubkey_ed25519)) {
-            log::debug(
-                    logcat,
-                    "Rejecting uptime proof from {}: pubkey != pubkey_ed25519 is not allowed in "
-                    "HF{}+",
-                    proof->pubkey,
-                    static_cast<uint8_t>(feature::SN_PK_IS_ED25519));
-            return false;
-        }
-    }
-
-    crypto::x25519_public_key derived_x25519_pubkey{};
-    if (!proof->pubkey_ed25519) {
-        log::debug(
-                logcat,
-                "Rejecting uptime proof from {}: required ed25519 auxiliary pubkey {} not included "
-                "in proof",
-                proof->pubkey,
                 proof->pubkey_ed25519);
         return false;
     }
 
+    crypto::x25519_public_key derived_x25519_pubkey{};
     if (0 != crypto_sign_ed25519_pk_to_curve25519(
                      derived_x25519_pubkey.data(), proof->pubkey_ed25519.data()) ||
         !derived_x25519_pubkey) {
@@ -5872,7 +5863,7 @@ bool service_node_list::handle_uptime_proof(
                 logcat,
                 "Rejecting uptime proof from {}: invalid ed25519 pubkey included in proof "
                 "(x25519 derivation failed)",
-                proof->pubkey);
+                proof->pubkey_ed25519);
         return false;
     }
 
@@ -5881,19 +5872,6 @@ bool service_node_list::handle_uptime_proof(
     //
     assert(proof->proof_hash);  // This gets set during parsing of an incoming proof
     const auto& hash = proof->proof_hash;
-
-    if (vers.first < feature::SN_PK_IS_ED25519) {
-        // pre-ETH_BLS includes a Monero-style (i.e. wrongly computed, though cryptographically
-        // equivalent) Ed25519 signature signed by `pubkey`.  (Post-ETH_BLS sends and uses only the
-        // proper Ed25519 signature, and requires the pubkeys be the same).
-        if (!crypto::check_signature(hash, proof->pubkey, proof->sig)) {
-            log::debug(
-                    logcat,
-                    "Rejecting uptime proof from {}: signature validation failed",
-                    proof->pubkey);
-            return false;
-        }
-    }
 
     // Ed25519 signature verification
     if (0 != crypto_sign_verify_detached(
@@ -5904,7 +5882,7 @@ bool service_node_list::handle_uptime_proof(
         log::debug(
                 logcat,
                 "Rejecting uptime proof from {}: ed25519 signature validation failed",
-                proof->pubkey);
+                proof->pubkey_ed25519);
         return false;
     }
 
@@ -5917,11 +5895,11 @@ bool service_node_list::handle_uptime_proof(
             log::debug(
                     logcat,
                     "Rejecting uptime proof from {}: BLS pubkey and pop are required in HF20",
-                    proof->pubkey);
+                    proof->pubkey_ed25519);
             return false;
         }
 
-        auto pop = tools::concat_guts<uint8_t>(proof->pubkey_bls, proof->pubkey);
+        auto pop = tools::concat_guts<uint8_t>(proof->pubkey_bls, proof->pubkey_ed25519);
         if (!eth::verify(
                     blockchain.nettype(),
                     proof->pop_bls,
@@ -5932,7 +5910,7 @@ bool service_node_list::handle_uptime_proof(
                     logcat,
                     "Rejecting uptime proof from {}: BLS proof of possession verification "
                     "failed",
-                    proof->pubkey);
+                    proof->pubkey_ed25519);
             return false;
         }
     }
@@ -5941,7 +5919,7 @@ bool service_node_list::handle_uptime_proof(
         log::debug(
                 logcat,
                 "Rejecting uptime proof from {}: invalid quorumnet port in uptime proof",
-                proof->pubkey);
+                proof->pubkey_ed25519);
         return false;
     }
 
@@ -5955,16 +5933,17 @@ bool service_node_list::handle_uptime_proof(
     // isn't a problem with just 1 node that exits, but if there were a mass exit of 30% of the
     // network this may cause problems if they don't participate in the BLS aggregation step.
     auto locks = tools::unique_locks(blockchain, m_sn_mutex, m_x25519_map_mutex);
-    auto it = m_state.service_nodes_infos.find(proof->pubkey);
+    auto pubkey = proof->pubkey();
+    auto it = m_state.service_nodes_infos.find(pubkey);
     if (it == m_state.service_nodes_infos.end()) {
         log::debug(
                 logcat,
                 "Rejecting uptime proof from {}: no such service node is currently registered",
-                proof->pubkey);
+                proof->pubkey_ed25519);
         return false;
     }
 
-    auto& iproof = proofs[proof->pubkey];
+    auto& iproof = proofs[pubkey];
 
     if (now <= std::chrono::system_clock::from_time_t(iproof.timestamp) +
                        std::chrono::seconds{netconf.UPTIME_PROOF_FREQUENCY} / 2) {
@@ -5995,69 +5974,27 @@ bool service_node_list::handle_uptime_proof(
                     logcat,
                     "Rejecting uptime proof from {}: already received one uptime proof for this "
                     "node recently",
-                    proof->pubkey);
+                    proof->pubkey_ed25519);
             return false;
         }
     }
 
-    if (m_service_node_keys && proof->pubkey == m_service_node_keys->pub) {
+    if (m_service_node_keys && proof->pubkey_ed25519 == m_service_node_keys->pub_ed25519) {
         my_uptime_proof_confirmation = true;
         log::info(
                 globallogcat,
                 fg(fmt::terminal_color::green),
                 "Received uptime-proof confirmation back from network for Service Node (yours): {}",
-                proof->pubkey);
+                proof->pubkey_ed25519);
     } else {
         my_uptime_proof_confirmation = false;
-        log::debug(logcat, "Accepted uptime proof from {}", proof->pubkey);
-
-        if (m_service_node_keys && proof->pubkey_ed25519 == m_service_node_keys->pub_ed25519)
-            log::warning(
-                    globallogcat,
-                    fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                    "Uptime proof from SN {} is not us, but is using our ed/x25519 keys; this is "
-                    "likely to lead to deregistration of one or both service nodes.",
-                    proof->pubkey);
+        log::debug(logcat, "Accepted uptime proof from {}", proof->pubkey_ed25519);
     }
 
-    if (vers.first == feature::ETH_TRANSITION ||
-        netconf.NETWORK_TYPE == cryptonote::network_type::LOCALDEV) {
-        // NOTE: In the transition, we're collecting the BLS pubkeys, we will persist these into the
-        // service node info to bootstrap the keys. Post transition, Arbitrum is activated and BLS
-        // keys of a node will be available in the registration and updated when a node is
-        // registered.
-        if (it->second->bls_public_key != proof->pubkey_bls) {
-            auto& info = duplicate_info(it->second);
-            info.bls_public_key = proof->pubkey_bls;
-        }
-    }
-
-    auto old_x25519 = iproof.pubkey_x25519;
     auto [updated, contact_changed] = iproof.update(
             std::chrono::system_clock::to_time_t(now), std::move(proof), derived_x25519_pubkey);
     if (updated)
-        iproof.store(iproof.proof->pubkey, blockchain);
-
-    if (vers.first < feature::SN_PK_IS_ED25519) {
-        if (now - x25519_map_last_pruned >= X25519_MAP_PRUNING_INTERVAL) {
-            std::erase_if(x25519_to_pub, [this, &now](const auto& x) {
-                return !m_state.should_keep_info(
-                        x.second.first,
-                        now - std::chrono::system_clock::from_time_t(x.second.second));
-            });
-            x25519_map_last_pruned = now;
-        }
-
-        if (old_x25519 && old_x25519 != derived_x25519_pubkey)
-            x25519_to_pub.erase(old_x25519);
-
-        if (derived_x25519_pubkey)
-            x25519_to_pub[derived_x25519_pubkey] = {
-                    iproof.proof->pubkey, std::chrono::system_clock::to_time_t(now)};
-
-        if (derived_x25519_pubkey && (old_x25519 != derived_x25519_pubkey))
-            x25519_pkey = derived_x25519_pubkey;
-    }
+        iproof.store(pubkey, blockchain);
 
     if (contact_changed && snode_addr_change_notifier)
         snode_addr_change_notifier(*iproof.proof, derived_x25519_pubkey);
@@ -6269,33 +6206,33 @@ bool proof_info::reachable_stats::unreachable_for(
 }
 
 bool service_node_list::set_peer_reachable(
-        bool storage_server, const crypto::public_key& pubkey, bool reachable) {
+        const crypto::public_key& pubkey,
+        std::string_view service,
+        proof_info::reachable_stats& reach,
+        bool reachable) {
 
     // (See .h for overview description)
 
-    std::lock_guard lock(m_sn_mutex);
-
-    const auto type = storage_server ? "storage server"sv : "lokinet"sv;
+    std::lock_guard lock{m_sn_mutex};
 
     if (!m_state.service_nodes_infos.count(pubkey)) {
         log::debug(
                 logcat,
                 "Dropping {} reachable report: {} is not a registered SN pubkey",
-                type,
+                service,
                 pubkey);
         return false;
     }
 
     log::debug(
             logcat,
-            "Received {}{} report for SN {}",
-            type,
-            (reachable ? " reachable" : " UNREACHABLE"),
+            "Received {} {} report for SN {}",
+            service,
+            reachable ? "reachable" : "UNREACHABLE",
             pubkey);
 
     const auto now = std::chrono::steady_clock::now();
 
-    auto& reach = storage_server ? proofs[pubkey].ss_reachable : proofs[pubkey].lokinet_reachable;
     if (reachable) {
         reach.last_reachable = now;
         reach.first_unreachable = NEVER;
@@ -6307,14 +6244,20 @@ bool service_node_list::set_peer_reachable(
 
     return true;
 }
+
 bool service_node_list::set_storage_server_peer_reachable(
-        crypto::public_key const& pubkey, bool reachable) {
-    return set_peer_reachable(true, pubkey, reachable);
+        const crypto::public_key& pubkey, bool reachable) {
+    return set_peer_reachable(pubkey, "storage server", proofs[pubkey].ss_reachable, reachable);
 }
 
 bool service_node_list::set_lokinet_peer_reachable(
-        crypto::public_key const& pubkey, bool reachable) {
-    return set_peer_reachable(false, pubkey, reachable);
+        const crypto::public_key& pubkey, bool reachable) {
+    return set_peer_reachable(pubkey, "lokinet", proofs[pubkey].lokinet_reachable, reachable);
+}
+
+bool service_node_list::set_session_router_peer_reachable(
+        const crypto::public_key& pubkey, bool reachable) {
+    return set_peer_reachable(pubkey, "session router", proofs[pubkey].sr_reachable, reachable);
 }
 
 static quorum_manager quorum_for_serialization_to_quorum_manager(
