@@ -57,7 +57,9 @@ inline constexpr network_config config{
         .UPTIME_PROOF_FREQUENCY = 10min,
         .UPTIME_PROOF_VALIDITY = 21min,
         .MAX_DEACTIVATE_PER_BLOCK = 1,
-        .HAVE_STORAGE_AND_LOKINET = true,  // storage & lokinet
+        .HAVE_STORAGE_SERVER = true,
+        .HAVE_SESSION_ROUTER = true,
+        .HAVE_LOKINET = false,
         .TARGET_BLOCK_TIME = mainnet::config.TARGET_BLOCK_TIME,
         .PULSE_STAGE_TIMEOUT = mainnet::config.PULSE_STAGE_TIMEOUT,
         .PULSE_ROUND_TIMEOUT = mainnet::config.PULSE_ROUND_TIMEOUT,

@@ -298,6 +298,17 @@ void parse_request(LOKINET_PING& lokinet_ping, rpc_input in) {
             required{lokinet_ping.request.version});
 }
 
+void parse_request(SESSION_ROUTER_PING& ping, rpc_input in) {
+    get_values(
+            in,
+            "error",
+            ping.request.error,
+            "pubkey_ed25519",
+            ping.request.pubkey_ed25519,
+            "version",
+            required{ping.request.version});
+}
+
 void parse_request(STORAGE_SERVER_PING& storage_server_ping, rpc_input in) {
     get_values(
             in,
