@@ -18,8 +18,6 @@ extern "C" {
 
 namespace uptime_proof {
 
-static auto logcat = oxen::log::Cat("uptime_proof");
-
 using cryptonote::hf;
 namespace feature = cryptonote::feature;
 
@@ -33,13 +31,14 @@ Proof::Proof(
         const std::array<uint16_t, 3> ss_version,
         uint16_t quorumnet_port,
         uint64_t l2_height,
+        const std::array<uint16_t, 3> sr_version,
         const std::array<uint16_t, 3> lokinet_version,
         const service_nodes::service_node_keys& keys) :
         version{OXEN_VERSION},
         storage_server_version{ss_version},
+        session_router_version{sr_version},
         lokinet_version{lokinet_version},
         timestamp{static_cast<uint64_t>(time(nullptr))},
-        pubkey{keys.pub},
         pubkey_ed25519{keys.pub_ed25519},
         pubkey_bls{keys.pub_bls},
         l2_height{l2_height},
@@ -63,11 +62,6 @@ Proof::Proof(
     serialized_proof = bt_encode_uptime_proof(hardfork, nettype);
     proof_hash = crypto::keccak(serialized_proof);
 
-    if (hardfork < feature::SN_PK_IS_ED25519)
-        // Starting from HF21 we have guaranteed unified pubkey/ed25519 pubkey, so don't need to
-        // send the old primary SN signature anymore: the single ed25519 signature does it all.
-        crypto::generate_signature(proof_hash, keys.pub, keys.key, sig);
-
     crypto_sign_detached(
             sig_ed25519.data(),
             nullptr,
@@ -89,15 +83,11 @@ Proof::Proof(
     auto proof = oxenc::bt_dict_consumer{serialized_proof};
     // NB: we must consume in sorted key order
 
-    if (hardfork == feature::ETH_TRANSITION || nettype == cryptonote::network_type::LOCALDEV ||
-        hardfork >= hf::hf22_eth_fixup) {
-        pubkey_bls =
-                tools::make_from_guts<eth::bls_public_key>(proof.require<std::string_view>("bk"sv));
-        pop_bls =
-                tools::make_from_guts<eth::bls_signature>(proof.require<std::string_view>("bp"sv));
-    }
+    pubkey_bls =
+            tools::make_from_guts<eth::bls_public_key>(proof.require<std::string_view>("bk"sv));
+    pop_bls = tools::make_from_guts<eth::bls_signature>(proof.require<std::string_view>("bp"sv));
 
-    if (hardfork >= feature::ETH_TRANSITION && nettype != cryptonote::network_type::MAINNET) {
+    if (nettype != cryptonote::network_type::MAINNET) {
         if (proof.skip_until("gh")) {
             version_tag = proof.consume_string();
         }
@@ -109,25 +99,12 @@ Proof::Proof(
         !epee::string_tools::get_ip_int32_from_string(public_ip, ip) || public_ip == 0)
         throw oxen::traced<std::runtime_error>{"Invalid IP address in proof"};
 
-    if (hardfork >= feature::ETH_BLS) {
-        l2_height = proof.require<uint64_t>("l2");
-        if (l2_height == 0)
-            throw oxen::traced<std::runtime_error>{"Invalid L2 height in proof"};
-    } else if (hardfork == feature::ETH_TRANSITION) {
-        // l2_height is optional in HF20 (primarily so that we don't break stagenet):
-        if (proof.skip_until("l2"))
-            l2_height = proof.consume_integer<uint64_t>();
-        else
-            l2_height = 0;
-    }
+    l2_height = proof.require<uint64_t>("l2");
+    if (l2_height == 0)
+        throw oxen::traced<std::runtime_error>{"Invalid L2 height in proof"};
 
-    lokinet_version = proof.require<std::array<uint16_t, 3>>("lv");
-
-    bool found_pk = false;
-    if (proof.skip_until("pk")) {
-        found_pk = true;
-        pubkey = tools::make_from_guts<crypto::public_key>(proof.consume_string_view());
-    }
+    lokinet_version =
+            proof.maybe<std::array<uint16_t, 3>>("lv").value_or(std::array<uint16_t, 3>{0, 0, 0});
 
     pubkey_ed25519 = tools::make_from_guts<crypto::ed25519_public_key>(
             proof.require<std::string_view>("pke"sv));
@@ -140,17 +117,21 @@ Proof::Proof(
     storage_https_port = proof.require<uint16_t>("shp");
     storage_omq_port = proof.require<uint16_t>("sop");
 
+    // TODO: we can .require instead of .maybe this after HF23 has happened:
+    session_router_version =
+            proof.maybe<std::array<uint16_t, 3>>("srv").value_or(std::array<uint16_t, 3>{0, 0, 0});
+
     storage_server_version = proof.require<std::array<uint16_t, 3>>("sv");
 
     timestamp = proof.require<uint64_t>("t");
 
     version = proof.require<std::array<uint16_t, 3>>("v");
+}
 
-    if (!found_pk) {
-        // If there is no primary pubkey then copy the ed25519 into primary (we don't send both
-        // when they are the same).
-        std::memcpy(pubkey.data(), pubkey_ed25519.data(), 32);
-    }
+crypto::public_key Proof::pubkey() const {
+    crypto::public_key pk;
+    std::memcpy(pk.data(), pubkey_ed25519.data(), sizeof(crypto::public_key));
+    return pk;
 }
 
 bool Proof::contact_info_changed(const Proof& other) const {
@@ -158,6 +139,7 @@ bool Proof::contact_info_changed(const Proof& other) const {
         return std::tie(
                 p.version,
                 p.storage_server_version,
+                p.session_router_version,
                 p.lokinet_version,
                 p.pubkey_ed25519,
                 p.public_ip,
@@ -169,33 +151,26 @@ bool Proof::contact_info_changed(const Proof& other) const {
 }
 
 std::string Proof::bt_encode_uptime_proof(hf hardfork, cryptonote::network_type nettype) const {
-    // NOTE: After Oxen 11, new fields can be added to the encoded proof without breaking older
-    // clients (i.e. no need to hardfork-gate additions): the signature applies over the entire
-    // encoded proof, not just known fields in that proof.  (This is not the case for Oxen 11
-    // itself, however, as it needs to remain compatible with Oxen 10 until after the mandatory
-    // upgrade is complete).
+    // NOTE: New fields can be added to the encoded proof without breaking older clients (i.e. no
+    // need to hardfork-gate additions): the signature applies over the entire encoded proof, not
+    // just known fields in that proof.  Older clients simply ignore extra fields that they don't
+    // understand.
 
     // NB: must append in ascii order
     oxenc::bt_dict_producer proof;
 
-    if (hardfork == cryptonote::feature::ETH_TRANSITION ||
-        nettype == cryptonote::network_type::LOCALDEV || hardfork >= hf::hf22_eth_fixup) {
-        proof.append("bk", tools::view_guts(pubkey_bls));
-        proof.append("bp", tools::view_guts(pop_bls));
-    }
-    if (hardfork >= feature::ETH_TRANSITION && nettype != cryptonote::network_type::MAINNET) {
+    proof.append("bk", tools::view_guts(pubkey_bls));
+    proof.append("bp", tools::view_guts(pop_bls));
+    if (nettype != cryptonote::network_type::MAINNET)
         proof.append("gh", version_tag);
-    }
     proof.append("ip", epee::string_tools::get_ip_string_from_int32(public_ip));
-    if (hardfork >= cryptonote::feature::ETH_TRANSITION)
-        proof.append("l2", l2_height);
+    proof.append("l2", l2_height);
     proof.append("lv", lokinet_version);
-    if (auto main_pk = tools::view_guts(pubkey); main_pk != tools::view_guts(pubkey_ed25519))
-        proof.append("pk", main_pk);
     proof.append("pke", tools::view_guts(pubkey_ed25519));
     proof.append("q", qnet_port);
     proof.append("shp", storage_https_port);
     proof.append("sop", storage_omq_port);
+    proof.append("srv", session_router_version);
     proof.append("sv", storage_server_version);
     proof.append("t", timestamp);
     proof.append("v", version);
@@ -206,11 +181,6 @@ cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request Proof::generate_request(hf ha
     cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request request;
     assert(!serialized_proof.empty());
     request.proof = serialized_proof;
-    if (hardfork < feature::SN_PK_IS_ED25519) {
-        // Starting at the full ETH hardfork we only send the ed25519 sig (because ed and primary
-        // pubkeys are guaranteed unified starting at HF21).
-        request.sig = tools::view_guts(sig);
-    }
     request.ed_sig = tools::view_guts(sig_ed25519);
 
     return request;
@@ -219,8 +189,6 @@ cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request Proof::generate_request(hf ha
 inline constexpr static auto proof_tuple(const Proof& p) {
     return std::tie(
             p.timestamp,
-            p.pubkey,
-            p.sig,
             p.pubkey_ed25519,
             p.sig_ed25519,
             p.pubkey_bls,
@@ -232,6 +200,7 @@ inline constexpr static auto proof_tuple(const Proof& p) {
             p.l2_height,
             p.version,
             p.storage_server_version,
+            p.session_router_version,
             p.lokinet_version);
 }
 
