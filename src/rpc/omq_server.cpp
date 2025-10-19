@@ -431,15 +431,14 @@ void omq_rpc::send_snode_addr_notifications(
     // 'l' + 3 '32:...' values +  + 32:...
     constexpr size_t MAX_RECORD_LENGTH = 2        // de around the dict
                                        + 3 * 2    // 1:K + 1:v
-                                       + 8 * 4    // 2:.. for the 8 other, length-2 dict keys
-                                       + 3 * 35   // 32:... for the three pubkeys
+                                       + 7 * 4    // 2:.. for the 7 other, length-2 dict keys
+                                       + 2 * 35   // 32:... for the two pubkeys
                                        + 18       // IP, at longest: 15:AAA.BBB.CCC.DDD
                                        + 3 * 7    // iXXXXXe port, times 3.
                                        + 3 * 14;  // 3 versions such as `liAAeiBBeiCCee`
     addr.reserve(MAX_RECORD_LENGTH);
 
-    // - K -- the snode's primary key (32 bytes).
-    // - Ke -- the server's Ed pubkey, but only if different from K; otherwise this key is omitted.
+    // - K -- the snode's primary (and Ed25519) key (32 bytes).
     // - Kx -- the server's X pubkey, derived from the Ed pubkey.  32 bytes.
     // - ip -- the service node public IP address, as a string.
     // - qn -- the service node oxend OMQ port (AKA "quorumnet" port), integer.
@@ -448,9 +447,7 @@ void omq_rpc::send_snode_addr_notifications(
     // - v -- oxend version triplet
     // - vl -- lokinet version triplet
     // - vs -- storage server version triplet
-    addr.append("K", tools::view_guts(proof.pubkey));
-    if (tools::view_guts(proof.pubkey) != tools::view_guts(proof.pubkey_ed25519))
-        addr.append("Ke", tools::view_guts(proof.pubkey_ed25519));
+    addr.append("K", tools::view_guts(proof.pubkey_ed25519));
     addr.append("Kx", tools::view_guts(x_pk));
     addr.append("ip", epee::string_tools::get_ip_string_from_int32(proof.public_ip));
     addr.append("qn", proof.qnet_port);

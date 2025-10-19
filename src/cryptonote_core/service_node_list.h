@@ -165,6 +165,7 @@ struct proof_info {
     };
     reachable_stats ss_reachable{};
     reachable_stats lokinet_reachable{};
+    reachable_stats sr_reachable{};
 
     // Unlike all of the above (except for timestamp), these values *do* get serialized
     std::unique_ptr<uptime_proof::Proof> proof{};
@@ -868,6 +869,7 @@ class service_node_list {
             uint16_t storage_omq_port,
             std::array<uint16_t, 3> ss_version,
             uint16_t quorumnet_port,
+            std::array<uint16_t, 3> sr_version,
             std::array<uint16_t, 3> lokinet_version) const;
 
     bool handle_uptime_proof(
@@ -926,8 +928,9 @@ class service_node_list {
     // REACHABLE_MAX_FAILURE_VALIDITY, and 1h5min is actually
     // UPTIME_PROOF_VALIDITY-UPTIME_PROOF_FREQUENCY (which is actually 11min on testnet rather than
     // 1h5min)).
-    bool set_storage_server_peer_reachable(crypto::public_key const& pubkey, bool value);
-    bool set_lokinet_peer_reachable(crypto::public_key const& pubkey, bool value);
+    bool set_storage_server_peer_reachable(const crypto::public_key& pubkey, bool value);
+    bool set_lokinet_peer_reachable(const crypto::public_key& pubkey, bool value);
+    bool set_session_router_peer_reachable(const crypto::public_key& pubkey, bool value);
 
     struct recently_removed_node {
         enum struct type_t : uint8_t {
@@ -977,7 +980,11 @@ class service_node_list {
     void cleanup_zombies_from_state();
 
   private:
-    bool set_peer_reachable(bool storage_server, crypto::public_key const& pubkey, bool value);
+    bool set_peer_reachable(
+            const crypto::public_key& pubkey,
+            std::string_view service,
+            proof_info::reachable_stats& reach,
+            bool reachable);
 
   public:
     struct unconfirmed_l2_tx {
