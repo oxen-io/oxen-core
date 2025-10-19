@@ -1,3 +1,12 @@
+oxen (11.6.0-2~deb13) trixie; urgency=medium
+
+  * debug log fix
+  * new boost compilation fix
+  * Add Session Router support
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Sun, 19 Oct 2025 13:03:27 -0300
+
 oxen (11.6.0-1~deb13) trixie; urgency=medium
 
   * Optionally link to jemalloc
