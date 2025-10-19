@@ -194,6 +194,7 @@ inline constexpr uint64_t VOTE_OR_TX_VERIFY_HEIGHT_BUFFER = 5;
 // The minimum versions that we accept for local oxend pings from our *own* companion services:
 inline constexpr std::array<uint16_t, 3> MIN_STORAGE_SERVER_VERSION{{2, 11, 0}};
 inline constexpr std::array<uint16_t, 3> MIN_LOKINET_VERSION{{0, 9, 14}};
+inline constexpr std::array<uint16_t, 3> MIN_SESSION_ROUTER_VERSION{{1, 0, 0}};
 
 // The minimum accepted version number, broadcasted by Service Nodes via uptime proofs for each
 // hardfork
@@ -202,17 +203,21 @@ struct proof_version {
     std::array<uint16_t, 3> oxend;
     std::array<uint16_t, 3> lokinet;
     std::array<uint16_t, 3> storage_server;
+    std::array<uint16_t, 3> session_router;
 };
 
 inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS_MAINNET = {
-        proof_version{{cryptonote::hf::hf22_eth_fixup, 0}, {11, 4, 0}, {0, 9, 13}, {2, 10, 0}},
-        proof_version{{cryptonote::hf::hf22_eth_fixup, 1}, {11, 5, 0}, {0, 9, 14}, {2, 11, 0}},
+        proof_version{
+                {cryptonote::hf::hf22_eth_fixup, 0}, {11, 4, 0}, {0, 9, 13}, {2, 10, 0}, {0, 0, 0}},
+        proof_version{
+                {cryptonote::hf::hf22_eth_fixup, 1}, {11, 5, 0}, {0, 9, 14}, {2, 11, 0}, {0, 0, 0}},
 };
 inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS_STAGENET = {
-        proof_version{{cryptonote::hf::hf21_eth, 0}, {11, 0, 7}, {0, 9, 13}, {2, 10, 0}},
+        proof_version{{cryptonote::hf::hf21_eth, 0}, {11, 0, 7}, {0, 9, 13}, {2, 10, 0}, {0, 0, 0}},
 };
 inline constexpr std::array MIN_UPTIME_PROOF_VERSIONS_TESTNET = {
-        proof_version{{cryptonote::hf::hf21_eth, 0}, {11, 3, 0}, {0, 9, 13}, {2, 10, 0}},
+        proof_version{
+                {cryptonote::hf::hf22_eth_fixup, 0}, {11, 6, 0}, {0, 0, 0}, {2, 11, 1}, {1, 0, 0}},
 };
 
 inline constexpr std::span<const proof_version> MIN_UPTIME_PROOF_VERSIONS(
