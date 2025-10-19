@@ -682,7 +682,7 @@ class core final {
     void flush_invalid_blocks();
 
     /// Time point at which the storage server and lokinet last pinged us
-    std::atomic<time_t> m_last_storage_server_ping, m_last_lokinet_ping;
+    std::atomic<time_t> m_last_storage_server_ping, m_last_lokinet_ping, m_last_srouter_ping;
     std::atomic<uint16_t> m_storage_https_port{0}, m_storage_omq_port{0};
 
     uint32_t sn_public_ip() const { return m_sn_public_ip; }
@@ -833,9 +833,10 @@ class core final {
     }
     oxenmq::TaggedThreadID const& pulse_thread_id() const { return *m_pulse_thread_id; }
 
-    /// Service Node's storage server and lokinet version
+    /// Service Node's storage server, lokinet, and Sesion Router versions
     std::array<uint16_t, 3> ss_version;
     std::array<uint16_t, 3> lokinet_version;
+    std::array<uint16_t, 3> srouter_version;
 
     tx_memory_pool mempool;  //!< transaction pool instance
     Blockchain blockchain;   //!< Blockchain instance
@@ -949,9 +950,6 @@ class core final {
     bool m_offline;
     bool m_pad_transactions;
     bool m_has_ip_check_disabled;
-
-    // TODO: remove this after HF20:
-    bool m_skip_proof_l2_check = false;
 
     // Recently seen proof filter for uptime proofs so that we can drop repeated proofs without
     // processing them.
