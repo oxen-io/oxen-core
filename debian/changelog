@@ -1,3 +1,12 @@
+oxen (11.6.0-2~ubuntu2404) noble; urgency=medium
+
+  * debug log fix
+  * new boost compilation fix
+  * Add Session Router support
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Sun, 19 Oct 2025 13:04:08 -0300
+
 oxen (11.6.0-1~ubuntu2404) noble; urgency=medium
 
   * Optionally link to jemalloc
