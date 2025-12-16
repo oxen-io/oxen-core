@@ -5979,7 +5979,7 @@ bool service_node_list::handle_uptime_proof(
         if (!proof->pubkey_bls || !proof->pop_bls) {
             log::debug(
                     logcat,
-                    "Rejecting uptime proof from {}: BLS pubkey and pop are required in HF20",
+                    "Rejecting uptime proof from {}: missing BLS pubkey/pop",
                     proof->pubkey_ed25519);
             return false;
         }
@@ -6059,6 +6059,20 @@ bool service_node_list::handle_uptime_proof(
                     logcat,
                     "Rejecting uptime proof from {}: already received one uptime proof for this "
                     "node recently",
+                    proof->pubkey_ed25519);
+            return false;
+        }
+    }
+
+    if (vers.first > cryptonote::hf::hf22_eth_fixup) {
+        // Through HF22 we were not actually enforcing that the BLS pubkey in the proof matched the
+        // SN's pubkey, and so a node using a different bls pubkey would still have its proofs
+        // accepted, but would send invalid BLS signatures for the contract.  Starting at HF23 such
+        // proofs are rejected.
+        if (proof->pubkey_bls != it->second->bls_public_key) {
+            log::debug(
+                    logcat,
+                    "Rejecting uptime proof from {}: BLS pubkey does not match registration pubkey",
                     proof->pubkey_ed25519);
             return false;
         }
