@@ -2571,15 +2571,14 @@ void core::reset_proof_interval() {
 }
 //-----------------------------------------------------------------------------------------------
 void core::do_uptime_proof_call() {
-    std::vector<service_nodes::service_node_pubkey_info> const states =
-            service_node_list.get_service_node_list_state({m_service_keys.pub});
+    const auto states = service_node_list.get_service_node_list_state({m_service_keys.pub});
 
     // wait one block before starting uptime proofs (but not on testnet/devnet, where we sometimes
     // have mass registrations/deregistrations where the waiting causes problems).
     uint64_t delay_blocks = m_nettype == network_type::MAINNET ? 1 : 0;
     if (!states.empty() && (states[0].info->registration_height + delay_blocks) <
                                    blockchain.get_current_blockchain_height()) {
-        m_check_uptime_proof_interval.do_call([this]() {
+        m_check_uptime_proof_interval.do_call([this, &sn_info = *states[0].info] {
             // This timer is not perfectly precise and can leak seconds slightly, so send the uptime
             // proof if we are within half a tick of the target time.  (Essentially our target proof
             // window becomes the first time this triggers in the 59.75-60.25 minute window).
@@ -2606,6 +2605,43 @@ void core::do_uptime_proof_call() {
                         "using the same ed/x25519 keys as this service node. This typically means "
                         "both have the same 'key_ed25519' private key file.");
                 return;
+            }
+
+            if (sn_info.bls_public_key != m_service_keys.pub_bls) {
+                auto hf = blockchain.get_network_version();
+                auto reg_key = oxenc::to_hex(
+                        sn_info.bls_public_key.begin(), sn_info.bls_public_key.begin() + 5);
+                auto our_key = oxenc::to_hex(
+                        m_service_keys.pub_bls.begin(), m_service_keys.pub_bls.begin() + 5);
+                if (hf > hf::hf22_eth_fixup) {
+                    log::error(
+                            globallogcat,
+                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                            R"(BLS key mismatch; cannot submit uptime proof!
+!!! The BLS pubkey loaded from the 'key_bls' file (0x{}...) does not
+!!! match the key used in this node's registration (0x{}...).  If this
+!!! node was transferred from another server please fix the key_bls file and
+!!! restart oxend.)",
+                            our_key,
+                            reg_key);
+                    return;
+                } else {
+                    // This is still bad in HF22, but we want to give early upgraders time to notice
+                    // and either fix it or unlock the node.
+                    log::warning(
+                            globallogcat,
+                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                            R"(BLS key mismatch!
+!!! The BLS pubkey loaded from the 'key_bls' file (0x{}...) does not
+!!! match the key used in this node's registration (0x{}...).  If this
+!!! node was transferred from another server please fix the key_bls file and
+!!! restart oxend.
+!!!
+!!! The Session node network WILL NOT accept such proofs starting in HF23; if
+!!! this key mismatch is not corrected by then the node will be deregistered.)",
+                            our_key,
+                            reg_key);
+                }
             }
 
             {
