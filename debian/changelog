@@ -1,3 +1,15 @@
+oxen (11.6.1-1~ubuntu2504) plucky; urgency=medium
+
+  * add session router dependency
+  * rename session-router-sn to session-router-relay
+  * Fix BLS pubkey validation in uptime proof checks
+  * Detect and log an error/warning for a bls key mismatch
+  * 11.6.1 version bump
+  * bump ss, sr versions
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 17 Dec 2025 14:05:33 -0400
+
 oxen (11.6.0-2~ubuntu2504) plucky; urgency=medium
 
   * debug log fix
