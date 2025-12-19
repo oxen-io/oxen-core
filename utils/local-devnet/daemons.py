@@ -244,7 +244,7 @@ class Daemon(RPCDaemon):
                 "--log-level=trace",
             ]
             print("Starting storage server: ", args)
-            self.storage_server_proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.storage_server_proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
 
     def stop_storage_server(self):
         if self.storage_server_proc:
@@ -352,7 +352,9 @@ class Daemon(RPCDaemon):
     def ping(self, *, storage=True, lokinet=True):
         """Sends fake storage server and lokinet pings to the running oxend"""
         if storage:
-            self.json_rpc("storage_server_ping", { "version": [2, 5, 0], "https_port": 0, "omq_port": 0, "pubkey_ed25519": self.get_service_keys().ed25519_pubkey})
+            # NOTE: A fake storage ping needs to set the HTTPS/OMQ port to a non-zero value for it to
+            # be accepted by the network
+            self.json_rpc("storage_server_ping", { "version": [2, 5, 0], "https_port": 1, "omq_port": 1, "pubkey_ed25519": self.get_service_keys().ed25519_pubkey})
         if lokinet:
             self.json_rpc("lokinet_ping", { "version": [9,9,9] })
 

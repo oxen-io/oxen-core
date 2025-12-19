@@ -43,7 +43,7 @@ inline constexpr network_config config{
         .UPTIME_PROOF_FREQUENCY = testnet::config.UPTIME_PROOF_FREQUENCY,
         .UPTIME_PROOF_VALIDITY = testnet::config.UPTIME_PROOF_VALIDITY,
         .MAX_DEACTIVATE_PER_BLOCK = testnet::config.MAX_DEACTIVATE_PER_BLOCK,
-        .HAVE_STORAGE_SERVER = false,
+        .HAVE_STORAGE_SERVER = true,
         .HAVE_SESSION_ROUTER = false,
         .HAVE_LOKINET = false,
         .TARGET_BLOCK_TIME = TARGET_BLOCK_TIME,

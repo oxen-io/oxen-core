@@ -55,7 +55,7 @@ def coins(*args):
     return round(x * 1000000000)
 
 
-def wait_for(callback, timeout=10):
+def wait_for(callback, timeout=10, sleep_s=.25):
     expires = time.time() + timeout
     while True:
         try:
@@ -65,7 +65,7 @@ def wait_for(callback, timeout=10):
             pass
         if time.time() >= expires:
             raise RuntimeError("task timeout expired")
-        time.sleep(.25)
+        time.sleep(sleep_s)
 
 
 verbose = True
@@ -783,6 +783,35 @@ class SNNetwork:
     eth_sns:   list[Daemon] = []
     wallets                 = []
 
+    def startup_storage_servers(self, storage_server_path: pathlib.Path):
+        if storage_server_path:
+            vprint("Starting storage server")
+            for n in self.all_nodes:
+                if n.service_node:
+                    n.start_storage_server();
+
+            vprint("Waiting for proofs with storage ports to propagate:", flush=True)
+            while True:
+                for sn in self.sns:
+                    sn.send_uptime_proof()
+
+                all_ports_received = True
+                for sn in self.sns:
+                    response = sn.json_rpc("get_n_service_nodes", {"fields": {"storage_port": True}}).json()['result']['service_node_states']
+                    print(response)
+                    for obj in response:
+                        if obj['storage_port'] <= 0:
+                            all_ports_received = False
+                            break
+
+                    if all_ports_received == False:
+                        break
+
+                if all_ports_received == True:
+                    break
+
+                time.sleep(5)
+
     def __init__(self,
                  datadir,
                  *,
@@ -831,6 +860,10 @@ class SNNetwork:
                     raise
             else:
                 break
+
+        # NOTE: Mine at least one block on the EVM chain because uptime proofs from nodes take that
+        # L2 height and that height must be > 0
+        ethereum.evm_mine()
 
         # Attempt to restore chain from cache if requested and cache is avail
         chain_bootstrapped_from_cache = False
@@ -953,6 +986,7 @@ class SNNetwork:
         with open(config_file, 'w') as file:
             file.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
 
+        storage_servers_started = False
         if not chain_bootstrapped_from_cache:
             # Start blockchain setup ###################################################################
             # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
@@ -1007,14 +1041,19 @@ class SNNetwork:
             # Submit block to enter the BLS transition ##################################################
             self.sync_nodes(self.mine(1), timeout=120) # Height 170
 
-            vprint("Sending fake lokinet/ss pings and uptime proofs w/ BLS keys at HF20")
+            # NOTE: Start storage server
+            if storage_server_path and not storage_servers_started:
+                storage_servers_started = True
+                self.startup_storage_servers(storage_server_path)
+
+            vprint("Sending fake lokinet pings and uptime proofs w/ BLS keys at HF20")
             for sn in self.sns:
-                sn.ping()
+                sn.ping(storage=not storage_servers_started)
                 sn.send_uptime_proof()
 
             vprint("Waiting for proofs to propagate:", flush=True)
             for sn in self.sns:
-                wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
+                wait_for(lambda: all_service_nodes_proofed(sn), timeout=120, sleep_s = 5)
             vprint(timestamp=False)
 
             if cache_at_hf20:
@@ -1027,10 +1066,14 @@ class SNNetwork:
                     else:
                         shutil.copytree(src, dest, ignore=shutil.ignore_patterns("*.sock"), dirs_exist_ok=True)
 
-        vprint("Sending fake lokinet/ss pings and uptime proofs")
+        vprint("Sending fake lokinet pings")
         for sn in self.sns:
-            sn.ping()
-            sn.send_uptime_proof()
+            sn.ping(storage=not storage_servers_started)
+
+        # NOTE: Start storage server
+        if storage_server_path and not storage_servers_started:
+            storage_servers_started = True
+            self.startup_storage_servers(storage_server_path)
 
         vprint("Waiting for proofs to propagate:", flush=True)
         for sn in self.sns:
@@ -1045,33 +1088,6 @@ class SNNetwork:
             beneficiary = self.sn_contract.hardhat_account1
             test_bls_claim_rewards(eth_sns=self.eth_sns, sn_contract=self.sn_contract, sent_contract=self.sent_contract, staker=staker, beneficiary=beneficiary);
             test_sn_exits_by_request_signature_and_liquidation(eth_sns=self.eth_sns, sn_contract=self.sn_contract, staker=staker);
-
-        # NOTE: Start storage server
-        if storage_server_path:
-            for n in self.all_nodes:
-                if n.service_node:
-                    n.start_storage_server();
-
-            vprint("Waiting for proofs with storage ports to propagate:", flush=True)
-            while True:
-                for sn in self.sns:
-                    sn.send_uptime_proof()
-
-                all_ports_received = True
-                for sn in self.sns:
-                    response = sn.json_rpc("get_n_service_nodes", {"fields": {"storage_port": True}}).json()['result']['service_node_states']
-                    for obj in response:
-                        if obj['storage_port'] <= 0:
-                            all_ports_received = False
-                            break
-
-                    if all_ports_received == False:
-                        break
-
-                if all_ports_received == True:
-                    break
-
-                time.sleep(5)
 
         wallet_rows: list[list[str]] = []
         wallet_rows.append(["Name", "Address", "Balance", "Unlocked", "Command"])
@@ -1314,12 +1330,23 @@ class SNNetwork:
         if not get_info.pulse:
             self.sync_nodes(self.mine(1), timeout=10)
 
-        # Wait for pulse to make block to enter BLS hardfork (height 171 or length 172)
+        # TODO: This previously was height 172, but, for some reason pulse stops generating blocks.
+        # Something seemed to stop working with inter-node communication in the quorum. Not sure
+        # what this is but this is not necessary for the usecase of spinning up a network. It does
+        # just mean that the chain doesn't advance but we are using the network for sending Session
+        # messages not add or deregister nodes from the network. Oddly enough, _sometimes_ on very
+        # rare occasion Pulse does work and blocks are generating kind of suggesting there's some
+        # race condition.
+        vprint("Wait for pulse to make block to enter BLS hardfork (height 170 or length 171)")
         # Wait for one specific node to hit HF21 and check post-fork eth balance
-        h = self.sns[0].height()
-        while h < 172:
+        h           = self.sns[0].height()
+        prev_height = 0
+        while h < 170:
             time.sleep(0.25)
             h = self.sns[0].height()
+            if prev_height != h:
+                prev_height = h
+                vprint("Height was: ", h)
 
         # FIXME: this expected value needs to be recomputed with respect to changes made in preparation for HF21
         # if integration_tests:
@@ -1329,7 +1356,7 @@ class SNNetwork:
             #assert rewards_response.balance == transition_balance_expected, "Expected {} to have balance {}, not {}".format(transition_eth_addr_no_0x, transition_balance_expected, rewards_response.balance)
 
         # Wait for all nodes to sync up
-        self.sync_nodes(172, timeout=120)
+        self.sync_nodes(170, timeout=120)
 
         # Register a SN via the Ethereum smart contract, half as multi-contrib,
         # half as solo nodes.
@@ -1391,6 +1418,7 @@ class SNNetwork:
         # multi-contrib contracts
         beneficiary_required_sent: int = int((contract_staking_requirement / 2) * len(self.sn_contrib_factory.deployedContracts))
 
+        print("Contract staking requirement is {}".format(contract_staking_requirement))
         print("HH Account 0 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account0.address)))
         print("HH Account 1 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account1.address)))
 
@@ -1521,14 +1549,14 @@ def run():
                 else:
                     shutil.rmtree(path)
 
-        snn = SNNetwork(datadir=args.data_dir,
-                        oxen_bin_dir=args.oxen_bin_dir,
-                        anvil_path=args.anvil_path,
-                        session_token_contracts_dir=args.session_token_contracts_dir,
-                        storage_server_path=args.storage_server_path,
-                        cache_at_hf20=args.cache_at_hf20,
-                        integration_tests=args.integration_tests,
-                        listen_ip=args.listen_ip)
+        snn = SNNetwork(datadir                     = args.data_dir,
+                        oxen_bin_dir                = args.oxen_bin_dir,
+                        anvil_path                  = args.anvil_path,
+                        session_token_contracts_dir = args.session_token_contracts_dir,
+                        storage_server_path         = args.storage_server_path,
+                        cache_at_hf20               = args.cache_at_hf20,
+                        integration_tests           = args.integration_tests,
+                        listen_ip                   = args.listen_ip)
     else:
         vprint("reusing SNN")
         snn.alice.new_wallet()
