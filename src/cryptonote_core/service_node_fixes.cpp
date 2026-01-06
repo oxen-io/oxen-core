@@ -14,6 +14,29 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
 
     switch (nettype) {
         case cryptonote::network_type::MAINNET:
+
+            // The following transactions followed a tx witnessing bug found by a medium sized
+            // operator with a faulty Arbitrum RPC provider that was not including any L2 events,
+            // and so when the large operator's nodes produced blocks, would include a vote against
+            // recently included events from other nodes.  (And the operator had enough nodes
+            // clustered together in the pulse quorum ordering that they produced enough negative
+            // votes to reject the events).  The bug was that other nodes that did not agree with
+            // this negative vote were still signing off on the transaction and thus, instead of the
+            // transaction failing to be produced because of the disagreement, allowed the
+            // transactions to go ahead, accumulating enough votes to permanently reject the L2
+            // event from being witnessed on the oxen chain.
+            //
+            // The voting behaviour was fixed in Oxen 11.3.2 so that nodes correctly refuse to sign
+            // off on a pulse block if they do not agree with the L2 confirmation votes contained in
+            // that block.
+            //
+            // The funds, however, were still transferred on the Arbitrum side into the SNRewards
+            // contract, but with the oxen chain having rejected the event, those funds were
+            // effectively "lost" in the contract.  The "fixups" in this file simply credited the
+            // exact amounts that oxend rejected to all of the same accounts when the 11.4.0 upgrade
+            // took effect (at block 1871519) so that those stuck contract funds could then be
+            // extracted via the regular oxend SESH fund claiming process.
+
             fixups = {
                     // clang-format off
 
@@ -32,6 +55,7 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
                 //   00 0x442D88b2E3eAa2357506e5A1eCBfd40cD7Af0fCb: 25000.000000000
                 {HF22Fix::Purge, 1852106, 1, 0, "2c75c8e0cfacd35dd8f50edd020d584969b31df0a20c794d60a140815a91af62"_edpk, "0x442D88b2E3eAa2357506e5A1eCBfd40cD7Af0fCb"_eth, 25'000'000'000'000},
 
+                // Arbitrum TX 0x85276a54db4bab3544756f710d88359416d2144aa59e17c07d4374c8071849fc
                 // Blk 1853003/0 state change tx ae78ab38b357db1bee5c34b0d0d64ff4808f60b3a53bb154ea1b0ec4c51ba321 denied by votes, was registration v2
                 // (key: 231d574425fa6026d88eae691ecb7da5a92ae3d058b88ce586a808d164f55f98, bls: 23e340d4682c4fa1bd91580ccb5c66aa87463c5de6197b6c505282964c2a29a62d2e4c27db3c565fbba52f244d5524b335dc6ed9bd365d140835daf96f5146db)
                 //   00 0x66c968b031592663AAcb6c0CD79C18bb46Eb483C: 6250.000000000
@@ -49,6 +73,7 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
                 {HF22Fix::Reg, 1853003, 0, 5, "231d574425fa6026d88eae691ecb7da5a92ae3d058b88ce586a808d164f55f98"_edpk, "0xB69c582DbaF25dd8aF9cbc8e3Af4D259FbB078E5"_eth, 3'153'906'300'000},
                 {HF22Fix::Reg, 1853003, 0, 6, "231d574425fa6026d88eae691ecb7da5a92ae3d058b88ce586a808d164f55f98"_edpk, "0x557CDDb939d1541B2b82Bc01A229e643A931f9b9"_eth, 3'506'437'700'000},
 
+                // Arbitrum TX 0x0cb6aaaba472444b14d87a04a00d540bdb5e75f22237787e12763ca4c451d836
                 // Blk 1853002/0 state change tx 68c66840c06891e49f5a4686bf7963f6c992222175a3ce26572942187774c3e9 denied by votes, was registration v2
                 // (key: da2b08e1018c66b4e05011adc7c8dd4b335bb0fc6473a60aba9fb1ec11dd8055, bls: 0db6d3e6b4b6a37323a5637a69b91d34a0e2c920d54a71d0f1c89d43ece1d52c2c173ce267dc081cc9e1ad9d9e83eba6bb3e7377d3be78ac100d6a84141c1e7d)
                 //   00 0x66c968b031592663AAcb6c0CD79C18bb46Eb483C: 6250.000000000
@@ -64,6 +89,7 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
                 {HF22Fix::Reg, 1853002, 0, 4, "da2b08e1018c66b4e05011adc7c8dd4b335bb0fc6473a60aba9fb1ec11dd8055"_edpk, "0x7AaF70e681F17aae9284dC311431341CB7b64A43"_eth, 4'291'000'000'000},
                 {HF22Fix::Reg, 1853002, 0, 5, "da2b08e1018c66b4e05011adc7c8dd4b335bb0fc6473a60aba9fb1ec11dd8055"_edpk, "0xcA7e33614AF24Ae6fe62e0147Bf386CC5aa25EB5"_eth, 4'037'016'700'000},
 
+                // Arbitrum TX 0x32529eb484f5b28363f63f8f95d07d210b6443b95f70b4dc8de3273c72aa1a9a
                 // Blk 1852999/0 state change tx 9a9b1c2416c33a034446c8829d0bfd280f7f71390b3c240a1573e6ae871bc2dd denied by votes, was registration v2
                 // (key: 966056fc975e65908b9b3ac896649021679a725025e91a0a79bf3147a6a777ac, bls: 0c40f1c16f819b15bcace9066641518c9de1f726e379586d6ed2ca22710cebfa0fa9a10f7dc565bd2f1f319f8407c63c0ddd9ae1b8511bdb302eadd1e2b03f6b)
                 //   00 0x66c968b031592663AAcb6c0CD79C18bb46Eb483C: 6250.000000000
@@ -77,6 +103,7 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
                 {HF22Fix::Reg, 1852999, 0, 3, "966056fc975e65908b9b3ac896649021679a725025e91a0a79bf3147a6a777ac"_edpk, "0x11B9C7477307CB63731f9657DD16dc420f47D265"_eth, 2'076'275'300'000},
                 {HF22Fix::Reg, 1852999, 0, 4, "966056fc975e65908b9b3ac896649021679a725025e91a0a79bf3147a6a777ac"_edpk, "0x3A722cdaEd11a45873080CfC4Eb584F31A0aCBC0"_eth, 717'271'700'000},
 
+                // Arbitrum TX 0x71bc543d255a2211a90a50d8b0db9e79c288c6d6bd8090acada1409539721781
                 // Blk 1853017/0 state change tx cc8dafe383374bd5fc0811d755a397d06974c820a2662532a7910195f096f5f6 denied by votes, was registration v2
                 // (key: 9f0eccf89421cf6b2c9db1919ddccae4983f35fbbdb46814c43c58246d6606b3, bls: 028813ac9255f0023ad0a54d995b583a51ef081471777497f26ddddaefb062422405597150a150ada23692fa91e6521e44d8de3390cf257e19ce1978755674b5)
                 //   00 0x226Fa898550EF48313d359d90F69914018a89F73: 6250.000000000
@@ -90,6 +117,7 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
                 {HF22Fix::Reg, 1853017, 0, 3, "9f0eccf89421cf6b2c9db1919ddccae4983f35fbbdb46814c43c58246d6606b3"_edpk, "0xa414cFf0c72D83FF1A42F73d2063aB1d1E31fe46"_eth, 3'812'000'000'000},
                 {HF22Fix::Reg, 1853017, 0, 4, "9f0eccf89421cf6b2c9db1919ddccae4983f35fbbdb46814c43c58246d6606b3"_edpk, "0xED79690cC83b40B33F934A1416CDC105Cb983F22"_eth, 9'428'000'000'000},
 
+                // Arbitrum TX 0x7491e014ac2910f2c2d8b09d3112c08f1e63c2a253a8161dfb7d44553888acd7
                 // NOTE: A request to unlock that was denied has minor side effects. It stops the
                 // 15 day unlock timer from starting. The user is allowed to request exit on the
                 // smart contract 1 hour after their last attempt hence there is no action to be
@@ -97,6 +125,7 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
                 // Blk 1853013/0 state change tx a9986b14747098914621ae31d9017492c7573d2731d3255c3d079ef9a8c527e6 denied by expiry, was unlock
                 // (bls: 0788748bc2d87188f7922dad1531f38652f739a143fbdb8d8ae62ca663b3eaec19c557802785bcdc3c5f02611b6ddc0e75645f012520646a24e49fdd3ac365ff, key: a06122ddbc339b090e7f05590fa59741c8b931a454410b7c83652bdfeb605375)
 
+                // Arbitrum TX 0xdb8f494161843d43939c9768e55ef7cac26653bbaef06942a0c0c672a4d9bedd
                 // Blk 1853022/0 state change tx 0c51e6c92a57550cb142840e64111153c3846c143858b7175dd366ae1dfb9aa9 denied by expiry, was registration v2
                 // (key: 3104e0573435846514794c429a571115cde1fe1b4f4c5399284af7829e34a0b6, bls: 1f6e3d22b64b7661c1fbabe21fff54e5187dfd5e0b708c15b1e595f7d88a68111d5de443dd7914e4622b1871cc3cfd87a21be88c9b9110bb60028c84948358fe)
                 //   00 0x226Fa898550EF48313d359d90F69914018a89F73: 6250.000000000
@@ -112,10 +141,12 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
                 {HF22Fix::Reg, 1853022, 0, 4, "3104e0573435846514794c429a571115cde1fe1b4f4c5399284af7829e34a0b6"_edpk, "0x1062d876BD363311bC209c9dDc8b4AF9f1C5BF9b"_eth, 3'846'000'000'000},
                 {HF22Fix::Reg, 1853022, 0, 5, "3104e0573435846514794c429a571115cde1fe1b4f4c5399284af7829e34a0b6"_edpk, "0x1F352714a58625E7673Bd9161AC0F92629A0079e"_eth, 3'407'000'000'000},
 
+                // Arbitrum TX 0xa3fdf91cc33f3e6215153368e0c6edb68846782fc2f5b63e11830b8dcc27cff3
                 // NOTE: See denied exit-request above, there is no action to be taken here.
                 // Blk 1853100/0 state change tx 574f1a43a498f2886ecf0b10f73998de6481ff8510f194b5822ccc7bce6c3970 denied by expiry, was unlock
                 // (bls: 09685275494887567472bec663705cad3c197ffe0b2fc36a2c84bd684bdef4990a5a3c3bdc929e8dc759c088dcd8434829e37f4cd29dcf2b02320728ecea1816, key: f09e15702057949dffefe5260e121552751361e86fcab26d5ec1714022b9ddfc)
 
+                // Arbitrum TX 0xb7117e5e2ed6108b9ef8c4aa39b0d2f91c8425c9b56ce6cffeb783719457a686
                 // Blk 1854383/0 state change tx ac507b47640d8afc5bc4b5a8430743bffae2a699803246ff89ea0f9342b3facb denied by votes, was registration v2
                 // (key: 304456e3d61b05560a855fd2adc8e4fe062b9450f16f79d71132ca07a33eb633, bls: 08e2b2207473fbfe95435c15a94126ab1db0e5e16693792f64927795af2f66821b4f94ab6302947d5d813edce2bb141b0fd0062cabccc29422198bfcb76e923f)
                 //   00 0x1C2b2E766b4441e56A90594b00710bc397F129e1: 6250.000000000
@@ -131,6 +162,7 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
                 {HF22Fix::Reg, 1854383, 0, 4, "304456e3d61b05560a855fd2adc8e4fe062b9450f16f79d71132ca07a33eb633"_edpk, "0x7Fcba28a59C8fd78daB8Bb1CeD1688489517f21c"_eth, 5'069'000'000'000},
                 {HF22Fix::Reg, 1854383, 0, 5, "304456e3d61b05560a855fd2adc8e4fe062b9450f16f79d71132ca07a33eb633"_edpk, "0x24A9D200dB7f91d0ed40AD6bF8986b081D50D015"_eth, 3'452'000'000'000},
 
+                // Arbitrum TX 0x362ba14cf7e7e110ad943353a2033c53ed278d26b9464864f457b745433f4951
                 // Blk 1854380/0 state change tx f7adbd955ef7b9e0e19dcc519229f88db1e3dd6db1bb372e13d34b52ccb8caad denied by expiry, was registration v2
                 // (key: 8945537c50fa966bd28765d8373973351ef39ea5468b4ea0e0ccb51a3452d705, bls: 0685f9ee1b64ab54f33dcd3ff96a90bb7416a7a1d6c77c84f819225527725011104e8e2be70ab5cecda2c9bf1d67a1048bac5d8c0b1abf1781dd162e1e835305)
                 //   00 0xC69955a2ffec718C53497328b96d16CF3351A80c: 6250.000000000
@@ -144,6 +176,7 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
                 {HF22Fix::Reg, 1854380, 0, 3, "8945537c50fa966bd28765d8373973351ef39ea5468b4ea0e0ccb51a3452d705"_edpk, "0xa47e4D6F3E27C9de69377A8be422CCf527d7bB66"_eth, 5'315'000'000'000},
                 {HF22Fix::Reg, 1854380, 0, 4, "8945537c50fa966bd28765d8373973351ef39ea5468b4ea0e0ccb51a3452d705"_edpk, "0x4379C83B663Aa7469564B08B32c6898198A7Fc86"_eth, 2'332'000'000'000},
 
+                // Arbitrum TX 0x502149c358a3a1afe129d9284948e9237e232fc4743e1a3f8a3768ab3a3e5740
                 // Blk 1854403/0 state change tx d3839d1105e70274a5d2c3cd3462f0e31fe567d11d7e014bc30d7e1a14075b8a denied by expiry, was exit
                 // (op: 0x76510193cAE84056150d3426fB6ACCD0bC0682a7; key: 0bc61ecbd86839f21dc7ed7598f7c8d8c644d6541149e86672a8ca75fff99456; returned: 25000000000000)
                 //   00 0x76510193cAE84056150d3426fB6ACCD0bC0682a7: 6250.000000001
