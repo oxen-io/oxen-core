@@ -26,7 +26,23 @@ local gtest_filter = '-AddressFromURL.Failure:DNSResolver.DNSSEC*';
 
 local docker_base = 'registry.oxen.rocks/';
 
-local submodules_commands = ['git fetch --tags', 'git submodule update --init --recursive --depth=1 --jobs=4'];
+
+local submodules_commands = [
+  'git fetch --tags',
+
+  // uWebSockets includes nearly 900MB of crap via submodules that we don't use and want to clone on
+  // every CI job, so do this song and dance to get rid of the junk.
+  'git submodule update --init --depth=1 external/uWebSockets',
+  'cd external/uWebSockets',
+  'git rm fuzzing/seed-corpus',
+  'git submodule update --init --depth=1 uSockets',
+  'cd uSockets',
+  'git rm boringssl lsquic',
+  'cd ../../..',
+
+  'git submodule update --init --recursive --depth=1 --jobs=4',
+];
+
 local submodules = {
   name: 'submodules',
   image: 'drone/git',
