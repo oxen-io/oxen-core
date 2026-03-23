@@ -318,7 +318,7 @@ void L2Proxy::subscribe(oxenmq::Message& msg) {
             it->second = expiry;
             renewal = true;
         } else {
-            h_state = last_notify_height;
+            h_state = last_notify_height.first;
             h_purge = last_notify_purge_height;
         }
     }
@@ -333,8 +333,16 @@ void L2Proxy::subscribe(oxenmq::Message& msg) {
 
 void L2Proxy::notify(uint64_t state_height, uint64_t purge_state_height) {
     std::shared_lock lock{mutex};
-    if (state_height > last_notify_height) {
-        last_notify_height = state_height;
+    auto now = std::chrono::steady_clock::now();
+    auto& [last_height, last_when] = last_notify_height;
+    // We track both height and timestamp so that if we are getting updates that do not advance the
+    // height (such as happened 2026-03-23 in a major Arbitrum sepolia outage) we still broadcast
+    // the update (even though unchanged) every 10 minutes to proxy-using nodes so that they don't
+    // think they are cut off from updates and stop sending proofs.  (If this is a local node height
+    // issue, that gets dealt with via separate node testing conditions).
+    if (state_height > last_height || now > last_when + 10min) {
+        last_height = state_height;
+        last_when = now;
         if (!subscribers.empty()) {
             log::debug(
                     logcat,
@@ -709,11 +717,36 @@ void L2Tracker::proxy_request_if_newer(
             l2_state_requested_at = now;
             make_state_req = true;
         }
+
         if (state_purge_height && *state_purge_height > purge_state.latest_height &&
             *state_purge_height > l2_purge_state_requested_height) {
             l2_purge_state_requested_height = *state_purge_height;
             l2_purge_state_requested_at = now;
             make_purge_req = true;
+        }
+
+        // Normally, we don't update the l2 height of a proxy-using node until we get the l2 height
+        // state notification (which triggered this callback) *and* we then get the full state
+        // response that we request.
+        //
+        // However, if the parent (Arb) chain is stalled (such as happened 2026-03-23 in a major
+        // Arbitrum sepolia outage), then we may go an extended period of time with just getting an
+        // unchanging height over and over, and so we'll never issue a request for full state, and
+        // wouldn't update the latest_height_ts (which would then prevent uptime proofs from going
+        // on).  This check is to detect that and update the timestamp if we've gone 9 minutes
+        // without any indicated height change.
+        //
+        // This *could* end up sending proofs when you have a stalled local RPC node (i.e. the
+        // network is okay, but your node is not), but there are other checks (on proof acceptance,
+        // and pulse quorum participation) that will kick in if that happens.
+        if (state_height && *state_height == state.synced_height &&
+            l2_state_requested_height <= state.synced_height && latest_height_ts &&
+            now > *latest_height_ts + 9min) {
+            log::warning(
+                    logcat,
+                    "Have not seen any recent L2 height changes recently; the RPC provider or the "
+                    "entire L2 network may be stalled");
+            latest_height_ts = now;
         }
     }
 
