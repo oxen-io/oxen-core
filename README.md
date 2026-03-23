@@ -42,7 +42,7 @@ library archives (`.a`).
 | GCC          | 10.1.0        | NO       | `g++`[1]               | `base-devel` | `gcc`               | NO       |                    |
 | CMake        | 3.16          | NO       | `cmake`                | `cmake`      | `cmake`             | NO       |                    |
 | pkg-config   | any           | NO       | `pkg-config`           | `base-devel` | `pkgconf`           | NO       |                    |
-| Boost        | 1.65          | NO       | `libboost-all-dev`[2]  | `boost`      | `boost-devel`       | NO       | C++ libraries      |
+| Boost        | 1.69          | NO       | `libboost-all-dev`[2]  | `boost`      | `boost-devel`       | NO       | C++ libraries      |
 | libzmq       | 4.3.0         | YES      | `libzmq3-dev`          | `zeromq`     | `zeromq-devel`      | NO       | ZeroMQ library     |
 | sqlite3      | 3.24.0        | YES      | `libsqlite3-dev`       | `sqlite`     | `sqlite-devel`      | NO       | ONS, batching      |
 | libsodium    | 1.0.9         | YES      | `libsodium-dev`        | `libsodium`  | `libsodium-devel`   | NO       | cryptography       |

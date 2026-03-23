@@ -804,7 +804,7 @@ set(Boost_USE_MULTITHREADED TRUE) # Needed for macOS, at least, and won't hurt e
 if(BUILD_STATIC_DEPS)
   # StaticBuild.cmake sets Boost targets up for us
 else()
-  find_package(Boost 1.62 QUIET REQUIRED COMPONENTS system thread serialization program_options)
+  find_package(Boost 1.69 QUIET REQUIRED COMPONENTS thread serialization program_options)
 endif()
 
 set(CMAKE_FIND_LIBRARY_SUFFIXES ${OLD_LIB_SUFFIXES})
