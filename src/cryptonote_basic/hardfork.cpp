@@ -46,7 +46,7 @@ static constexpr std::array mainnet_hard_forks = {
         hard_fork{hf::hf19_reward_batching, 1, 754, 1653632397},
         hard_fork{hf::hf19_reward_batching, 2, 755, 1661205699},
         hard_fork{hf::hf19_reward_batching, 3, 756, 1673385120},
-        hard_fork{hf::hf20_governance_payouts_fix, 0, 34255, 1780286400},
+        hard_fork{hf::hf20_governance_payouts_fix, 0, 35000, 1780891200},
 };
 
 static constexpr std::array testnet_hard_forks = {
@@ -63,7 +63,7 @@ static constexpr std::array testnet_hard_forks = {
         hard_fork{hf::hf19_reward_batching, 1, 754, 1653632397},
         hard_fork{hf::hf19_reward_batching, 2, 755, 1661205699},
         hard_fork{hf::hf19_reward_batching, 3, 756, 1673385120},
-        hard_fork{hf::hf20_governance_payouts_fix, 0, 760, 1780286400},
+        hard_fork{hf::hf20_governance_payouts_fix, 0, 760, 1780891200},
 };
 
 static constexpr std::array devnet_hard_forks = {
