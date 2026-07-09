@@ -1,0 +1,37 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Thu, 9 Jul 2026 11:52:51 -0300
+Subject: Drop boost system usage to fix boost 1.89+ compilation
+
+boost_system has been a compatibility shim since boost 1.69 (~2018), so
+just drop it entirely and bump the minimum boost to that version.
+---
+ CMakeLists.txt | 2 +-
+ README.md      | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d9212e2..a77f382 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -806,7 +806,7 @@ set(Boost_USE_MULTITHREADED TRUE) # Needed for macOS, at least, and won't hurt e
+ if(BUILD_STATIC_DEPS)
+   # StaticBuild.cmake sets Boost targets up for us
+ else()
+-  find_package(Boost 1.62 QUIET REQUIRED COMPONENTS system thread serialization program_options)
++  find_package(Boost 1.69 QUIET REQUIRED COMPONENTS thread serialization program_options)
+ endif()
+ 
+ set(CMAKE_FIND_LIBRARY_SUFFIXES ${OLD_LIB_SUFFIXES})
+diff --git a/README.md b/README.md
+index c31a3eb..a9a2306 100644
+--- a/README.md
++++ b/README.md
+@@ -42,7 +42,7 @@ library archives (`.a`).
+ | GCC          | 10.1.0        | NO       | `g++`[1]               | `base-devel` | `gcc`               | NO       |                    |
+ | CMake        | 3.16          | NO       | `cmake`                | `cmake`      | `cmake`             | NO       |                    |
+ | pkg-config   | any           | NO       | `pkg-config`           | `base-devel` | `pkgconf`           | NO       |                    |
+-| Boost        | 1.65          | NO       | `libboost-all-dev`[2]  | `boost`      | `boost-devel`       | NO       | C++ libraries      |
++| Boost        | 1.69          | NO       | `libboost-all-dev`[2]  | `boost`      | `boost-devel`       | NO       | C++ libraries      |
+ | libzmq       | 4.3.0         | YES      | `libzmq3-dev`          | `zeromq`     | `zeromq-devel`      | NO       | ZeroMQ library     |
+ | sqlite3      | 3.24.0        | YES      | `libsqlite3-dev`       | `sqlite`     | `sqlite-devel`      | NO       | ONS, batching      |
+ | libsodium    | 1.0.9         | YES      | `libsodium-dev`        | `libsodium`  | `libsodium-devel`   | NO       | cryptography       |
