@@ -30,6 +30,7 @@
 
 #include "oxen_tests.h"
 #include "common/string_util.h"
+#include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_config.h"
@@ -3230,9 +3231,7 @@ bool oxen_service_nodes_insufficient_operator_contribution_HF19::generate(std::v
   return true;
 }
 
-static consteval size_t pulse_min_sns() {
-    return get_config(cryptonote::network_type::FAKECHAIN).PULSE_MIN_SERVICE_NODES;
-}
+static consteval size_t pulse_min_sns() { return 12; }
 
 static oxen_chain_generator setup_pulse_tests(std::vector<test_event_entry> &events)
 {
@@ -3263,8 +3262,8 @@ bool oxen_pulse_invalid_validator_bitset::generate(std::vector<test_event_entry>
   oxen_create_block_params params = gen.next_block_params();
   gen.block_begin(entry, params, {} /*tx_list*/);
 
-  // NOTE: Overwrite valiadator bitset to be wrong
-  entry.block.pulse.validator_bitset = ~service_nodes::pulse_validator_bit_mask();
+  // NOTE: Overwrite validator bitset to be wrong
+  entry.block.pulse.validator_bitset = ~pulse::bitset_t{0};
 
   gen.block_end(entry, params);
   gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong validator bitset");
@@ -3297,7 +3296,7 @@ bool oxen_pulse_oob_voter_index::generate(std::vector<test_event_entry> &events)
   gen.block_begin(entry, params, {} /*tx_list*/);
 
   // NOTE: Overwrite oob voter index
-  entry.block.signatures.back().voter_index = service_nodes::PULSE_QUORUM_NUM_VALIDATORS + 1;
+  entry.block.signatures.back().voter_index = service_nodes::PULSE_QUORUM_MAX_VALIDATORS + 1;
   gen.block_end(entry, params);
   gen.add_block(entry, false /*can_be_added_to_blockchain*/, "Invalid Pulse Block, specifies the wrong validator bitset");
 
@@ -3326,16 +3325,20 @@ bool oxen_pulse_non_participating_validator::generate(std::vector<test_event_ent
     service_nodes::quorum quorum = {};
     {
       std::vector<service_nodes::pubkey_and_sninfo> active_snode_list = params.prev.service_node_state.active_service_nodes_infos();
-      std::vector<crypto::hash> entropy = service_nodes::get_pulse_entropy_for_next_block(gen.db_, params.prev.block, entry.block.pulse.round);
+      std::vector<crypto::hash> entropy = service_nodes::get_pulse_entropy_for_next_block(
+              gen.db_,
+              params.hf_version,
+              params.prev.block,
+              entry.block.pulse.round,
+              active_snode_list.size());
       quorum = generate_pulse_quorum(cryptonote::network_type::FAKECHAIN, params.block_leader.key, entry.block.major_version, active_snode_list, entropy, entry.block.pulse.round, entry.block.get_height());
-      assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
+      assert(quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS(params.hf_version, active_snode_list.size()));
       assert(quorum.workers.size() == 1);
     }
 
     // NOTE: First 7 validators are locked in. We received signatures from the
     // first 6 in the quorum, then the 8th validator in the quorum (who is not
     // meant to be participating).
-    static_assert(service_nodes::PULSE_QUORUM_NUM_VALIDATORS > service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES);
     entry.block.pulse.validator_bitset = 0b0000'000'0111'1111;
     size_t const voter_indexes[]       = {0, 1, 2, 3, 4, 5, 7};
 

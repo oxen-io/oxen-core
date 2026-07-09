@@ -22,7 +22,7 @@ TRACE = True
 # N sizes to calculate for.  The default calculates for all possible quorums that are capable of
 # achieving supermajority for blink and obligations quorums (10, 7 required) and checkpoint quorums
 # (20, 13 required)
-N = range(7, 21)
+N = range(7, 26)
 
 # This defines how much 2-path connectivity we require for different values of N
 def min_connections(n):
@@ -164,7 +164,7 @@ for n in N:
             last_min_paths = min_paths
             print("\n\n\n\n")
 
-    cpp += "template<> constexpr std::array<bool, {N}*{N}> quorum_conn_matrix<{N}>{{{{\n".format(N=n);
+    cpp += "template<>\ninline constexpr std::array<bool, {N}*{N}> quorum_conn_matrix<{N}>{{{{\n".format(N=n);
     for r in range(nodes):
         cpp += "    " + ",".join(str(conns[r,c]) for c in range(nodes)) + ",\n"
     cpp += "}};\n\n"
