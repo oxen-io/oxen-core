@@ -6,6 +6,8 @@ import requests
 import subprocess
 import time
 import eth_typing.evm
+import pathlib
+import logging
 
 # On linux we can pick a random 127.x.y.z IP which is highly likely to not have anything listening
 # on it (so we make bind conflicts highly unlikely).  On most other OSes we have to listen on
@@ -21,9 +23,10 @@ verbose = False
 def next_port():
     global NEXT_PORT
     port = NEXT_PORT
-    NEXT_PORT += 1
+    # TODO: For some reason having this at 1 makes storage server complain about failing to bind the
+    # HTTPS and OMQ server, is there some port overlap somewhere?
+    NEXT_PORT += 5
     return port
-
 
 class ProcessExited(RuntimeError):
     pass
@@ -42,16 +45,28 @@ class RPCFailed(RuntimeError):
         super().__init__(self.message)
 
 class AccruedRewards:
-    def __init__(self):
-        self.address = ""
-        self.balance = 0
+    address: str = ""
+    balance: int = 0
+
+class HardForkInfo:
+    version:         int  = 7
+    enabled:         bool = False
+    earliest_height: int  = 0
+    last_height:     int  = 9_999_999_999
+
+class GetInfo:
+    height:         int  = 0
+    l2_height:      int  = 0
+    top_block_hash: str  = ""
+    hard_fork:      int  = 7
+    pulse:          bool = False
 
 class RPCDaemon:
+    proc: subprocess.Popen | None = None
+
     def __init__(self, name):
         self.name = name
-        self.proc = None
         self.terminated = False
-
 
     def __del__(self):
         self.stop()
@@ -77,7 +92,6 @@ class RPCDaemon:
                 stdin=subprocess.DEVNULL, stdout=sout, stderr=sys.stderr)
         self.terminated = False
 
-
     def stop(self):
         """Tries stopping with a term at first, then a kill if the term hasn't worked after 10s"""
         print(f"RPCDaemon::stop called on {self.name}")
@@ -90,11 +104,9 @@ class RPCDaemon:
                 self.proc.kill()
             self.proc = None
 
-
     def arguments(self):
         """Returns the startup arguments; default is just self.args, but subclasses can override."""
         return self.args
-
 
     def json_rpc(self, method, params=None, *, timeout=100, try_count=0):
         """Sends a json_rpc request to the rpc port.  Returns the response object."""
@@ -163,27 +175,32 @@ class DaemonKeys:
 
 class Daemon(RPCDaemon):
     base_args = ('--dev-allow-local-ips', '--fixed-difficulty=1', '--localdev', '--non-interactive')
+    storage_server_proc: subprocess.Popen | None = None
+    storage_server_omq_port: int
+    storage_server_https_port: int
 
     def __init__(self, *,
             oxend='oxend',
-            listen_ip=None, p2p_port=None, rpc_port=None, zmq_port=None, qnet_port=None, ss_port=None,
+            listen_ip=None, p2p_port=None, rpc_port=None, zmq_port=None, qnet_port=None,
             name=None,
             datadir=None,
             service_node=False,
+            storage_server_path: pathlib.Path | None,
             log_level=3,
             peers=()):
+
         self.rpc_port = rpc_port or next_port()
         if name is None:
             name = 'oxend@{}'.format(self.rpc_port)
         super().__init__(name)
-        self.listen_ip = listen_ip or LISTEN_IP
-        self.p2p_port  = p2p_port or next_port()
-        self.zmq_port  = zmq_port or next_port()
-        self.qnet_port = qnet_port or next_port()
-        self.ss_port   = ss_port or next_port()
-        self.peers     = []
-        self.keys      = None
-        self.datadir   = '{}/oxen-{}'.format(datadir or '.', self.rpc_port)
+        self.listen_ip           = listen_ip or LISTEN_IP
+        self.p2p_port            = p2p_port or next_port()
+        self.zmq_port            = zmq_port or next_port()
+        self.qnet_port           = qnet_port or next_port()
+        self.peers               = []
+        self.keys                = None
+        self.datadir             = '{}/oxen-{}'.format(datadir or '.', self.rpc_port)
+        self.storage_server_path = storage_server_path
 
         self.args = [oxend] + list(self.__class__.base_args)
         self.args += (
@@ -201,18 +218,60 @@ class Daemon(RPCDaemon):
         for d in peers:
             self.add_peer(d)
 
+        self.service_node = service_node
         if service_node:
             self.args += (
                     '--service-node',
                     '--service-node-public-ip={}'.format(self.listen_ip),
-                    '--storage-server-port={}'.format(self.ss_port),
                     )
 
+        self.storage_server_https_port = next_port()
+        self.storage_server_omq_port = next_port()
 
     def arguments(self):
         return self.args + [
             '--add-exclusive-node={}:{}'.format(node.listen_ip, node.p2p_port) for node in self.peers]
 
+    def start_storage_server(self):
+        if self.storage_server_path:
+            args = [
+                str(self.storage_server_path),
+                "--data-dir={}/storage".format(self.datadir),
+                "--oxend-rpc=ipc://{}/oxend.sock".format(self.datadir),
+                "--omq-port={}".format(self.storage_server_omq_port),
+                "--https-port={}".format(self.storage_server_https_port),
+                "--skip-bootstrap-nodes",
+                "--log-level=trace",
+            ]
+            print("Starting storage server: ", args)
+            self.storage_server_proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+
+    def stop_storage_server(self):
+        if self.storage_server_proc:
+            self.storage_server_proc.terminate()
+            try:
+                self.storage_server_proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                print("{} storage server took more than 10s to exit, killing it".format(self.name))
+                self.storage_server_proc.kill()
+            self.storage_server_proc = None
+
+
+    def storage_rpc(self, path, params=None, timeout=30):
+        if not self.storage_server_path:
+            raise RuntimeError("Cannot make rpc request before calling start_storage_server()")
+        url = 'https://{}:{}{}'.format(self.listen_ip, self.storage_server_https_port, path)
+
+        # Storage server uses self-signed certificates so we have to disable SSL verify in the post
+        # request otherwise it warns very loudly.
+        logging.captureWarnings(True)
+        result = requests.post(url, json=params, timeout=timeout, verify=False)
+        logging.captureWarnings(False)
+        return result
+
+    def stop(self):
+        super().stop()
+        self.stop_storage_server()
 
     def ready(self):
         """Waits for the daemon to get ready, i.e. for it to start returning something to a
@@ -249,6 +308,37 @@ class Daemon(RPCDaemon):
     def height(self):
         return self.rpc("/get_height").json()["height"]
 
+    def get_info(self) -> RPCFailed | GetInfo:
+        json       = self.json_rpc("get_info").json()
+        rpc_result = json["result"]
+        if rpc_result["status"] != "OK":
+            raise RPCFailed(json)
+
+        result                = GetInfo()
+        result.height         = rpc_result["height"]
+        result.l2_height      = rpc_result["l2_height"]
+        result.top_block_hash = rpc_result["top_block_hash"]
+        result.hard_fork      = rpc_result["hard_fork"]
+        if 'pulse' in rpc_result:
+            result.pulse = True
+        return result
+
+    def hard_fork_info(self) -> RPCFailed | HardForkInfo:
+        json       = self.json_rpc("hard_fork_info").json()
+        rpc_result = json["result"]
+        if rpc_result["status"] != "OK":
+            raise RPCFailed(json)
+
+        # {"status": "OK", "version": 19, "enabled": true, "earliest_height": 0, "last_height": 0}
+        result                 = HardForkInfo()
+        result.version         = rpc_result["version"]
+        result.enabled         = rpc_result["enabled"]
+        result.earliest_height = rpc_result["earliest_height"]
+        if 'last_height' in rpc_result: # Optional
+            result.last_height = rpc_result["last_height"]
+
+        return result
+
     def get_staking_requirement(self):
         rpc_result = self.json_rpc("get_staking_requirement").json()
         if rpc_result["result"]["status"] != "OK":
@@ -262,7 +352,9 @@ class Daemon(RPCDaemon):
     def ping(self, *, storage=True, lokinet=True):
         """Sends fake storage server and lokinet pings to the running oxend"""
         if storage:
-            self.json_rpc("storage_server_ping", { "version": [2, 5, 0], "https_port": 0, "omq_port": 0, "pubkey_ed25519": self.get_service_keys().ed25519_pubkey})
+            # NOTE: A fake storage ping needs to set the HTTPS/OMQ port to a non-zero value for it to
+            # be accepted by the network
+            self.json_rpc("storage_server_ping", { "version": [2, 5, 0], "https_port": 1, "omq_port": 1, "pubkey_ed25519": self.get_service_keys().ed25519_pubkey})
         if lokinet:
             self.json_rpc("lokinet_ping", { "version": [9,9,9] })
 
@@ -300,7 +392,7 @@ class Daemon(RPCDaemon):
     def get_ethereum_registration_args(self, address):
         return self.json_rpc("contract_registration", {"operator_address": address}).json()["result"]
 
-    def get_bls_rewards(self, address: eth_typing.evm.ChecksumAddress) -> dict:
+    def get_bls_rewards(self, address: eth_typing.evm.ChecksumAddress):
         return self.json_rpc("bls_rewards_request", {"address": address}, timeout=1000).json()
 
     def get_exit_liquidation_request(self, ed25519_pubkey, liquidate=False):
@@ -334,8 +426,7 @@ class Wallet(RPCDaemon):
             datadir=None,
             listen_ip=None,
             rpc_port=None,
-            log_level=4,
-            existing_wallet=False):
+            log_level=4):
 
         self.listen_ip = listen_ip or LISTEN_IP
         self.rpc_port = rpc_port or next_port()
@@ -356,7 +447,6 @@ class Wallet(RPCDaemon):
                 '--wallet-dir={}'.format(self.walletdir),
                 )
         self.wallet_address = None
-        self.existing_wallet = existing_wallet
 
 
     def ready(self, wallet="wallet", existing=False):
@@ -368,7 +458,7 @@ class Wallet(RPCDaemon):
             self.start()
 
         self.wallet_filename = wallet
-        if existing or self.existing_wallet:
+        if existing:
             r = self.wait_for_json_rpc("open_wallet", {"filename": wallet, "password": ""})
         else:
             r = self.wait_for_json_rpc("create_wallet", {"filename": wallet, "password": "", "language": "English"})

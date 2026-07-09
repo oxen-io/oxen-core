@@ -500,13 +500,13 @@ void wallet_rpc_server::start_long_poll_thread() {
     }};
 }
 void wallet_rpc_server::stop_long_poll_thread() {
-    assert(m_wallet);
     if (!m_long_poll_thread.joinable()) {
         log::debug(logcat, "Not stopping long poll thread: not running");
         return;
     }
     log::info(logcat, "Stopping long poll thread");
-    m_wallet->cancel_long_poll();
+    if (m_wallet) // TODO: Determine why this can be null sometimes (especially in the localdevnet)
+        m_wallet->cancel_long_poll();
     // Store this to revert it afterwards to its original state
     bool disabled_state = m_long_poll_disabled;
     m_long_poll_disabled = true;

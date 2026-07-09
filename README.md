@@ -459,18 +459,45 @@ These records are dumped as hex data, where the first line is the key and the se
 ### Local Devnet
 
 The local devnet script in `utils/local-devnet/service_node_network.py` will
-spin up a series of service nodes that can be interacted with locally for
-testing. This script requires that:
+spin up a series of inter-networked nodes that can be interacted with locally
+for testing. There are several arguments, some optional that are to be passed to
+the script for setup of the network. See the script's help menu for more
+information (`--help`).
 
-- A development Ethereum environment and node is setup at `localhost:8545`
-  (which is the default for port for these environments). Currently we only
-  support Foundry's `anvil` testnet. (Hardhat's node does not support
-  `eth_getProof` calls).
+A sample invocation of the script with all features (a network running on
+127.171.63.108 with storage server enabled, private Ethereum blockchain)
+looks like:
 
-- The smart contracts are deployed from `oxen-io/eth-sn-contracts` by invoking
-  the `deploy-local` Makefile target.
+```bash
+python3 ./utils/local-devnet/service_node_network.py \
+    --anvil-path ~/anvil \
+    --cache-at-hf20 \
+    --data-dir Build/localdevnet \
+    --listen-ip 127.171.63.108 \
+    --oxen-bin-dir Build/bin \
+    --session-token-contracts-dir ~/session-token-contracts \
+    --storage-server-path ~/oxen-storage-server/Build/gcc-debug-static/oxen-storage
+```
 
-Thereafter the script can be invoked to launch the local network.
+If you just need a private network, it's recommended to skip the integration
+tests which increase the bootstrapping time by around 8x (90s~ to 720s). There
+are several pre-requisites if you wish to run this on your own machine:
+
+1. A build of this repository with `oxend` and `oxen-wallet-rpc` in the
+`oxen-bin-dir`.
+
+2. Foundry's anvil for setting up a local EVM based chain for
+deploying the smart contracts necessary to run the node network
+(https://github.com/foundry-rs/foundry).
+
+3. The smarts contract repository that has been built prior
+(https://github.com/session-foundation/session-token-contracts). These contracts
+will be deployed on the local EVM based chain.
+
+4. Having the storage server binary ready to run in tandem on the bootstrapped
+network (https://github.com/session-foundation/session-storage-server).
+
+5. The cryptography package for python3 `pip install cryptography`
 
 # Known Issues
 

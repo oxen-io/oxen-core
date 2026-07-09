@@ -15,28 +15,31 @@ from ethereum import (
     ServiceNodeParams,
     ReservedContributor,
 )
-
-import enum
-import json
-import sqlite3
-
-import eth_typing.evm
 import eth_account.signers.local
 
-import pathlib
 import argparse
-import time
-import shutil
-import os
 import asyncio
-from   datetime import datetime
-import subprocess
 import atexit
+import base64
 import concurrent.futures
+import enum
+import json
+import os
+import pathlib
 import random
+import secrets
+import shutil
+import sqlite3
+import subprocess
+import time
+from datetime import datetime
 from typing import List
 
-datadirectory="testdata"
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ed25519
+import base64
+
+CACHE_AT_HF20_DIR_NAME = "hf20-cache"
 
 class SNExitMode(enum.Enum):
     AfterWaitTime = 0
@@ -52,7 +55,7 @@ def coins(*args):
     return round(x * 1000000000)
 
 
-def wait_for(callback, timeout=10):
+def wait_for(callback, timeout=10, sleep_s=.25):
     expires = time.time() + timeout
     while True:
         try:
@@ -62,7 +65,7 @@ def wait_for(callback, timeout=10):
             pass
         if time.time() >= expires:
             raise RuntimeError("task timeout expired")
-        time.sleep(.25)
+        time.sleep(sleep_s)
 
 
 verbose = True
@@ -91,6 +94,36 @@ def test_bls_claim_rewards(eth_sns:       list[Daemon],
                            sent_contract: SENTContract,
                            staker:        eth_account.signers.local.LocalAccount,
                            beneficiary:   eth_account.signers.local.LocalAccount):
+
+    # Sleep and let pulse quorum do work
+    vprint(f"Sleeping now, awaiting pulse quorum to generate blocks (& rewards for node), blockchain height is {eth_sns[0].height()}");
+
+    # Wait until all contract-registered nodes are eligible to receive rewards
+    total_sleep_time = 0
+    sleep_time       = 4
+    reward_eligible = [False for _ in range(len(eth_sns))]
+    reward_eligible_counter = 0
+    while reward_eligible_counter < len(reward_eligible):
+        for i in range(len(eth_sns)):
+            if reward_eligible[i]:
+                continue
+            if eth_sns[i].sn_is_payable():
+                reward_eligible_counter += 1
+                reward_eligible[i] = True
+
+        total_sleep_time += sleep_time
+        if reward_eligible_counter < len(eth_sns):
+            vprint(f"Still waiting, height = {eth_sns[0].height()}, {reward_eligible_counter} of {len(eth_sns)} nodes reward eligible");
+            time.sleep(sleep_time)
+
+    # Wait 1 block to receive rewards
+    target_height = eth_sns[0].height() + 1;
+    while eth_sns[0].height() < target_height:
+        total_sleep_time += sleep_time
+        time.sleep(sleep_time)
+
+    vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {eth_sns[0].height()}");
+
     # NOTE: BLS rewards claim ##################################################################
     # Claim rewards for beneficiary
     rewards_response = eth_sns[0].get_bls_rewards(address=beneficiary.address)
@@ -476,24 +509,343 @@ def test_sn_exits_by_request_signature_and_liquidation(eth_sns: list[Daemon], sn
             # behind the tip for safety! In localdev this is configured to 1 block of lag).
             ethereum.evm_mine();
 
+def test_storage_server_replication(all_nodes: list[Daemon]):
+    ed25519_skey     = ed25519.Ed25519PrivateKey.generate()
+    ed25519_pkey_hex = "05" + ed25519_skey.public_key().public_bytes(encoding=serialization.Encoding.Raw,
+                                                                     format=serialization.PublicFormat.Raw).hex()
+
+    # Find all the service nodes that are part of our swarm by storing a message and
+    # keeping the servers that returned a 200
+    print(f"Test message storing into SNs and retrieve the HTTP 200s as swarm members: ")
+    expected_msg_count                = 0
+    swarm_sn_for_pubkey: list[Daemon] = []
+    for sn in all_nodes:
+        if sn.service_node:
+            store_params = {
+                "method": "store",
+                "params": {
+                    "pubkey": ed25519_pkey_hex,
+                    "timestamp": int(time.time()) * 1000,
+                    "data": base64.b64encode(f"{sn.name}".encode('utf-8')).decode(),
+                    "ttl": f"{30_000 * 60}", # 30 minutes
+                }
+            }
+            response = sn.storage_rpc(path="/storage_rpc/v1", params=store_params)
+            print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code})")
+            if response.status_code == 200:
+                expected_msg_count += 1
+                swarm_sn_for_pubkey.append(sn)
+
+    time.sleep(0.5) # Give some time for messages to propagate
+
+    # Test message retrieval from all our nodes in the swarm
+    assert len(swarm_sn_for_pubkey) > 0
+    print(f"Found {len(swarm_sn_for_pubkey)} nodes for our pubkey {ed25519_pkey_hex}, retrieving messages: ")
+    for sn in swarm_sn_for_pubkey:
+        retrieve_ts = int(time.time()) * 1000
+        retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
+        retrieve_params = {
+            "method": "retrieve",
+            "params": {
+                "pubkey": ed25519_pkey_hex,
+                "timestamp": retrieve_ts,
+                "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
+            }
+        }
+
+        response   = sn.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
+        print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code})")
+        json       = response.json();
+        msgs_array = json["messages"]
+        assert len(msgs_array) == len(swarm_sn_for_pubkey)
+
+    # Send a message to 1 storage server to test message replication
+    print(f"Sending a message to SN {swarm_sn_for_pubkey[0].name}'s storage@{swarm_sn_for_pubkey[0].storage_server_https_port} to test replication across swarm")
+    store_params = {
+        "method": "store",
+        "params": {
+            "pubkey": ed25519_pkey_hex,
+            "timestamp": int(time.time()) * 1000,
+            "data": base64.b64encode(f"test msg is replicated".encode('utf-8')).decode(),
+            "ttl": f"{30_000 * 60}", # 30 minutes
+        }
+    }
+    expected_msg_count += 1
+    response = swarm_sn_for_pubkey[0].storage_rpc(path="/storage_rpc/v1", params=store_params)
+    assert response.status_code == 200
+    time.sleep(0.5) # Sleep abit to allow the message to get replicated across the swarm
+
+    # Test message was replicated
+    prev_msg_replicated_to_sn_count = 0
+    while True:
+        msg_replicated_to_sn_count = 0
+        for sn in swarm_sn_for_pubkey:
+            retrieve_ts = int(time.time()) * 1000
+            retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
+            retrieve_params = {
+                "method": "retrieve",
+                "params": {
+                    "pubkey": ed25519_pkey_hex,
+                    "timestamp": retrieve_ts,
+                    "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
+                }
+            }
+
+            response   = sn.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
+            json       = response.json();
+            msgs_array = json["messages"]
+            if len(msgs_array) == expected_msg_count:
+                msg_replicated_to_sn_count += 1
+
+        if prev_msg_replicated_to_sn_count != msg_replicated_to_sn_count:
+            prev_msg_replicated_to_sn_count = msg_replicated_to_sn_count
+            print(f"  Message replicated to {msg_replicated_to_sn_count}/{len(swarm_sn_for_pubkey)} successfully")
+
+        if msg_replicated_to_sn_count == len(swarm_sn_for_pubkey):
+            break
+
+    # Kill SN 0's storage server. Then, store a message in one of the nodes sleep and see if
+    # the message is replicated
+    print(f"Killing SN {swarm_sn_for_pubkey[0].name}'s storage@{swarm_sn_for_pubkey[0].storage_server_https_port}")
+    swarm_sn_for_pubkey[0].stop_storage_server()
+
+    # Send messages to 1 storage server to test message replication w/ 1 dead node
+    for index in range(4):
+        store_params = {
+            "method": "store",
+            "params": {
+                "pubkey": ed25519_pkey_hex,
+                "timestamp": int(time.time()) * 1000,
+                "data": base64.b64encode(f"{index} test msg is replicated w/ 1 dead node".encode('utf-8')).decode(),
+                "ttl": f"{30_000 * 60}", # 30 minutes
+            }
+        }
+        expected_msg_count += 1
+
+        print(f"Store another message into SN {swarm_sn_for_pubkey[1].name}'s storage@{swarm_sn_for_pubkey[1].storage_server_https_port}/storage_rpc/v1")
+        response = swarm_sn_for_pubkey[1].storage_rpc(path="/storage_rpc/v1", params=store_params)
+        assert response.status_code == 200
+
+    time.sleep(5) # Sleep abit to allow the message to get replicated across the swarm
+
+    # Kill SN 1's storage server to test the serialisation and deserialisation of retryable requests
+    print(f"Killing SN {swarm_sn_for_pubkey[1].name}'s storage@{swarm_sn_for_pubkey[0].storage_server_https_port} to test serialisation of retryable request to {swarm_sn_for_pubkey[0].name}'s storage@{swarm_sn_for_pubkey[0].storage_server_https_port}")
+    swarm_sn_for_pubkey[1].stop_storage_server()
+
+    time.sleep(5) # Sleep then restart the server
+    swarm_sn_for_pubkey[1].start_storage_server()
+
+    # Start up the server we killed
+    swarm_sn_for_pubkey[0].start_storage_server()
+    time.sleep(2) # Sleep abit to allow the server to start up
+
+    # Test message was replicated to all the servers including the one we killed
+    print(f"Check message was replicated to all nodes, including the one we killed:")
+    msg_replicated_to_sn_count      = 0
+    prev_msg_replicated_to_sn_count = 0
+    sn_retrieve_list                = swarm_sn_for_pubkey[:]
+    attempts                        = 0
+    while attempts < 99:
+        index = 0
+        if attempts > 0:
+            print(f"  Attempt #{attempts}")
+
+        while index < len(sn_retrieve_list):
+            retrieve_ts = int(time.time()) * 1000
+            retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
+            retrieve_params = {
+                "method": "retrieve",
+                "params": {
+                    "pubkey": ed25519_pkey_hex,
+                    "timestamp": retrieve_ts,
+                    "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
+                }
+            }
+
+            sn: Daemon    = sn_retrieve_list[index]
+            msg_retrieved = False
+            response      = sn.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
+            if response.status_code == 200:
+                json       = response.json();
+                msgs_array = json["messages"]
+                print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code}) message count {len(msgs_array)}/{expected_msg_count}")
+                if len(msgs_array) == expected_msg_count:
+                    msg_replicated_to_sn_count += 1
+                    msg_retrieved = True
+            else:
+                print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code})")
+
+            if msg_retrieved:
+                del sn_retrieve_list[index]
+            else:
+                index += 1
+
+        if prev_msg_replicated_to_sn_count != msg_replicated_to_sn_count:
+            prev_msg_replicated_to_sn_count = msg_replicated_to_sn_count
+            print(f"  Message replicated to {msg_replicated_to_sn_count}/{len(swarm_sn_for_pubkey)}")
+
+        if msg_replicated_to_sn_count == len(swarm_sn_for_pubkey):
+            break
+
+        time.sleep(5)
+        attempts += 1
+
+    if msg_replicated_to_sn_count != len(swarm_sn_for_pubkey):
+        print(f"  Message replication failed after {attempts} attempts. {msg_replicated_to_sn_count}/{len(swarm_sn_for_pubkey)} received the message")
+
+    sn = swarm_sn_for_pubkey[2]
+    print(f"  Kill storage@{sn.storage_server_https_port} and delete their DB. That server's handshake with the swarm should request a DB dump due to a deleted DB")
+
+    sn.stop_storage_server()
+    sn_db_path = pathlib.Path("{}/storage/storage.db".format(sn.datadir))
+    sn_db_path.unlink()
+
+    print(f"  Starting storage@{sn.storage_server_https_port} aftering deleting their DB, checking if we synced the messages")
+    sn.start_storage_server()
+
+    # Sleep abit to give some time for the SS to startup
+    time.sleep(3)
+
+    while attempts < 99:
+        if attempts > 0:
+            print(f"  Attempt #{attempts}")
+
+        retrieve_ts = int(time.time()) * 1000
+        retrieve_sig_payload = "retrieve".encode('utf-8') + str(retrieve_ts).encode('utf-8')
+        retrieve_params = {
+            "method": "retrieve",
+            "params": {
+                "pubkey": ed25519_pkey_hex,
+                "timestamp": retrieve_ts,
+                "signature": base64.b64encode(ed25519_skey.sign(retrieve_sig_payload)).decode(),
+            }
+        }
+        response = sn.storage_rpc(path="/storage_rpc/v1", params=retrieve_params)
+        if response.status_code == 200:
+            json       = response.json();
+            msgs_array = json["messages"]
+            print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code}) message count {len(msgs_array)}/{expected_msg_count}")
+            if len(msgs_array) == expected_msg_count:
+                break
+        else:
+            print(f"  {sn.name}'s storage@{sn.storage_server_https_port} (HTTP status {response.status_code})")
+
+        time.sleep(5)
+        attempts += 1
+
+
+def print_unicode_table(rows: List[List[str]]) -> None:
+    # Calculate maximum width for each column
+    col_widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
+
+    # Print top border
+    line = "┌"
+    for i, width in enumerate(col_widths):
+        line += "─" * (width + 2)  # +2 for padding spaces
+        if i < len(col_widths) - 1:
+            line += "┬"
+    line += "┐"
+    print(line)
+
+    # Print header (first row)
+    header_row = "│"
+    for i, field in enumerate(rows[0]):
+        header_row += f" {field:<{col_widths[i]}} │"
+    print(header_row)
+
+    # Print separator between header and data
+    separator = "├"
+    for i, width in enumerate(col_widths):
+        separator += "─" * (width + 2)
+        if i < len(col_widths) - 1:
+            separator += "┼"
+    separator += "┤"
+    print(separator)
+
+    # Print data rows
+    for row in rows[1:]:
+        row_str = "│"
+        for i, field in enumerate(row):
+            row_str += f" {field:<{col_widths[i]}} │"
+        print(row_str)
+
+    # Print bottom border
+    bottom = "└"
+    for i, width in enumerate(col_widths):
+        bottom += "─" * (width + 2)
+        if i < len(col_widths) - 1:
+            bottom += "┴"
+    bottom += "┘"
+    print(bottom)
+
 class SNNetwork:
     all_nodes: list[Daemon] = []
+    eth_sns:   list[Daemon] = []
     wallets                 = []
 
-    def __init__(self, datadir, *, oxen_bin_dir, anvil_path, eth_sn_contracts_dir, sns=12, nodes=3, keep_data_dir=False, start_at_hf20=False, stop_at_hf20=False):
+    def startup_storage_servers(self, storage_server_path: pathlib.Path):
+        if storage_server_path:
+            vprint("Starting storage server")
+            for n in self.all_nodes:
+                if n.service_node:
+                    n.start_storage_server();
+
+            vprint("Waiting for proofs with storage ports to propagate:", flush=True)
+            while True:
+                for sn in self.sns:
+                    sn.send_uptime_proof()
+
+                all_ports_received = True
+                for sn in self.sns:
+                    response = sn.json_rpc("get_n_service_nodes", {"fields": {"storage_port": True}}).json()['result']['service_node_states']
+                    print(response)
+                    for obj in response:
+                        if obj['storage_port'] <= 0:
+                            all_ports_received = False
+                            break
+
+                    if all_ports_received == False:
+                        break
+
+                if all_ports_received == True:
+                    break
+
+                time.sleep(5)
+
+    def __init__(self,
+                 datadir,
+                 *,
+                 oxen_bin_dir: pathlib.Path,
+                 anvil_path: pathlib.Path | None,
+                 session_token_contracts_dir: pathlib.Path,
+                 storage_server_path: pathlib.Path | None,
+                 cache_at_hf20=False,
+                 integration_tests: bool,
+                 listen_ip: str | None,
+                 sns=12,
+                 nodes=3):
+
         begin_time = time.perf_counter()
+
+        # Setup directories
+        self.anvil_path                  = anvil_path
+        self.session_token_contracts_dir = session_token_contracts_dir
+        self.data_dir                    = datadir
+        self.oxen_bin_dir                = oxen_bin_dir
+        if not os.path.exists(self.data_dir):
+            os.makedirs(self.data_dir)
+        vprint("Using '{}' for data files and logs".format(datadir))
 
         # Setup Ethereum ###########################################################################
         # Setup Anvil, a private Ethereum blockchain (if specified)
-        self.anvil = None
-        if anvil_path is not None:
-            if os.path.exists(anvil_path):
-                self.anvil = subprocess.Popen(anvil_path,
-                                              stdin=subprocess.DEVNULL,
-                                              stdout=subprocess.DEVNULL,
-                                              stderr=subprocess.DEVNULL)
-            else:
-                raise RuntimeError('Anvil path \'{}\' specified but does not exist. Exiting'.format(anvil_path))
+        anvil_state = self.data_dir / 'anvil_state.json'
+        args = [self.anvil_path, '--dump-state', anvil_state]
+        if os.path.exists(anvil_state):
+            args += ('--load-state', anvil_state)
+        self.anvil = subprocess.Popen(args,
+                                      stdin=subprocess.DEVNULL,
+                                      stdout=subprocess.DEVNULL,
+                                      stderr=subprocess.DEVNULL)
 
         # Verify private Ethereum blockchain is reachable
         verify_private_blockchain_attempts = 4
@@ -509,66 +861,29 @@ class SNNetwork:
             else:
                 break
 
-        # Deploy smart contracts from eth-sn-contracts (if specified)
-        if eth_sn_contracts_dir is None:
-            raise RuntimeError('eth-sn-contracts directory required')
+        # NOTE: Mine at least one block on the EVM chain because uptime proofs from nodes take that
+        # L2 height and that height must be > 0
+        ethereum.evm_mine()
 
-        eth_sn_contracts_makefile_path = eth_sn_contracts_dir / 'Makefile'
-        if os.path.exists(eth_sn_contracts_makefile_path):
-            subprocess.run(['make', 'deploy-local'],
-                           cwd=eth_sn_contracts_dir,
-                           check=True)
+        # Attempt to restore chain from cache if requested and cache is avail
+        chain_bootstrapped_from_cache = False
+        cache_dir = os.path.join(self.data_dir, CACHE_AT_HF20_DIR_NAME)
+        if cache_at_hf20 and os.path.exists(cache_dir):
+            print(f"Restoring cached chain from {cache_dir} to {self.data_dir}")
+            for file_name in os.listdir(cache_dir):
+                src  = os.path.join(cache_dir, file_name)     # Path to copy
+                dest = os.path.join(self.data_dir, file_name) # Restore destination
+                if pathlib.Path(src).is_file():
+                    shutil.copy2(src, dest)
+                else:
+                    shutil.copytree(src, dest, ignore=shutil.ignore_patterns("*.sock"), dirs_exist_ok=True)
+            chain_bootstrapped_from_cache = True
 
-        sn_rewards_json:         dict = {}
-        sn_contrib_factory_json: dict = {}
-        sn_contrib_json:         dict = {}
-        reward_rate_pool_json:   dict = {}
-        erc20_contract_json:     dict = {}
-
-        with open(eth_sn_contracts_dir / 'artifacts/contracts/ServiceNodeRewards.sol/ServiceNodeRewards.json', 'r') as file:
-            sn_rewards_json = json.load(file)
-
-        with open(eth_sn_contracts_dir / 'artifacts/contracts/ServiceNodeContributionFactory.sol/ServiceNodeContributionFactory.json', 'r') as file:
-            sn_contrib_factory_json = json.load(file)
-
-        with open(eth_sn_contracts_dir / 'artifacts/contracts/ServiceNodeContribution.sol/ServiceNodeContribution.json', 'r') as file:
-            sn_contrib_json = json.load(file)
-
-        with open(eth_sn_contracts_dir / 'artifacts/contracts/RewardRatePool.sol/RewardRatePool.json', 'r') as file:
-            reward_rate_pool_json = json.load(file)
-
-        with open(eth_sn_contracts_dir / 'artifacts/contracts/SESH.sol/SESH.json', 'r') as file:
-            erc20_contract_json = json.load(file)
-
-        # NOTE: Connect proxy contracts to on-chain instances
-        # SENT ERC20 token
-        self.sent_contract = SENTContract(contract_json=erc20_contract_json)
-
-        # SN Rewards
-        self.sn_contract = SNRewardsContract(sn_rewards_json=sn_rewards_json,
-                                             reward_rate_pool_json=reward_rate_pool_json)
-        contract_staking_requirement = self.sn_contract.stakingRequirement()
-
-        self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
-                                   spender=self.sn_contract.contract.address,
-                                   value=int(999_999 * 1e9))
-
-        # Multi-contrib Factory
-        self.sn_contrib_factory = SNContribFactoryContract(contract_json=sn_contrib_factory_json);
-
-        # Setup Oxen ###############################################################################
         # Nodes ####################################################################################
-        # Setup directories
-        self.datadir      = datadir
-        self.oxen_bin_dir = oxen_bin_dir
-        if not os.path.exists(self.datadir):
-            os.makedirs(self.datadir)
-        vprint("Using '{}' for data files and logs".format(datadir))
-
         nodeopts       = dict(oxend=str(self.oxen_bin_dir / 'oxend'), datadir=datadir)
-        self.eth_sns   = [Daemon(service_node=True, **nodeopts) for _ in range(len(SNExitMode) * 2)]
-        self.sns       = [Daemon(service_node=True, **nodeopts) for _ in range(sns)]
-        self.nodes     = [Daemon(**nodeopts) for _ in range(nodes)]
+        self.eth_sns   = [Daemon(service_node=True,  listen_ip=listen_ip, storage_server_path=storage_server_path, **nodeopts) for _ in range(len(SNExitMode) * 2)]
+        self.sns       = [Daemon(service_node=True,  listen_ip=listen_ip, storage_server_path=storage_server_path, **nodeopts) for _ in range(sns)]
+        self.nodes     = [Daemon(service_node=False, listen_ip=listen_ip, storage_server_path=None, **nodeopts) for _ in range(nodes)]
         self.all_nodes = self.sns + self.nodes + self.eth_sns
 
         # Wallets ##################################################################################
@@ -578,8 +893,7 @@ class SNNetwork:
                 node=self.nodes[len(self.wallets) % len(self.nodes)],
                 name=name,
                 rpc_wallet=str(self.oxen_bin_dir/'oxen-wallet-rpc'),
-                datadir=datadir,
-                existing_wallet=keep_data_dir))
+                datadir=datadir))
 
         self.alice, self.bob, self.mike = self.wallets
 
@@ -589,8 +903,7 @@ class SNNetwork:
                 node=self.nodes[len(self.extrawallets) % len(self.nodes)],
                 name="extrawallet-"+str(name),
                 rpc_wallet=str(self.oxen_bin_dir/'oxen-wallet-rpc'),
-                datadir=datadir,
-                existing_wallet=keep_data_dir))
+                datadir=datadir))
 
         # Interconnections
         for i in range(len(self.all_nodes)):
@@ -646,10 +959,10 @@ class SNNetwork:
 
         # Create wallets ###########################################################################
         for w in self.wallets:
-            futures.append(thread_pool.submit(w.ready))
+            futures.append(thread_pool.submit(w.ready, existing=chain_bootstrapped_from_cache == True))
 
         for w in self.extrawallets:
-            futures.append(thread_pool.submit(w.ready))
+            futures.append(thread_pool.submit(w.ready, existing=chain_bootstrapped_from_cache == True))
 
         concurrent.futures.wait(futures)
         futures.clear()
@@ -669,11 +982,12 @@ class SNNetwork:
         for w in self.extrawallets:
             w.wait_for_json_rpc("refresh")
 
-        configfile=self.datadir+'config.py'
-        with open(configfile, 'w') as filetowrite:
-            filetowrite.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
+        config_file=self.data_dir / 'config.py'
+        with open(config_file, 'w') as file:
+            file.write('#!/usr/bin/python3\n# -*- coding: utf-8 -*-\nlisten_ip=\"{}\"\nlisten_port=\"{}\"\nwallet_listen_ip=\"{}\"\nwallet_listen_port=\"{}\"\nwallet_address=\"{}\"\nexternal_address=\"{}\"'.format(self.sns[0].listen_ip,self.sns[0].rpc_port,self.mike.listen_ip,self.mike.rpc_port,self.mike.address(),self.bob.address()))
 
-        if not start_at_hf20:
+        storage_servers_started = False
+        if not chain_bootstrapped_from_cache:
             # Start blockchain setup ###################################################################
             # Mine some blocks; we need 100 per SN registration, and we can nearly 600 on fakenet before
             # it hits HF16 and kills mining rewards.  This lets us submit the first 5 SN registrations a
@@ -727,245 +1041,130 @@ class SNNetwork:
             # Submit block to enter the BLS transition ##################################################
             self.sync_nodes(self.mine(1), timeout=120) # Height 170
 
-            if stop_at_hf20:
-                # FIXME: cleaner way to exit here
-                assert False, "stopping at hf20"
-        else:
-            time.sleep(2) # if starting from hf20, give it a couple seconds to make sure oxend and wallets are all ready to go
+            # NOTE: Start storage server
+            if storage_server_path and not storage_servers_started:
+                storage_servers_started = True
+                self.startup_storage_servers(storage_server_path)
 
-        vprint("Sending fake lokinet/ss pings")
-        for sn in self.sns:
-            sn.ping()
+            vprint("Sending fake lokinet pings and uptime proofs w/ BLS keys at HF20")
+            for sn in self.sns:
+                sn.ping(storage=not storage_servers_started)
+                sn.send_uptime_proof()
 
-        vprint("Send uptime proofs at height HF20 to propagate BLS pubkeys")
+            vprint("Waiting for proofs to propagate:", flush=True)
+            for sn in self.sns:
+                wait_for(lambda: all_service_nodes_proofed(sn), timeout=120, sleep_s = 5)
+            vprint(timestamp=False)
+
+            if cache_at_hf20:
+                shutil.rmtree(cache_dir, ignore_errors=True)
+                for file_name in os.listdir(self.data_dir):
+                    src  = os.path.join(self.data_dir, file_name)                         # Path to copy
+                    dest = os.path.join(self.data_dir, CACHE_AT_HF20_DIR_NAME, file_name) # Backup destination
+                    if pathlib.Path(src).is_file():
+                        shutil.copy2(src, dest)
+                    else:
+                        shutil.copytree(src, dest, ignore=shutil.ignore_patterns("*.sock"), dirs_exist_ok=True)
+
+        vprint("Sending fake lokinet pings")
         for sn in self.sns:
-            sn.send_uptime_proof()
+            sn.ping(storage=not storage_servers_started)
+
+        # NOTE: Start storage server
+        if storage_server_path and not storage_servers_started:
+            storage_servers_started = True
+            self.startup_storage_servers(storage_server_path)
 
         vprint("Waiting for proofs to propagate:", flush=True)
         for sn in self.sns:
             wait_for(lambda: all_service_nodes_proofed(sn), timeout=120)
         vprint(timestamp=False)
 
-        # Key accounts for bootstrapping the network
-        staker      = self.sn_contract.hardhat_account0
-        beneficiary = self.sn_contract.hardhat_account1
-
-        transition_eth_addr_no_0x = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
-
-        # Construct the seed list for initiating the smart contract.
-        # Note all SNs up to this point (HF < feature::ETH_BLS) had a 100 OXEN staking requirement
-        oxen_staking_requirement     = self.sns[0].get_staking_requirement()
-        seed_node_list      = []
-        for sn in self.sns:
-            node         = ContractSeedServiceNode(sn.get_service_keys().bls_pubkey, sn.get_service_keys().ed25519_pubkey)
-            contributors = sn.sn_status()["service_node_state"]["contributors"]
-            total_staked = 0
-
-            for entry in contributors:
-                contributor = ContractServiceNodeContributor(ContractServiceNodeStaker(staker.address, beneficiary.address),
-                                                             int((entry["amount"] / oxen_staking_requirement * contract_staking_requirement)))
-                # Use the oxen amount proportionally as the SENT amount
-                total_staked += contributor.stakedAmount
-                node.contributors.append(contributor)
-
-            # Assign any left over SENT to be staked to the operator
-            left_over_to_be_staked = contract_staking_requirement - total_staked
-            if left_over_to_be_staked > 0:
-                node.contributors[0].stakedAmount += left_over_to_be_staked
-
-            seed_node_list.append(node)
-
-        self.sn_contract.seedPublicKeyList(seed_node_list)
-        vprint("Seeded BLS public keys into contract. Contract has {} SNs".format(self.sn_contract.totalNodes()))
-
-        # Start the rewards contract after seeding the BLS public keys
-        self.sn_contract.start()
-        prev_contract_sn_count = self.sn_contract.totalNodes()
-
-        try:
-            self.sync_nodes(171, timeout=10)
-        except:
-            # if restarting saved chain old enough, gotta kickstart with a mined block, as every
-            # pulse quorum will have timed out
-            self.sync_nodes(self.mine(1), timeout=10)
-
-        # Wait for pulse to make block to enter BLS hardfork (height 171 (172 "length", ugh)) ##########################
-        # Wait for one specific node to hit HF21 and check post-fork eth balance
-        h = self.eth_sns[0].height()
-        while h < 172:
-            time.sleep(0.25)
-            h = self.eth_sns[0].height()
-
-        rewards_response = self.eth_sns[0].get_accrued_rewards([transition_eth_addr_no_0x])[0]
-        # FIXME: this expected value needs to be recomputed with respect to changes made in preparation for HF21
-        #transition_balance_expected = 40840330916 # 40840330916520 but RPC divides by 1000
-        #assert rewards_response.address == transition_eth_addr_no_0x, "Expected one SENT address with a balance, {}".format(transition_eth_addr_no_0x)
-        #assert rewards_response.balance == transition_balance_expected, "Expected {} to have balance {}, not {}".format(transition_eth_addr_no_0x, transition_balance_expected, rewards_response.balance)
-
-        # Wait for all nodes to sync up
-        self.sync_nodes(172, timeout=120)
-
-        # Register a SN via the Ethereum smart contract, half as multi-contrib,
-        # half as solo nodes.
-        for index, sn in enumerate(self.eth_sns):
-
-            sn_pubkey = sn.get_service_keys().pubkey
-            reg_json  = sn.get_ethereum_registration_args(staker.address)
-
-            key = BLSPubkey(
-                X=int(reg_json["bls_pubkey"][:64], 16),
-                Y=int(reg_json["bls_pubkey"][64:128], 16)
-            )
-
-            sig = BLSSignatureParams(
-                sigs0=int(reg_json["bls_signature"][:64], 16),
-                sigs1=int(reg_json["bls_signature"][64:128], 16),
-                sigs2=int(reg_json["bls_signature"][128:192], 16),
-                sigs3=int(reg_json["bls_signature"][192:256], 16),
-            )
-
-            params = ServiceNodeParams(
-                serviceNodePubkey=    int(reg_json["service_node_pubkey"], 16),
-                serviceNodeSignature1=int(reg_json["service_node_signature"][:64], 16),
-                serviceNodeSignature2=int(reg_json["service_node_signature"][64:128], 16),
-                fee=int(0),
-            )
-
-            # First half of the nodes will be solo-nodes
-            if node_index_is_solo_node(index, len(self.eth_sns)):
-                # Staker provides collateral, all rewards go to the beneficiary
-                contributors: list[ContractServiceNodeContributor] = [
-                    ContractServiceNodeContributor(
-                        ContractServiceNodeStaker(addr=staker.address, beneficiary=beneficiary.address),
-                        stakedAmount=contract_staking_requirement,
-                    )
-                ]
-
-                vprint("Preparing to submit registration to Eth w/ address {} for SN {} ({})\nContributors {}".format(staker.address, sn_pubkey, reg_json, contributors))
-                self.sn_contract.addBLSPublicKey(sender=self.sn_contract.hardhat_account0,
-                                                 key=key,
-                                                 sig=sig,
-                                                 params=params,
-                                                 contributors=contributors)
-            else:
-                # Second half is multi-contrib nodes
-                reserved: list[ReservedContributor] = [
-                    ReservedContributor(addr=staker.address, amount=int(contract_staking_requirement / 2)),
-                    ReservedContributor(addr=beneficiary.address, amount=int(contract_staking_requirement / 2)),
-                ]
-
-                self.sn_contrib_factory.deploy(account=self.sn_contract.hardhat_account0,
-                                               key=key,
-                                               sig=sig,
-                                               params=params,
-                                               reserved=reserved,
-                                               manual_finalize=False)
-
-        # NOTE: Fund hardhat account 1 w/ enough $SENT to fund their 50% of the
-        # multi-contrib contracts
-        beneficiary_required_sent: int = int((contract_staking_requirement / 2) * len(self.sn_contrib_factory.deployedContracts))
-
-        print("HH Account 0 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account0.address)))
-        print("HH Account 1 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account1.address)))
-
-        self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
-                                   spender=self.sn_contract.hardhat_account0.address,
-                                   value=beneficiary_required_sent)
-        self.sent_contract.transferFrom(sender=self.sn_contract.hardhat_account0,
-                                        to=self.sn_contract.hardhat_account1.address,
-                                        value=beneficiary_required_sent)
-
-        print("HH Account 0 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account0.address)))
-        print("HH Account 1 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account1.address)))
-
-
-        for contract_addr in self.sn_contrib_factory.deployedContracts:
-            contract = SNContribContract(address=contract_addr, contract_json=sn_contrib_json)
-
-            assert contract.operator() == self.sn_contract.hardhat_account0.address, "Operator ({}) should be deployer {}".format(contract.operator(), self.sn_contract.hardhat_account0.address)
-
-            # NOTE: Hardhat account 0 funds the multi-contrib
-            self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
-                                       spender=ethereum.web3_client.to_checksum_address(contract_addr),
-                                       value=int(contract_staking_requirement / 2));
-            contract.contributeFunds(account=self.sn_contract.hardhat_account0,
-                                     amount=int(contract_staking_requirement / 2),
-                                     beneficiary=beneficiary.address)
-
-            # NOTE: Hardhat account 1 funds the multi-contrib
-            self.sent_contract.approve(sender=self.sn_contract.hardhat_account1,
-                                       spender=ethereum.web3_client.to_checksum_address(contract_addr),
-                                       value=int(contract_staking_requirement / 2));
-            contract.contributeFunds(account=self.sn_contract.hardhat_account1,
-                                     amount=int(contract_staking_requirement / 2),
-                                     beneficiary=beneficiary.address)
-
-
-        # Advance the Arbitrum blockchain so that the SN registration is observed in oxen
-        ethereum.evm_mine()
-        ethereum.evm_mine()
-        ethereum.evm_mine()
-
-        # NOTE: Log all the SNs in the contract ####################################################
-        contract_sn_id_it = 0
-        contract_sn_dump  = ""
-        while True:
-            contract_sn        = self.sn_contract.serviceNodes(contract_sn_id_it)
-            contract_sn_dump  += "  SN ID {} {}\n".format(contract_sn_id_it, vars(contract_sn))
-            contract_sn_id_it  = contract_sn.next
-            if contract_sn_id_it == 0:
-                break
-
-        # Verify registration was successful
-        contract_sn_count          = self.sn_contract.totalNodes()
-        expected_contract_sn_count = prev_contract_sn_count + len(self.eth_sns)
-        vprint("Added node via Eth. Contract has {} SNs\n{}".format(contract_sn_count, contract_sn_dump))
-        assert contract_sn_count == expected_contract_sn_count, f"Expected {contract_sn_count} service nodes, received {expected_contract_sn_count}"
-
-        # Sleep and let pulse quorum do work
-        vprint(f"Sleeping now, awaiting pulse quorum to generate blocks (& rewards for node), blockchain height is {self.eth_sns[0].height()}");
-
-        # Wait until all contract-registered nodes are eligible to receive rewards
-        total_sleep_time = 0
-        sleep_time       = 4
-        reward_eligible = [False for _ in range(len(self.eth_sns))]
-        reward_eligible_counter = 0
-        while reward_eligible_counter < len(reward_eligible):
-            for i in range(len(self.eth_sns)):
-                if reward_eligible[i]:
-                    continue
-                if self.eth_sns[i].sn_is_payable():
-                    reward_eligible_counter += 1
-                    reward_eligible[i] = True
-
-            total_sleep_time += sleep_time
-            if reward_eligible_counter < len(self.eth_sns):
-                vprint(f"Still waiting, height = {self.eth_sns[0].height()}, {reward_eligible_counter} of {len(self.eth_sns)} nodes reward eligible");
-                time.sleep(sleep_time)
-
-        # Wait 1 block to receive rewards
-        target_height = self.eth_sns[0].height() + 1;
-        while self.eth_sns[0].height() < target_height:
-            total_sleep_time += sleep_time
-            time.sleep(sleep_time)
-
-        vprint(f"Waking up after sleeping for {total_sleep_time}s, blockchain height is {self.eth_sns[0].height()}");
+        self.do_hf21_transition();
 
         # NOTE: Do tests
-        test_bls_claim_rewards(eth_sns=self.eth_sns, sn_contract=self.sn_contract, sent_contract=self.sent_contract, staker=staker, beneficiary=beneficiary);
-        test_sn_exits_by_request_signature_and_liquidation(eth_sns=self.eth_sns, sn_contract=self.sn_contract, staker=staker);
+        if integration_tests:
+            staker      = self.sn_contract.hardhat_account0
+            beneficiary = self.sn_contract.hardhat_account1
+            test_bls_claim_rewards(eth_sns=self.eth_sns, sn_contract=self.sn_contract, sent_contract=self.sent_contract, staker=staker, beneficiary=beneficiary);
+            test_sn_exits_by_request_signature_and_liquidation(eth_sns=self.eth_sns, sn_contract=self.sn_contract, staker=staker);
+
+        wallet_rows: list[list[str]] = []
+        wallet_rows.append(["Name", "Address", "Balance", "Unlocked", "Command"])
+        all_wallets_sorted_by_name = sorted(self.wallets + self.extrawallets, key=lambda n: n.name)
+        for n in all_wallets_sorted_by_name:
+            row: list[str] = []
+            row.append(n.name)
+            row.append(n.address());
+            balance, unlocked_balance = n.balances()
+            row.append(str(balance))
+            row.append(str(unlocked_balance))
+
+            path = str(pathlib.Path(n.walletdir) / "wallet")
+            cmd  = "oxen-wallet-cli --localdev --wallet-file {} --password '' --daemon-address {}:{}".format(path, self.sns[0].listen_ip, self.sns[0].rpc_port)
+            row.append(cmd)
+
+            wallet_rows.append(row)
+
+        # Kill the wallets (not necessary to run any more)
+        vprint("Terminating {} wallets".format(len(self.wallets) + len(self.extrawallets)))
+        for w in self.wallets:
+            futures.append(thread_pool.submit(w.terminate))
+        for w in self.extrawallets:
+            futures.append(thread_pool.submit(w.terminate))
+
+        concurrent.futures.wait(futures)
+        futures.clear()
+
+        # NOTE: Storage server tests
+        if storage_server_path and integration_tests:
+            test_storage_server_replication(self.all_nodes)
 
         # NOTE: Tests complete
         elapsed_time = time.perf_counter() - begin_time
         vprint("Local Devnet SN network setup complete in {}s!".format(elapsed_time))
-        vprint("Communicate with daemon on ip: {} port: {}".format(self.sns[0].listen_ip,self.sns[0].rpc_port))
+
+        all_nodes_sorted_by_name = sorted(self.all_nodes, key=lambda n: n.name)
+        daemon_rows: list[list[str]] = []
+        daemon_rows.append(["Name", "SN", "Pubkey", "IP:RPC", "P2P", "ZMQ", "QNET", "Storage OMQ", "Storage HTTPS"])
+        for n in all_nodes_sorted_by_name:
+            row: list[str] = []
+            row.append(n.name)
+            row.append("Yes" if n.service_node else "No");
+            row.append(str(n.get_service_keys().pubkey) if n.service_node else "-")
+            row.append(f"{n.listen_ip}:{n.rpc_port}")
+            row.append(str(n.p2p_port))
+            row.append(str(n.zmq_port))
+            row.append(str(n.qnet_port))
+
+            show_storage_server_ports = n.service_node and storage_server_path
+            row.append(str(n.storage_server_omq_port) if show_storage_server_ports else "-")
+            row.append(str(n.storage_server_https_port) if show_storage_server_ports else "-")
+            daemon_rows.append(row)
+
+        print_unicode_table(daemon_rows)
+        print_unicode_table(wallet_rows)
+
+        first_node   = self.sns[0]
+        first_wallet = self.wallets[0]
+        vprint("""You can send a command over RPC like
+
+  Node           JSON-RPC => curl {}:{}/json_rpc -X POST -H "Content-Type: application/json" --data '{{"method": "get_info", "params": {{}}, "id": 1, "jsonrpc": 2.0}}'
+  Storage Server HTTPS    => curl --insecure https://{}:{}/storage_rpc/v1 -X POST -H "Content-Type: application/json" --data '{{"method": "info", "params": {{}}}}'
+""".format(first_node.listen_ip,
+           first_node.rpc_port,
+           first_node.listen_ip,
+           first_node.storage_server_https_port,
+           str(pathlib.Path(first_wallet.walletdir) / first_wallet.name),
+           first_node.listen_ip,
+           first_node.rpc_port))
+
 
     def refresh_wallets(self, *, extra=[]):
         vprint("Refreshing wallets")
         for w in self.wallets + extra:
             w.refresh()
         vprint("All wallets refreshed")
-
 
     def mine(self, blocks=None, wallet=None, *, sync=False):
         """Mine some blocks to the given wallet (or self.mike if None) on the wallet's daemon.
@@ -1049,6 +1248,233 @@ class SNNetwork:
             vprint("    {:5s}: {:.9f} (total) with {:.9f} (unlocked)".format(
                 w.name, b[0] * 1e-9, b[1] * 1e-9))
 
+    def do_hf21_transition(self):
+        session_token_contracts_makefile_path = self.session_token_contracts_dir / 'Makefile'
+        if os.path.exists(session_token_contracts_makefile_path):
+            subprocess.run(['make', 'deploy-local'],
+                           cwd=self.session_token_contracts_dir,
+                           check=True)
+
+        sn_rewards_json:         dict = {}
+        sn_contrib_factory_json: dict = {}
+        reward_rate_pool_json:   dict = {}
+        erc20_contract_json:     dict = {}
+        sn_contrib_json:         dict = {}
+
+        with open(self.session_token_contracts_dir / 'artifacts/contracts/ServiceNodeRewards.sol/ServiceNodeRewards.json', 'r') as file:
+            sn_rewards_json = json.load(file)
+
+        with open(self.session_token_contracts_dir / 'artifacts/contracts/ServiceNodeContributionFactory.sol/ServiceNodeContributionFactory.json', 'r') as file:
+            sn_contrib_factory_json = json.load(file)
+
+        with open(self.session_token_contracts_dir / 'artifacts/contracts/RewardRatePool.sol/RewardRatePool.json', 'r') as file:
+            reward_rate_pool_json = json.load(file)
+
+        with open(self.session_token_contracts_dir / 'artifacts/contracts/SESH.sol/SESH.json', 'r') as file:
+            erc20_contract_json = json.load(file)
+
+        with open(self.session_token_contracts_dir / 'artifacts/contracts/ServiceNodeContribution.sol/ServiceNodeContribution.json', 'r') as file:
+            sn_contrib_json = json.load(file)
+
+        # Multi-contrib Factory
+        self.sn_contrib_factory = SNContribFactoryContract(contract_json=sn_contrib_factory_json);
+        # NOTE: Connect proxy contracts to on-chain instances
+        # SENT ERC20 token
+        self.sent_contract = SENTContract(contract_json=erc20_contract_json)
+
+        # SN Rewards
+        self.sn_contract = SNRewardsContract(sn_rewards_json=sn_rewards_json,
+                                             reward_rate_pool_json=reward_rate_pool_json)
+        self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
+                                   spender=self.sn_contract.contract.address,
+                                   value=int(999_999 * 1e9))
+
+        # Key accounts for bootstrapping the network
+        staker                       = self.sn_contract.hardhat_account0
+        beneficiary                  = self.sn_contract.hardhat_account1
+        contract_staking_requirement = self.sn_contract.stakingRequirement()
+
+        # Construct the seed list for initiating the smart contract.
+        # Note all SNs up to this point (HF < feature::ETH_BLS) had a 100 OXEN staking requirement
+        oxen_staking_requirement     = self.sns[0].get_staking_requirement()
+        seed_node_list      = []
+        for sn in self.sns:
+            node         = ContractSeedServiceNode(sn.get_service_keys().bls_pubkey, sn.get_service_keys().ed25519_pubkey)
+            contributors = sn.sn_status()["service_node_state"]["contributors"]
+            total_staked = 0
+
+            for entry in contributors:
+                contributor = ContractServiceNodeContributor(ContractServiceNodeStaker(staker.address, beneficiary.address),
+                                                             int((entry["amount"] / oxen_staking_requirement * contract_staking_requirement)))
+                # Use the oxen amount proportionally as the SENT amount
+                total_staked += contributor.stakedAmount
+                node.contributors.append(contributor)
+
+            # Assign any left over SENT to be staked to the operator
+            left_over_to_be_staked = contract_staking_requirement - total_staked
+            if left_over_to_be_staked > 0:
+                node.contributors[0].stakedAmount += left_over_to_be_staked
+
+            seed_node_list.append(node)
+
+        self.sn_contract.seedPublicKeyList(seed_node_list)
+        vprint("Seeded BLS public keys into contract. Contract has {} SNs".format(self.sn_contract.totalNodes()))
+
+        # Start the rewards contract after seeding the BLS public keys
+        self.sn_contract.start()
+        prev_contract_sn_count = self.sn_contract.totalNodes()
+
+        # If the chain is being resumed from a bootstrapped point, Pulse may
+        # have timed out, kick start the chain again with a PoW block
+        get_info = self.sns[0].get_info()
+        if not get_info.pulse:
+            self.sync_nodes(self.mine(1), timeout=10)
+
+        # TODO: This previously was height 172, but, for some reason pulse stops generating blocks.
+        # Something seemed to stop working with inter-node communication in the quorum. Not sure
+        # what this is but this is not necessary for the usecase of spinning up a network. It does
+        # just mean that the chain doesn't advance but we are using the network for sending Session
+        # messages not add or deregister nodes from the network. Oddly enough, _sometimes_ on very
+        # rare occasion Pulse does work and blocks are generating kind of suggesting there's some
+        # race condition.
+        vprint("Wait for pulse to make block to enter BLS hardfork (height 170 or length 171)")
+        # Wait for one specific node to hit HF21 and check post-fork eth balance
+        h           = self.sns[0].height()
+        prev_height = 0
+        while h < 170:
+            time.sleep(0.25)
+            h = self.sns[0].height()
+            if prev_height != h:
+                prev_height = h
+                vprint("Height was: ", h)
+
+        # FIXME: this expected value needs to be recomputed with respect to changes made in preparation for HF21
+        # if integration_tests:
+            # rewards_response = self.eth_sns[0].get_accrued_rewards([transition_eth_addr_no_0x])[0]
+            #transition_balance_expected = 40840330916 # 40840330916520 but RPC divides by 1000
+            #assert rewards_response.address == transition_eth_addr_no_0x, "Expected one SENT address with a balance, {}".format(transition_eth_addr_no_0x)
+            #assert rewards_response.balance == transition_balance_expected, "Expected {} to have balance {}, not {}".format(transition_eth_addr_no_0x, transition_balance_expected, rewards_response.balance)
+
+        # Wait for all nodes to sync up
+        self.sync_nodes(170, timeout=120)
+
+        # Register a SN via the Ethereum smart contract, half as multi-contrib,
+        # half as solo nodes.
+        for index, sn in enumerate(self.eth_sns):
+
+            sn_pubkey = sn.get_service_keys().pubkey
+            reg_json  = sn.get_ethereum_registration_args(staker.address)
+
+            key = BLSPubkey(
+                X=int(reg_json["bls_pubkey"][:64], 16),
+                Y=int(reg_json["bls_pubkey"][64:128], 16)
+            )
+
+            sig = BLSSignatureParams(
+                sigs0=int(reg_json["bls_signature"][:64], 16),
+                sigs1=int(reg_json["bls_signature"][64:128], 16),
+                sigs2=int(reg_json["bls_signature"][128:192], 16),
+                sigs3=int(reg_json["bls_signature"][192:256], 16),
+            )
+
+            params = ServiceNodeParams(
+                serviceNodePubkey=    int(reg_json["service_node_pubkey"], 16),
+                serviceNodeSignature1=int(reg_json["service_node_signature"][:64], 16),
+                serviceNodeSignature2=int(reg_json["service_node_signature"][64:128], 16),
+                fee=int(0),
+            )
+
+            # First half of the nodes will be solo-nodes
+            if node_index_is_solo_node(index, len(self.eth_sns)):
+                # Staker provides collateral, all rewards go to the beneficiary
+                contributors: list[ContractServiceNodeContributor] = [
+                    ContractServiceNodeContributor(
+                        ContractServiceNodeStaker(addr=staker.address, beneficiary=beneficiary.address),
+                        stakedAmount=contract_staking_requirement,
+                    )
+                ]
+
+                vprint("Preparing to submit registration to Eth w/ address {} for SN {} ({})\nContributors {}".format(staker.address, sn_pubkey, reg_json, contributors))
+                self.sn_contract.addBLSPublicKey(sender=self.sn_contract.hardhat_account0,
+                                                 key=key,
+                                                 sig=sig,
+                                                 params=params,
+                                                 contributors=contributors)
+            else:
+                # Second half is multi-contrib nodes
+                reserved: list[ReservedContributor] = [
+                    ReservedContributor(addr=staker.address, amount=int(contract_staking_requirement / 2)),
+                    ReservedContributor(addr=beneficiary.address, amount=int(contract_staking_requirement / 2)),
+                ]
+
+                self.sn_contrib_factory.deploy(account=self.sn_contract.hardhat_account0,
+                                               key=key,
+                                               sig=sig,
+                                               params=params,
+                                               reserved=reserved,
+                                               manual_finalize=False)
+
+        # NOTE: Fund hardhat account 1 w/ enough $SENT to fund their 50% of the
+        # multi-contrib contracts
+        beneficiary_required_sent: int = int((contract_staking_requirement / 2) * len(self.sn_contrib_factory.deployedContracts))
+
+        print("Contract staking requirement is {}".format(contract_staking_requirement))
+        print("HH Account 0 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account0.address)))
+        print("HH Account 1 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account1.address)))
+
+        self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
+                                   spender=self.sn_contract.hardhat_account0.address,
+                                   value=beneficiary_required_sent)
+        self.sent_contract.transferFrom(sender=self.sn_contract.hardhat_account0,
+                                        to=self.sn_contract.hardhat_account1.address,
+                                        value=beneficiary_required_sent)
+
+        print("HH Account 0 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account0.address)))
+        print("HH Account 1 Balance: {} $SENT".format(self.sent_contract.balanceOf(address=self.sn_contract.hardhat_account1.address)))
+
+
+        for contract_addr in self.sn_contrib_factory.deployedContracts:
+            contract = SNContribContract(address=contract_addr, contract_json=sn_contrib_json)
+
+            assert contract.operator() == self.sn_contract.hardhat_account0.address, "Operator ({}) should be deployer {}".format(contract.operator(), self.sn_contract.hardhat_account0.address)
+
+            # NOTE: Hardhat account 0 funds the multi-contrib
+            self.sent_contract.approve(sender=self.sn_contract.hardhat_account0,
+                                       spender=ethereum.web3_client.to_checksum_address(contract_addr),
+                                       value=int(contract_staking_requirement / 2));
+            contract.contributeFunds(account=self.sn_contract.hardhat_account0,
+                                     amount=int(contract_staking_requirement / 2),
+                                     beneficiary=beneficiary.address)
+
+            # NOTE: Hardhat account 1 funds the multi-contrib
+            self.sent_contract.approve(sender=self.sn_contract.hardhat_account1,
+                                       spender=ethereum.web3_client.to_checksum_address(contract_addr),
+                                       value=int(contract_staking_requirement / 2));
+            contract.contributeFunds(account=self.sn_contract.hardhat_account1,
+                                     amount=int(contract_staking_requirement / 2),
+                                     beneficiary=beneficiary.address)
+
+
+        # Advance the Arbitrum blockchain so that the SN registration is observed in oxen
+        ethereum.evm_mine()
+        ethereum.evm_mine()
+        ethereum.evm_mine()
+
+        # NOTE: Log all the SNs in the contract ####################################################
+        contract_sn_id_it = 0
+        contract_sn_dump  = ""
+        while True:
+            contract_sn        = self.sn_contract.serviceNodes(contract_sn_id_it)
+            contract_sn_dump  += "  SN ID {} {}\n".format(contract_sn_id_it, vars(contract_sn))
+            contract_sn_id_it  = contract_sn.next
+            if contract_sn_id_it == 0:
+                break
+
+        # Verify registration was successful
+        contract_sn_count          = self.sn_contract.totalNodes()
+        expected_contract_sn_count = prev_contract_sn_count + len(self.eth_sns)
+        vprint("Added node via Eth. Contract has {} SNs\n{}".format(contract_sn_count, contract_sn_dump))
+        assert contract_sn_count == expected_contract_sn_count, f"Expected {contract_sn_count} service nodes, received {expected_contract_sn_count}"
 
     def __del__(self):
         for n in self.all_nodes:
@@ -1067,58 +1493,70 @@ def run():
                                   'are located.'),
                             default="../../build/bin",
                             type=pathlib.Path)
+    arg_parser.add_argument('--storage-server-path',
+                            help=('Set the path to the storage server binary to enable it in the locally setup network'),
+                            type=pathlib.Path)
     arg_parser.add_argument('--anvil-path',
                             help=('Set the path to Foundry\'s `anvil` for launching a private '
                                   'Ethereum blockchain. If omitted a private Ethereum node must be '
                                   'running at localhost:8545.'),
-                            type=pathlib.Path)
-    arg_parser.add_argument('--eth-sn-contracts-dir',
-                            help=('Set the path to Oxen\'s `eth-sn-contracts` repository is '
+                            type=pathlib.Path,
+                            required=True)
+    arg_parser.add_argument('--session-token-contracts-dir',
+                            help=('Set the path to Session\'s `session-token-contracts` repository is '
                                   'located. The script will programmatically launch and deploy the '
                                   'contracts specified via `make deploy-local`. If omitted, the '
                                   'private Ethereum blockchain must already be deployed with the '
                                   'smart contracts prior to invoking this script.'),
-                            type=pathlib.Path)
-    arg_parser.add_argument('--keep-data-dir',
-                            help=('If unset (default) and global snn is not set up, '
-                                  'delete the existing datadir if present.  If set, '
-                                  'use the existing directory (caveat emptor)'),
+                            type=pathlib.Path,
+                            required=True)
+    arg_parser.add_argument('--data-dir',
+                            help=('Set the path to  where the blockchain will be stored'),
+                            type=pathlib.Path,
+                            default=os.getcwd() + "/testdata")
+    arg_parser.add_argument('--cache-at-hf20',
+                            help=("Start the network by using a blockchain cached at HF20. If "
+                                  "the cached blockchain doesn't exist, the chain will be "
+                                  "bootstrapped and a backup of the chain be cached at HF20 before "
+                                  "proceeding for future runs. Once the cache is available, this "
+                                  "flag will always ensure the chain restarts from the network at "
+                                  "HF20."),
                             default=False,
                             action='store_true')
-    arg_parser.add_argument('--start-at-hf20',
-                            help=('With --keep-data-dir, assume the data dir used has a chain '
-                                  'which is at the block before the hf21 transition.  This is '
-                                  'for faster iteration of testing said transition.'),
-                            default=False,
-                            action='store_true')
-    arg_parser.add_argument('--stop-at-hf20',
-                            help=('With --keep-data-dir, stop the script when hf20 is reached. '
-                                  'This is to set the chain up for --start-at-hf20 later.'),
-                            default=False,
-                            action='store_true')
+    arg_parser.add_argument('--integration-tests',
+                            help=('Run the integration tests after setting up the network'),
+                            action="store_true")
+    arg_parser.add_argument('--listen-ip',
+                            help=('Set the IP address of the spawned daemons'),
+                            type=str)
     args = arg_parser.parse_args()
 
-    if args.start_at_hf20 and args.stop_at_hf20:
-        raise RuntimeError("--start-at-hf20 and --stop-at-hf20 are mutually exclusive")
-
     if args.anvil_path is not None:
-        if args.eth_sn_contracts_dir is None:
-            raise RuntimeError('--eth-sn-contracts-dir must be specified when --anvil-path is set')
+        if args.session_token_contracts_dir is None:
+            raise RuntimeError('--session-token-contracts-dir must be specified when --anvil-path is set')
 
+    args.data_dir = args.data_dir.resolve(); # Make into absolute path
     atexit.register(cleanup)
     global snn, verbose
     if not snn:
-        if os.path.isdir(datadirectory+'/') and not args.keep_data_dir:
-            vprint("Removing existing directory at " + datadirectory + "/")
-            shutil.rmtree(datadirectory+'/')
-        vprint("new SNN")
-        snn = SNNetwork(oxen_bin_dir=args.oxen_bin_dir,
-                        anvil_path=args.anvil_path,
-                        eth_sn_contracts_dir=args.eth_sn_contracts_dir,
-                        datadir=datadirectory+'/',
-                        keep_data_dir=args.keep_data_dir,
-                        start_at_hf20=args.start_at_hf20,
-                        stop_at_hf20=args.stop_at_hf20)
+        if os.path.exists(args.data_dir):
+            for item in os.listdir(args.data_dir):
+                if item == CACHE_AT_HF20_DIR_NAME:
+                    continue
+                path = pathlib.Path(os.path.join(args.data_dir, item))
+                if path.is_file():
+                    path.unlink()
+                else:
+                    shutil.rmtree(path)
+
+        snn = SNNetwork(datadir                     = args.data_dir,
+                        oxen_bin_dir                = args.oxen_bin_dir,
+                        anvil_path                  = args.anvil_path,
+                        session_token_contracts_dir = args.session_token_contracts_dir,
+                        storage_server_path         = args.storage_server_path,
+                        cache_at_hf20               = args.cache_at_hf20,
+                        integration_tests           = args.integration_tests,
+                        listen_ip                   = args.listen_ip)
     else:
         vprint("reusing SNN")
         snn.alice.new_wallet()

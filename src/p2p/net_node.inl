@@ -870,13 +870,22 @@ static double calculate_peer_score(
     return score;
 }
 //-----------------------------------------------------------------------------------
-static std::optional<std::pair<peerid_type, size_t>> select_best_peer(
-      std::unordered_map<peerid_type, peer_stats>& peer_stats_map, 
-      std::mutex& peer_stats_map_mutex, 
-      const std::vector<std::pair<peerid_type, size_t>>& candidate_peers
-    ) {
+struct scored_peer {
+    peerid_type id;
+    size_t index;
+    double score;
+};
+
+static std::optional<scored_peer> select_best_peer(
+        std::unordered_map<peerid_type, peer_stats>& peer_stats_map,
+        std::mutex& peer_stats_map_mutex,
+        const std::vector<std::pair<peerid_type, size_t>>& candidate_peers) {
+
     // Create a local copy of the candidate peers to shuffle
-    std::vector<std::pair<peerid_type, size_t>> shuffled_peers = candidate_peers;
+    std::vector<scored_peer> shuffled_peers;
+    shuffled_peers.reserve(candidate_peers.size());
+    for (auto it : candidate_peers)
+        shuffled_peers.push_back({it.first, it.second, 0.0});
 
     // Shuffle the peers
     std::random_device rd;
@@ -884,23 +893,41 @@ static std::optional<std::pair<peerid_type, size_t>> select_best_peer(
     std::shuffle(shuffled_peers.begin(), shuffled_peers.end(), gen);
 
     double highest_score = -std::numeric_limits<double>::max();
-    std::optional<std::pair<peerid_type, size_t>> best_peer;
+    std::optional<scored_peer> best_peer;
 
-    for (const auto& peer : shuffled_peers) {
-        double score = calculate_peer_score(peer_stats_map, peer_stats_map_mutex, peer.first);
-        log::debug(logcat, "Peer {} has score {}", peer.first, score);
+    fmt::memory_buffer peer_scores_log;
+    bool print_peer_scores = log::get_level(logcat) <= log::Level::trace;
+    if (print_peer_scores)
+        fmt::format_to(std::back_inserter(peer_scores_log), "Peer Scores (Index, ID, Score)");
 
-        if (score > highest_score) {
-            highest_score = score;
+    for (size_t index = 0; index < shuffled_peers.size(); index++) {
+        auto& peer = shuffled_peers[index];
+        peer.score = calculate_peer_score(peer_stats_map, peer_stats_map_mutex, peer.id);
+        if (peer.score > highest_score) {
+            highest_score = peer.score;
             best_peer = peer;
+        }
+
+        if (print_peer_scores) {
+            constexpr size_t COLUMNS = 5;
+            bool print_newline = index % COLUMNS == 0;
+            fmt::format_to(
+                    std::back_inserter(peer_scores_log),
+                    "{}{:5d} {:<16x} {:<5f} |",
+                    print_newline ? "\n" : " ",
+                    index,
+                    peer.id,
+                    peer.score);
         }
     }
 
-    if (best_peer) {
-        log::info(logcat, "Selected best peer: {} with score {}", best_peer->first, highest_score);
-    } else {
+    if (print_peer_scores)
+        log::debug(logcat, "{}", fmt::to_string(peer_scores_log));
+
+    if (best_peer)
+        log::info(logcat, "Selected best peer: {:x} with score {}", best_peer->id, highest_score);
+    else
         log::warning(logcat, "No valid peers found during selection");
-    }
 
     return best_peer;
 }
@@ -1503,7 +1530,7 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
             auto maybe_best_peer = select_best_peer(peer_stats_map, peer_stats_map_mutex, candidate_peers);
             if (!maybe_best_peer)
                 return false;
-            random_index = maybe_best_peer->second;
+            random_index = maybe_best_peer->index;
         } else {
             random_index = crypto::rand_idx(filtered.size());
             random_index = filtered[random_index];

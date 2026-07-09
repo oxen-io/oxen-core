@@ -427,6 +427,7 @@ struct service_node_address {
     uint32_t ip;
     uint16_t port;
     std::array<uint16_t, 3> version{};
+    std::string version_tag;
 };
 
 using pubkey_and_sninfo = std::pair<crypto::public_key, std::shared_ptr<const service_node_info>>;
