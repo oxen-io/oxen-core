@@ -1,3 +1,10 @@
+oxen (11.6.1-1~deb14+1) forky; urgency=medium
+
+  * Update apt repo signing key to deb.session.foundation.gpg
+  * Drop boost system usage to fix boost 1.89+ compilation
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 09 Jul 2026 12:15:45 -0300
+
 oxen (11.6.1-1~deb14) forky; urgency=medium
 
   * add session router dependency
