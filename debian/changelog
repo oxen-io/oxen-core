@@ -1,3 +1,10 @@
+oxen (11.6.1-1+1) unstable; urgency=medium
+
+  * Update apt repo signing key to deb.session.foundation.gpg
+  * Drop boost system usage to fix boost 1.89+ compilation
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 09 Jul 2026 12:15:43 -0300
+
 oxen (11.6.1-1) sid; urgency=medium
 
   * add session router dependency
