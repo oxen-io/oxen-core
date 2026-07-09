@@ -27,7 +27,7 @@ local deb_pipeline(image, buildarch='amd64', debarch='amd64', jobs=6) = {
       commands: [
         'echo "Building on ${DRONE_STAGE_MACHINE}"',
         'echo "man-db man-db/auto-update boolean false" | debconf-set-selections',
-        'cp debian/deb.loki.network.gpg /etc/apt/trusted.gpg.d/deb.loki.network.gpg',
+        'cp debian/deb.session.foundation.gpg /etc/apt/trusted.gpg.d/deb.session.foundation.gpg',
         'echo deb http://deb.loki.network' + repo_suffix + ' ' + distro + ' main >/etc/apt/sources.list.d/loki.list',
         apt_get_quiet + ' update',
         apt_get_quiet + ' install -y eatmydata',
