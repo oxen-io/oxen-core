@@ -1,3 +1,11 @@
+oxen (11.6.1-1~ubuntu2604+1) resolute; urgency=medium
+
+  * Use builds.session.codes for build uploads
+  * Update apt repo signing key to deb.session.foundation.gpg
+  * Drop boost system usage to fix boost 1.89+ compilation
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 09 Jul 2026 12:15:47 -0300
+
 oxen (11.6.1-1~ubuntu2604) resolute; urgency=medium
 
   * Resolute deb
