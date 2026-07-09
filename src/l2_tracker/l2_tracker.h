@@ -143,7 +143,7 @@ class L2Tracker {
     void update_rewards(std::optional<std::forward_list<uint64_t>> more = std::nullopt);
     void update_logs();
     void update_purge_list(bool curr_height_fallback = false);
-    void update_done(bool changes = true);
+    void update_done(bool complete = true);
 
     void generate_purge_transactions();
 

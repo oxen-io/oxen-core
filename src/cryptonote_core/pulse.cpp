@@ -4,10 +4,12 @@
 #include <memory>
 
 #include "common/formattable.h"
+#include "common/lock.h"
 #include "common/random.h"
 #include "common/tracy_shim.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/hardfork.h"
+#include "cryptonote_config.h"
 #include "cryptonote_core.h"
 #include "ethereum_transactions.h"
 #include "network_config/mocknet.h"
@@ -112,7 +114,7 @@ namespace {
     };
 
     template <typename T>
-    using quorum_array = std::array<T, service_nodes::PULSE_QUORUM_NUM_VALIDATORS>;
+    using quorum_array = std::array<T, service_nodes::PULSE_QUORUM_MAX_VALIDATORS>;
 
     // Stores message for quorumnet per stage. Some validators may reach later
     // stages before we arrive at that stage. To properly validate messages we also
@@ -125,7 +127,7 @@ namespace {
 
     struct pulse_wait_stage {
         message_queue queue;  // messages from later stages that arrived ahead of schedule
-        uint16_t bitset;      // Bitset of validators that we received a message from for this stage
+        bitset_t bitset;      // Bitset of validators that we received a message from for this stage
         uint16_t msgs_received;  // Number of unique messages received in the stage
         time_point end_time;     // Time at which the stage ends, determined when the stage begins
     };
@@ -167,6 +169,10 @@ namespace {
             uint64_t height;  // Current blockchain height that Pulse wants to generate a block for
             crypto::hash top_hash;  // Latest block hash included in signatures for rejecting out of
                                     // date nodes
+            cryptonote::hf hardfork;  // Hardfork of the block being generated
+            int active_nodes;         // Number of active network nodes (for the upcoming block)
+            int num_validators;       // Number of validators for this block
+            int num_signatures;       // Number of validator signatures required for this block
             time_point round_0_start_time;  // When round 0 should start and subsequent round
                                             // timings are derived from.
         } curr_block;
@@ -189,15 +195,23 @@ namespace {
         struct transient_t {
             struct {
                 bool sent;  // When true, handshake sent and waiting for other handshakes
-                quorum_array<bool> data;  // Received data from messages from Quorumnet
+                quorum_array<bool> _data;  // Received data from messages from Quorumnet
+                std::span<bool> data(size_t num_validators) {
+                    assert(num_validators <= _data.size());
+                    return std::span{_data}.first(num_validators);
+                }
                 pulse_wait_stage stage;
             } send_and_wait_for_handshakes;
 
             struct {
-                quorum_array<std::optional<uint16_t>> data;
+                quorum_array<std::optional<bitset_t>> _data;
+                std::span<std::optional<bitset_t>> data(size_t num_validators) {
+                    assert(num_validators <= _data.size());
+                    return std::span{_data}.first(num_validators);
+                }
                 pulse_wait_stage stage;
 
-                uint16_t best_bitset;  // The most agreed upon validators for participating in
+                bitset_t best_bitset;  // The most agreed upon validators for participating in
                                        // rounds. Value is set when all handshake bitsets are
                                        // received.
                 uint16_t best_count;   // How many validators agreed upon the best bitset.
@@ -227,13 +241,17 @@ namespace {
 
                 // Data from other nodes that we are waiting for:
                 struct {
-                    quorum_array<std::optional<T>> data;
+                    quorum_array<std::optional<T>> _data;
+                    std::span<std::optional<T>> data(size_t num_validators) {
+                        assert(num_validators <= _data.size());
+                        return std::span{_data}.first(num_validators);
+                    }
                     pulse_wait_stage stage;
                 } wait;
 
                 void clear() {
                     to_send.reset();
-                    wait.data.fill(std::nullopt);
+                    wait._data.fill(std::nullopt);
                     wait.stage = {};
                 }
             };
@@ -315,7 +333,7 @@ namespace {
     }
 
     //
-    // NOTE: pulse::message Utiliities
+    // NOTE: pulse::message Utilities
     //
 
     // msg_init takes the message type as template parameter, and, for message types requiring a
@@ -495,8 +513,9 @@ namespace {
         message msg;
         if (sending_bitset) {
             // Generate the bitset from our received handshakes.
-            auto const& quorum = transient.send_and_wait_for_handshakes.data;
-            uint16_t validator_bitset = 0;
+            auto const& quorum =
+                    transient.send_and_wait_for_handshakes.data(curr_block.num_validators);
+            bitset_t validator_bitset = 0;
             for (size_t quorum_index = 0; quorum_index < quorum.size(); quorum_index++)
                 if (quorum[quorum_index])
                     validator_bitset |= (1 << quorum_index);
@@ -589,7 +608,7 @@ namespace {
         if (unexpected_items) {
             log::error(
                     logcat,
-                    "{}Internal error: expected bitset {:011b}, but accepted and received {:011b}",
+                    "{}Internal error: expected bitset {:b}, but accepted and received {:b}",
                     *this,
                     participants,
                     stage.bitset);
@@ -599,8 +618,8 @@ namespace {
         if (timed_out && participants != stage.bitset) {
             log::debug(
                     logcat,
-                    "{}Stage timed out: missing responses. Expected ({}) {:011b} "
-                    "received ({}) {:011b}",
+                    "{}Stage timed out: missing responses. Expected ({}) {:b} "
+                    "received ({}) {:b}",
                     *this,
                     std::popcount(participants),
                     participants,
@@ -608,16 +627,21 @@ namespace {
                     stage.bitset);
         }
 
+        auto hf = core.blockchain.get_network_version();
+
+        size_t validators = service_nodes::PULSE_QUORUM_NUM_VALIDATORS(hf, curr_block.active_nodes);
+        size_t sigs_required = service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(hf, validators);
+
         // TODO: delete the last condition (HF21+) once HF21 has happened, along with the HF21 gate
         // in begin_stage_timer
-        if (std::popcount(stage.bitset) >= service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES &&
+        if (std::popcount(stage.bitset) >= static_cast<int>(sigs_required) &&
             clock::now() < round.end_time &&
             core.blockchain.get_network_version() >= cryptonote::hf::hf21_eth) {
 
-            uint16_t new_participants = stage.bitset;
+            bitset_t new_participants = stage.bitset;
             log::debug(
                     logcat,
-                    "{}Attempting to retry hash/value/signing stages with {} validators: {:011b}",
+                    "{}Attempting to retry hash/value/signing stages with {} validators: {:b}",
                     *this,
                     std::popcount(new_participants),
                     new_participants);
@@ -702,7 +726,7 @@ namespace {
                 break;
         }
 
-        if (msg.quorum_position >= service_nodes::PULSE_QUORUM_NUM_VALIDATORS) {
+        if (msg.quorum_position >= curr_block.num_validators) {
             log::debug(
                     logcat,
                     "{}Dropping {}: invalid message quorum position",
@@ -724,7 +748,9 @@ namespace {
                     // upcoming round, in order to produce a signature, the quorum must have already
                     // gone ahead without us and so there isn't anything we can do with it.
                     log::debug(
-                            logcat, "{}Ignoring block sig from last round; probably a dupe", *this);
+                            logcat,
+                            "{}Ignoring block sig from last round; probably a duplicate",
+                            *this);
                 } else {
                     log::debug(
                             logcat,
@@ -740,7 +766,7 @@ namespace {
             return;
         }
 
-        uint16_t const validator_bit = (1 << msg.quorum_position);
+        bitset_t validator_bit = (1 << msg.quorum_position);
         if (state > round_state::wait_for_block_template &&
             msg.type > message_type::block_template) {
             // Receiving the block template locks in the validator superset: validators can still be
@@ -751,7 +777,7 @@ namespace {
                 log::debug(
                         logcat,
                         "{}Dropping {}: validator has been dropped from the round; "
-                        "current bitset is {:011b}",
+                        "current bitset is {:b}",
                         *this,
                         msg_source_string(msg),
                         participants);
@@ -766,14 +792,15 @@ namespace {
             case message_type::invalid: assert("Invalid Code Path" != nullptr); return;
 
             case message_type::handshake: {
-                auto& quorum = transient.send_and_wait_for_handshakes.data;
+                auto quorum =
+                        transient.send_and_wait_for_handshakes.data(curr_block.num_validators);
                 if (quorum[msg.quorum_position])
                     return;
                 quorum[msg.quorum_position] = true;
                 log::debug(
                         logcat,
-                        "{}Received handshake with quorum position bit ({}) {:011b} adding to "
-                        "bitset {:011b}",
+                        "{}Received handshake with quorum position bit ({}) {:b} adding to "
+                        "bitset {:b}",
                         *this,
                         msg.quorum_position,
                         validator_bit,
@@ -781,7 +808,7 @@ namespace {
             } break;
 
             case message_type::handshake_bitset: {
-                auto& quorum = transient.wait_for_handshake_bitsets.data;
+                auto quorum = transient.wait_for_handshake_bitsets.data(curr_block.num_validators);
                 auto& bitset = quorum[msg.quorum_position];
                 if (bitset)
                     return;  // This message is a duplicate, nothing to do.
@@ -789,7 +816,7 @@ namespace {
 
                 log::debug(
                         logcat,
-                        "{}Received proposed bitset {:011b} from V[{}]",
+                        "{}Received proposed bitset {:b} from V[{}]",
                         *this,
                         *bitset,
                         msg.quorum_position);
@@ -822,7 +849,7 @@ namespace {
                     log::debug(
                             logcat,
                             "{}Received pulse block template specifying different validator "
-                            "handshake bitsets {:011b}, expected {:011b}",
+                            "handshake bitsets {:b}, expected {:b}",
                             *this,
                             block.pulse.validator_bitset,
                             transient.wait_for_handshake_bitsets.best_bitset);
@@ -873,7 +900,7 @@ namespace {
             } break;
 
             case message_type::random_value_hash: {
-                auto& quorum = transient.random_value_hashes.wait.data;
+                auto quorum = transient.random_value_hashes.wait.data(curr_block.num_validators);
                 auto& value = quorum[msg.quorum_position];
                 if (value)
                     return;  // Duplicate message, nothing to do
@@ -881,14 +908,14 @@ namespace {
             } break;
 
             case message_type::random_value: {
-                auto& quorum = transient.random_value.wait.data;
+                auto quorum = transient.random_value.wait.data(curr_block.num_validators);
                 auto& value = quorum[msg.quorum_position];
                 if (value)
                     return;  // Duplicate message, nothing to do
 
                 const auto& msg_rv = msg.get<message_type::random_value>();
-                if (const auto& hash =
-                            transient.random_value_hashes.wait.data[msg.quorum_position]) {
+                if (const auto& hash = transient.random_value_hashes.wait.data(
+                            curr_block.num_validators)[msg.quorum_position]) {
                     if (auto derived = blake2b_hash(msg_rv.data, sizeof(msg_rv.data));
                         derived != *hash) {
                         log::debug(
@@ -907,7 +934,7 @@ namespace {
             } break;
 
             case message_type::block_signature: {
-                auto& quorum = transient.block_signatures.wait.data;
+                auto quorum = transient.block_signatures.wait.data(curr_block.num_validators);
                 auto& signature = quorum[msg.quorum_position];
                 if (signature)
                     return;  // Duplicate message, ignore it.
@@ -1302,8 +1329,16 @@ namespace {
         // NOTE: If the top hash we have stored is the same as the top block's hash then we've
         // already attempted Pulse with the current state of the blockchain and encountered a
         // failure.
-        //
-        cryptonote::block top_block = core.blockchain.db().get_top_block();
+
+        cryptonote::block top_block;
+        size_t active_nodes;
+        // Fetch these two atomically:
+        {
+            auto locks = tools::unique_locks(core.blockchain, core.service_node_list);
+            std::lock_guard sn_lock{core.service_node_list};
+            top_block = core.blockchain.db().get_top_block();
+            active_nodes = core.service_node_list.active_service_nodes_count();
+        }
         const auto top_hash = cryptonote::get_block_hash(top_block);
         uint64_t chain_height = top_block.get_height() + 1;
         if (curr_block.top_hash == top_hash) {
@@ -1332,6 +1367,12 @@ namespace {
         curr_block.round_0_start_time = times->r0_timestamp;
         curr_block.height = chain_height;
         curr_block.top_hash = top_hash;
+        curr_block.active_nodes = active_nodes;
+        curr_block.hardfork = core.blockchain.get_network_version(curr_block.height);
+        curr_block.num_validators =
+                service_nodes::PULSE_QUORUM_NUM_VALIDATORS(curr_block.hardfork, active_nodes);
+        curr_block.num_signatures = service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(
+                curr_block.hardfork, curr_block.num_validators);
         round = {};
 
         return round_state::prepare_for_round;
@@ -1421,23 +1462,26 @@ namespace {
             }
         }
 
-        std::vector<crypto::hash> const entropy = service_nodes::get_pulse_entropy_for_next_block(
-                blockchain.db(), curr_block.top_hash, round.number);
-        auto const active_node_list = blockchain.service_node_list.active_service_nodes_infos();
-        crypto::public_key const& block_leader =
-                blockchain.service_node_list.get_next_block_leader().key;
+        const std::vector<crypto::hash> entropy = service_nodes::get_pulse_entropy_for_next_block(
+                blockchain.db(),
+                curr_block.hardfork,
+                curr_block.top_hash,
+                round.number,
+                curr_block.active_nodes);
+        const auto active_node_list = blockchain.service_node_list.active_service_nodes_infos();
+        const auto& block_leader = blockchain.service_node_list.get_next_block_leader().key;
 
-        auto hf_version = blockchain.get_network_version();
         round.quorum = service_nodes::generate_pulse_quorum(
                 blockchain.nettype(),
                 block_leader,
-                hf_version,
+                curr_block.hardfork,
                 active_node_list,
                 entropy,
                 round.number,
                 curr_block.height);
 
-        if (!service_nodes::verify_pulse_quorum_sizes(round.quorum)) {
+        if (!service_nodes::verify_pulse_quorum_sizes(
+                    round.quorum, curr_block.hardfork, active_node_list.size())) {
             log::info(
                     logcat,
                     "{}There are not enough nodes to execute Pulse for height {}. PoW block is "
@@ -1447,7 +1491,7 @@ namespace {
                     curr_block.height,
                     round.quorum.workers.size(),
                     round.quorum.validators.size(),
-                    service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
+                    curr_block.num_validators);
             return goto_wait_for_next_block_and_clear_round_data();
         }
 
@@ -1582,7 +1626,7 @@ namespace {
         handle_messages_received_early_for(transient.send_and_wait_for_handshakes.stage);
         pulse_wait_stage const& stage = transient.send_and_wait_for_handshakes.stage;
 
-        auto const& quorum = transient.send_and_wait_for_handshakes.data;
+        auto quorum = transient.send_and_wait_for_handshakes.data(curr_block.num_validators);
         bool const timed_out = clock::now() >= stage.end_time;
         bool const all_handshakes = stage.msgs_received == quorum.size();
 
@@ -1593,7 +1637,7 @@ namespace {
             bool missing_handshakes = timed_out && !all_handshakes;
             log::info(
                     logcat,
-                    "{}Collected validator handshakes {:011b}{} Sending handshake bitset and "
+                    "{}Collected validator handshakes {:b}{} Sending handshake bitset and "
                     "collecting other validator bitsets.",
                     *this,
                     stage.bitset,
@@ -1624,18 +1668,18 @@ namespace {
         handle_messages_received_early_for(transient.wait_for_handshake_bitsets.stage);
         pulse_wait_stage const& stage = transient.wait_for_handshake_bitsets.stage;
 
-        auto const& quorum = transient.wait_for_handshake_bitsets.data;
+        auto quorum = transient.wait_for_handshake_bitsets.data(curr_block.num_validators);
         bool const timed_out = clock::now() >= stage.end_time;
         bool const all_bitsets = stage.msgs_received == quorum.size();
 
         if (timed_out || all_bitsets) {
-            std::map<uint16_t, int> bitset_count;
-            uint16_t best_bitset = 0;
-            size_t count = 0;
+            std::map<bitset_t, int> bitset_count;
+            bitset_t best_bitset = 0;
+            int count = 0;
             for (size_t quorum_index = 0; quorum_index < quorum.size(); quorum_index++) {
                 auto& bitset = quorum[quorum_index];
                 if (bitset) {
-                    uint16_t num = ++bitset_count[*bitset];
+                    int num = ++bitset_count[*bitset];
                     if (num > count) {
                         best_bitset = *bitset;
                         count = num;
@@ -1645,10 +1689,10 @@ namespace {
             if (log::get_level(logcat) <= log::Level::debug) {
                 std::vector<std::string> received;
                 for (const auto& [bitset, count] : bitset_count)
-                    received.push_back("{:011b} (x{})"_format(bitset, count));
+                    received.push_back("{:b} (x{})"_format(bitset, count));
                 log::debug(
                         logcat,
-                        "{}Most common bitset {:011b}, from received bitsets: {}",
+                        "{}Most common bitset {:b}, from received bitsets: {}",
                         *this,
                         best_bitset,
                         fmt::join(received, ", "));
@@ -1658,8 +1702,7 @@ namespace {
             if (best_bitset != 0 && round.participant == sn_type::validator)
                 i_am_not_participating = ((best_bitset & (1 << round.my_quorum_position)) == 0);
 
-            if (count < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES || best_bitset == 0 ||
-                i_am_not_participating) {
+            if (count < curr_block.num_signatures || best_bitset == 0 || i_am_not_participating) {
                 if (best_bitset == 0) {
                     // Less than the threshold of the validators can come to agreement about
                     // which validators are online, we wait until the next round.
@@ -1674,7 +1717,7 @@ namespace {
                 } else if (i_am_not_participating) {
                     log::debug(
                             logcat,
-                            "{}The participating validator bitset {:011b} does not include us "
+                            "{}The participating validator bitset {:b} does not include us "
                             "(quorum index {}). Waiting until next round.",
                             *this,
                             best_bitset,
@@ -1683,10 +1726,11 @@ namespace {
                     // Can't come to agreement, see threshold comment above
                     log::debug(
                             logcat,
-                            "{}We heard back from less than {} of the validators ({}/{}). Waiting "
+                            "{}We heard back from fewer than {} validators ({}/{}). Waiting "
                             "until next round.",
                             *this,
-                            service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES,
+                            service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(
+                                    curr_block.hardfork, curr_block.num_validators),
                             count,
                             quorum.size());
                 }
@@ -1698,7 +1742,7 @@ namespace {
             transient.wait_for_handshake_bitsets.best_count = count;
             log::info(
                     logcat,
-                    "{}{}/{} validators agreed on the participating nodes in the quorum {:011b}{}",
+                    "{}{}/{} validators agreed on the participating nodes in the quorum {:b}{}",
                     *this,
                     count,
                     quorum.size(),
@@ -2000,7 +2044,7 @@ namespace {
         if (timed_out || all_hashes) {
             log::info(
                     logcat,
-                    "{}Received {} random value hashes from {:011b}{}",
+                    "{}Received {} random value hashes from {:b}{}",
                     *this,
                     std::popcount(stage.bitset),
                     stage.bitset,
@@ -2010,7 +2054,9 @@ namespace {
                 // HF20 workaround to allow pulse to proceed even if a validator fails to send a
                 // random value hash in type.  This can be deleted once we are on HF21 (when the
                 // more robust version via reset_for_missing_validators takes over).
-                if (std::popcount(stage.bitset) < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES)
+                if (std::popcount(stage.bitset) <
+                    static_cast<int>(service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(
+                            curr_block.hardfork, curr_block.num_validators)))
                     return goto_preparing_for_next_round();
                 log::info(logcat, "{}Attempting to continue with HF20 workaround handling", *this);
             } else if (auto missing = reset_for_missing_validators(stage, timed_out)) {
@@ -2043,7 +2089,7 @@ namespace {
         handle_messages_received_early_for(transient.random_value.wait.stage);
         pulse_wait_stage const& stage = transient.random_value.wait.stage;
 
-        auto const& quorum = transient.random_value.wait.data;
+        auto quorum = transient.random_value.wait.data(curr_block.num_validators);
         bool const timed_out = clock::now() >= stage.end_time;
         bool all_values;
         // HF20 "maybe keep going" workaround code:
@@ -2057,7 +2103,7 @@ namespace {
         if (timed_out || all_values) {
             if (!all_values && hf20_compat_mode) {
                 auto num_validators = std::popcount(stage.bitset);
-                if (num_validators < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES)
+                if (num_validators < curr_block.num_signatures)
                     return goto_preparing_for_next_round();
                 log::debug(
                         logcat,
@@ -2144,7 +2190,7 @@ namespace {
 
             log::info(
                     logcat,
-                    "{}Block final random value {} generated from validators {:011b}",
+                    "{}Block final random value {} generated from validators {:b}",
                     *this,
                     tools::hex_guts(block_rv),
                     stage.bitset);
@@ -2170,7 +2216,7 @@ namespace {
         handle_messages_received_early_for(wait.stage);
         pulse_wait_stage const& stage = wait.stage;
 
-        auto const& quorum = wait.data;
+        auto quorum = wait.data(curr_block.num_validators);
         bool const timed_out = clock::now() >= stage.end_time;
 
         // HF20 "maybe keep going" workaround code:
@@ -2193,7 +2239,7 @@ namespace {
                     return goto_preparing_for_next_round();
             }
 
-            assert(std::popcount(stage.bitset) >= service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES);
+            assert(std::popcount(stage.bitset) >= curr_block.num_signatures);
 
             // Add first PULSE_BLOCK_REQUIRED_SIGNATURES signatures
             for (uint16_t validator_index = 0; validator_index < quorum.size(); validator_index++) {
@@ -2208,10 +2254,10 @@ namespace {
                         round.quorum.validators[validator_index],
                         *signature);
                 block.signatures.emplace_back(validator_index, *signature);
-                if (block.signatures.size() == service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES)
+                if (static_cast<int>(block.signatures.size()) == curr_block.num_signatures)
                     break;
             }
-            assert(block.signatures.size() == service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES);
+            assert(block.signatures.size() == curr_block.num_signatures);
             block.invalidate_hashes();
 
             // Propagate Final Block

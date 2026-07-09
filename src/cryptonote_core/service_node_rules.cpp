@@ -29,8 +29,6 @@ template <cryptonote::network_type Net>
 static constexpr bool has_valid_parameters() {
     constexpr auto& conf = get_config(Net);
 
-    static_assert(conf.PULSE_MIN_SERVICE_NODES >= PULSE_QUORUM_SIZE);
-
     // Some sanity checks on the recommission credit value:
     static_assert(
             RECOMMISSION_CREDIT(conf.BLOCKS_IN(DECOMMISSION_MAX_CREDIT), 0) <=

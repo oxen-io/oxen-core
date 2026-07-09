@@ -359,7 +359,10 @@ struct service_node_info  // registration information
     }
 
     bool can_transition_to_state(
-            cryptonote::hf hf_version, uint64_t block_height, new_state proposed_state) const;
+            cryptonote::network_type nettype,
+            cryptonote::hf hf_version,
+            uint64_t block_height,
+            new_state proposed_state) const;
     bool can_be_voted_on(uint64_t block_height) const;
     size_t total_num_locked_contributions() const;
 
@@ -527,20 +530,32 @@ struct service_node_keys {
     eth::bls_public_key pub_bls;
 };
 
-// Caches the window of block entropy for deriving pulse quorums of blocks for forming pulse
-// quorums. This prevents having to pull blocks from the DB and instead have them sitting in memory.
-// The entropy for `block` is defined as the first `PULSE_QUORUM_SIZE` hashes from `data` after
-// `add_block` is called at-least once for a block.
+// Caches the window of block entropy for deriving round 0 pulse quorums of blocks for forming pulse
+// quorums. This prevents having to pull blocks from the DB in the most common case and instead have
+// them sitting in memory.
+//
+// This cache is still fed but *not* used for backup pulse rounds quora: they require a different
+// entropy calculation through the entire range of blocks, but are most likely not useful for the
+// next round (because it's much more likely to be round 0 again, not whatever the previous block's
+// backup round was).
 //
 // If `add_block` fails then the window is not initialised and no hashes will be returned when
 // queried.
 struct pulse_entropy_feeder {
-    bool init = false;
-    uint8_t pulse_round = 0;
-    crypto::hash last_hash = {};
-    crypto::hash data[PULSE_QUORUM_ENTROPY_LAG + 2] = {};
+    crypto::hash last_hash = crypto::null<crypto::hash>;
+
+    // The number of valid elements in `data`, i.e. data[data_offset] until data[data_offset +
+    // ENTROPY_NEEDED] are set to the entropy values for the last ENTROPY_NEEDED blocks.  The
+    // underlying data array is larger so that we can reduce how often we have to shift elements in
+    // it.
+    inline static constexpr size_t ENTROPY_NEEDED =
+            PULSE_QUORUM_MAX_SIZE + PULSE_QUORUM_ENTROPY_MIN_LAG + 1;
+
+    std::array<crypto::hash, 2 * ENTROPY_NEEDED - 1> data = {};
+    size_t data_offset = 0;
+
     bool add_block(const cryptonote::BlockchainDB& db, const cryptonote::block& block);
-    std::span<const crypto::hash> get_window() const;
+    std::span<const crypto::hash> get_round0_entropy(size_t quorum_size) const;
 };
 
 class service_node_list {
@@ -623,14 +638,10 @@ class service_node_list {
             f(it->second);
     }
 
-    /// FIXME: remove some time after HF21
-    /// core needs to update the service node keys (to which we have a pointer) at HF21,
-    /// this allows core to make sure we're not using them at that moment
-    template <typename Func>
-    void while_locked(Func f) const {
-        std::unique_lock lock{m_sn_mutex};
-        f();
-    }
+    // Implement lockable for the object
+    void lock() { m_sn_mutex.lock(); }
+    void unlock() { m_sn_mutex.unlock(); }
+    bool try_lock() { return m_sn_mutex.try_lock(); }
 
     /// Returns the primary SN pubkey associated with a x25519 pubkey.  Returns a null public key if
     /// not found.  (Note: this is just looking up the association, not derivation).
@@ -855,6 +866,10 @@ class service_node_list {
     std::vector<pubkey_and_sninfo> active_service_nodes_infos() const {
         std::unique_lock lock{m_sn_mutex};
         return m_state.active_service_nodes_infos();
+    }
+    size_t active_service_nodes_count() const {
+        std::unique_lock lock{m_sn_mutex};
+        return m_state.active_service_nodes_count();
     }
 
     void set_my_service_node_keys(const service_node_keys* keys);
@@ -1122,6 +1137,7 @@ class service_node_list {
         service_nodes_infos_t::iterator erase_info(
                 const service_nodes_infos_t::iterator& it, recently_removed_node::type_t exit_type);
 
+        size_t active_service_nodes_count() const;
         std::vector<pubkey_and_sninfo> active_service_nodes_infos() const;
         std::vector<pubkey_and_sninfo> decommissioned_service_nodes_infos()
                 const;  // return: All nodes that are fully funded *and* decommissioned.
@@ -1392,11 +1408,13 @@ class service_node_list {
             crypto::public_key const& pubkey, uint64_t height, uint8_t round, bool participated);
 
     // Verify block against Service Node state that has just been called with
-    // 'state.update_from_block(block)'.
+    // 'state.update_from_block(block)'.  `active_node_count` is the node count at the time the
+    // block was produced (i.e. the count of the previous state, not the just-updated state).
     void verify_block(
             const cryptonote::block& block,
             bool alt_block,
-            cryptonote::checkpoint_t const* checkpoint) const;
+            cryptonote::checkpoint_t const* checkpoint,
+            size_t active_node_count) const;
 
     void reset(bool delete_db_entry = false);
     bool load(uint64_t current_height);
@@ -1520,14 +1538,20 @@ service_nodes::quorum generate_pulse_quorum(
 // The pulse entropy is generated for the next block after the top_block passed in.
 std::vector<crypto::hash> get_pulse_entropy_for_next_block(
         cryptonote::BlockchainDB const& db,
+        cryptonote::hf hf,
         cryptonote::block const& top_block,
-        uint8_t pulse_round);
+        uint8_t pulse_round,
+        size_t active_nodes);
 std::vector<crypto::hash> get_pulse_entropy_for_next_block(
-        cryptonote::BlockchainDB const& db, crypto::hash const& top_hash, uint8_t pulse_round);
+        cryptonote::BlockchainDB const& db,
+        cryptonote::hf hf,
+        crypto::hash const& top_hash,
+        uint8_t pulse_round,
+        size_t active_nodes);
 // Same as above, but uses the current blockchain top block and defaults to round 0 if not
 // specified.
 std::vector<crypto::hash> get_pulse_entropy_for_next_block(
-        cryptonote::BlockchainDB const& db, uint8_t pulse_round = 0);
+        const cryptonote::Blockchain& bc, uint8_t pulse_round = 0);
 
 payout service_node_payout_portions(const crypto::public_key& key, const service_node_info& info);
 
