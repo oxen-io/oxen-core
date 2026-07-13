@@ -1,0 +1,47 @@
+
+name: Test for OpenRC script 'oxen-node'
+on:
+  pull_request:
+    types: [synchronize, opened, reopened, ready_for_review]
+    paths:
+    - 'debian/oxen-node.openrc'
+env:
+  CLICOLOR_FORCE: 1
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    container: debian:unstable
+    steps:
+      - name: Installing dependencies..
+        run: |
+          apt-get update
+          apt-get install curl lsb-release --yes
+          curl -so /etc/apt/trusted.gpg.d/oxen.gpg https://deb.oxen.io/pub.gpg
+          echo "deb https://deb.oxen.io $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/oxen.list
+          # Required to pre-seed as the oxend requires set IP
+          echo "oxen-service-node oxen-service-node/ip-address string $(curl ifconfig.me)" | debconf-set-selections
+          apt-get update
+          apt-get install openrc oxen-service-node --yes
+      - name: Pulling git dir..
+        uses: actions/checkout@v2
+      - name: Testing the service file..
+        run: |
+          cp "$GITHUB_WORKSPACE/debian/oxen-node.openrc" /etc/init.d/oxen-node
+          service oxen-node status || true
+          service oxen-node start
+          service oxen-node status
+          service oxen-node stop
+          service oxen-node status || true
+  shellcheck:
+    runs-on: ubuntu-latest
+    container: debian:unstable
+    steps:
+      - name: Installing dependencies..
+        run: |
+          apt-get update
+          apt-get install shellcheck --yes
+      - name: Pulling git dir..
+        uses: actions/checkout@v2
+      - name: Lint the service file..
+        run: |
+          shellcheck --external-sources --shell=sh "$GITHUB_WORKSPACE/debian/oxen-node.openrc" 
