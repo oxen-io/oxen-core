@@ -2,8 +2,9 @@ local default_deps_nocxx = [
   'libboost-program-options-dev',
   'libboost-serialization-dev',
   'libboost-thread-dev',
-  'libcurl4-openssl-dev',
+  'libcurl4-gnutls-dev',
   'libevent-dev',
+  'libgmp-dev',
   'libgtest-dev',
   'libhidapi-dev',
   'libreadline-dev',
@@ -135,60 +136,6 @@ local clang(version, lto=true) = debian_pipeline(
   build_everything=true
 );
 
-local distro_deb_suffix = {
-  unstable: '',
-  sid: '',
-  forky: '~deb14',
-  trixie: '~deb13',
-  bookworm: '~deb12',
-  questing: '~ubuntu2510',
-  noble: '~ubuntu2404',
-  jammy: '~ubuntu2204',
-};
-local distro_fmtspdsecp(distro) = !(distro == 'bullseye' || distro == 'jammy' || distro == 'focal');
-local distro_build_env(distro, deb_suffix_base) = {
-  DEBIAN_CODENAME: distro,
-  DEBIAN_SUFFIX: deb_suffix_base + distro_deb_suffix[distro],
-} + (if distro_fmtspdsecp(distro) then { WITH_FMT: 1, WITH_SPD: 1, WITH_SECP: 1 } else {}) + (
-  if distro == 'focal' then { OXEN_APPEND_DEPS: ', g++-10', OXEN_DEB_CMAKE_EXTRA: '-DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10' } else {}
-);
-
-local snapshot_deb(distro, deb_suffix_base='-1', buildarch='amd64', debarch='amd64', jobs=6, repo_suffix='/staging') = {
-  kind: 'pipeline',
-  type: 'docker',
-  name: distro + ' snapshot deb (' + debarch + ')',
-  platform: { arch: buildarch },
-  steps: [
-    submodules,
-    {
-      name: 'build',
-      image: 'registry.oxen.rocks/' +
-             (if std.startsWith(distro_deb_suffix[distro], '~ubuntu') then 'ubuntu' else 'debian') +
-             '-' + distro + '-builder',
-      environment: {
-        SSH_KEY: { from_secret: 'SSH_KEY' },
-      } + distro_build_env(distro, deb_suffix_base),
-      commands: [
-        'echo "Building on ${DRONE_STAGE_MACHINE}"',
-        'echo "man-db man-db/auto-update boolean false" | debconf-set-selections',
-        'cp contrib/deb.session.foundation.gpg /usr/share/keyrings/session-foundation.gpg',
-        'echo "Types: deb\nURIs: https://deb.session.foundation' + repo_suffix + '\nSuites: ' + distro + '\nComponents: main\nSigned-By: /usr/share/keyrings/session-foundation.gpg" >/etc/apt/sources.list.d/session.sources',
-        apt_get_quiet + ' update',
-        apt_get_quiet + ' install -y eatmydata',
-        'eatmydata ' + apt_get_quiet + ' dist-upgrade -y',
-        'eatmydata ' + apt_get_quiet + ' install --no-install-recommends -y git-buildpackage devscripts equivs g++ ccache openssh-client',
-        'eatmydata dpkg-reconfigure ccache',
-        './debian/setup-build.sh',
-        'cd debian',
-        'eatmydata mk-build-deps -i -r --tool="' + apt_get_quiet + ' -o Debug::pkgProblemResolver=yes --no-install-recommends -y" control',
-        'cd ..',
-        'eatmydata debuild --preserve-envvar=CCACHE_* --preserve-envvar=OXEN_DEB_CMAKE_EXTRA -us -uc -b -j' + jobs,
-        './debian/ci-upload.sh ' + distro + ' ' + debarch,
-      ],
-    },
-  ],
-};
-
 
 // Macos build
 local mac_builder(name,
@@ -251,7 +198,6 @@ local static_build_deps = [
   'autoconf',
   'automake',
   'file',
-  'gperf',
   'libtool',
   'make',
   'openssh-client',
@@ -325,8 +271,8 @@ local gui_wallet_step_darwin = {
   debian_pipeline('Debian sid (w/ tests) (amd64)', docker_base + 'debian-sid', lto=true, run_tests=true, build_everything=true),
   debian_pipeline('Debian sid Debug (amd64)', docker_base + 'debian-sid', build_type='Debug', build_everything=true, cmake_extra='-DBUILD_DEBUG_UTILS=ON'),
   clang(19),
-  debian_pipeline('Debian stable (i386)', docker_base + 'debian-stable/i386', cmake_extra='-DDOWNLOAD_SODIUM=ON -DARCH_ID=i386 -DARCH=i686'),
-  debian_pipeline('Debian bullseye (amd64)', docker_base + 'debian-bullseye'),
+  debian_pipeline('Debian stable (i386)', docker_base + 'debian-stable/i386', cmake_extra='-DARCH_ID=i386 -DARCH=i686'),
+  debian_pipeline('Debian bookworm (amd64)', docker_base + 'debian-bookworm'),
   debian_pipeline('Ubuntu LTS (amd64)', docker_base + 'ubuntu-lts'),
   debian_pipeline('Ubuntu latest (amd64)', docker_base + 'ubuntu-rolling'),
 
@@ -338,28 +284,18 @@ local gui_wallet_step_darwin = {
                   build_tests=false,
                   cmake_extra='-DARCH_ID=armhf'),
 
-  // Static build (on focal) which gets uploaded to oxen.rocks:
+  // Static build (on jammy, for an old glibc) which gets uploaded to oxen.rocks:
   debian_pipeline(
-    'Static (focal amd64)',
-    docker_base + 'ubuntu-focal',
-    deps=['g++-10'] + static_build_deps,
-    cmake_extra='-DBUILD_STATIC_DEPS=ON -DCMAKE_C_COMPILER=gcc-10 -DCMAKE_CXX_COMPILER=g++-10 -DARCH=x86-64',
+    'Static (jammy amd64)',
+    docker_base + 'ubuntu-jammy',
+    deps=['g++'] + static_build_deps,
+    cmake_extra='-DBUILD_STATIC_DEPS=ON -DARCH=x86-64',
     build_tests=false,
     lto=true,
     extra_cmds=static_check_and_upload,
   ),
 
-  snapshot_deb('sid'),
-  snapshot_deb('sid', buildarch='arm64', debarch='arm64', jobs=1),
-  snapshot_deb('trixie'),
-  snapshot_deb('bookworm'),
-  snapshot_deb('bookworm', buildarch='arm64', debarch='arm64', jobs=1),
-  snapshot_deb('questing'),
-  snapshot_deb('noble'),
-  snapshot_deb('noble', buildarch='arm64', debarch='arm64', jobs=1),
-  snapshot_deb('jammy'),
-
-  // Static mingw build (on focal) which gets uploaded to oxen.rocks:
+  // Static mingw build which gets uploaded to oxen.rocks:
   debian_pipeline(
     'Static (win64)',
     docker_base + 'debian-win32-cross',
