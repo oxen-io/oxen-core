@@ -48,11 +48,11 @@ namespace service_nodes {
 struct service_node_info;
 
 struct quorum {
-    std::vector<crypto::public_key>
-            validators;  // Array of public keys identifying service nodes who validate and sign.
-    std::vector<crypto::public_key>
-            workers;  // Array of public keys of tested service nodes (if applicable).
-                      //
+    // Array of public keys identifying service nodes who validate and sign.
+    std::vector<crypto::public_key> validators;
+    // Array of public keys of tested service nodes (if applicable).
+    std::vector<crypto::public_key> workers;
+
     std::string to_string() const;
 
     template <class Archive>

@@ -1504,7 +1504,10 @@ bool tx_memory_pool::on_blockchain_inc(block const& blk) {
                         service_node_list.get_service_node_list_state({service_node_pubkey});
                 if (service_node_array.empty() ||
                     !service_node_array[0].info->can_transition_to_state(
-                            blk.major_version, state_change.block_height, state_change.state)) {
+                            m_blockchain.nettype(),
+                            blk.major_version,
+                            state_change.block_height,
+                            state_change.state)) {
                     transaction tx;
                     std::string blob;
                     size_t tx_weight;

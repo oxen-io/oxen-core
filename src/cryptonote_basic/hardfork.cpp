@@ -129,6 +129,7 @@ static constexpr std::array testnet_hard_forks = {
         hard_fork{hf::hf20_eth_transition, 0, 629500, 1729215000},   // 2024-10-17T01:30:00.000Z UTC
         hard_fork{hf::hf21_eth, 0, 689990, 1736459037},  // 2025-01-09T20:45:00.000Z UTC (ish)
         hard_fork{hf::hf22_eth_fixup, 0, 790226, 1748664600 /*Sat, 31 May 2025 04:10*/},
+        hard_fork{hf::hf23_larger_pulse, 0, 877178, 1758921000}, /*Fri, 26 Sep 2025 21:10 */
 };
 
 static constexpr std::array devnet_hard_forks = {

@@ -510,7 +510,7 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                         log::debug(
                                                 logcat,
                                                 "Service node {} has stopped passing required "
-                                                "checks, but does not ahve sufficient earned "
+                                                "checks, but does not have sufficient earned "
                                                 "credit ({} blocks, {} required) to decommission; "
                                                 "voting to deregister",
                                                 quorum->workers[node_index],
@@ -730,8 +730,9 @@ static bool handle_obligations_vote(
                 quorum.workers[vote.state_change.worker_index];
         auto service_node_infos =
                 core.service_node_list.get_service_node_list_state({service_node_pubkey});
-        if (!service_node_infos.size() || !service_node_infos[0].info->can_transition_to_state(
-                                                  net, vote.block_height, vote.state_change.state))
+        if (!service_node_infos.size() ||
+            !service_node_infos[0].info->can_transition_to_state(
+                    core.get_nettype(), net, vote.block_height, vote.state_change.state))
             // NOTE: Vote is valid but is invalidated because we cannot apply the change to a
             // service node or it is not on the network anymore
             //       So don't bother generating a state change tx.

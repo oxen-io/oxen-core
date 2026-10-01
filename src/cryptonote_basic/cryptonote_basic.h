@@ -52,6 +52,10 @@
 #include "serialization/vector_bool.h"
 #include "txtypes.h"
 
+namespace pulse {
+using bitset_t = uint32_t;
+}
+
 namespace service_nodes {
 struct quorum_signature {
     uint16_t voter_index;
@@ -386,19 +390,37 @@ struct pulse_random_value {
     static constexpr bool binary_serializable = true;
 };
 
-struct pulse_header {
+// The "base" type actually holds everything, but we split it into two types so that for pre-HF23
+// blocks we can serialize via base type reference to distinguish between pre-HF23 and post-HF23
+// serialization mechanisms.
+struct pulse_header_base {
     pulse_random_value random_value;
     uint8_t round;
-    uint16_t validator_bitset;
-
+    pulse::bitset_t validator_bitset;
+};
+struct pulse_header : pulse_header_base {
     bool empty() const;
 };
 
+// Serialization invoked for HF23+ blocks:
 template <typename Archive>
 void serialize_object(Archive& ar, pulse_header& p) {
     field(ar, "random_value", p.random_value);
     field(ar, "round", p.round);
-    field(ar, "validator_bitset", p.validator_bitset);
+    field_varint(ar, "validator_bitset", p.validator_bitset);
+}
+// Serialization invoked for pre-HF23 blocks, where validator_bitset is a raw little-endian
+// uint16_t.
+template <typename Archive>
+void serialize_object(Archive& ar, pulse_header_base& p) {
+    field(ar, "random_value", p.random_value);
+    field(ar, "round", p.round);
+    uint16_t v;
+    if constexpr (Archive::is_serializer)
+        v = static_cast<uint16_t>(p.validator_bitset);
+    field(ar, "validator_bitset", v);
+    if constexpr (Archive::is_deserializer)
+        p.validator_bitset = v;
 }
 
 struct block_header {
@@ -526,8 +548,15 @@ void serialize_object(Archive& ar, block_header& b) {
     field_varint(ar, "timestamp", b.timestamp);
     field(ar, "prev_id", b.prev_id);
     field(ar, "nonce", b.nonce);
-    if (b.major_version >= hf::hf16_pulse)
-        field(ar, "pulse", b.pulse);
+    if (b.major_version >= hf::hf16_pulse) {
+        // From HF23 we encode the bitset as a varint; in earlier HFs its a fixed-width 16-bit
+        // little-endian blob, and we select between the two by serializing either the actual
+        // pulse_header reference (new) or the pulse_header_base base class reference (old).
+        if (b.major_version >= hf::hf23_larger_pulse)
+            field(ar, "pulse", b.pulse);
+        else
+            field(ar, "pulse", static_cast<pulse_header_base&>(b.pulse));
+    }
     if (b.major_version >= feature::ETH_TRANSITION) {
         field_varint(ar, "reward", b.reward);
         field(ar, "sn_winner_tail", b.sn_winner_tail);

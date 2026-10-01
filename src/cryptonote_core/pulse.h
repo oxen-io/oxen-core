@@ -51,7 +51,7 @@ struct message {
     using block_and_txes = std::pair<std::string, std::vector<std::string>>;
     std::variant<
             std::monostate,
-            uint16_t,
+            bitset_t,
             block_and_txes,
             crypto::hash,
             cryptonote::pulse_random_value,
@@ -61,7 +61,7 @@ struct message {
     // clang-format off
     template <message_type Type>
     using payload_t =
-        std::conditional_t<Type == message_type::handshake_bitset, uint16_t,
+        std::conditional_t<Type == message_type::handshake_bitset, bitset_t,
         std::conditional_t<Type == message_type::block_template, block_and_txes,
         std::conditional_t<Type == message_type::random_value_hash, crypto::hash,
         std::conditional_t<Type == message_type::random_value, cryptonote::pulse_random_value,

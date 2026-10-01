@@ -657,7 +657,7 @@ void BlockchainLMDB::do_resize(uint64_t bytes_required) {
     mdb_env_info(m_env, &info);
 
     // NOTE: Query page size
-    MDB_stat stat;
+    MDB_stat stat{};
     mdb_env_stat(m_env, &stat);
 
     // NOTE: New map size is to add 1GiB and round it to the nearest page size
@@ -985,7 +985,7 @@ static bool need_resize(MDB_env* env, uint64_t bytes_req) {
     MDB_envinfo env_info;
     mdb_env_info(env, &env_info);
 
-    MDB_stat stat;
+    MDB_stat stat{};
     mdb_env_stat(env, &stat);
 
     // size_used doesn't include data yet to be committed, which can be
