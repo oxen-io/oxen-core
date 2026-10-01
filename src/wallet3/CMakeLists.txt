@@ -91,7 +91,7 @@ if (STATIC AND BUILD_STATIC_DEPS)
             rpc_commands
 
             # Static deps:
-            Boost::program_options Boost::serialization Boost::system Boost::thread
+            Boost::program_options Boost::serialization Boost::thread
             zlib
             SQLite::SQLite3
             SQLiteCpp
