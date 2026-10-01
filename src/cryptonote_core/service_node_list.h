@@ -1179,7 +1179,6 @@ class service_node_list {
                 cryptonote::BlockchainSQLite* sqlite_db_ptr,
                 cryptonote::network_type nettype,
                 state_set const& state_history,
-                state_set const& state_archive,
                 std::unordered_map<crypto::hash, state_t> const& alt_states,
                 const cryptonote::block& block,
                 const std::vector<cryptonote::transaction>& txs,
@@ -1202,8 +1201,8 @@ class service_node_list {
         // Returns true if a service node changed state (deregistered, decommissioned, or
         // recommissioned)
         bool process_state_change_tx(
+                const cryptonote::BlockchainDB& db,
                 state_set const& state_history,
-                state_set const& state_archive,
                 std::unordered_map<crypto::hash, state_t> const& alt_states,
                 cryptonote::network_type nettype,
                 const cryptonote::block& block,

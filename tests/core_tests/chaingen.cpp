@@ -1187,7 +1187,6 @@ void oxen_chain_generator::block_end(oxen_blockchain_entry &entry, oxen_create_b
           sqlite_db_.get(),
           cryptonote::network_type::FAKECHAIN,
           state_history_,
-          {} /*state_archive*/,
           {} /*alt_states*/,
           entry.block,
           entry.txs,
