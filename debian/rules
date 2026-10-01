@@ -40,7 +40,3 @@ override_dh_strip:
 
 override_dh_installsystemd:
 	dh_installsystemd --name=oxen-node
-
-# Ubuntu's default zstd compression for control, data is not well supported outside Ubuntu:
-override_dh_builddeb:
-	dh_builddeb -- -Zxz
