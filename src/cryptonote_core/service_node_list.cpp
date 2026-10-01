@@ -4589,7 +4589,15 @@ block_add_result service_node_list::process_block(
 
     // NOTE: Store the state into the recent history
     TracyCZoneN(store_state_into_recent, "Store recent state history", true);
-    m_transient->state_history.insert(m_transient->state_history.end(), m_state);
+    {
+        // NOTE: The copy kept in history leaves out the x25519/BLS lookup maps, which only the
+        // current state needs (and which get rebuilt if a historical state ever becomes current).
+        auto x25519_map = std::exchange(m_state.x25519_map, {});
+        auto bls_map = std::exchange(m_state.bls_map, {});
+        m_transient->state_history.insert(m_transient->state_history.end(), m_state);
+        m_state.x25519_map = std::move(x25519_map);
+        m_state.bls_map = std::move(bls_map);
+    }
     TracyCZoneEnd(store_state_into_recent);
 
     // NOTE: Store the state into the archive if necessary
@@ -4831,6 +4839,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
             m_transient->state_history.clear();
 
             m_state = std::move(*archived);
+            m_state.initialize_alt_pk_maps();
             cleanup_zombies_from_state();
             detach_label = " (from archive history)";
         } break;
@@ -4839,6 +4848,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
                                                                         // history
             auto it = m_transient->state_history.find(target_height);
             m_state = std::move(*it);
+            m_state.initialize_alt_pk_maps();
             cleanup_zombies_from_state();
             m_transient->state_history.erase(std::next(it), m_transient->state_history.end());
             detach_label = " (from recent history)";
@@ -5552,10 +5562,10 @@ static std::string serialize_snl_directly(Archive& ar, service_node_list::state_
     field_varint(ar, "staking_requirement", state.staking_requirement);
     field(ar, "recently_removed_nodes", state.recently_removed_nodes);
 
-    if constexpr (Archive::is_deserializer) {
+    // NOTE: A deserialized state doesn't get its x25519/BLS lookup maps: only the current state
+    // needs them, so they are only built for a state that becomes the current one.
+    if constexpr (Archive::is_deserializer)
         state.version = version;
-        state.initialize_alt_pk_maps();
-    }
 
     std::string result;
     if constexpr (!Archive::is_deserializer)
@@ -6423,8 +6433,6 @@ service_node_list::state_t::state_t(service_node_list& snl, state_serialized&& s
         service_nodes_infos.emplace(std::move(pubkey_info.pubkey), std::move(pubkey_info.info));
     }
 
-    initialize_alt_pk_maps();
-
     quorums = quorum_for_serialization_to_quorum_manager(state.quorums);
 }
 
@@ -6528,6 +6536,17 @@ struct try_load_blobs_result {
     uint64_t recent_min_height = 0;
     uint64_t bytes_loaded = 0;
 };
+
+// The stored recent states each hold a full copy of every node's info, whereas in memory each state
+// shares the infos that are unchanged from the state before it.  Restores that sharing for a state
+// just loaded, given the state loaded before it.
+static void share_unchanged_infos(
+        service_node_list::state_t& state, const service_node_list::state_t& prev) {
+    for (auto& [pubkey, info] : state.service_nodes_infos)
+        if (auto it = prev.service_nodes_infos.find(pubkey);
+            it != prev.service_nodes_infos.end() && *it->second == *info)
+            info = it->second;
+}
 
 static try_load_blobs_result try_load_as_old_style_blobs(
         uint64_t current_height,
@@ -6640,6 +6659,7 @@ static try_load_blobs_result try_load_as_old_style_blobs(
         } else {
             result.recent_min_height = std::numeric_limits<uint64_t>::max();
             const size_t last_index = data_in.states.size() - 1;
+            const service_node_list::state_t* prev = nullptr;
             for (size_t i = 0; i < data_in.states.size(); i++) {
                 state_serialized& entry = data_in.states[i];
 
@@ -6653,11 +6673,15 @@ static try_load_blobs_result try_load_as_old_style_blobs(
                 result.recent_min_height = std::min(result.recent_min_height, entry.height);
                 result.recent_max_height = std::max(result.recent_max_height, entry.height);
 
+                service_node_list::state_t state{*snl, std::move(entry)};
+                if (prev)
+                    share_unchanged_infos(state, *prev);
+
                 if (i == last_index) {
-                    m_state = {*snl, std::move(entry)};
+                    m_state = std::move(state);
                 } else {
-                    m_transient->state_history.emplace_hint(
-                            m_transient->state_history.end(), *snl, std::move(entry));
+                    prev = &*m_transient->state_history.emplace_hint(
+                            m_transient->state_history.end(), std::move(state));
                 }
             }
         }
@@ -6769,11 +6793,14 @@ static try_load_blobs_result try_load_as_new_style_blobs(
     serialize_db_blob(ar, sn_blob_list, &m_transient->old_quorum_states);
 
     std::mutex mutex;
+    const service_node_list::state_t* prev = nullptr;
     for (size_t sn_blob_index = 0; sn_blob_index < sn_blob_list.size(); sn_blob_index++) {
         const auto& sn_blob = sn_blob_list[sn_blob_index];
         serialization::binary_string_unarchiver sn_blob_ar{sn_blob};
         service_node_list::state_t state(snl);
         serialize_snl_directly(sn_blob_ar, state);  // TODO: Multi-thread this step
+        if (prev)
+            share_unchanged_infos(state, *prev);
 
         result.recent_min_height = std::min(result.recent_min_height, state.height);
         result.recent_max_height = std::max(result.recent_max_height, state.height);
@@ -6782,7 +6809,7 @@ static try_load_blobs_result try_load_as_new_style_blobs(
         if (sn_blob_index == sn_blob_list.size() - 1) {
             m_state = std::move(state);
         } else {
-            m_transient->state_history.emplace_hint(
+            prev = &*m_transient->state_history.emplace_hint(
                     m_transient->state_history.end(), std::move(state));
         }
     }
@@ -6836,6 +6863,8 @@ bool service_node_list::load(const uint64_t current_height) {
 
     if (!load_result.success)
         return false;
+
+    m_state.initialize_alt_pk_maps();
 
     // NOTE: Older versions kept the entire archive in memory and stored it as a single DB blob
     // that was rewritten whenever anything was added to it.  Move it into per-height entries,

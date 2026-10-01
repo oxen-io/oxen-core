@@ -269,6 +269,8 @@ struct service_node_info  // registration information
                 uint64_t amount) :
                 version{version}, key_image_pub_key{pubkey}, key_image{key_image}, amount{amount} {}
 
+        bool operator==(const contribution_t&) const = default;
+
         template <class Archive>
         void serialize_object(Archive& ar) {
             field_varint(ar, "version", version, [](auto& version) {
@@ -296,6 +298,8 @@ struct service_node_info  // registration information
             reserved = reserved_;
             address = address_;
         }
+
+        bool operator==(const contributor_t&) const = default;
 
         template <class Archive>
         void serialize_object(Archive& ar) {
@@ -346,6 +350,7 @@ struct service_node_info  // registration information
     pulse_sort_key pulse_sorter;
 
     service_node_info() = default;
+    bool operator==(const service_node_info&) const = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
     bool is_decommissioned() const { return active_since_height < 0; }
 
