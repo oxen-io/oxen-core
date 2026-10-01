@@ -27,10 +27,10 @@
 	url = https://github.com/HowardHinnant/date.git
 [submodule "external/oxen-logging"]
 	path = external/oxen-logging
-	url = https://github.com/oxen-io/oxen-logging
+	url = https://github.com/session-foundation/liblogging.git
 [submodule "external/oxen-mq"]
 	path = external/oxen-mq
-	url = https://github.com/oxen-io/oxen-mq.git
+	url = https://github.com/session-foundation/liboxenmq.git
 [submodule "external/pybind11"]
 	path = external/pybind11
 	url = https://github.com/pybind/pybind11
@@ -50,3 +50,6 @@
 [submodule "external/tracy"]
 	path = external/tracy
 	url = https://github.com/wolfpld/tracy
+[submodule "cmake/session-deps"]
+	path = cmake/session-deps
+	url = https://github.com/session-foundation/session-deps.git

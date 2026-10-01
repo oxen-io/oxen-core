@@ -28,28 +28,27 @@ Oxen is an open source project, and we encourage contributions from anyone with 
 
 ### Dependencies
 
-The following table summarizes the tools and libraries required to build. A
-few of the libraries are also included in this repository (marked as
-"Vendored"). By default, the build uses the library installed on the system,
-and ignores the vendored sources. However, if no library is found installed on
-the system, then the vendored source will be built and used. The vendored
-sources are also used for statically-linked builds because distribution
-packages often include only shared library binaries (`.so`) but not static
-library archives (`.a`).
+The following table summarizes the tools and libraries required to build.  Most of the libraries
+are found on the system if a suitable version is installed; if not, the build falls back to
+downloading and building a static copy (marked "Fallback" below) using the
+[session-deps](https://github.com/session-foundation/session-deps) submodule.  Configuring with
+`-DBUILD_STATIC_DEPS=ON` ignores the system libraries entirely and builds all of them statically,
+which is how the release binaries are made: distribution packages often include only shared library
+binaries (`.so`) but not static library archives (`.a`).
 
-| Dep          | Min. version  | Vendored | Debian/Ubuntu pkg      | Arch pkg     | Fedora              | Optional | Purpose            |
+| Dep          | Min. version  | Fallback | Debian/Ubuntu pkg      | Arch pkg     | Fedora              | Optional | Purpose            |
 | ------------ | ------------- | -------- | ---------------------- | ------------ | ------------------- | -------- | ----------------   |
-| GCC          | 10.1.0        | NO       | `g++`[1]               | `base-devel` | `gcc`               | NO       |                    |
-| CMake        | 3.16          | NO       | `cmake`                | `cmake`      | `cmake`             | NO       |                    |
+| GCC          | 10.1.0        | NO       | `g++`                  | `base-devel` | `gcc`               | NO       |                    |
+| CMake        | 3.18          | NO       | `cmake`                | `cmake`      | `cmake`             | NO       |                    |
 | pkg-config   | any           | NO       | `pkg-config`           | `base-devel` | `pkgconf`           | NO       |                    |
-| Boost        | 1.69          | NO       | `libboost-all-dev`[2]  | `boost`      | `boost-devel`       | NO       | C++ libraries      |
+| Boost        | 1.69          | NO       | `libboost-all-dev`[1]  | `boost`      | `boost-devel`       | NO       | C++ libraries      |
 | libzmq       | 4.3.0         | YES      | `libzmq3-dev`          | `zeromq`     | `zeromq-devel`      | NO       | ZeroMQ library     |
 | sqlite3      | 3.24.0        | YES      | `libsqlite3-dev`       | `sqlite`     | `sqlite-devel`      | NO       | ONS, batching      |
-| libsodium    | 1.0.9         | YES      | `libsodium-dev`        | `libsodium`  | `libsodium-devel`   | NO       | cryptography       |
-| libcurl      | 4.0           | NO       | `libcurl4-dev`         | `curl`       | `curl-devel`        | NO       | HTTP RPC           |
+| libsodium    | 1.0.17        | YES      | `libsodium-dev`        | `libsodium`  | `libsodium-devel`   | NO       | cryptography       |
+| libcurl      | 7.0           | YES      | `libcurl4-gnutls-dev`  | `curl`       | `curl-devel`        | NO       | HTTP RPC           |
 | libuv (Win)  | any           | NO       | (Windows only)         | --           | --                  | NO       | RPC event loop     |
-| libgmp       | any           | NO       | `libgmp-dev`           | `gmp`        | `gmp-devel`         | NO       | BLS precision math |
-| libzstd      | any           | NO       | `libzstd-dev`          | `zstd`       | `libzstd-devel`     | NO       | SN state compress  |
+| libgmp       | 6             | YES      | `libgmp-dev`           | `gmp`        | `gmp-devel`         | NO       | BLS precision math |
+| libzstd      | 1.5.0         | YES      | `libzstd-dev`          | `zstd`       | `libzstd-devel`     | NO       | SN state compress  |
 | libunwind    | any           | NO       | `libunwind8-dev`       | `libunwind`  | `libunwind-devel`   | YES      | Stack traces       |
 | liblzma      | any           | NO       | `liblzma-dev`          | `xz`         | `xz-devel`          | YES      | For libunwind      |
 | libreadline  | 6.3.0         | NO       | `libreadline-dev`      | `readline`   | `readline-devel`    | YES      | Input editing      |
@@ -62,16 +61,13 @@ library archives (`.a`).
 | protoc       | ?             | NO       | `protobuf-compiler`    | `protobuf`   | `protobuf-compiler` | YES      | Hardware wallet    |
 
 
-[1] On Ubuntu Focal (20.04) you will need the g++-10 package instead of g++ (which is version 9) and will
-need to run `export CC=gcc-10 CXX=g++-10` before running `make` or `cmake`.
-
-[2] libboost-all-dev includes a lot of unnecessary packages; see the apt command below for a
+[1] libboost-all-dev includes a lot of unnecessary packages; see the apt command below for a
 breakdown of the minimum set of required boost packages.
 
 Install all dependencies at once on Debian/Ubuntu:
 
 ```
-sudo apt update && sudo apt install build-essential cmake pkg-config libboost-all-dev libzmq3-dev libsodium-dev libgmp-dev libzstd-dev libunwind8-dev liblzma-dev libreadline6-dev doxygen graphviz libpgm-dev libsqlite3-dev libcurl4-dev
+sudo apt update && sudo apt install build-essential cmake pkg-config libboost-all-dev libzmq3-dev libsodium-dev libgmp-dev libzstd-dev libunwind8-dev liblzma-dev libreadline6-dev doxygen graphviz libpgm-dev libsqlite3-dev libcurl4-gnutls-dev libhidapi-dev
 ```
 
 Install all dependencies at once on macOS with the provided Brewfile:
