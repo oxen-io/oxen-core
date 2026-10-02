@@ -82,12 +82,12 @@ Oxen uses the CMake build system which is used by creating a build directory and
 
 #### On Linux and macOS
 
-You do not have to build from source if you are on debian or ubuntu as we have apt repositories with pre-built oxen packages on `deb.oxen.io`.
+You do not have to build from source if you are on debian or ubuntu as we have apt repositories with pre-built oxen packages on `deb.session.foundation`.
 
 You can install these using:
 
-	$ sudo curl -so /etc/apt/trusted.gpg.d/oxen.gpg https://deb.oxen.io/pub.gpg
-	$ echo "deb https://deb.oxen.io $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/oxen.list
+	$ sudo curl -so /etc/apt/trusted.gpg.d/oxen.gpg https://deb.session.foundation/pub.gpg
+	$ echo "deb https://deb.session.foundation $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/oxen.list
 	$ sudo apt update
 	$ sudo apt install oxend
 
