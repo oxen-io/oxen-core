@@ -92,7 +92,7 @@ def cmake_args(opts):
 
 # The commands, run from the top of the checkout, that configure and build in build/, check that
 # oxend starts, run the test suite if wanted, and then run `package`.
-def build_commands(cmake, jobs, oxend, test_oxend, run_tests, package, ninja = None):
+def build_commands(cmake, jobs, oxend, test_oxend, run_tests, package):
     opts = dict(default_cmake)
     opts.update(cmake)
     if run_tests:
@@ -102,7 +102,8 @@ def build_commands(cmake, jobs, oxend, test_oxend, run_tests, package, ninja = N
         "mkdir build",
         "cd build",
         "cmake .. -G Ninja " + cmake_args(opts),
-    ] + (ninja or ["ninja -j%d -v" % jobs])
+        "ninja -j%d -v" % jobs,
+    ]
     if test_oxend:
         cmds.append('(sleep 3; echo "status\ndiff\nexit") | TERM=xterm %s --offline --data-dir=startuptest' % oxend)
     if run_tests:
@@ -148,11 +149,10 @@ def linux(
         jobs = 6):
     image = registry + image
 
-    ninja = None
+    labels = {"platform": "linux/" + arch, "backend": "docker"}
     if arch == "arm64":
-        # The wallet code is too bloated to be compiled at -j2 with only 4GB ram, so do the huge
-        # bloated jobs at -j1 and the rest at -j2
-        ninja = ["ninja -j1 rpc wallet -v", "ninja -j2 daemon -v", "ninja -j1 wallet_rpc_server -v", "ninja -j2 -v"]
+        # The wallet code is too bloated to compile in parallel on the 4GB Pis
+        labels["mem8"] = "yes"
 
     steps = [
         submodules("docker.io/woodpeckerci/plugin-git:2"),
@@ -175,7 +175,6 @@ def linux(
                 test_oxend,
                 run_tests,
                 package,
-                ninja,
             ),
         },
     ]
@@ -185,7 +184,7 @@ def linux(
             apt_get + " update",
             apt_get + " install --no-install-recommends -y openssh-client",
         ]))
-    return workflow(name, {"platform": "linux/" + arch, "backend": "docker"}, steps)
+    return workflow(name, labels, steps)
 
 def clang(version):
     return linux(
@@ -257,8 +256,8 @@ def main(ctx):
         linux("Ubuntu latest (amd64)", "ubuntu-rolling"),
 
         # armhf builds in a 32-bit image on the arm64 agents
-        linux("Debian sid (ARM64)", "debian-sid", arch = "arm64", cmake = {"BUILD_TESTS": False}),
-        linux("Debian stable (armhf)", "debian-stable/arm32v7", arch = "arm64",
+        linux("Debian sid (ARM64)", "debian-sid", arch = "arm64", jobs = 3, cmake = {"BUILD_TESTS": False}),
+        linux("Debian stable (armhf)", "debian-stable/arm32v7", arch = "arm64", jobs = 3,
               cmake = {"BUILD_TESTS": False, "ARCH_ID": "armhf"}),
 
         # Static build (on jammy, for an old glibc):
