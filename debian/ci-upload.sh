@@ -28,7 +28,7 @@ base="deb-$distro-$(date --date=@$CI_PIPELINE_CREATED +%Y%m%dT%H%M%SZ)-${CI_COMM
 
 br="${CI_COMMIT_BRANCH// /_}"
 br="${br//\//-}"
-upload_to="oxen.rocks/${CI_REPO// /_}/$br/$base"
+upload_to="builds.session.codes/${CI_REPO// /_}/$br/$base"
 
 put=
 debs=(*_${debarch}.deb)
@@ -54,7 +54,7 @@ for p in "${upload_dirs[@]}"; do
 -mkdir $dir_tmp"
 done
 
-sftp -i ssh_key -b - -o StrictHostKeyChecking=off drone@oxen.rocks <<SFTP
+sftp -i ssh_key -b - -o StrictHostKeyChecking=off drone@builds.session.codes <<SFTP
 $mkdirs
 $put
 SFTP

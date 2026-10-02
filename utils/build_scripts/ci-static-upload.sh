@@ -19,7 +19,7 @@ chmod 600 ssh_key
 
 branch_or_tag=${CI_COMMIT_BRANCH:-${CI_COMMIT_TAG:-unknown}}
 
-upload_to="oxen.rocks/${CI_REPO// /_}/${branch_or_tag// /_}"
+upload_to="builds.session.codes/${CI_REPO// /_}/${branch_or_tag// /_}"
 
 filename=
 for f in oxen-*.tar.xz oxen-*.zip; do
@@ -47,7 +47,7 @@ for p in "${upload_dirs[@]}"; do
 -mkdir $dir_tmp"
 done
 
-sftp -i ssh_key -b - -o StrictHostKeyChecking=off drone@oxen.rocks <<SFTP
+sftp -i ssh_key -b - -o StrictHostKeyChecking=off drone@builds.session.codes <<SFTP
 $mkdirs
 put $filename $upload_to
 SFTP

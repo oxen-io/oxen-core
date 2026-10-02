@@ -1,8 +1,8 @@
 # Linux builds run in our Debian/Ubuntu images on the docker agents, macOS builds directly on the
 # Mac agents.  The static builds also package oxen and, for our own pushes and tags, upload the
-# package to oxen.rocks.
+# package to builds.session.codes.
 
-registry = "registry.oxen.rocks/"
+registry = "registry.session.codes/"
 
 canonical_repo = "oxen-io/oxen-core"
 
@@ -52,7 +52,7 @@ apt_get = "apt-get -o=Dpkg::Use-Pty=0 -q"
 # USE_LTO is given either way because it defaults to on for release builds.
 default_cmake = {
     "CMAKE_BUILD_TYPE": "Release",
-    "LOCAL_MIRROR": "https://oxen.rocks/deps",
+    "LOCAL_MIRROR": "https://builds.session.codes/deps",
     "USE_LTO": False,
     "BUILD_TESTS": True,
 }
