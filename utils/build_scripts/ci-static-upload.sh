@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Script used with CI to upload build artifacts (because specifying all this in the CI config is
+# too painful).
+
 set -o errexit
 
 if [ -z "$SSH_KEY" ]; then
@@ -14,37 +17,42 @@ set -o xtrace  # Don't start tracing until *after* we write the ssh key
 
 chmod 600 ssh_key
 
-filenames=(dist/electron/Packaged/oxen-electron-wallet-*)
-if [ "${#filenames[@]}" -lt 1 ] || ! [ -f "${filenames[0]}" ]; then
-    echo "Did not find expected electron wallet packages"
-    find dist/electron
+branch_or_tag=${CI_COMMIT_BRANCH:-${CI_COMMIT_TAG:-unknown}}
+
+upload_to="oxen.rocks/${CI_REPO// /_}/${branch_or_tag// /_}"
+
+filename=
+for f in oxen-*.tar.xz oxen-*.zip; do
+    if [[ $f != oxen-\** ]]; then
+        filename=$f
+        break
+    fi
+done
+
+if [ -z "$filename" ]; then
+    echo "Did not find expected oxen-*.tar.xz or .zip!"
+    ls -l
     exit 1
 fi
 
 # sftp doesn't have any equivalent to mkdir -p, so we have to split the above up into a chain of
 # -mkdir a/, -mkdir a/b/, -mkdir a/b/c/, ... commands.  The leading `-` allows the command to fail
 # without error.
-branch_or_tag=${DRONE_BRANCH:-${DRONE_TAG:-unknown}}
-upload_to="oxen.rocks/${DRONE_REPO// /_}/${branch_or_tag// /_}"
 upload_dirs=(${upload_to//\// })
-sftpcmds=
+mkdirs=
 dir_tmp=""
 for p in "${upload_dirs[@]}"; do
     dir_tmp="$dir_tmp$p/"
-    sftpcmds="$sftpcmds
+    mkdirs="$mkdirs
 -mkdir $dir_tmp"
-done
-for filename in "${filenames[@]}"; do
-    sftpcmds="$sftpcmds
-put $filename $upload_to"
 done
 
 sftp -i ssh_key -b - -o StrictHostKeyChecking=off drone@oxen.rocks <<SFTP
-$sftpcmds
+$mkdirs
+put $filename $upload_to
 SFTP
 
 set +o xtrace
 
-for f in "${filenames[@]}"; do
-    echo -e "\n\n\n\n\e[32;1mUploaded to https://${upload_to}/${f}\e[0m\n\n\n"
-done
+echo -e "\n\n\n\n\e[32;1mUploaded to https://${upload_to}/${filename}\e[0m\n\n\n"
+

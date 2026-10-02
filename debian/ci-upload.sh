@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# Script used with Drone CI to upload build artifacts (because specifying all this in
-# .drone.jsonnet is too painful).
+# Script used with CI to upload build artifacts (because specifying all this in the CI config is
+# too painful).
 
 
 
@@ -24,11 +24,11 @@ chmod 600 ssh_key
 distro="${1:-unknown}"
 debarch="${2:-amd64}"
 
-base="deb-$distro-$(date --date=@$DRONE_BUILD_CREATED +%Y%m%dT%H%M%SZ)-${DRONE_COMMIT:0:9}"
+base="deb-$distro-$(date --date=@$CI_PIPELINE_CREATED +%Y%m%dT%H%M%SZ)-${CI_COMMIT_SHA:0:9}"
 
-br="${DRONE_BRANCH// /_}"
+br="${CI_COMMIT_BRANCH// /_}"
 br="${br//\//-}"
-upload_to="oxen.rocks/${DRONE_REPO// /_}/$br/$base"
+upload_to="oxen.rocks/${CI_REPO// /_}/$br/$base"
 
 put=
 debs=(*_${debarch}.deb)
