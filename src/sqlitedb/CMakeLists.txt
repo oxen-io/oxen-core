@@ -8,6 +8,6 @@ target_link_libraries(sqlitedb
     SQLiteCpp
     common
   PRIVATE
-    SQLite::SQLite3
+    sessiondep::sqlite3
     logging
     extra)

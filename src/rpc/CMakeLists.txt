@@ -73,7 +73,7 @@ target_link_libraries(rpc
 
 target_link_libraries(daemon_rpc_server
   PRIVATE
-    oxenc
+    oxenc::oxenc
     rpc_common
     rpc
     Boost::thread
