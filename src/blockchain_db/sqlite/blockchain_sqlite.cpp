@@ -238,10 +238,6 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
         return as_u64(conn.prepared_get<int64_t>("SELECT COALESCE(MAX(height) + 1, 0) FROM blocks"));
     }
 
-    [[noreturn]] void not_implemented(std::string_view method) {
-        throw DB_ERROR("BlockchainSQLite::{} is not implemented yet"_format(method));
-    }
-
     SQLite::Database& with_sync_mode(Connection& conn, int sync) {
         conn.sql.exec("PRAGMA synchronous = {}"_format(sync));
         return conn.sql;
@@ -1403,6 +1399,122 @@ void BlockchainSQLite::add_output_blacklist(std::vector<uint64_t> const& blackli
     }
 }
 
+// The unlocked and recent counts reproduce the LMDB backend's: each walks back from an amount's
+// newest output and stops at the first that is unlocked (respectively: older than recent_cutoff).
+// Output heights only increase with amount_index, so the unlocked count is simply the outputs old
+// enough to spend; block timestamps aren't monotonic, so `recent` is the trailing run of unlocked
+// outputs no older than the cutoff, not every such output.
+std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> BlockchainSQLite::get_output_histogram(
+        const std::vector<uint64_t>& amounts,
+        bool unlocked,
+        uint64_t recent_cutoff,
+        uint64_t min_count) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> histogram;
+
+    auto conn = m_sql->conn();
+    auto tx = read_tx(conn);
+
+    auto count = [&](int64_t amount) {
+        return as_u64(conn.prepared_get<int64_t>(
+                "SELECT COALESCE(MAX(amount_index) + 1, 0) FROM outputs WHERE amount = ?", amount));
+    };
+    if (amounts.empty()) {
+        // Intent: visit each distinct amount by seeking to the next one, rather than scanning
+        // every output (nearly all of which have amount 0).
+        for (auto amount = conn.prepared_get<std::optional<int64_t>>(
+                     "SELECT MIN(amount) FROM outputs");
+             amount;
+             amount = conn.prepared_get<std::optional<int64_t>>(
+                     "SELECT MIN(amount) FROM outputs WHERE amount > ?", *amount)) {
+            if (auto n = count(*amount); n >= min_count)
+                histogram[as_u64(*amount)] = {n, 0, 0};
+        }
+    } else {
+        for (auto amount : amounts)
+            if (auto n = count(as_i64(amount)); n >= min_count)
+                histogram[amount] = {n, 0, 0};
+    }
+
+    if (unlocked || recent_cutoff > 0) {
+        const uint64_t chain_top = chain_height(conn);
+        for (auto& [amount, counts] : histogram) {
+            auto& [total, unlocked_count, recent] = counts;
+            unlocked_count = total;
+            for (auto [height, timestamp] : conn.prepared_results<int64_t, int64_t>(
+                         "SELECT o.height, b.timestamp FROM outputs o "
+                         "JOIN blocks b ON b.height = o.height "
+                         "WHERE o.amount = ? ORDER BY o.amount_index DESC",
+                         as_i64(amount))) {
+                if (as_u64(height) + DEFAULT_TX_SPENDABLE_AGE <= chain_top) {
+                    if (recent_cutoff == 0 || as_u64(timestamp) < recent_cutoff)
+                        break;
+                    ++recent;
+                } else {
+                    --unlocked_count;
+                }
+            }
+        }
+    }
+
+    return histogram;
+}
+
+// Like the LMDB backend, this also counts the first output (if any) above to_height: LMDB's walk
+// over the outputs counts each one before checking whether it has passed to_height.
+bool BlockchainSQLite::get_output_distribution(
+        uint64_t amount,
+        uint64_t from_height,
+        uint64_t to_height,
+        std::vector<uint64_t>& distribution,
+        uint64_t& base) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    distribution.clear();
+
+    auto conn = m_sql->conn();
+    auto tx = read_tx(conn);
+    const uint64_t db_height = chain_height(conn);
+    if (from_height >= db_height)
+        return false;
+    distribution.resize(db_height - from_height, 0);
+
+    uint64_t below = 0;
+    auto add = [&](uint64_t height, uint64_t n) {
+        if (height >= from_height)
+            distribution[height - from_height] += n;
+        else
+            below += n;
+    };
+
+    const uint64_t last = to_height > 0 ? to_height : db_height;
+    below = as_u64(conn.prepared_get<int64_t>(
+            "SELECT COUNT(*) FROM outputs WHERE amount = ? AND height < ? AND height <= ?",
+            as_i64(amount),
+            as_i64(from_height),
+            as_i64(last)));
+    for (auto [height, n] : conn.prepared_results<int64_t, int64_t>(
+                 "SELECT height, COUNT(*) FROM outputs WHERE amount = ? AND height >= ? "
+                 "AND height <= ? GROUP BY height",
+                 as_i64(amount),
+                 as_i64(from_height),
+                 as_i64(last)))
+        add(as_u64(height), as_u64(n));
+    if (to_height > 0)
+        if (auto next = conn.prepared_get<std::optional<int64_t>>(
+                    "SELECT MIN(height) FROM outputs WHERE amount = ? AND height > ?",
+                    as_i64(amount),
+                    as_i64(to_height)))
+            add(as_u64(*next), 1);
+
+    distribution[0] += below;
+    for (size_t n = 1; n < distribution.size(); ++n)
+        distribution[n] += distribution[n - 1];
+    base = 0;
+    return true;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Key images
 // ---------------------------------------------------------------------------------------------
@@ -2137,19 +2249,5 @@ bool BlockchainSQLite::for_all_alt_blocks(
     }
     return true;
 }
-
-// ---------------------------------------------------------------------------------------------
-// Not yet implemented
-// ---------------------------------------------------------------------------------------------
-
-std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> BlockchainSQLite::get_output_histogram(
-        const std::vector<uint64_t>&, bool, uint64_t, uint64_t) const {
-    not_implemented(__func__);
-}
-bool BlockchainSQLite::get_output_distribution(
-        uint64_t, uint64_t, uint64_t, std::vector<uint64_t>&, uint64_t&) const {
-    not_implemented(__func__);
-}
-
 
 }  // namespace cryptonote

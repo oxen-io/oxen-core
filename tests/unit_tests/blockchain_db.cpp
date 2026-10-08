@@ -260,6 +260,26 @@ protected:
     add_test_block(0);
     add_test_block(1);
   }
+
+  // Extends the chain with copies of the second test block (which has only a miner tx), one per
+  // given timestamp, each with its own miner tx; the database checks neither proof of work nor
+  // signatures, so this gives tests a longer chain than the two real test blocks.
+  void add_synthetic_blocks(const std::vector<uint64_t>& timestamps)
+  {
+    db_wtxn_guard guard{*m_db};
+    for (auto timestamp : timestamps)
+    {
+      block b = m_blocks[1].first;
+      const uint64_t height = m_db->height();
+      b.prev_id = m_db->top_block_hash();
+      b.timestamp = timestamp;
+      b.miner_tx->vin[0] = txin_gen{height};
+      b.miner_tx->unprunable_size = 0;
+      b.miner_tx->invalidate_hashes();
+      b.invalidate_hashes();
+      m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1] + height, t_coins[1], {});
+    }
+  }
 };
 
 using testing::Types;
@@ -568,6 +588,88 @@ TYPED_TEST(BlockchainDBTest, BlockWeights)
   uint64_t top;
   ASSERT_HASH_EQ(db.top_block_hash(&top), get_block_hash(this->m_blocks[1].first));
   EXPECT_EQ(top, 1);
+}
+
+TYPED_TEST(BlockchainDBTest, OutputHistogramAndDistribution)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  const auto& blk0 = this->m_blocks[0].first;
+  const auto& blk1 = this->m_blocks[1].first;
+
+  // Heights 2-21, with an out-of-order timestamp at height 8.
+  std::map<uint64_t, uint64_t> timestamps;
+  std::vector<uint64_t> synthetic;
+  for (uint64_t h = 2; h < 22; h++)
+  {
+    timestamps[h] = h == 8 ? 900 : 1000 + 100 * h;
+    synthetic.push_back(timestamps[h]);
+  }
+  this->add_synthetic_blocks(synthetic);
+  ASSERT_EQ(db.height(), 22);
+
+  // Expected counts per amount and height, from the blocks' outputs.
+  std::map<uint64_t, std::map<uint64_t, uint64_t>> counts;
+  auto count = [&](const transaction& tx, uint64_t height) {
+    for (const auto& out : tx.vout)
+      counts[out.amount][height]++;
+  };
+  count(*blk0.miner_tx, 0);
+  count(this->m_txs[0][0].first, 0);
+  for (uint64_t h = 1; h < 22; h++)
+    count(*blk1.miner_tx, h);
+  const uint64_t a = blk1.miner_tx->vout[0].amount;
+  auto& a_counts = counts[a];
+  auto total = [](const std::map<uint64_t, uint64_t>& c, uint64_t max_height) {
+    uint64_t n = 0;
+    for (auto& [h, k] : c)
+      if (h <= max_height)
+        n += k;
+    return n;
+  };
+
+  using histo = std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>>;
+  const uint64_t all_a = total(a_counts, 100);
+  // Spendable once height + 10 <= 22
+  const uint64_t unlocked_a = total(a_counts, 12);
+  EXPECT_EQ(db.get_output_histogram({a}, false, 0, 0), (histo{{a, {all_a, 0, 0}}}));
+  EXPECT_EQ(db.get_output_histogram({a}, true, 0, 0), (histo{{a, {all_a, unlocked_a, 0}}}));
+  // Recent: the unlocked outputs from height 12 down, stopping at height 8's old timestamp.
+  const uint64_t recent_a = a_counts[12] + a_counts[11] + a_counts[10] + a_counts[9];
+  EXPECT_EQ(
+      db.get_output_histogram({a}, false, 1500, 0), (histo{{a, {all_a, unlocked_a, recent_a}}}));
+  EXPECT_EQ(db.get_output_histogram({123456789}, false, 0, 0), (histo{{123456789, {0, 0, 0}}}));
+  EXPECT_EQ(db.get_output_histogram({123456789}, false, 0, 1), histo{});
+
+  histo all_amounts;
+  for (auto& [amount, c] : counts)
+    if (auto n = total(c, 100); n >= 25)
+      all_amounts[amount] = {n, 0, 0};
+  EXPECT_EQ(db.get_output_histogram({}, false, 0, 25), all_amounts);
+  EXPECT_EQ(db.get_output_histogram({}, false, 0, 0).size(), counts.size());
+
+  // Distribution from height 5 to 9: everything below 5 is folded into the first entry, and (as
+  // LMDB has always done) the first output above height 9 is included.
+  std::vector<uint64_t> dist;
+  uint64_t base = 99;
+  ASSERT_TRUE(db.get_output_distribution(a, 5, 9, dist, base));
+  EXPECT_EQ(base, 0);
+  std::vector<uint64_t> expected(22 - 5, 0);
+  for (uint64_t h = 0; h <= 9; h++)
+    expected[h < 5 ? 0 : h - 5] += a_counts[h];
+  expected[10 - 5] += 1;
+  for (size_t i = 1; i < expected.size(); i++)
+    expected[i] += expected[i - 1];
+  EXPECT_EQ(dist, expected);
+
+  ASSERT_TRUE(db.get_output_distribution(a, 0, 0, dist, base));
+  std::vector<uint64_t> cumulative;
+  uint64_t sum = 0;
+  for (uint64_t h = 0; h < 22; h++)
+    cumulative.push_back(sum += a_counts[h]);
+  EXPECT_EQ(dist, cumulative);
+
+  EXPECT_FALSE(db.get_output_distribution(a, 22, 0, dist, base));
 }
 
 TYPED_TEST(BlockchainDBTest, ReadTransactions)

@@ -177,7 +177,6 @@ class BlockchainSQLite : public BlockchainDB {
     uint64_t get_database_size() const override;
     void fixup(network_type nettype) override;
 
-    // Not yet implemented: these all throw.
     void add_txpool_tx(
             const crypto::hash& txid,
             const std::string& blob,
