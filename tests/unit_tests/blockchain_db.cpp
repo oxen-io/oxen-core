@@ -928,6 +928,78 @@ TYPED_TEST(BlockchainDBTest, ServiceNodeProofs)
   EXPECT_TRUE(db.get_all_service_node_proofs().empty());
 }
 
+TYPED_TEST(BlockchainDBTest, AltBlocks)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  const auto& [blk0, blob0] = this->m_blocks[0];
+  const auto& [blk1, blob1] = this->m_blocks[1];
+  const auto id0 = get_block_hash(blk0), id1 = get_block_hash(blk1);
+
+  alt_block_data_t data0{};
+  data0.height = 5;
+  data0.cumulative_weight = 123;
+  data0.cumulative_difficulty = 456;
+  data0.already_generated_coins = 789;
+  alt_block_data_t data1 = data0;
+  data1.height = 6;
+  data1.checkpointed = 1;
+  const std::string checkpoint_blob = "a serialized checkpoint";
+
+  EXPECT_EQ(db.get_alt_block_count(), 0);
+  EXPECT_FALSE(db.get_alt_block(id0, nullptr, nullptr, nullptr));
+  {
+    db_wtxn_guard guard{db};
+    db.add_alt_block(id0, data0, blob0, nullptr);
+    db.add_alt_block(id1, data1, blob1, &checkpoint_blob);
+    // LMDB means to refuse a duplicate too, but silently overwrites (MDB_NODUPDATA has no effect
+    // without MDB_DUPSORT); its caller never adds a duplicate.
+    if constexpr (std::is_same_v<TypeParam, BlockchainSQLite>)
+      EXPECT_THROW(db.add_alt_block(id0, data0, blob0, nullptr), DB_ERROR);
+  }
+  EXPECT_EQ(db.get_alt_block_count(), 2);
+
+  alt_block_data_t got{};
+  std::string blob, checkpoint;
+  ASSERT_TRUE(db.get_alt_block(id1, &got, &blob, &checkpoint));
+  EXPECT_EQ(got.height, 6);
+  EXPECT_EQ(got.cumulative_weight, 123);
+  EXPECT_EQ(got.cumulative_difficulty, 456);
+  EXPECT_EQ(got.already_generated_coins, 789);
+  EXPECT_EQ(got.checkpointed, 1);
+  EXPECT_EQ(blob, blob1);
+  EXPECT_EQ(checkpoint, checkpoint_blob);
+  ASSERT_TRUE(db.get_alt_block(id0, &got, nullptr, nullptr));
+  EXPECT_EQ(got.checkpointed, 0);
+
+  size_t count = 0;
+  db.for_all_alt_blocks(
+      [&](const crypto::hash& id, const alt_block_data_t& d, const std::string* b, const std::string* c) {
+        EXPECT_NE(b, nullptr);
+        EXPECT_NE(c, nullptr);
+        if (id == id1) {
+          EXPECT_EQ(*b, blob1);
+          EXPECT_EQ(*c, checkpoint_blob);
+        } else {
+          EXPECT_EQ(*b, blob0);
+          EXPECT_EQ(d.checkpointed, 0);
+        }
+        ++count;
+        return true;
+      },
+      true);
+  EXPECT_EQ(count, 2);
+
+  {
+    db_wtxn_guard guard{db};
+    db.remove_alt_block(id0);
+    EXPECT_THROW(db.remove_alt_block(id0), DB_ERROR);
+  }
+  EXPECT_EQ(db.get_alt_block_count(), 1);
+  db.drop_alt_blocks();
+  EXPECT_EQ(db.get_alt_block_count(), 0);
+}
+
 struct temp_data_dir
 {
   const fs::path path = random_tmp_file();

@@ -189,6 +189,19 @@ CREATE TABLE sn_proofs (
     storage_version    INTEGER NOT NULL,
     lokinet_version    INTEGER NOT NULL
 ) STRICT, WITHOUT ROWID;
+
+-- `checkpoint` is the serialized checkpoint_t that arrived with the block, if any.
+CREATE TABLE alt_blocks (
+    hash                  BLOB    PRIMARY KEY CHECK(length(hash) = 32),
+    height                INTEGER NOT NULL,
+    prev_hash             BLOB    NOT NULL CHECK(length(prev_hash) = 32),
+    cumulative_weight     INTEGER NOT NULL,
+    cumulative_difficulty INTEGER NOT NULL,
+    coins_generated       INTEGER NOT NULL,
+    blob                  BLOB    NOT NULL,
+    checkpoint            BLOB
+) STRICT, WITHOUT ROWID;
+CREATE INDEX alt_blocks_height ON alt_blocks(height);
 )";
 
     // Tables in the order they can be emptied in without violating a foreign key.
@@ -203,7 +216,8 @@ CREATE TABLE sn_proofs (
             "checkpoints",
             "txpool",
             "sn_data",
-            "sn_proofs"};
+            "sn_proofs",
+            "alt_blocks"};
 
     // Views a byte string as unsigned chars, so that it binds as a BLOB rather than as TEXT (which
     // a STRICT BLOB column refuses).
@@ -1998,35 +2012,135 @@ bool BlockchainSQLite::remove_service_node_proof(const crypto::public_key& pubke
 }
 
 // ---------------------------------------------------------------------------------------------
-// Not yet implemented
+// Alt blocks
 // ---------------------------------------------------------------------------------------------
 
+namespace {
+    constexpr auto ALT_BLOCK_DATA_COLUMNS =
+            "height, cumulative_weight, cumulative_difficulty, coins_generated, checkpoint IS NOT NULL"sv;
+
+    // Reads the ALT_BLOCK_DATA_COLUMNS of the current row of `st`, which start at column `col`.
+    alt_block_data_t read_alt_block_data(SQLite::Statement& st, int col) {
+        alt_block_data_t data{};
+        data.height = as_u64(st.getColumn(col).getInt64());
+        data.cumulative_weight = as_u64(st.getColumn(col + 1).getInt64());
+        data.cumulative_difficulty = as_u64(st.getColumn(col + 2).getInt64());
+        data.already_generated_coins = as_u64(st.getColumn(col + 3).getInt64());
+        data.checkpointed = st.getColumn(col + 4).getInt();
+        return data;
+    }
+}  // namespace
+
 void BlockchainSQLite::add_alt_block(
-        const crypto::hash&, const alt_block_data_t&, const std::string&, const std::string*) {
-    not_implemented(__func__);
+        const crypto::hash& blkid,
+        const alt_block_data_t& data,
+        const std::string& blob,
+        const std::string* checkpoint) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    // Alt blocks are stored with a checkpoint exactly when they are flagged as checkpointed.
+    assert(data.checkpointed == (checkpoint != nullptr));
+    auto header = convert_block_blob<block_header>(blob);
+    std::optional<std::span<const unsigned char>> checkpoint_blob;
+    if (checkpoint)
+        checkpoint_blob = as_blob(*checkpoint);
+    in_write_txn([&](Connection& conn) {
+        if (conn.prepared_maybe_get<int>(
+                    "SELECT 1 FROM alt_blocks WHERE hash = ?", span_guts(blkid)))
+            throw DB_ERROR("Attempting to add alternate block that's already in the db");
+        conn.prepared_exec(
+                "INSERT INTO alt_blocks (hash, height, prev_hash, cumulative_weight, "
+                "cumulative_difficulty, coins_generated, blob, checkpoint) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                span_guts(blkid),
+                as_i64(data.height),
+                span_guts(header.prev_id),
+                as_i64(data.cumulative_weight),
+                as_i64(data.cumulative_difficulty),
+                as_i64(data.already_generated_coins),
+                as_blob(blob),
+                checkpoint_blob);
+    });
 }
+
 bool BlockchainSQLite::get_alt_block(
-        const crypto::hash&, alt_block_data_t*, std::string*, std::string*) const {
-    not_implemented(__func__);
+        const crypto::hash& blkid,
+        alt_block_data_t* data,
+        std::string* blob,
+        std::string* checkpoint) const {
+    log::trace(logcat, "BlockchainSQLite::{} {}", __func__, blkid);
+    check_open();
+    auto conn = m_sql->conn();
+    auto st = conn.prepared_bind(
+            "SELECT {}, blob, checkpoint FROM alt_blocks WHERE hash = ?"_format(
+                    ALT_BLOCK_DATA_COLUMNS),
+            span_guts(blkid));
+    if (!st->executeStep())
+        return false;
+    if (data)
+        *data = read_alt_block_data(st, 0);
+    if (blob)
+        blob->assign(as_view(session::sqlite::blob{st->getColumn(5)}));
+    if (checkpoint && !st->getColumn(6).isNull())
+        checkpoint->assign(as_view(session::sqlite::blob{st->getColumn(6)}));
+    return true;
 }
-void BlockchainSQLite::remove_alt_block(const crypto::hash&) {
-    not_implemented(__func__);
+
+void BlockchainSQLite::remove_alt_block(const crypto::hash& blkid) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    in_write_txn([&](Connection& conn) {
+        if (conn.prepared_exec("DELETE FROM alt_blocks WHERE hash = ?", span_guts(blkid)) == 0)
+            throw DB_ERROR("Error locating alternate block {} in the db"_format(blkid));
+    });
 }
+
 uint64_t BlockchainSQLite::get_alt_block_count() {
-    not_implemented(__func__);
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    return as_u64(conn.prepared_get<int64_t>("SELECT COUNT(*) FROM alt_blocks"));
 }
+
 void BlockchainSQLite::drop_alt_blocks() {
-    not_implemented(__func__);
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    in_write_txn([](Connection& conn) { conn.prepared_exec("DELETE FROM alt_blocks"); });
 }
+
 bool BlockchainSQLite::for_all_alt_blocks(
         std::function<
-                bool(const crypto::hash&,
-                     const alt_block_data_t&,
-                     const std::string*,
-                     const std::string*)>,
-        bool) const {
-    not_implemented(__func__);
+                bool(const crypto::hash& blkid,
+                     const alt_block_data_t& data,
+                     const std::string* block_blob,
+                     const std::string* checkpoint_blob)> f,
+        bool include_blob) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    auto st = conn.prepared_st(
+            "SELECT hash, {}{} FROM alt_blocks ORDER BY hash"_format(
+                    ALT_BLOCK_DATA_COLUMNS, include_blob ? ", blob, checkpoint" : ""));
+    std::string block, checkpoint;
+    while (st->executeStep()) {
+        crypto::hash blkid = blob_guts<crypto::hash>{st->getColumn(0)};
+        auto data = read_alt_block_data(st, 1);
+        if (include_blob) {
+            block.assign(as_view(session::sqlite::blob{st->getColumn(6)}));
+            if (st->getColumn(7).isNull())
+                checkpoint.clear();
+            else
+                checkpoint.assign(as_view(session::sqlite::blob{st->getColumn(7)}));
+        }
+        if (!f(blkid,
+               data,
+               include_blob ? &block : nullptr,
+               include_blob ? &checkpoint : nullptr))
+            return false;
+    }
+    return true;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Not yet implemented
+// ---------------------------------------------------------------------------------------------
 
 std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> BlockchainSQLite::get_output_histogram(
         const std::vector<uint64_t>&, bool, uint64_t, uint64_t) const {
