@@ -5828,7 +5828,9 @@ bool Blockchain::handle_block_to_main_chain(
     abort_block.cancel();
     uint64_t const fee_after_penalty = get_outs_money_amount(bl.miner_tx) - base_reward;
     if (bl.signatures.size() ==
-        service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(hf_version, prev_active_sns)) {
+        service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(
+                hf_version,
+                service_nodes::PULSE_QUORUM_NUM_VALIDATORS(hf_version, prev_active_sns))) {
         log::info(
                 logcat,
                 "\n+++++ PULSE BLOCK SUCCESSFULLY ADDED\n\tid: {}\n\tHEIGHT: {}, v{}.{}\n\tblock "
