@@ -39,9 +39,11 @@
 #include "epee/string_tools.h"
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/lmdb/db_lmdb.h"
+#include "blockchain_db/sqlite/blockchain_sqlite.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "common/fs.h"
 #include "logging/oxen_logger.h"
+#include "ringct/rctOps.h"
 
 #include "random_path.h"
 
@@ -153,6 +155,13 @@ std::string h2b(const std::string& s)
   return result;
 }
 
+// What each backend's open() takes, given the directory a test puts its database in: LMDB opens a
+// directory, SQLite the database file.
+template <typename T>
+fs::path db_open_path(const fs::path& dir) { return dir; }
+template <>
+fs::path db_open_path<BlockchainSQLite>(const fs::path& dir) { return dir / SQLITE_DB_FILENAME; }
+
 template <typename T>
 class BlockchainDBTest : public testing::Test
 {
@@ -224,11 +233,33 @@ protected:
   {
     m_prefix = tools::utf8_path(prefix);
   }
+
+  // Opens the database in a new temporary directory.
+  void open_db()
+  {
+    set_prefix(random_tmp_file().string());
+    m_db->open(db_open_path<T>(m_prefix), network_type::FAKECHAIN);
+    get_filenames();
+  }
+
+  void add_test_block(size_t i)
+  {
+    m_db->add_block(m_blocks[i], t_sizes[i], t_sizes[i], t_diffs[i], t_coins[i], m_txs[i]);
+  }
+
+  // Opens the database and adds both test blocks to it.
+  void open_with_blocks()
+  {
+    open_db();
+    db_wtxn_guard guard{*m_db};
+    add_test_block(0);
+    add_test_block(1);
+  }
 };
 
 using testing::Types;
 
-typedef Types<BlockchainLMDB> implementations;
+typedef Types<BlockchainLMDB, BlockchainSQLite> implementations;
 
 TYPED_TEST_CASE(BlockchainDBTest, implementations);
 
@@ -240,11 +271,11 @@ TYPED_TEST(BlockchainDBTest, OpenAndClose)
   this->set_prefix(dirPath);
 
   // make sure open does not throw
-  ASSERT_NO_THROW(this->m_db->open(dirPath, network_type::FAKECHAIN));
+  ASSERT_NO_THROW(this->m_db->open(db_open_path<TypeParam>(dirPath), network_type::FAKECHAIN));
   this->get_filenames();
 
   // make sure open when already open DOES throw
-  ASSERT_THROW(this->m_db->open(dirPath, network_type::FAKECHAIN), DB_OPEN_FAILURE);
+  ASSERT_THROW(this->m_db->open(db_open_path<TypeParam>(dirPath), network_type::FAKECHAIN), DB_OPEN_FAILURE);
 
   ASSERT_NO_THROW(this->m_db->close());
 }
@@ -258,7 +289,7 @@ TYPED_TEST(BlockchainDBTest, AddBlock)
   this->set_prefix(dirPath);
 
   // make sure open does not throw
-  ASSERT_NO_THROW(this->m_db->open(dirPath, network_type::FAKECHAIN));
+  ASSERT_NO_THROW(this->m_db->open(db_open_path<TypeParam>(dirPath), network_type::FAKECHAIN));
   this->get_filenames();
 
   db_wtxn_guard guard{*this->m_db};
@@ -305,7 +336,7 @@ TYPED_TEST(BlockchainDBTest, RetrieveBlockData)
   this->set_prefix(dirPath);
 
   // make sure open does not throw
-  ASSERT_NO_THROW(this->m_db->open(dirPath, network_type::FAKECHAIN));
+  ASSERT_NO_THROW(this->m_db->open(db_open_path<TypeParam>(dirPath), network_type::FAKECHAIN));
   this->get_filenames();
 
   db_wtxn_guard guard{*this->m_db};
@@ -335,6 +366,266 @@ TYPED_TEST(BlockchainDBTest, RetrieveBlockData)
 
   ASSERT_HASH_EQ(get_block_hash(this->m_blocks[0].first), hashes[0]);
   ASSERT_HASH_EQ(get_block_hash(this->m_blocks[1].first), hashes[1]);
+}
+
+crypto::hash missing_hash()
+{
+  return crypto::cn_fast_hash("not in the db", 13);
+}
+
+TYPED_TEST(BlockchainDBTest, PopBlock)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  const auto& blk0 = this->m_blocks[0].first;
+  const auto& blk1 = this->m_blocks[1].first;
+  const auto& tx0 = this->m_txs[0][0].first;
+
+  {
+    db_wtxn_guard guard{db};
+    this->add_test_block(0);
+  }
+
+  std::map<uint64_t, uint64_t> outputs_after_0;
+  for (const auto* tx : {&*blk0.miner_tx, &tx0, &*blk1.miner_tx})
+    for (const auto& out : tx->vout)
+      outputs_after_0[out.amount] = db.get_num_outputs(out.amount);
+  const uint64_t txs_after_0 = db.get_tx_count();
+  ASSERT_EQ(txs_after_0, 2);
+
+  {
+    db_wtxn_guard guard{db};
+    this->add_test_block(1);
+  }
+  ASSERT_EQ(db.height(), 2);
+  ASSERT_EQ(db.get_tx_count(), 3);
+
+  std::vector<crypto::key_image> key_images;
+  for (const auto& in : tx0.vin)
+    key_images.push_back(std::get<txin_to_key>(in).k_image);
+  ASSERT_FALSE(key_images.empty());
+  for (const auto& ki : key_images)
+    ASSERT_TRUE(db.has_key_image(ki));
+
+  block popped;
+  std::vector<transaction> txs;
+  ASSERT_NO_THROW(db.pop_block(popped, txs));
+  EXPECT_TRUE(compare_blocks(popped, blk1));
+  EXPECT_TRUE(txs.empty());
+  EXPECT_EQ(db.height(), 1);
+  EXPECT_EQ(db.get_tx_count(), txs_after_0);
+  EXPECT_FALSE(db.tx_exists(get_transaction_hash(*blk1.miner_tx)));
+  EXPECT_TRUE(db.tx_exists(blk0.tx_hashes[0]));
+  for (const auto& [amount, count] : outputs_after_0)
+    EXPECT_EQ(db.get_num_outputs(amount), count);
+  for (const auto& ki : key_images)
+    EXPECT_TRUE(db.has_key_image(ki));
+
+  txs.clear();
+  ASSERT_NO_THROW(db.pop_block(popped, txs));
+  EXPECT_TRUE(compare_blocks(popped, blk0));
+  ASSERT_EQ(txs.size(), 1);
+  ASSERT_HASH_EQ(get_transaction_hash(txs[0]), blk0.tx_hashes[0]);
+  EXPECT_EQ(db.height(), 0);
+  EXPECT_EQ(db.get_tx_count(), 0);
+  EXPECT_FALSE(db.tx_exists(blk0.tx_hashes[0]));
+  EXPECT_FALSE(db.tx_exists(get_transaction_hash(*blk0.miner_tx)));
+  for (const auto& [amount, count] : outputs_after_0)
+    EXPECT_EQ(db.get_num_outputs(amount), 0);
+  for (const auto& ki : key_images)
+    EXPECT_FALSE(db.has_key_image(ki));
+
+  EXPECT_THROW(db.pop_block(popped, txs), BLOCK_DNE);
+
+  // Popping must leave the ids dense, so that adding the blocks again gives the same ids.
+  {
+    db_wtxn_guard guard{db};
+    this->add_test_block(0);
+    this->add_test_block(1);
+  }
+  EXPECT_EQ(db.height(), 2);
+  EXPECT_EQ(db.get_tx_count(), 3);
+  uint64_t tx_id;
+  ASSERT_TRUE(db.tx_exists(blk0.tx_hashes[0], tx_id));
+  EXPECT_EQ(tx_id, 1);
+}
+
+TYPED_TEST(BlockchainDBTest, GetOutputKey)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  const auto& miner0 = *this->m_blocks[0].first.miner_tx;
+
+  const uint64_t a = miner0.vout[0].amount;
+  const auto& key_a0 = std::get<txout_to_key>(miner0.vout[0].target).key;
+  const uint64_t n = db.get_num_outputs(a);
+  ASSERT_GE(n, 1);
+
+  output_data_t out = db.get_output_key(a, 0);
+  ASSERT_HASH_EQ(out.pubkey, key_a0);
+  EXPECT_EQ(out.height, 0);
+  EXPECT_EQ(out.commitment, rct::zeroCommit(a));
+  EXPECT_THROW(db.get_output_key(a, n), OUTPUT_DNE);
+  EXPECT_EQ(db.get_num_outputs(123456789), 0);
+
+  std::vector<output_data_t> outs;
+  std::vector<uint64_t> amounts{a};
+  ASSERT_NO_THROW(db.get_output_key(amounts, {0, 0, n - 1}, outs));
+  ASSERT_EQ(outs.size(), 3);
+  ASSERT_HASH_EQ(outs[0].pubkey, key_a0);
+  ASSERT_HASH_EQ(outs[1].pubkey, key_a0);
+  ASSERT_HASH_EQ(outs[2].pubkey, db.get_output_key(a, n - 1).pubkey);
+
+  EXPECT_THROW(db.get_output_key(amounts, {0, n}, outs), OUTPUT_DNE);
+  ASSERT_NO_THROW(db.get_output_key(amounts, {0, n, 0}, outs, true));
+  ASSERT_EQ(outs.size(), 1);
+  ASSERT_HASH_EQ(outs[0].pubkey, key_a0);
+
+  // One amount per offset
+  const tx_out* other = nullptr;
+  for (const auto& vout : miner0.vout)
+    if (vout.amount != a)
+      other = &vout;
+  ASSERT_NE(other, nullptr);
+  const uint64_t b = other->amount;
+  std::vector<uint64_t> per_offset{b, a, b};
+  ASSERT_NO_THROW(db.get_output_key(per_offset, {0, 0, 0}, outs));
+  ASSERT_EQ(outs.size(), 3);
+  ASSERT_HASH_EQ(outs[0].pubkey, db.get_output_key(b, 0).pubkey);
+  ASSERT_HASH_EQ(outs[1].pubkey, key_a0);
+  ASSERT_HASH_EQ(outs[2].pubkey, db.get_output_key(b, 0).pubkey);
+  EXPECT_THROW(db.get_output_key(per_offset, {0, 0}, outs), DB_ERROR);
+
+  auto [tx_hash, local_index] = db.get_output_tx_and_index(a, 0);
+  ASSERT_HASH_EQ(tx_hash, get_transaction_hash(miner0));
+  EXPECT_EQ(local_index, 0);
+  EXPECT_THROW(db.get_output_tx_and_index(a, n), OUTPUT_DNE);
+
+  auto indices = db.get_tx_amount_output_indices(0, 3);
+  ASSERT_EQ(indices.size(), 3);
+  EXPECT_EQ(indices[0].size(), miner0.vout.size());
+  EXPECT_EQ(indices[1].size(), this->m_txs[0][0].first.vout.size());
+  EXPECT_EQ(indices[2].size(), this->m_blocks[1].first.miner_tx->vout.size());
+  EXPECT_EQ(indices[0][0], 0);
+}
+
+TYPED_TEST(BlockchainDBTest, TxLookups)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  const auto& blk0 = this->m_blocks[0].first;
+  const auto miner0_hash = get_transaction_hash(*blk0.miner_tx);
+  const auto miner1_hash = get_transaction_hash(*this->m_blocks[1].first.miner_tx);
+
+  EXPECT_EQ(
+      db.get_tx_block_heights({blk0.tx_hashes[0], miner1_hash, missing_hash()}),
+      (std::vector<uint64_t>{0, 1, std::numeric_limits<uint64_t>::max()}));
+
+  // The test transactions predate RingCT, so have no prunable hash.
+  crypto::hash prunable_hash;
+  EXPECT_FALSE(db.get_prunable_tx_hash(blk0.tx_hashes[0], prunable_hash));
+  EXPECT_FALSE(db.get_prunable_tx_hash(missing_hash(), prunable_hash));
+
+  std::vector<std::string> blobs;
+  ASSERT_TRUE(db.get_pruned_tx_blobs_from(miner0_hash, 3, blobs));
+  ASSERT_EQ(blobs.size(), 3);
+  std::string pruned;
+  ASSERT_TRUE(db.get_pruned_tx_blob(blk0.tx_hashes[0], pruned));
+  EXPECT_EQ(blobs[1], pruned);
+
+  blobs.clear();
+  EXPECT_FALSE(db.get_pruned_tx_blobs_from(miner0_hash, 4, blobs));
+  blobs.clear();
+  EXPECT_FALSE(db.get_pruned_tx_blobs_from(missing_hash(), 1, blobs));
+  EXPECT_TRUE(blobs.empty());
+  EXPECT_TRUE(db.get_pruned_tx_blobs_from(missing_hash(), 0, blobs));
+
+  std::string full;
+  ASSERT_TRUE(db.get_tx_blob(blk0.tx_hashes[0], full));
+  EXPECT_EQ(full, this->m_txs[0][0].second);
+  EXPECT_FALSE(db.get_tx_blob(missing_hash(), full));
+}
+
+TYPED_TEST(BlockchainDBTest, BlockWeights)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+
+  EXPECT_EQ(db.get_block_weights(0, 2), (std::vector<uint64_t>{t_sizes[0], t_sizes[1]}));
+  EXPECT_EQ(db.get_block_weights(1, 5), (std::vector<uint64_t>{t_sizes[1]}));
+  EXPECT_EQ(db.get_long_term_block_weights(0, 1), (std::vector<uint64_t>{t_sizes[0]}));
+  EXPECT_THROW(db.get_block_weights(2, 1), DB_ERROR);
+  EXPECT_THROW(db.get_long_term_block_weights(2, 1), DB_ERROR);
+
+  EXPECT_EQ(db.get_block_cumulative_rct_outputs({0, 1}), (std::vector<uint64_t>{0, 0}));
+  EXPECT_THROW(db.get_block_cumulative_rct_outputs({0, 2}), BLOCK_DNE);
+
+  uint64_t top;
+  ASSERT_HASH_EQ(db.top_block_hash(&top), get_block_hash(this->m_blocks[1].first));
+  EXPECT_EQ(top, 1);
+}
+
+TYPED_TEST(BlockchainDBTest, ReadTransactions)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+
+  {
+    db_wtxn_guard guard{db};
+    // The writer reads within its write transaction, so it gets no read transaction of its own...
+    EXPECT_FALSE(db.block_rtxn_start());
+    this->add_test_block(0);
+    // ...and sees what it has not committed yet, which other threads do not.
+    EXPECT_EQ(db.height(), 1);
+
+    bool started = false;
+    uint64_t other_height = 99;
+    std::thread reader{[&] {
+      started = db.block_rtxn_start();
+      other_height = db.height();
+      if (started)
+        db.block_rtxn_stop();
+    }};
+    reader.join();
+    EXPECT_TRUE(started);
+    EXPECT_EQ(other_height, 0);
+  }
+  EXPECT_EQ(db.height(), 1);
+
+  ASSERT_TRUE(db.block_rtxn_start());
+  EXPECT_FALSE(db.block_rtxn_start());
+  EXPECT_EQ(db.height(), 1);
+  db.block_rtxn_stop();
+}
+
+TYPED_TEST(BlockchainDBTest, Batch)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  const uint64_t a = this->m_blocks[0].first.miner_tx->vout[0].amount;
+
+  ASSERT_TRUE(db.batch_start());
+  EXPECT_FALSE(db.batch_start());
+  {
+    // A block transaction inside a batch is part of the batch.
+    db_wtxn_guard guard{db};
+    this->add_test_block(0);
+  }
+  this->add_test_block(1);
+  EXPECT_EQ(db.height(), 2);
+  db.batch_abort();
+
+  EXPECT_EQ(db.height(), 0);
+  EXPECT_EQ(db.get_tx_count(), 0);
+  EXPECT_EQ(db.get_num_outputs(a), 0);
+  EXPECT_FALSE(db.tx_exists(this->m_blocks[0].first.tx_hashes[0]));
+
+  ASSERT_TRUE(db.batch_start());
+  this->add_test_block(0);
+  this->add_test_block(1);
+  db.batch_stop();
+  EXPECT_EQ(db.height(), 2);
+  EXPECT_EQ(db.get_tx_count(), 3);
 }
 
 struct temp_data_dir
@@ -410,7 +701,60 @@ TEST(db_backend, option)
 TEST(db_backend, new_db)
 {
   EXPECT_NE(dynamic_cast<BlockchainLMDB*>(new_db(db_backend::lmdb).get()), nullptr);
-  EXPECT_THROW(new_db(db_backend::sqlite), DB_ERROR);
+  EXPECT_NE(dynamic_cast<BlockchainSQLite*>(new_db(db_backend::sqlite).get()), nullptr);
+}
+
+TEST(BlockchainSQLite, reopen)
+{
+  temp_data_dir dir;
+  const auto path = dir.path / SQLITE_DB_FILENAME;
+  {
+    BlockchainSQLite db;
+    db.open(path, network_type::FAKECHAIN);
+    EXPECT_EQ(db.height(), 0);
+    db.close();
+  }
+  BlockchainSQLite db;
+  ASSERT_NO_THROW(db.open(path, network_type::FAKECHAIN));
+  EXPECT_EQ(db.height(), 0);
+}
+
+TEST(BlockchainSQLite, newer_schema)
+{
+  temp_data_dir dir;
+  const auto path = dir.path / SQLITE_DB_FILENAME;
+  {
+    BlockchainSQLite db;
+    db.open(path, network_type::FAKECHAIN);
+  }
+  {
+    session::sqlite::Database raw{path};
+    raw.conn().sql.exec("PRAGMA user_version = 1000");
+  }
+  BlockchainSQLite db;
+  EXPECT_THROW(db.open(path, network_type::FAKECHAIN), DB_OPEN_FAILURE);
+}
+
+TEST(BlockchainSQLite, write_needs_transaction)
+{
+  temp_data_dir dir;
+  BlockchainSQLite db;
+  db.open(dir.path / SQLITE_DB_FILENAME, network_type::FAKECHAIN);
+  block b;
+  std::string blob = h2b(t_blocks[0]);
+  ASSERT_TRUE(parse_and_validate_block_from_blob(blob, b));
+  std::vector<std::pair<transaction, std::string>> txs;
+  for (auto& t : t_transactions[0])
+  {
+    transaction tx;
+    std::string bd = h2b(t);
+    ASSERT_TRUE(parse_and_validate_tx_from_blob(bd, tx));
+    txs.emplace_back(std::move(tx), std::move(bd));
+  }
+  EXPECT_THROW(
+      db.add_block({b, blob}, t_sizes[0], t_sizes[0], t_diffs[0], t_coins[0], txs), DB_ERROR);
+  EXPECT_EQ(db.height(), 0);
+  EXPECT_EQ(db.get_tx_count(), 0);
 }
 
 }  // anonymous namespace

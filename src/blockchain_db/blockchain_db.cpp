@@ -42,6 +42,7 @@
 #include "cryptonote_core/service_node_rules.h"
 #include "epee/string_tools.h"
 #include "lmdb/db_lmdb.h"
+#include "sqlite/blockchain_sqlite.h"
 #include "ringct/rctOps.h"
 
 namespace cryptonote {
@@ -110,7 +111,7 @@ db_backend select_db_backend(
 std::unique_ptr<BlockchainDB> new_db(db_backend backend) {
     switch (backend) {
         case db_backend::lmdb: return std::make_unique<BlockchainLMDB>();
-        case db_backend::sqlite: throw DB_ERROR{"SQLite blockchain backend is not implemented yet"};
+        case db_backend::sqlite: return std::make_unique<BlockchainSQLite>();
     }
     throw DB_ERROR{"Unknown blockchain database backend"};
 }
