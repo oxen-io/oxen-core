@@ -72,6 +72,7 @@ struct mdb_txn_cursors {
     MDB_cursor* hf_versions;
 
     MDB_cursor* service_node_data;
+    MDB_cursor* service_node_archive;
     MDB_cursor* service_node_proofs;
     MDB_cursor* output_blacklist;
     MDB_cursor* properties;
@@ -99,6 +100,7 @@ struct mdb_rflags {
     bool m_rf_alt_blocks;
     bool m_rf_hf_versions;
     bool m_rf_service_node_data;
+    bool m_rf_service_node_archive;
     bool m_rf_service_node_proofs;
     bool m_rf_properties;
 };
@@ -257,7 +259,7 @@ class BlockchainLMDB : public BlockchainDB {
     output_data_t get_output_key(
             const uint64_t& amount, const uint64_t& index, bool include_commitmemt) const override;
     void get_output_key(
-            const epee::span<const uint64_t>& amounts,
+            std::span<const uint64_t> amounts,
             const std::vector<uint64_t>& offsets,
             std::vector<output_data_t>& outputs,
             bool allow_partial = false) const override;
@@ -483,7 +485,13 @@ class BlockchainLMDB : public BlockchainDB {
             uint64_t height, checkpoint_t& checkpoint, MDB_cursor_op op) const;
     void set_service_node_data(const std::string& data, bool long_term) override;
     bool get_service_node_data(std::string& data, bool long_term) const override;
+    void delete_service_node_data(bool long_term) override;
     void clear_service_node_data() override;
+
+    void put_service_node_archive(uint64_t height, std::string_view data) override;
+    std::optional<std::string> get_service_node_archive(uint64_t height) const override;
+    std::vector<uint64_t> get_service_node_archive_heights() const override;
+    void delete_service_node_archives(uint64_t begin, uint64_t end) override;
 
     bool get_service_node_proof(
             const crypto::public_key& pubkey, service_nodes::proof_info& proof) const override;
@@ -529,6 +537,7 @@ class BlockchainLMDB : public BlockchainDB {
     MDB_dbi m_hf_versions;
 
     MDB_dbi m_service_node_data;
+    MDB_dbi m_service_node_archive;
     MDB_dbi m_service_node_proofs;
 
     MDB_dbi m_properties;

@@ -36,7 +36,7 @@ target_link_libraries(bls_crypto
     PRIVATE
     logging
     bn256
-    gmp::gmp)
+    sessiondep::gmp)
 
 oxen_add_library(bls_aggregator
     bls_aggregator.cpp)
@@ -46,7 +46,7 @@ target_link_libraries(bls_aggregator
     bls_crypto
     cryptonote_basic
     PRIVATE
-    SQLiteCpp
+    sqlitedb
     logging
     ethyl
     extra)

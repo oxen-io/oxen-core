@@ -242,13 +242,14 @@ const char* const LMDB_ALT_BLOCKS = "alt_blocks";
 const char* const LMDB_HF_STARTING_HEIGHTS = "hf_starting_heights";
 const char* const LMDB_HF_VERSIONS = "hf_versions";
 const char* const LMDB_SERVICE_NODE_DATA = "service_node_data";
+const char* const LMDB_SERVICE_NODE_ARCHIVE = "service_node_archive";
 const char* const LMDB_SERVICE_NODE_LATEST =
         "service_node_proofs";  // contains the latest data sent with a proof: time, aux keys, ip,
                                 // ports
 
 const char* const LMDB_PROPERTIES = "properties";
 
-constexpr unsigned int LMDB_DB_COUNT = 23;  // Should agree with the number of db's above
+constexpr unsigned int LMDB_DB_COUNT = 24;  // Should agree with the number of db's above
 
 const char zerokey[8] = {0};
 const MDB_val zerokval = {sizeof(zerokey), (void*)zerokey};
@@ -1513,6 +1514,13 @@ void BlockchainLMDB::open(
 
     lmdb_db_open(
             txn,
+            LMDB_SERVICE_NODE_ARCHIVE,
+            MDB_INTEGERKEY | MDB_CREATE,
+            m_service_node_archive,
+            "Failed to open db handle for m_service_node_archive");
+
+    lmdb_db_open(
+            txn,
             LMDB_SERVICE_NODE_LATEST,
             MDB_CREATE,
             m_service_node_proofs,
@@ -1696,6 +1704,8 @@ void BlockchainLMDB::reset() {
         throw0(DB_ERROR("Failed to drop m_hf_versions: {}"_format(mdb_strerror(result))));
     if (auto result = mdb_drop(txn, m_service_node_data, 0))
         throw0(DB_ERROR("Failed to drop m_service_node_data: {}"_format(mdb_strerror(result))));
+    if (auto result = mdb_drop(txn, m_service_node_archive, 0))
+        throw0(DB_ERROR("Failed to drop m_service_node_archive: {}"_format(mdb_strerror(result))));
     if (auto result = mdb_drop(txn, m_properties, 0))
         throw0(DB_ERROR("Failed to drop m_properties: {}"_format(mdb_strerror(result))));
 
@@ -4175,7 +4185,7 @@ void BlockchainLMDB::get_output_tx_and_index_from_global(
 }
 
 void BlockchainLMDB::get_output_key(
-        const epee::span<const uint64_t>& amounts,
+        std::span<const uint64_t> amounts,
         const std::vector<uint64_t>& offsets,
         std::vector<output_data_t>& outputs,
         bool allow_partial) const {
@@ -6285,28 +6295,109 @@ bool BlockchainLMDB::get_service_node_data(std::string& data, bool long_term) co
     return true;
 }
 
-void BlockchainLMDB::clear_service_node_data() {
+void BlockchainLMDB::delete_service_node_data(bool long_term) {
     log::trace(logcat, "BlockchainLMDB::{}", __func__);
     check_open();
 
     mdb_txn_cursors* m_cursors = &m_wcursors;
     CURSOR(service_node_data);
 
-    uint64_t constexpr BLOB_KEYS[] = {
-            SERVICE_NODE_BLOB_SHORT_TERM_KEY,
-            SERVICE_NODE_BLOB_LONG_TERM_KEY,
-    };
+    const uint64_t key =
+            (long_term) ? SERVICE_NODE_BLOB_LONG_TERM_KEY : SERVICE_NODE_BLOB_SHORT_TERM_KEY;
+    MDB_val_set(k, key);
+    if (mdb_cursor_get(m_cursors->service_node_data, &k, NULL, MDB_SET))
+        return;
+    if (int result = mdb_cursor_del(m_cursors->service_node_data, 0))
+        throw1(DB_ERROR("Failed to add removal of service node data to db transaction: {}"_format(
+                mdb_strerror(result))));
+}
 
-    for (uint64_t const key : BLOB_KEYS) {
-        MDB_val_set(k, key);
-        int result;
-        if ((result = mdb_cursor_get(m_cursors->service_node_data, &k, NULL, MDB_SET)))
+void BlockchainLMDB::clear_service_node_data() {
+    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    check_open();
+
+    delete_service_node_data(false);
+    delete_service_node_data(true);
+    delete_service_node_archives(0, std::numeric_limits<uint64_t>::max());
+}
+
+void BlockchainLMDB::put_service_node_archive(uint64_t height, std::string_view data) {
+    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    check_open();
+
+    mdb_txn_cursors* m_cursors = &m_wcursors;
+    CURSOR(service_node_archive);
+
+    MDB_val_set(k, height);
+    MDB_val_sized(blob, data);
+    if (int result = mdb_cursor_put(m_cursors->service_node_archive, &k, &blob, 0))
+        throw0(DB_ERROR("Failed to add service node archive to db transaction: {}"_format(
+                mdb_strerror(result))));
+}
+
+std::optional<std::string> BlockchainLMDB::get_service_node_archive(uint64_t height) const {
+    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    check_open();
+
+    TXN_PREFIX_RDONLY();
+    RCURSOR(service_node_archive);
+
+    MDB_val_set(k, height);
+    MDB_val v;
+    int result = mdb_cursor_get(m_cursors->service_node_archive, &k, &v, MDB_SET_KEY);
+    if (result == MDB_NOTFOUND)
+        return std::nullopt;
+    if (result != MDB_SUCCESS)
+        throw0(DB_ERROR("DB error attempting to get service node archive: {}"_format(
+                mdb_strerror(result))));
+    return std::string{reinterpret_cast<const char*>(v.mv_data), v.mv_size};
+}
+
+std::vector<uint64_t> BlockchainLMDB::get_service_node_archive_heights() const {
+    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    check_open();
+
+    TXN_PREFIX_RDONLY();
+    RCURSOR(service_node_archive);
+
+    std::vector<uint64_t> heights;
+    MDB_val k, v;
+    int result;
+    for (auto op = MDB_FIRST;
+         (result = mdb_cursor_get(m_cursors->service_node_archive, &k, &v, op)) == MDB_SUCCESS;
+         op = MDB_NEXT)
+        heights.push_back(*static_cast<const uint64_t*>(k.mv_data));
+    if (result != MDB_NOTFOUND)
+        throw0(DB_ERROR("DB error attempting to list service node archives: {}"_format(
+                mdb_strerror(result))));
+    return heights;
+}
+
+void BlockchainLMDB::delete_service_node_archives(uint64_t begin, uint64_t end) {
+    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    check_open();
+
+    mdb_txn_cursors* m_cursors = &m_wcursors;
+    CURSOR(service_node_archive);
+
+    // After mdb_cursor_del the cursor is left on the following record, which MDB_NEXT then returns
+    // rather than skipping.
+    MDB_val_set(k, begin);
+    MDB_val v;
+    int result;
+    for (auto op = MDB_SET_RANGE;
+         (result = mdb_cursor_get(m_cursors->service_node_archive, &k, &v, op)) == MDB_SUCCESS;
+         op = MDB_NEXT) {
+        if (*static_cast<const uint64_t*>(k.mv_data) >= end)
             return;
-        if ((result = mdb_cursor_del(m_cursors->service_node_data, 0)))
+        if ((result = mdb_cursor_del(m_cursors->service_node_archive, 0)))
             throw1(DB_ERROR(
-                    "Failed to add removal of service node data to db transaction: {}"_format(
+                    "Failed to add removal of service node archive to db transaction: {}"_format(
                             mdb_strerror(result))));
     }
+    if (result != MDB_NOTFOUND)
+        throw0(DB_ERROR("DB error attempting to delete service node archives: {}"_format(
+                mdb_strerror(result))));
 }
 
 template <typename C>

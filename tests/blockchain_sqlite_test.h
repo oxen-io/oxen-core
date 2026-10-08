@@ -20,19 +20,18 @@ public:
   BlockchainSQLiteTest(BlockchainSQLiteTest &other)
     : BlockchainSQLiteTest(other.nettype, check_if_copy_filename(other.filename)) {
 
+    auto conn = db.conn();
     SQLite::Transaction transaction {
-      db,
+      conn.sql,
       SQLite::TransactionBehavior::IMMEDIATE
     };
 
-    auto insert_payment_accrued = prepared_st(
-      "INSERT INTO batched_payments_accrued (address, payout_offset, amount) VALUES (?, ?, ?)");
-
-    for (const auto& [address, offset, amount]: other.prepared_results<db::blob, std::optional<int>, int64_t>(
-                "SELECT address, payout_offset, amount FROM batched_payments_accrued")) {
-      db::exec_query(insert_payment_accrued, db::blob_binder{address.data}, offset, amount);
-      insert_payment_accrued->reset();
-    }
+    auto other_conn = other.db.conn();
+    for (const auto& [address, offset, amount]: other_conn.prepared_results<session::sqlite::blob, std::optional<int>, int64_t>(
+                "SELECT address, payout_offset, amount FROM batched_payments_accrued"))
+      conn.prepared_exec(
+          "INSERT INTO batched_payments_accrued (address, payout_offset, amount) VALUES (?, ?, ?)",
+          address, offset, amount);
 
     transaction.commit();
 
@@ -41,7 +40,7 @@ public:
 
   // Helper functions, used in testing to assess the state of the database
   uint64_t batching_count(cryptonote::hf hf) {
-    return prepared_get<int64_t>("SELECT count(*) FROM batched_payments_accrued WHERE amount >= {}"_format(hf >= cryptonote::hf::hf22_eth_fixup ? 1 : 1000));
+    return db.conn().prepared_get<int64_t>("SELECT count(*) FROM batched_payments_accrued WHERE amount >= {}"_format(hf >= cryptonote::hf::hf22_eth_fixup ? 1 : 1000));
   }
 };
 

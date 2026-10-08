@@ -67,17 +67,17 @@ target_link_libraries(rpc
   PRIVATE
     cryptonote_protocol
     Boost::thread
-    SQLiteCpp
+    sqlitedb
     logging
     extra)
 
 target_link_libraries(daemon_rpc_server
   PRIVATE
-    oxenc
+    oxenc::oxenc
     rpc_common
     rpc
     Boost::thread
-    SQLiteCpp
+    sqlitedb
     logging
     extra)
 

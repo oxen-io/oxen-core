@@ -188,7 +188,7 @@ class BaseTestDB : public cryptonote::BlockchainDB {
             const std::vector<uint64_t>& offsets,
             std::vector<cryptonote::tx_out_index>& indices) const override {}
     virtual void get_output_key(
-            const epee::span<const uint64_t>& amounts,
+            std::span<const uint64_t> amounts,
             const std::vector<uint64_t>& offsets,
             std::vector<cryptonote::output_data_t>& outputs,
             bool allow_partial = false) const override {}
@@ -337,7 +337,15 @@ class BaseTestDB : public cryptonote::BlockchainDB {
     virtual bool get_service_node_data(std::string& data, bool long_term) const override {
         return false;
     }
+    virtual void delete_service_node_data(bool long_term) override {}
     virtual void clear_service_node_data() override {}
+
+    virtual void put_service_node_archive(uint64_t height, std::string_view data) override {}
+    virtual std::optional<std::string> get_service_node_archive(uint64_t height) const override {
+        return std::nullopt;
+    }
+    virtual std::vector<uint64_t> get_service_node_archive_heights() const override { return {}; }
+    virtual void delete_service_node_archives(uint64_t begin, uint64_t end) override {}
 
     bool get_service_node_proof(
             const crypto::public_key& pubkey, service_nodes::proof_info& proof) const override {

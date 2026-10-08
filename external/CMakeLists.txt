@@ -29,35 +29,21 @@
 # Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 
-# We always compile if we are building statically to reduce static dependency issues...
-# ...except for FreeBSD, because FreeBSD is a special case that doesn't play well with
-# others.
-
-if(NOT STATIC AND NOT BUILD_STATIC_DEPS)
-  find_package(PkgConfig REQUIRED)
+# oxen::logging, with matching fmt/spdlog targets.  This can't go through sessiondep_or_submodule
+# because oxen-logging's public headers expose fmt types, which a system liboxen-logging's .pc file
+# doesn't pull in; load.cmake resolves that for us.  It doesn't know about our submodule/static
+# options, though, so translate those for it.
+option(DEPS_FORCE_liboxen-logging_SUBMODULE "force using liboxen-logging submodule" OFF)
+if(BUILD_STATIC_DEPS OR DEPS_FORCE_SUBMODULE OR DEPS_FORCE_liboxen-logging_SUBMODULE)
+    set(OXEN_LOGGING_FORCE_SUBMODULES ON)
 endif()
+include(oxen-logging/cmake/load.cmake)
 
-include(system_or_submodule)
+sessiondep_or_submodule(liboxenc 1.5.0 oxen-encoding oxenc::oxenc)
 
-if(BUILD_STATIC_DEPS)
-  set(OXEN_LOGGING_FORCE_SUBMODULES TRUE CACHE BOOL "" FORCE)
-endif()
-
-if(NOT TARGET oxen::logging)
-    system_or_submodule(OXENLOGGING oxen-logging liboxen-logging>=1.2.0 oxen-logging)
-    if(OXENLOGGING_FOUND)
-        # If we load oxen-logging via system lib then we won't necessarily have fmt/spdlog targets,
-        # but this script will give us them:
-        include(oxen-logging/cmake/load_fmt_spdlog.cmake)
-
-        add_library(oxen-logging-fmt-spdlog INTERFACE)
-        target_link_libraries(oxen-logging-fmt-spdlog INTERFACE oxen-logging ${OXEN_LOGGING_FMT_TARGET} ${OXEN_LOGGING_SPDLOG_TARGET})
-        add_library(oxen::logging ALIAS oxen-logging-fmt-spdlog)
-    endif()
-endif()
-
-system_or_submodule(OXENC oxenc liboxenc>=1.5.0 oxen-encoding)
-system_or_submodule(OXENMQ oxenmq liboxenmq>=1.3.0 oxen-mq)
+# 1.3.2 is the first release carrying session-deps' fixed libzmq (a submodule build takes libzmq
+# from session-deps itself) and the proxy deadlock fix.
+sessiondep_or_submodule(liboxenmq 1.3.2 oxen-mq oxenmq::oxenmq)
 
 add_subdirectory(db_drivers)
 add_subdirectory(randomx EXCLUDE_FROM_ALL)
@@ -107,36 +93,20 @@ add_library(uWebSockets INTERFACE)
 target_include_directories(uWebSockets INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/uWebSockets)
 target_link_libraries(uWebSockets INTERFACE uSockets)
 target_compile_definitions(uWebSockets INTERFACE UWS_HTTPRESPONSE_NO_WRITEMARK)
-if(TARGET zlib)
-    target_link_libraries(uWebSockets INTERFACE zlib)
-else()
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(ZLIB zlib REQUIRED IMPORTED_TARGET)
-    target_link_libraries(uWebSockets INTERFACE PkgConfig::ZLIB)
-endif()
+session_dep(zlib 1.2)
+target_link_libraries(uWebSockets INTERFACE sessiondep::zlib)
 
 
-# Hack around SQLiteCpp's attempts to locate sqlite3 because we *don't* want to link against the
-# system one, but don't download and build the embedded one until build time.  Thankfully it
-# actually links against the SQLite::SQLite3 cmake target if it already exists, so all we have to do
-# is set that up and circumvent some of the non-target bits of its FindSQLite3.cmake.
-set(SQLite3_FOUND TRUE CACHE BOOL "" FORCE)
-file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/ignored")
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/ignored/sqlite3.h" "#define SQLITE_VERSION \"${SQLite3_VERSION}\"")
-set(SQLite3_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/ignored" CACHE STRING "" FORCE)
-set(SQLite3_LIBRARY "ignored" CACHE STRING "" FORCE)
-set(SQLITECPP_INTERNAL_SQLITE OFF CACHE BOOL "don't build SQLiteCpp's internal sqlite3" FORCE)
-set(SQLITE_ENABLE_COLUMN_METADATA OFF CACHE BOOL "" FORCE)
-set(SQLITECPP_RUN_CPPLINT OFF CACHE BOOL "" FORCE)
-set(SQLITECPP_RUN_CPPCHECK OFF CACHE BOOL "" FORCE)
-set(SQLITECPP_RUN_DOXYGEN OFF CACHE BOOL "" FORCE)
-set(SQLITECPP_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(SQLITECPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(SQLITE_OMIT_LOAD_EXTENSION ON CACHE BOOL "" FORCE)
-
-
-add_subdirectory(SQLiteCpp EXCLUDE_FROM_ALL)
+# session-sqlite would otherwise build its own static sqlite3mc; instead it gets the same sqlite3 as
+# everything else, which is whatever session_dep(sqlite3) found or built.  That might be sqlite3mc,
+# but nothing here uses its encryption, so session-sqlite isn't told about it.
+set(SESSION_SQLITE_BUILD_SQLITE3MC OFF CACHE BOOL "" FORCE)
+add_library(SQLite::SQLite3 INTERFACE IMPORTED GLOBAL)
+target_link_libraries(SQLite::SQLite3 INTERFACE sessiondep::sqlite3)
+add_subdirectory(session-sqlite)
 oxen_install_library(SQLiteCpp)
+oxen_install_library(session_secure_buffer)
+oxen_install_library(session_sqlite)
 
 add_subdirectory(Catch2)
 
@@ -145,31 +115,53 @@ if(BUILD_PYBIND)
 endif()
 
 
-if(NOT TARGET nlohmann_json::nlohmann_json)
-    set(JSON_BuildTests OFF CACHE INTERNAL "")
-    set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
-    system_or_submodule(NLOHMANN nlohmann_json nlohmann_json>=3.7.0 ethyl/external/json)
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_MultipleHeaders ON CACHE BOOL "") # Allows multi-header nlohmann use
+sessiondep_or_submodule(nlohmann_json 3.7.0 ethyl/external/json nlohmann_json::nlohmann_json)
 
-    if(CMAKE_BUILD_TYPE STREQUAL "Release")
-        set(default_nlohmann_diags OFF)
-    else()
-        set(default_nlohmann_diags ON)
-    endif()
-    option(WITH_NLOHMANN_JSON_DIAGNOSTICS "Enables nlohmann-json extended diagnostic exception info" ${default_nlohmann_diags})
-    if(WITH_NLOHMANN_JSON_DIAGNOSTICS)
-        target_compile_definitions(nlohmann_json INTERFACE JSON_DIAGNOSTICS)
-    endif()
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(default_nlohmann_diags OFF)
+else()
+    set(default_nlohmann_diags ON)
+endif()
+option(WITH_NLOHMANN_JSON_DIAGNOSTICS "Enables nlohmann-json extended diagnostic exception info" ${default_nlohmann_diags})
+if(WITH_NLOHMANN_JSON_DIAGNOSTICS)
+    # JSON_DIAGNOSTICS changes the layout of json values, so it has to reach every user of the
+    # headers, whichever of the system library or the submodule they came from.
+    get_target_property(nlohmann_json_target nlohmann_json::nlohmann_json ALIASED_TARGET)
+    target_compile_definitions(${nlohmann_json_target} INTERFACE JSON_DIAGNOSTICS=1)
 endif()
 
-if(NOT WIN32 AND NOT APPLE)
-  set(CPR_FORCE_OPENSSL_BACKEND ON CACHE BOOL "" FORCE)
+
+session_dep(libcurl 7)
+
+# cpr is built here directly, which ethyl uses instead of its own copy when the target already
+# exists: cpr's cmake would otherwise go looking for curl and an SSL backend with find_package,
+# neither of which can see the static builds.  Its SSL backend choice only switches on an
+# OpenSSL-specific in-memory CA certificate API we don't use; TLS itself is libcurl's business.
+file(GLOB cpr_sources CONFIGURE_DEPENDS ethyl/external/cpr/cpr/*.cpp)
+file(READ ethyl/external/cpr/CMakeLists.txt cpr_cmakelists_txt)
+if(NOT cpr_cmakelists_txt MATCHES "project\\(cpr VERSION ([0-9]+)\\.([0-9]+)\\.([0-9]+) LANGUAGES CXX\\)")
+    message(FATAL_ERROR "Failed to detect cpr version")
 endif()
+set(cpr_VERSION_MAJOR "${CMAKE_MATCH_1}")
+set(cpr_VERSION_MINOR "${CMAKE_MATCH_2}")
+set(cpr_VERSION_PATCH "${CMAKE_MATCH_3}")
+set(cpr_VERSION "${cpr_VERSION_MAJOR}.${cpr_VERSION_MINOR}.${cpr_VERSION_PATCH}")
+set(cpr_VERSION_NUM "(${cpr_VERSION_MAJOR} * 0x10000 + ${cpr_VERSION_MINOR} * 0x100 + ${cpr_VERSION_PATCH})")
+configure_file(ethyl/external/cpr/cmake/cprver.h.in "${CMAKE_CURRENT_BINARY_DIR}/cpr-include/cpr/cprver.h")
+
+add_library(cpr ${cpr_sources})
+target_link_libraries(cpr PUBLIC sessiondep::libcurl)
+target_include_directories(cpr PUBLIC ethyl/external/cpr/include "${CMAKE_CURRENT_BINARY_DIR}/cpr-include")
+add_library(cpr::cpr ALIAS cpr)
+oxen_install_library(cpr)
+
 set(ethyl_ENABLE_CRYPTO_LIBRARY FALSE CACHE BOOL "" FORCE)
 set(ethyl_ENABLE_SIGNER FALSE CACHE BOOL "" FORCE)
 set(ethyl_ENABLE_LTO FALSE CACHE BOOL "" FORCE)
 add_subdirectory(ethyl EXCLUDE_FROM_ALL)
 oxen_install_library(ethyl)
-oxen_install_library(cpr)  # comes via ethyl
 
 
 # NOTE: By default cpptrace is configured to make stack-traces using libdwarf.

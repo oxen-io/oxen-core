@@ -35,7 +35,7 @@
 #include <array>
 #include <optional>
 #include <cstring>
-#include "../span.h"
+#include "../byte_span.h"
 #include "../storages/portable_storage_base.h"
 
 #undef OXEN_DEFAULT_LOG_CATEGORY

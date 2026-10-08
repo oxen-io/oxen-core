@@ -1,23 +1,25 @@
 #!/usr/bin/env bash
 
-# Script used with Drone CI to check that a statically build oxen only links against the expected
-# base system libraries.  Expects to be run with pwd of the build directory.
+# Script used with CI to check that a statically build oxen only links against the expected base
+# system libraries.  Expects to be run with pwd of the build directory.
 
 set -o errexit
+
+os="$(uname -s)"
 
 anybad=
 for bin in oxend oxen-{wallet-{cli,rpc},gen-trusted-multisig,blockchain-{ancestry,depth,export,import,mark-spent-outputs,stats,usage}}; do
     bad=
-    if [ "$DRONE_STAGE_OS" == "darwin" ]; then
+    if [ "$os" == "Darwin" ]; then
         if otool -L bin/$bin | grep -Ev '^bin/'$bin':|^\s*(/usr/lib/lib(System|c\+\+|objc)\.|/System/Library/Frameworks/(AppKit|CoreFoundation|IOKit|SystemConfiguration|Security))'; then
             bad=1
         fi
-    elif [ "$DRONE_STAGE_OS" == "linux" ]; then
+    elif [ "$os" == "Linux" ]; then
         if ldd bin/$bin | grep -Ev '(linux-vdso|ld-linux-x86-64|lib(pthread|dl|rt|stdc\+\+|gcc_s|c|m))\.so'; then
             bad=1
         fi
     else
-        echo -e "\n\n\n\n\e[31;1mDon't know how to check linked libs on $DRONE_STAGE_OS\e[0m\n\n\n"
+        echo -e "\n\n\n\n\e[31;1mDon't know how to check linked libs on $os\e[0m\n\n\n"
         exit 1
     fi
 

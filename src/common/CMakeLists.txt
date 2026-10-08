@@ -75,7 +75,7 @@ target_link_libraries(common
     nlohmann_json::nlohmann_json
     Boost::program_options
   PRIVATE
-    sodium
+    sessiondep::libsodium
     logging
     extra)
 

@@ -85,24 +85,44 @@ inline constexpr bool formattable::via_to_string<log_addr> = true;
 namespace cryptonote {
 
 using namespace fmt::literals;
-using db::bind_guts;
-using db::blob_guts;
+using db::as_i64;
+using db::as_u64;
+using session::sqlite::blob;
+using session::sqlite::blob_guts;
+using session::sqlite::Connection;
+using tools::span_guts;
+
+// The DB height as seen by `conn`, which may differ from the `height` member when used from a
+// thread other than the one adding blocks.
+static uint64_t db_height(Connection& conn) {
+    return as_u64(conn.prepared_get<int64_t>("SELECT height FROM batch_db_info"));
+}
+
+// Readers on other threads make more than one query (for the height, and the values at that
+// height), so need them in one read transaction to see a consistent state of the DB.  On a
+// connection already in a transaction (i.e. the thread adding blocks) that one is used instead.
+static std::optional<SQLite::Transaction> read_tx(Connection& conn) {
+    if (!sqlite3_get_autocommit(conn.sql.getHandle()))
+        return std::nullopt;
+    return std::make_optional<SQLite::Transaction>(conn.sql, SQLite::TransactionBehavior::DEFERRED);
+}
 
 BlockchainSQLite::BlockchainSQLite(network_type nettype, std::filesystem::path db_path) :
-        db::Database{db_path, ""}, nettype{nettype} {
+        db{std::move(db_path)}, nettype{nettype} {
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
     height = 0;
 
-    if (!table_exists("batched_payments_accrued"))
+    auto conn = db.conn();
+    if (!conn.table_exists("batched_payments_accrued"))
         create_schema();
     upgrade_schema();
 
-    height = prepared_get<int64_t>("SELECT height FROM batch_db_info");
+    height = db_height(conn);
 
     auto row_count = batch_payments_accrued_row_count();
-    auto [recent_count, recent_min_height, recent_max_height] = prepared_get<int, int, int>(
+    auto [recent_count, recent_min_height, recent_max_height] = conn.prepared_get<int, int, int>(
             "SELECT COUNT(*), MIN(height), MAX(height) FROM batched_payments_accrued_recent");
-    auto [archive_count, archive_min_height, archive_max_height] = prepared_get<int, int, int>(
+    auto [archive_count, archive_min_height, archive_max_height] = conn.prepared_get<int, int, int>(
             "SELECT COUNT(*), MIN(height), MAX(height) FROM batched_payments_accrued_archive");
 
     log::info(
@@ -180,90 +200,109 @@ void BlockchainSQLite::create_schema() {
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
     auto& netconf = get_config(nettype);
 
-    assert(!table_exists("batched_payments_accrued"));
-    db.exec(CREATE_BATCHED_PAYMENTS("batched_payments_accrued", false));
-    db.exec(R"(CREATE INDEX IF NOT EXISTS batched_payments_accrued_payout_offset_idx ON batched_payments_accrued(payout_offset);
+    auto conn = db.conn();
+    assert(!conn.table_exists("batched_payments_accrued"));
+    conn.sql.exec(CREATE_BATCHED_PAYMENTS("batched_payments_accrued", false));
+    conn.sql.exec(
+            R"(CREATE INDEX IF NOT EXISTS batched_payments_accrued_payout_offset_idx ON batched_payments_accrued(payout_offset);
                CREATE TABLE IF NOT EXISTS batch_db_info(height INTEGER NOT NULL);
                INSERT INTO  batch_db_info(height) VALUES(0);)");
-    db.exec("PRAGMA user_version = {}"_format(FIXUP_MAX));
+    conn.sql.exec("PRAGMA user_version = {}"_format(FIXUP_MAX));
     log::debug(logcat, "Database setup complete");
 }
 
-bool BlockchainSQLite::table_exists(const std::string& table_name) {
-    return prepared_get<int>(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?)", table_name);
-}
-
-bool BlockchainSQLite::index_exists(const std::string& index_name) {
-    return prepared_get<int>(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='index' AND name=?)", index_name);
-}
-
-bool BlockchainSQLite::trigger_exists(const std::string& trigger_name) {
-    return prepared_get<int>(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?)",
-            trigger_name);
-}
-
-std::optional<SQLite::Transaction> BlockchainSQLite::begin_tx(SQLite::TransactionBehavior behave) {
-    if (rescan_tx)
+std::optional<SQLite::Transaction> BlockchainSQLite::begin_tx(
+        Connection& conn, SQLite::TransactionBehavior behave) {
+    if (batch) {
+        assert(std::this_thread::get_id() == batch_thread);
         return std::nullopt;
-    return std::make_optional<SQLite::Transaction>(db, behave);
+    }
+    return std::make_optional<SQLite::Transaction>(conn.sql, behave);
+}
+
+BlockchainSQLite::Batch::Batch(BlockchainSQLite& sql) :
+        sql{sql},
+        conn{sql.db.conn()},
+        tx{std::in_place, conn.sql, SQLite::TransactionBehavior::IMMEDIATE} {
+    assert(!sql.batch);
+    sql.batch = this;
+    sql.batch_thread = std::this_thread::get_id();
+}
+
+void BlockchainSQLite::Batch::block_added() {
+    if (++blocks < BLOCKS)
+        return;
+    log::debug(logcat, "committing batched blocks at height {}", sql.height);
+    tx->commit();
+    tx.emplace(conn.sql, SQLite::TransactionBehavior::IMMEDIATE);
+    blocks = 0;
+}
+
+void BlockchainSQLite::Batch::finish() {
+    tx->commit();
+    tx.reset();
+}
+
+BlockchainSQLite::Batch::~Batch() {
+    sql.batch = nullptr;
+    if (!tx)
+        return;
+    try {
+        tx.reset();  // Rolls back
+        sql.height = db_height(conn);
+        log::warning(
+                logcat,
+                "Rolled back unfinished batch of blocks; rewards DB is now at height {}",
+                sql.height);
+    } catch (const std::exception& e) {
+        log::error(logcat, "Failed to roll back unfinished batch of blocks: {}", e.what());
+    }
+}
+
+static bool has_column(Connection& conn, std::string_view table, std::string_view column) {
+    for (const auto& col : conn.get_columns(table))
+        if (col.name == column)
+            return true;
+    return false;
 }
 
 void BlockchainSQLite::upgrade_schema() {
-    bool have_offset = false;
-    for (SQLite::Statement msg_cols{db, "PRAGMA main.table_info(batched_payments_accrued)"};
-         msg_cols.executeStep();) {
-        auto [cid, name] = db::get<int64_t, std::string>(msg_cols);
-        if (name == "payout_offset")
-            have_offset = true;
-    }
+    auto conn = db.conn();
+    bool have_offset = has_column(conn, "batched_payments_accrued", "payout_offset");
 
     auto& netconf = get_config(nettype);
 
-    auto transaction = begin_tx();
+    auto transaction = begin_tx(conn);
     // NOTE: Rename 'batched_payments_accrued_archive' 'archive_height' column to 'height'. This
     // unifies the height label across the batch payment, recent and archive table making querying
     // from them require less code.
     // TODO: Eventually we can remove this code (doing so will make it impossible to upgrade a
     // pre-HF20 oxend database).
-    {
-        bool has_deprecated_archive_height_column = false;
-        SQLite::Statement msg_cols{db, "PRAGMA main.table_info(batched_payments_accrued_archive)"};
-        while (msg_cols.executeStep()) {
-            auto [cid, name] = db::get<int64_t, std::string>(msg_cols);
-            if (name == "archive_height") {
-                has_deprecated_archive_height_column = true;
-                break;
-            }
-        }
-
-        if (has_deprecated_archive_height_column)
-            db.exec("ALTER TABLE batched_payments_accrued_archive RENAME COLUMN archive_height to "
-                    "height;\n");
-    }
+    if (has_column(conn, "batched_payments_accrued_archive", "archive_height"))
+        conn.sql.exec(
+                "ALTER TABLE batched_payments_accrued_archive RENAME COLUMN archive_height to "
+                "height;\n");
 
     if (!have_offset) {
         log::debug(logcat, "Adding payout_offset to batching db");
 
-        db.exec(R"(
+        conn.sql.exec(R"(
             ALTER TABLE batched_payments_accrued ADD COLUMN payout_offset INTEGER;
             CREATE INDEX batched_payments_accrued_payout_offset_idx ON batched_payments_accrued(payout_offset);
         )");
 
-        auto st = prepared_st(
-                "UPDATE batched_payments_accrued SET payout_offset = ? WHERE address = ?");
-        for (const auto& address :
-             prepared_results<std::string>("SELECT address FROM batched_payments_accrued"s)) {
+        constexpr auto all_addresses = "SELECT address FROM batched_payments_accrued";
+        for (const auto& address : conn.prepared_results<std::string>(all_addresses)) {
             address_parse_info addr_info{};
             get_account_address_from_str(addr_info, nettype, address);
             auto offset = static_cast<int>(addr_info.address.modulus(netconf.BATCHING_INTERVAL));
-            exec_query(st, offset, address);
-            st->reset();
+            conn.prepared_exec(
+                    "UPDATE batched_payments_accrued SET payout_offset = ? WHERE address = ?",
+                    offset,
+                    address);
         }
 
-        auto count = prepared_get<int>(
+        auto count = conn.prepared_get<int>(
                 "SELECT COUNT(*) FROM batched_payments_accrued WHERE payout_offset IS NULL");
 
         if (count != 0) {
@@ -275,7 +314,7 @@ void BlockchainSQLite::upgrade_schema() {
     }
 
     // Remove old no-longer-used tables and triggers
-    db.exec(R"(
+    conn.sql.exec(R"(
         DROP TRIGGER IF EXISTS batch_payments_prune;
         DROP TRIGGER IF EXISTS batch_payments_delete_empty;
         DROP TRIGGER IF EXISTS clear_archive;
@@ -301,13 +340,13 @@ void BlockchainSQLite::upgrade_schema() {
     // Note that these rows also serve as their own archive, i.e. they are not cleared after being
     // paid: rows with a payout_height > current height are to-be-paid, while other rows are archive
     // rows that are used if the blockchain reorgs.
-    if (!table_exists("delayed_payments")) {
+    if (!conn.table_exists("delayed_payments")) {
         log::debug(logcat, "Adding delayed_payments table to batching db");
-        db.exec(CREATE_DELAYED_PAYMENTS("delayed_payments"));
+        conn.sql.exec(CREATE_DELAYED_PAYMENTS("delayed_payments"));
     }
 
     // Not all of these were present if the table was created before 11.4.0:
-    db.exec(R"(
+    conn.sql.exec(R"(
         CREATE INDEX IF NOT EXISTS delayed_payments_height_idx ON delayed_payments(height);
         CREATE INDEX IF NOT EXISTS delayed_payments_payout_height_idx ON delayed_payments(payout_height);
         CREATE INDEX IF NOT EXISTS delayed_payments_eth_address_idx ON delayed_payments(eth_address);
@@ -323,9 +362,9 @@ void BlockchainSQLite::upgrade_schema() {
     // more complicated (and much less indexable) condition that also worries about not deleting
     // long-term archive rows.
     for (auto table : {"batched_payments_accrued_archive", "batched_payments_accrued_recent"}) {
-        if (!table_exists(table)) {
+        if (!conn.table_exists(table)) {
             log::debug(logcat, "Adding {} to batching db", table);
-            db.exec(CREATE_BATCHED_PAYMENTS(table, true));
+            conn.sql.exec(CREATE_BATCHED_PAYMENTS(table, true));
         }
     }
 
@@ -344,24 +383,11 @@ void BlockchainSQLite::upgrade_schema() {
                 "lifetime_rewards",
         };
 
-        for (auto it : tables) {
-            for (auto field : fields) {
-                bool has_field = false;
-                SQLite::Statement msg_cols{db, "PRAGMA main.table_info({})"_format(it)};
-                while (msg_cols.executeStep()) {
-                    auto [cid, name] = db::get<int64_t, std::string>(msg_cols);
-                    if (name == field) {
-                        has_field = true;
-                        break;
-                    }
-                }
-                msg_cols.reset();
-
-                if (!has_field)
-                    db.exec("ALTER TABLE {} ADD COLUMN {} INTEGER NOT NULL DEFAULT 0;"_format(
+        for (auto it : tables)
+            for (auto field : fields)
+                if (!has_column(conn, it, field))
+                    conn.sql.exec("ALTER TABLE {} ADD COLUMN {} INTEGER NOT NULL DEFAULT 0;"_format(
                             it, field));
-            }
-        }
     }
 
     // Before 11.4.0 the state of the accrued tables was rather variable, depending on when they
@@ -401,25 +427,23 @@ void BlockchainSQLite::upgrade_schema() {
     bool need_11_4_migration = false;
     // The most recent change we've made is to make `payout_offset` nullable, so that's what we
     // look for here for our decision of whether to migrate:
-    for (SQLite::Statement msg_cols{db, "PRAGMA main.table_info(batched_payments_accrued)"};
-         msg_cols.executeStep();) {
-        auto [cid, name, type, notnull] = db::get<int64_t, std::string, std::string, int>(msg_cols);
-        if (name == "payout_offset"sv) {
-            need_11_4_migration = notnull;
+    for (const auto& col : conn.get_columns("batched_payments_accrued")) {
+        if (col.name == "payout_offset"sv) {
+            need_11_4_migration = col.not_null;
             break;
         }
     }
     if (need_11_4_migration) {
         // Drop the potentially referencing triggers (they will get recreated below) because
         // otherwise the DROP and/or ALTER below will fail because of SQLite design limitations.
-        db.exec(R"(
+        conn.sql.exec(R"(
             DROP TRIGGER IF EXISTS make_recent;
             DROP TRIGGER IF EXISTS make_archive;
             DROP TRIGGER IF EXISTS clear_recent_and_archive;
             DROP TRIGGER IF EXISTS delayed_payments_prune;
         )");
 
-        db.createFunction(
+        conn.sql.createFunction(
                 "oxen_upgrade_addr_to_blob",
                 1,
                 true,
@@ -466,23 +490,23 @@ void BlockchainSQLite::upgrade_schema() {
 
             {
                 SQLite::Statement no_subatomic_stakes{
-                        db,
+                        conn.sql,
                         "SELECT COUNT(*) FROM {table} WHERE"
                         " lifetime_locked_stakes % {factor} != 0 OR"
                         " lifetime_unlocked_stakes % {factor} != 0 OR"
                         " lifetime_liquidated_stakes % {factor} != 0"_format(
                                 "table"_a = table, "factor"_a = BATCH_REWARD_FACTOR)};
-                if (int uhoh = db::exec_and_get<int>(no_subatomic_stakes); uhoh > 0)
+                if (int uhoh = session::sqlite::exec_and_get<int>(no_subatomic_stakes); uhoh > 0)
                     throw oxen::traced<std::logic_error>{
                             "Internal error: 11.4.0 transition code found {} {} rows with"
                             " unexpected sub-atomic stake values"_format(uhoh, table)};
             }
 
-            db.exec(CREATE_BATCHED_PAYMENTS(
+            conn.sql.exec(CREATE_BATCHED_PAYMENTS(
                     "{}_tmp"_format(table),
                     /*with_height=*/!is_primary));
 
-            db.exec(
+            conn.sql.exec(
                     R"(
             INSERT INTO {table}_tmp
                 (address, amount, payout_offset, lifetime_locked_stakes, lifetime_unlocked_stakes,
@@ -500,12 +524,13 @@ void BlockchainSQLite::upgrade_schema() {
                       "maybe_height"_a = is_primary ? "" : ", height",
                       "factor"_a = BATCH_REWARD_FACTOR));
 
-            db.exec(R"(
+            conn.sql.exec(R"(
                 DROP TABLE {table};
                 ALTER TABLE {table}_tmp RENAME TO {table};
             )"_format("table"_a = table));
             if (is_primary)
-                db.exec("CREATE INDEX IF NOT EXISTS {table}_payout_offset_idx ON "
+                conn.sql.exec(
+                        "CREATE INDEX IF NOT EXISTS {table}_payout_offset_idx ON "
                         "{table}(payout_offset)"
                         " WHERE payout_offset IS NOT NULL"_format("table"_a = table));
 
@@ -537,8 +562,8 @@ void BlockchainSQLite::upgrade_schema() {
             }
 
             if (fixup_height) {
-                auto db_height = prepared_get<int64_t>("SELECT height FROM batch_db_info");
-                if (is_hard_fork_at_least(nettype, hf::hf22_eth_fixup, db_height)) {
+                auto db_h = conn.prepared_get<int64_t>("SELECT height FROM batch_db_info");
+                if (is_hard_fork_at_least(nettype, hf::hf22_eth_fixup, db_h)) {
                     log::critical(
                             logcat,
                             "DB setup error: HF21 transition code attempted to run on a database "
@@ -547,14 +572,14 @@ void BlockchainSQLite::upgrade_schema() {
                             "HF21 transition code called on HF22 database"};
                 }
                 if (is_primary) {
-                    if (db_height > fixup_height) {
+                    if (db_h > fixup_height) {
                         // This amount should have been subtracted when processing the purge in
                         // block 1852106, but if the database didn't have this new table yet then it
                         // also had the same bug that missed this subtraction (because it was the
                         // first purge in a block with two purges, and only the last purge was being
                         // properly accounted for):
-                        db::exec_query(
-                                db,
+                        session::sqlite::exec_query(
+                                conn.sql,
                                 "UPDATE {} SET lifetime_locked_stakes = lifetime_locked_stakes - ? "
                                 "WHERE address = ?"_format(table),
                                 fixup_amount.to_db_atomic(),
@@ -565,8 +590,8 @@ void BlockchainSQLite::upgrade_schema() {
                                 table);
                     }
                 } else {
-                    db::exec_query(
-                            db,
+                    session::sqlite::exec_query(
+                            conn.sql,
                             "UPDATE {} SET lifetime_locked_stakes = lifetime_locked_stakes - ? "
                             "WHERE address = ? AND height >= ?"_format(table),
                             // As above, this will only run on a HF21 db.
@@ -585,18 +610,18 @@ void BlockchainSQLite::upgrade_schema() {
         // Safety check first: there should not actually be any sub-atomic values in the table.
         {
             SQLite::Statement no_subatomic_amount{
-                    db,
+                    conn.sql,
                     "SELECT COUNT(*) FROM delayed_payments WHERE"
                     " amount % {factor} != 0 OR liquidation_amount % {factor} != 0"_format(
                             "factor"_a = BATCH_REWARD_FACTOR)};
-            if (int uhoh = db::exec_and_get<int>(no_subatomic_amount); uhoh > 0)
+            if (int uhoh = session::sqlite::exec_and_get<int>(no_subatomic_amount); uhoh > 0)
                 throw oxen::traced<std::logic_error>{
                         "Internal error: 11.4.0 transition code found {} delayed_payments rows with"
                         " unexpected sub-atomic amounts"_format(uhoh)};
         }
 
-        db.exec(CREATE_DELAYED_PAYMENTS("delayed_payments_tmp"));
-        db.exec(
+        conn.sql.exec(CREATE_DELAYED_PAYMENTS("delayed_payments_tmp"));
+        conn.sql.exec(
                 R"(
         INSERT INTO delayed_payments_tmp
             (eth_address, amount, liquidation_amount,
@@ -627,7 +652,7 @@ void BlockchainSQLite::upgrade_schema() {
     // detaches with the following format specifiers. Note that _order_ of the
     // triggers is important as the operations has side effects on tables.
     {
-        db.exec(
+        conn.sql.exec(
                 R"(
         -- Saves the current payments into their recent table(s) for the current height
         DROP   TRIGGER IF EXISTS make_recent;
@@ -688,22 +713,10 @@ void BlockchainSQLite::upgrade_schema() {
     }
 
     // NOTE: Add new liquidation field to delayed payment table
-    {
-        bool has_field = false;
-        SQLite::Statement msg_cols{db, "PRAGMA main.table_info(delayed_payments)"};
-        while (msg_cols.executeStep()) {
-            auto [cid, name] = db::get<int64_t, std::string>(msg_cols);
-            if (name == "liquidation_amount"sv) {
-                has_field = true;
-                break;
-            }
-        }
-        msg_cols.reset();
-
-        if (!has_field)
-            db.exec("ALTER TABLE delayed_payments ADD COLUMN liquidation_amount INTEGER NOT NULL "
-                    "DEFAULT 0");
-    }
+    if (!has_column(conn, "delayed_payments", "liquidation_amount"))
+        conn.sql.exec(
+                "ALTER TABLE delayed_payments ADD COLUMN liquidation_amount INTEGER NOT NULL "
+                "DEFAULT 0");
 
     if (transaction)
         transaction->commit();
@@ -712,7 +725,8 @@ void BlockchainSQLite::upgrade_schema() {
 void BlockchainSQLite::reset_database() {
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
 
-    db.exec(R"(
+    auto conn = db.conn();
+    conn.sql.exec(R"(
       DROP TABLE IF EXISTS delayed_payments;
 
       DROP TABLE IF EXISTS batched_payments_accrued;
@@ -737,13 +751,10 @@ void BlockchainSQLite::update_height(uint64_t new_height) {
             new_height,
             height);
     height = new_height;
-    prepared_exec("UPDATE batch_db_info SET height = ?", static_cast<int64_t>(height));
+    db.conn().prepared_exec("UPDATE batch_db_info SET height = ?", as_i64(height));
 }
 
-void BlockchainSQLite::blockchain_detached(
-        PaymentTableType history, uint64_t new_height, uint64_t target_height) {
-    const auto& netconf = get_config(nettype);
-
+void BlockchainSQLite::blockchain_detached(PaymentTableType history, uint64_t new_height) {
     std::string detach_label = "";
     int rows_restored = 0;
     int rows_removed = 0;
@@ -756,25 +767,17 @@ void BlockchainSQLite::blockchain_detached(
     } else {
         // Detached to the given archive/recent height
         const auto suffix = history == PaymentTableType::Archive ? "archive"sv : "recent"sv;
-        rows_removed = prepared_exec("DELETE FROM batched_payments_accrued");
-        rows_restored = prepared_exec(
+        auto conn = db.conn();
+        rows_removed = conn.prepared_exec("DELETE FROM batched_payments_accrued");
+        rows_restored = conn.prepared_exec(
                 "INSERT INTO batched_payments_accrued ({batched_fields}) "
                 "SELECT {batched_fields} FROM batched_payments_accrued_{suffix}"
                 " WHERE height = ?"_format(
                         "batched_fields"_a = BATCHED_PAYMENTS_COLS, "suffix"_a = suffix),
-                static_cast<int64_t>(new_height));
+                as_i64(new_height));
     }
 
     update_height(new_height);
-
-    if (height + 5000 < target_height) {
-        log::debug(logcat, "large rescan starting");
-        rescan_target = target_height;
-        rescan_start();
-    } else {
-        log::debug(
-                logcat, "not large rescan, height = {}, target_height = {}", height, target_height);
-    }
 
     log::debug(
             logcat,
@@ -793,12 +796,36 @@ constexpr std::string_view WALLET_METADATA_FIELDS =
         " lifetime_liquidated_stakes,"
         " lifetime_rewards";
 
+template <typename Results>
+static block_payments get_delayed_payments_impl(Results&& rows) {
+    block_payments result;
+    for (auto [addr, amount, liquidation_amount] : rows) {
+        auto& payment = result[static_cast<const eth::address&>(addr)];
+        payment.amount += reward_money::from_db_atomic(amount);
+        payment.liquidation += reward_money::from_db_atomic(liquidation_amount);
+    }
+    return result;
+}
+
+// Delayed payments for `addr` that are still pending (i.e. not yet paid out) at `height`.
+static block_payments pending_delayed_payments(
+        Connection& conn, const eth::address& addr, uint64_t height) {
+    return get_delayed_payments_impl(
+            conn.prepared_results<blob_guts<eth::address>, int64_t, int64_t>(
+                    "SELECT eth_address, amount, liquidation_amount FROM delayed_payments"
+                    " WHERE eth_address = ? AND payout_height > ?",
+                    span_guts(addr),
+                    as_i64(height)));
+}
+
 BlockchainSQLite::wallet_info::wallet_info(
-        BlockchainSQLite& db,
+        const BlockchainSQLite& sql,
+        Connection& conn,
+        uint64_t height,
         std::span<const unsigned char> addr_bytes,
         std::optional<std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t>> metadata,
         std::optional<hf> hf_version) :
-        height{db.height} {
+        height{height} {
 
     if (metadata) {
         bool is_eth = addr_bytes.size() == sizeof(eth::address);
@@ -809,7 +836,7 @@ BlockchainSQLite::wallet_info::wallet_info(
         found = true;
 
         if (!hf_version)
-            hf_version = get_network_version(db.nettype, height);
+            hf_version = get_network_version(sql.nettype, height);
         amount = reward_money::from_db_amount(amt, *hf_version);
         lifetime_locked_stakes = reward_money::from_db_atomic(life_locked);
         lifetime_unlocked_stakes = reward_money::from_db_atomic(life_unlocked);
@@ -846,7 +873,7 @@ BlockchainSQLite::wallet_info::wallet_info(
                 // lifetime claimable 34.840001830887 != 18766.090001830887 (= 16.090001830887 rewards + 18750 unlocked - 0 liquidated)
                 // db_sqlite.cpp:873: wallet_info(...): Assertion `amount == rederived' failed.
                 // clang-format on
-                bool skip = db.nettype == network_type::MAINNET && db.height == 1871518;
+                bool skip = sql.nettype == network_type::MAINNET && height == 1871518;
                 if (!skip) {
                     log::error(
                             logcat,
@@ -867,8 +894,8 @@ BlockchainSQLite::wallet_info::wallet_info(
             }
 
             // NOTE: Delayed payments is only supported on ETH addresses
-            for (const auto& [addr, payment] :
-                 db.get_delayed_payments(tools::make_from_guts<eth::address>(addr_bytes))) {
+            for (const auto& [addr, payment] : pending_delayed_payments(
+                         conn, tools::make_from_guts<eth::address>(addr_bytes), height)) {
                 if (payment.amount >= payment.liquidation)
                     timelocked_stakes += payment.amount - payment.liquidation;
                 else {
@@ -888,17 +915,20 @@ BlockchainSQLite::wallet_info::wallet_info(
 BlockchainSQLite::wallet_info::wallet_info(uint64_t height, bool found) :
         height{height}, found{found} {}
 
+// `height` is the DB height as seen by `conn`.
 static BlockchainSQLite::wallet_info get_accrued_rewards_impl(
-        BlockchainSQLite& db,
+        const BlockchainSQLite& sql,
+        Connection& conn,
+        uint64_t height,
         std::span<const unsigned char> addr_bytes,
         std::optional<hf> hf = std::nullopt) {
     log::trace(logcat, "BlockchainDB_SQLITE {}", __func__);
-    auto tuple = db.prepared_maybe_get<int64_t, int64_t, int64_t, int64_t, int64_t>(
+    auto tuple = conn.prepared_maybe_get<int64_t, int64_t, int64_t, int64_t, int64_t>(
             "SELECT {} FROM batched_payments_accrued WHERE address = ?"_format(
                     WALLET_METADATA_FIELDS),
-            db::blob_binder{addr_bytes});
+            addr_bytes);
 
-    return {db, addr_bytes, std::move(tuple), hf};
+    return {sql, conn, height, addr_bytes, std::move(tuple), hf};
 }
 
 void BlockchainSQLite::add_sn_rewards(
@@ -930,9 +960,9 @@ void BlockchainSQLite::add_sn_rewards(
                 VALUES (?, ?, ?)
                 ON CONFLICT (address) DO UPDATE SET amount = amount + excluded.amount)"s;
     }
-    auto insert_payment = prepared_st(query);
 
     const auto& netconf = get_config(nettype);
+    auto conn = db.conn();
 
     for (const auto& [vaddr, payment] : payments) {
         auto amount = payment.amount - payment.liquidation;
@@ -943,48 +973,34 @@ void BlockchainSQLite::add_sn_rewards(
                 log_addr{vaddr, nettype},
                 amount);
 
-        auto addr_blob = std::visit([](const auto& a) { return bind_guts(a); }, vaddr);
+        auto addr_blob = std::visit(
+                [](const auto& a) -> std::span<const unsigned char> { return span_guts(a); },
+                vaddr);
         if (hf_version >= hf::hf21_eth) {
             if (rewards_payment)
-                exec_query(insert_payment, addr_blob, amount.to_db_amount(hf_version));
+                conn.prepared_exec(query, addr_blob, amount.to_db_amount(hf_version));
             else
-                exec_query(
-                        insert_payment,
+                conn.prepared_exec(
+                        query,
                         addr_blob,
                         amount.to_db_amount(hf_version),
                         amount.to_db_atomic(),
                         payment.liquidation.to_db_atomic());
         } else {
             int offset = std::get<account_public_address>(vaddr).modulus(netconf.BATCHING_INTERVAL);
-            exec_query(insert_payment, addr_blob, offset, amount.to_db_amount(hf_version));
+            conn.prepared_exec(query, addr_blob, offset, amount.to_db_amount(hf_version));
         }
-        insert_payment->reset();
     }
 }
 
 int BlockchainSQLite::batch_payments_accrued_row_count() {
-    return prepared_get<int>("SELECT COUNT(*) FROM batched_payments_accrued");
+    return db.conn().prepared_get<int>("SELECT COUNT(*) FROM batched_payments_accrued");
 }
 bool BlockchainSQLite::batch_payments_accrued_has_any(bool recent, uint64_t height) {
-    return prepared_get<int>(
+    return db.conn().prepared_get<int>(
             "SELECT EXISTS(SELECT 1 FROM batched_payments_accrued_{} WHERE height = ?)"_format(
                     recent ? "recent" : "archive"),
-            static_cast<int64_t>(height));
-}
-
-void BlockchainSQLite::rescan_start() {
-    assert(!rescan_tx);
-    log::debug(logcat, "(re)starting rescan tx");
-    rescan_tx.emplace(db, SQLite::TransactionBehavior::IMMEDIATE);
-}
-
-void BlockchainSQLite::rescan_stop() {
-    if (rescan_tx) {
-        log::debug(logcat, "committing rescan tx at height {}", height);
-        rescan_tx->commit();
-        rescan_tx = std::nullopt;
-        rescan_count = 0;
-    }
+            as_i64(height));
 }
 
 std::vector<batch_sn_payment> BlockchainSQLite::get_sn_payments(uint64_t block_height) {
@@ -1002,18 +1018,14 @@ std::vector<batch_sn_payment> BlockchainSQLite::get_sn_payments(uint64_t block_h
     auto hf_version = get_network_version(nettype, block_height);
     assert(hf_version < hf::hf21_eth);  // HF21+ has no auto-payments and shouldn't call this
 
+    auto conn = db.conn();
     std::vector<std::pair<account_public_address, reward_money>> accrued_pairs;
-    {
-        auto accrued_amounts = prepared_results<blob_guts<account_public_address>, int64_t>(
-                "SELECT address, amount FROM batched_payments_accrued"
-                " WHERE payout_offset = ? AND amount >= ? ORDER BY address ASC",
-                static_cast<int>(block_height % conf.BATCHING_INTERVAL),
-                static_cast<int64_t>(conf.MIN_BATCH_PAYMENT_AMOUNT * BATCH_REWARD_FACTOR));
-
-        for (auto [address, amount] : accrued_amounts)
-            accrued_pairs.emplace_back(
-                    address.value, reward_money::from_db_amount(amount, hf_version));
-    }
+    for (auto [address, amount] : conn.prepared_results<blob_guts<account_public_address>, int64_t>(
+                 "SELECT address, amount FROM batched_payments_accrued"
+                 " WHERE payout_offset = ? AND amount >= ? ORDER BY address ASC",
+                 static_cast<int>(block_height % conf.BATCHING_INTERVAL),
+                 as_i64(conf.MIN_BATCH_PAYMENT_AMOUNT * BATCH_REWARD_FACTOR)))
+        accrued_pairs.emplace_back(address, reward_money::from_db_amount(amount, hf_version));
 
     // The block before HF21, addresses which have not registered an ETH address for the
     // SESH transition will have their balances paid out, regardless of balance.
@@ -1046,12 +1058,12 @@ std::vector<batch_sn_payment> BlockchainSQLite::get_sn_payments(uint64_t block_h
                 logcat,
                 "block before hf21, doing final payout to addresses not registered for "
                 "conversion");
-        auto all_accrued_amounts = prepared_results<blob_guts<account_public_address>, int64_t>(
-                "SELECT address, amount FROM batched_payments_accrued ORDER BY address ASC");
+        constexpr auto all_accrued =
+                "SELECT address, amount FROM batched_payments_accrued ORDER BY address ASC";
         accrued_pairs.clear();
-        for (auto [address, amount] : all_accrued_amounts)
-            accrued_pairs.emplace_back(
-                    address.value, reward_money::from_db_amount(amount, hf_version));
+        for (auto [address, amount] :
+             conn.prepared_results<blob_guts<account_public_address>, int64_t>(all_accrued))
+            accrued_pairs.emplace_back(address, reward_money::from_db_amount(amount, hf_version));
     }
 
     std::vector<batch_sn_payment> payments;
@@ -1081,29 +1093,32 @@ std::vector<batch_sn_payment> BlockchainSQLite::get_sn_payments(uint64_t block_h
 }
 
 static BlockchainSQLite::wallet_info get_accrued_rewards_at_impl(
-        BlockchainSQLite& db,
+        const BlockchainSQLite& sql,
+        Connection& conn,
         std::span<const unsigned char> addr_bytes,
-        uint64_t at_height,
-        uint64_t curr_top_height) {
+        uint64_t at_height) {
     log::trace(logcat, "BlockchainDB_SQLITE {}", __func__);
+    auto tx = read_tx(conn);
+    auto curr_top_height = db_height(conn);
     if (at_height > curr_top_height)
         return {};
 
     if (at_height == curr_top_height)
-        return get_accrued_rewards_impl(db, addr_bytes);
+        return get_accrued_rewards_impl(sql, conn, curr_top_height, addr_bytes);
 
-    if (auto tuple = db.prepared_maybe_get<int64_t, int64_t, int64_t, int64_t, int64_t>(
+    if (auto tuple = conn.prepared_maybe_get<int64_t, int64_t, int64_t, int64_t, int64_t>(
                 "SELECT {} FROM batched_payments_accrued_recent"
                 " WHERE address = ? AND height = ?"_format(WALLET_METADATA_FIELDS),
-                db::blob_binder{addr_bytes},
-                static_cast<int64_t>(at_height)))
-        return {db, addr_bytes, tuple};
+                addr_bytes,
+                as_i64(at_height)))
+        return {sql, conn, curr_top_height, addr_bytes, tuple};
 
     // No rewards found; check to see if we actually have any recent records for that height and
     // if not, return a "don't know" nullopt value.  Otherwise we fall through and return an
     // authoritive 0 value.
-    auto min_height = static_cast<uint64_t>(db.prepared_get<int64_t>(
-            "SELECT COALESCE(MIN(height), 0) FROM batched_payments_accrued_recent"s));
+    auto min_height =
+            as_u64(conn.prepared_get<int64_t>("SELECT COALESCE(MIN(height), 0)"
+                                              " FROM batched_payments_accrued_recent"));
     if (at_height < min_height)
         return {};
 
@@ -1112,22 +1127,28 @@ static BlockchainSQLite::wallet_info get_accrued_rewards_at_impl(
 
 BlockchainSQLite::wallet_info BlockchainSQLite::get_accrued_rewards(
         const eth::address& address, std::optional<hf> hf) {
-    return get_accrued_rewards_impl(*this, tools::span_guts(address), hf);
+    auto conn = db.conn();
+    auto tx = read_tx(conn);
+    return get_accrued_rewards_impl(*this, conn, db_height(conn), span_guts(address), hf);
 }
 
 BlockchainSQLite::wallet_info BlockchainSQLite::get_accrued_rewards(
         const account_public_address& address) {
-    return get_accrued_rewards_impl(*this, tools::span_guts(address));
+    auto conn = db.conn();
+    auto tx = read_tx(conn);
+    return get_accrued_rewards_impl(*this, conn, db_height(conn), span_guts(address));
 }
 
 BlockchainSQLite::wallet_info BlockchainSQLite::get_accrued_rewards(
         const eth::address& address, uint64_t at_height) {
-    return get_accrued_rewards_at_impl(*this, tools::span_guts(address), at_height, height);
+    auto conn = db.conn();
+    return get_accrued_rewards_at_impl(*this, conn, span_guts(address), at_height);
 }
 
 BlockchainSQLite::wallet_info BlockchainSQLite::get_accrued_rewards(
         const account_public_address& address, uint64_t at_height) {
-    return get_accrued_rewards_at_impl(*this, tools::span_guts(address), at_height, height);
+    auto conn = db.conn();
+    return get_accrued_rewards_at_impl(*this, conn, span_guts(address), at_height);
 }
 
 std::vector<std::pair<
@@ -1139,17 +1160,20 @@ BlockchainSQLite::get_all_accrued_rewards() {
 
     std::vector<std::pair<std::variant<eth::address, account_public_address>, wallet_info>> result;
 
-    for (auto addr_bytes : prepared_results<db::blob_span>("SELECT address FROM "
-                                                           "batched_payments_accrued")) {
-        const auto& addr = addr_bytes.data;
+    auto conn = db.conn();
+    auto tx = read_tx(conn);
+    auto h = db_height(conn);
+    for (blob b : conn.prepared_results<blob>("SELECT address FROM batched_payments_accrued")) {
+        std::span<const unsigned char> addr{
+                reinterpret_cast<const unsigned char*>(b.data()), b.size()};
         if (addr.size() == sizeof(eth::address))
             result.emplace_back(
                     tools::make_from_guts<eth::address>(addr),
-                    get_accrued_rewards_impl(*this, addr));
+                    get_accrued_rewards_impl(*this, conn, h, addr));
         else
             result.emplace_back(
                     tools::make_from_guts<account_public_address>(addr),
-                    get_accrued_rewards_impl(*this, addr));
+                    get_accrued_rewards_impl(*this, conn, h, addr));
     }
 
     return result;
@@ -1307,40 +1331,31 @@ void BlockchainSQLite::reward_handler(
     add_sn_rewards(block.major_version, std::move(payments), true /*rewards_payment*/);
 }
 
-template <typename Results>
-static block_payments get_delayed_payments_impl(Results&& rows) {
-    block_payments result;
-    for (auto [addr, amount, liquidation_amount] : rows) {
-        auto& payment = result[addr.value];
-        payment.amount += reward_money::from_db_atomic(amount);
-        payment.liquidation += reward_money::from_db_atomic(liquidation_amount);
-    }
-    return result;
-}
-
 block_payments BlockchainSQLite::get_delayed_payments() {
     ZoneScoped;
-    return get_delayed_payments_impl(prepared_results<blob_guts<eth::address>, int64_t, int64_t>(
-            "SELECT eth_address, amount, liquidation_amount FROM delayed_payments"
-            " WHERE payout_height > ?"s,
-            static_cast<int64_t>(height)));
+    auto conn = db.conn();
+    auto tx = read_tx(conn);
+    return get_delayed_payments_impl(
+            conn.prepared_results<blob_guts<eth::address>, int64_t, int64_t>(
+                    "SELECT eth_address, amount, liquidation_amount FROM delayed_payments"
+                    " WHERE payout_height > ?",
+                    as_i64(db_height(conn))));
 }
 
 block_payments BlockchainSQLite::get_delayed_payments(const eth::address& addr) {
     ZoneScoped;
-    return get_delayed_payments_impl(prepared_results<blob_guts<eth::address>, int64_t, int64_t>(
-            "SELECT eth_address, amount, liquidation_amount FROM delayed_payments"
-            " WHERE eth_address = ? AND payout_height > ?"s,
-            bind_guts(addr),
-            static_cast<int64_t>(height)));
+    auto conn = db.conn();
+    auto tx = read_tx(conn);
+    return pending_delayed_payments(conn, addr, db_height(conn));
 }
 
 block_payments BlockchainSQLite::get_delayed_payments(uint64_t payout_height) {
     ZoneScoped;
-    return get_delayed_payments_impl(prepared_results<blob_guts<eth::address>, int64_t, int64_t>(
-            "SELECT eth_address, amount, liquidation_amount FROM delayed_payments"
-            " WHERE payout_height = ?"s,
-            static_cast<int64_t>(payout_height)));
+    return get_delayed_payments_impl(
+            db.conn().prepared_results<blob_guts<eth::address>, int64_t, int64_t>(
+                    "SELECT eth_address, amount, liquidation_amount FROM delayed_payments"
+                    " WHERE payout_height = ?",
+                    as_i64(payout_height)));
 }
 
 void BlockchainSQLite::submit_stakes_metadata(
@@ -1350,15 +1365,16 @@ void BlockchainSQLite::submit_stakes_metadata(
     // time because they haven't received rewards yet. The adding of locked stakes has to
     // account for if it doesn't exist, hence we use a INSERT INTO instead of just using UPDATE
     // as we do in the subtraction query below.
-    auto lifetime_locked_stakes = prepared_st(R"(
+    constexpr auto lifetime_locked_stakes = R"(
         INSERT INTO batched_payments_accrued (lifetime_locked_stakes, address)
             VALUES (?, ?)
             ON CONFLICT(address) DO UPDATE SET
                 lifetime_locked_stakes = lifetime_locked_stakes + excluded.lifetime_locked_stakes
-    )");
+    )";
 
+    auto conn = db.conn();
     std::optional<SQLite::Transaction> transaction =
-            _no_transaction ? std::nullopt : begin_tx(SQLite::TransactionBehavior::DEFERRED);
+            _no_transaction ? std::nullopt : begin_tx(conn, SQLite::TransactionBehavior::DEFERRED);
 
     // NOTE: Submit locked stakes
     for (const auto& stake : block_add.locked_stakes) {
@@ -1366,19 +1382,18 @@ void BlockchainSQLite::submit_stakes_metadata(
 
 #ifndef NDEBUG
         BlockchainSQLite::wallet_info wallet_info_before =
-                get_accrued_rewards_impl(*this, stake.addr);
+                get_accrued_rewards_impl(*this, conn, height, stake.addr);
 #endif
 
         // NOTE: Add the locked SESH
-        int rows_changed = exec_query(
-                lifetime_locked_stakes, stake.amount.to_db_atomic(), bind_guts(stake.addr));
-        lifetime_locked_stakes->reset();
+        int rows_changed = conn.prepared_exec(
+                lifetime_locked_stakes, stake.amount.to_db_atomic(), span_guts(stake.addr));
         assert(rows_changed == 1);
 
 #ifndef NDEBUG
         // NOTE: Verify the DB operations did what we expected
         BlockchainSQLite::wallet_info wallet_info_after =
-                get_accrued_rewards_impl(*this, stake.addr);
+                get_accrued_rewards_impl(*this, conn, height, stake.addr);
         assert(wallet_info_after.found);
         log::trace(
                 logcat,
@@ -1398,16 +1413,16 @@ void BlockchainSQLite::submit_stakes_metadata(
     // For purged stakes, these funds have "disappeared" from the contract (node is in the SNL
     // but _not_ in the contract). To account for this we need to undo the stakes we counted as
     // being locked up.
-    auto purged_stakes = prepared_st(R"(
+    constexpr auto purged_stakes = R"(
         UPDATE batched_payments_accrued
             SET lifetime_locked_stakes = lifetime_locked_stakes - ?
-            WHERE address = ?)");
+            WHERE address = ?)";
 
     for (const auto& purge : block_add.purged_stakes) {
         assert(purge.amount.to_coin() > 0);
 
         // NOTE: Verify remaining locked stakes don't go below 0
-        auto wallet_info_before = get_accrued_rewards_impl(*this, purge.addr);
+        auto wallet_info_before = get_accrued_rewards_impl(*this, conn, height, purge.addr);
         assert(wallet_info_before.found);
         if (wallet_info_before.locked_stakes < purge.amount) {
             log::error(
@@ -1421,14 +1436,13 @@ void BlockchainSQLite::submit_stakes_metadata(
         }
 
         // NOTE: Add the purged SESH
-        int rows_changed =
-                exec_query(purged_stakes, purge.amount.to_db_atomic(), bind_guts(purge.addr));
+        int rows_changed = conn.prepared_exec(
+                purged_stakes, purge.amount.to_db_atomic(), span_guts(purge.addr));
         assert(rows_changed == 1);
-        purged_stakes->reset();
 
 #ifndef NDEBUG
         // NOTE: Verify the DB operations did what we expected
-        auto wallet_info_after = get_accrued_rewards_impl(*this, purge.addr);
+        auto wallet_info_after = get_accrued_rewards_impl(*this, conn, height, purge.addr);
         assert(wallet_info_after.found);
         log::trace(
                 logcat,
@@ -1448,7 +1462,8 @@ void BlockchainSQLite::submit_stakes_metadata(
 
 void BlockchainSQLite::convert_hf22() {
     log::debug(logcat, "Converting accrued values to atomic SESH");
-    db.exec("UPDATE batched_payments_accrued SET amount = amount / {factor},"
+    db.conn().sql.exec(
+            "UPDATE batched_payments_accrued SET amount = amount / {factor},"
             " lifetime_rewards = lifetime_rewards / {factor}"_format(
                     "factor"_a = BATCH_REWARD_FACTOR));
 }
@@ -1465,6 +1480,8 @@ bool BlockchainSQLite::add_block(
     auto hf_version = block.major_version;
     if (hf_version < hf::hf19_reward_batching) {
         update_height(block_height);
+        if (batch)
+            batch->block_added();
         return true;
     }
 
@@ -1501,7 +1518,8 @@ bool BlockchainSQLite::add_block(
             miner_tx_vouts.emplace_back(std::get<txout_to_key>(vout.target).key, vout.amount);
 
     try {
-        auto transaction = begin_tx();
+        auto conn = db.conn();
+        auto transaction = begin_tx(conn);
 
         // Goes through the miner transactions vouts checks they are right and marks them as paid in
         // the database
@@ -1514,15 +1532,10 @@ bool BlockchainSQLite::add_block(
         update_height(
                 height + 1);  // NOTE: Update height which synchronises the archive/recent tables
 
-        if (transaction) {
+        if (transaction)
             transaction->commit();
-        } else {  // rescanning
-            if (++rescan_count >= 100 || height >= rescan_target) {
-                rescan_stop();
-                if (height < rescan_target)
-                    rescan_start();
-            }
-        }
+        else
+            batch->block_added();
 
     } catch (std::exception& e) {
         log::error(
@@ -1542,7 +1555,8 @@ bool BlockchainSQLite::add_delayed_payments(
     ZoneScoped;
     log::trace(logcat, "BlockchainSQLite::{} called", __func__);
     try {
-        auto transaction = begin_tx();
+        auto conn = db.conn();
+        auto transaction = begin_tx(conn);
 
         // Basic checks can be done here
         // if (amount > max_staked_amount)
@@ -1551,11 +1565,11 @@ bool BlockchainSQLite::add_delayed_payments(
         assert(at_height >= height);
 
         int64_t payout_height = at_height + (delay_blocks > 0 ? delay_blocks : 1);
-        auto insert_payment = prepared_st(R"(
+        constexpr auto insert_payment = R"(
             INSERT INTO delayed_payments
                 (eth_address, amount, payout_height, height, block_height, block_tx_index, contributor_index, liquidation_amount)
                 VALUES
-                (?,           ?,      ?,             ?,      ?,            ?,              ?,                 ?))");
+                (?,           ?,      ?,             ?,      ?,            ?,              ?,                 ?))";
 
         for (auto& payment : payments) {
             const auto amount = static_cast<int64_t>(payment.amount.to_db_atomic());
@@ -1568,17 +1582,16 @@ bool BlockchainSQLite::add_delayed_payments(
                     amount,
                     at_height,
                     payout_height);
-            exec_query(
+            conn.prepared_exec(
                     insert_payment,
-                    bind_guts(payment.addr),
+                    span_guts(payment.addr),
                     static_cast<int64_t>(payment.amount.to_db_atomic()),
                     payout_height,
-                    static_cast<int64_t>(at_height),
+                    as_i64(at_height),
                     payment.block_height,
                     payment.tx_index,
                     payment.contributor_index,
                     static_cast<int64_t>(payment.liquidation.to_db_atomic()));
-            insert_payment->reset();
         }
 
         if (transaction)
@@ -1658,13 +1671,11 @@ bool BlockchainSQLite::save_payments(
     ZoneScoped;
     log::trace(logcat, "BlockchainDB_SQLITE::{}", __func__);
 
-    auto select_sum = prepared_st("SELECT amount FROM batched_payments_accrued WHERE address = ?");
-    auto update_paid = prepared_st(
-            "UPDATE batched_payments_accrued SET amount = amount - ? WHERE address = ?");
-
+    auto conn = db.conn();
     for (const auto& payment : paid_amounts) {
-        if (auto maybe_amount =
-                    exec_and_maybe_get<int64_t>(select_sum, bind_guts(payment.address))) {
+        if (auto maybe_amount = conn.prepared_maybe_get<int64_t>(
+                    "SELECT amount FROM batched_payments_accrued WHERE address = ?",
+                    span_guts(payment.address))) {
             // Truncate the thousanths amount to an atomic OXEN:
             // Hard-code hf20 here because this code only runs in HF20 and earlier (and
             // from_db_amount is the same for everything <= 21).
@@ -1681,11 +1692,10 @@ bool BlockchainSQLite::save_payments(
                 return false;
             }
 
-            exec_query(
-                    update_paid,
+            conn.prepared_exec(
+                    "UPDATE batched_payments_accrued SET amount = amount - ? WHERE address = ?",
                     payment.amount.to_db_amount(hf::hf20_eth_transition),
-                    bind_guts(payment.address));
-            update_paid->reset();
+                    span_guts(payment.address));
         } else {
             // This shouldn't occur: we validate payout addresses much earlier in the block
             // validation.
@@ -1696,7 +1706,6 @@ bool BlockchainSQLite::save_payments(
                     log_addr{payment.address, nettype});
             return false;
         }
-        select_sum->reset();
     }
 
     // NOTE: For pre-ETH hardfork. Oxen SN's were paid and the amount paid was subtracted
@@ -1710,15 +1719,14 @@ bool BlockchainSQLite::save_payments(
     //
     // Paid amounts is only populated with miner-tx, OXEN style payments. This array is empty
     // if payouts are being done with SESH rewards.
-    if (paid_amounts.size()) {
-        auto cleanup_st = prepared_st("DELETE FROM batched_payments_accrued WHERE amount = 0");
-        exec_query(cleanup_st);
-    }
+    if (paid_amounts.size())
+        conn.prepared_exec("DELETE FROM batched_payments_accrued WHERE amount = 0");
     return true;
 }
 
 std::optional<uint64_t> BlockchainSQLite::fixup(bool recheck) {
-    auto tx = begin_tx();
+    auto conn = db.conn();
+    auto tx = begin_tx(conn);
 
     auto with_commit = [&tx](std::optional<uint64_t> ret) {
         if (tx)
@@ -1726,12 +1734,12 @@ std::optional<uint64_t> BlockchainSQLite::fixup(bool recheck) {
         return ret;
     };
 
-    auto prev_db_version = prepared_get<int>("PRAGMA user_version");
+    auto prev_db_version = conn.prepared_get<int>("PRAGMA user_version");
     if (!recheck) {
         if (prev_db_version >= FIXUP_DELAYED_PAYMENT_REWARDS)
             return with_commit(std::nullopt);
 
-        db.exec("PRAGMA user_version = {}"_format(FIXUP_DELAYED_PAYMENT_REWARDS));
+        conn.sql.exec("PRAGMA user_version = {}"_format(FIXUP_DELAYED_PAYMENT_REWARDS));
     } else {
         assert(prev_db_version >= FIXUP_DELAYED_PAYMENT_REWARDS);
     }
@@ -1767,12 +1775,12 @@ std::optional<uint64_t> BlockchainSQLite::fixup(bool recheck) {
     // know if they are correct and we need to rescan from one of the known-correct archive heights,
     // above (or from our reproduced 1890k snapshot, if your node has an invalid 1890k value).
     if (!recheck) {
-        db::exec_query(
-                db,
+        session::sqlite::exec_query(
+                conn.sql,
                 "DELETE FROM batched_payments_accrued_recent WHERE height >= ?",
-                static_cast<int64_t>(hf21_started));
+                as_i64(hf21_started));
         if (height >= hf21_started)
-            db.exec("DELETE FROM batched_payments_accrued");
+            conn.sql.exec("DELETE FROM batched_payments_accrued");
     }
 
     //
@@ -1780,7 +1788,7 @@ std::optional<uint64_t> BlockchainSQLite::fixup(bool recheck) {
     // correct and we don't ever want you to use it (e.g. if you every roll back into the range).
     bool have_snapshot_height = false;
     for (const auto& [archive_height, checksum] : RECORDS) {
-        auto [db_csum, db_count] = prepared_get<int64_t, int>(
+        auto [db_csum, db_count] = conn.prepared_get<int64_t, int>(
                 "SELECT SUM(amount % ?), COUNT(*) FROM batched_payments_accrued_archive"
                 " WHERE height = ?",
                 CSUM_MOD,
@@ -1809,8 +1817,8 @@ std::optional<uint64_t> BlockchainSQLite::fixup(bool recheck) {
                 logcat,
                 "Deleting invalid reward archive at blk {} (checksum failed)",
                 archive_height);
-        db::exec_query(
-                db,
+        session::sqlite::exec_query(
+                conn.sql,
                 "DELETE FROM batched_payments_accrued_archive WHERE height = ?",
                 archive_height);
     }
@@ -1822,23 +1830,19 @@ std::optional<uint64_t> BlockchainSQLite::fixup(bool recheck) {
         // As long as we are synced above 1'890'000 then we can load our hard-coded snapshot data
         // into the archive to rescan from there even if you had invalid 1'890'000 reward data.
         detach = snapshots::height;
-        auto ins = prepared_st(
-                "INSERT INTO batched_payments_accrued_archive ("
-                "address, amount, payout_offset, height, lifetime_locked_stakes, "
-                "lifetime_unlocked_stakes, lifetime_liquidated_stakes, lifetime_rewards"
-                ") VALUES (?, ?, NULL, ?, ?, ?, ?, ?)");
-        for (auto& r : snapshots::batched_payments) {
-            exec_query(
-                    ins,
-                    bind_guts(r.addr),
+        for (auto& r : snapshots::batched_payments)
+            conn.prepared_exec(
+                    "INSERT INTO batched_payments_accrued_archive ("
+                    "address, amount, payout_offset, height, lifetime_locked_stakes, "
+                    "lifetime_unlocked_stakes, lifetime_liquidated_stakes, lifetime_rewards"
+                    ") VALUES (?, ?, NULL, ?, ?, ?, ?, ?)",
+                    span_guts(r.addr),
                     r.amount,
                     snapshots::height,
                     r.lifetime_locked_stakes,
                     r.lifetime_unlocked_stakes,
                     r.lifetime_liquidated_stakes,
                     r.lifetime_rewards);
-            ins->reset();
-        }
 
         log::warning(logcat, "Loaded reward archive snapshot for height {}", snapshots::height);
     }
@@ -1848,12 +1852,7 @@ std::optional<uint64_t> BlockchainSQLite::fixup(bool recheck) {
     // reward table).  Rather than forcing a rescan from the beginning of HF21 we instead load a
     // hard-coded list of values that include all values up to 1'890'000, so that the rescan doesn't
     // have to cover as much.
-    db.exec("DELETE FROM delayed_payments");
-    auto ins = prepared_st(
-            "INSERT INTO delayed_payments ("
-            "eth_address, amount, payout_height, height, block_height, block_tx_index, "
-            "contributor_index, liquidation_amount"
-            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    conn.sql.exec("DELETE FROM delayed_payments");
     int count = 0;
     for (auto& [addr, amt, pay_h, h, block_h, block_tx, contr_i, liq] :
          snapshots::delayed_payments) {
@@ -1861,9 +1860,20 @@ std::optional<uint64_t> BlockchainSQLite::fixup(bool recheck) {
         // we're going to detach to there is no need to continue
         if (h > detach)
             break;
-        exec_query(ins, bind_guts(addr), amt, pay_h, h, block_h, block_tx, contr_i, liq);
+        conn.prepared_exec(
+                "INSERT INTO delayed_payments ("
+                "eth_address, amount, payout_height, height, block_height, block_tx_index, "
+                "contributor_index, liquidation_amount"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                span_guts(addr),
+                amt,
+                pay_h,
+                h,
+                block_h,
+                block_tx,
+                contr_i,
+                liq);
         count++;
-        ins->reset();
     }
     log::warning(
             logcat,

@@ -81,11 +81,11 @@ public:
   uint64_t m_max_packet_size; 
   std::chrono::nanoseconds m_invoke_timeout;
 
-  int invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, connection_id_t connection_id);
+  int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, connection_id_t connection_id);
   template<class callback_t>
-  int invoke_async(int command, const epee::span<const uint8_t> in_buff, connection_id_t connection_id, const callback_t &cb, std::chrono::nanoseconds timeout = 0s);
+  int invoke_async(int command, const std::span<const uint8_t> in_buff, connection_id_t connection_id, const callback_t &cb, std::chrono::nanoseconds timeout = 0s);
 
-  int notify(int command, const epee::span<const uint8_t> in_buff, connection_id_t connection_id);
+  int notify(int command, const std::span<const uint8_t> in_buff, connection_id_t connection_id);
   int send(epee::shared_sv message, const connection_id_t& connection_id);
   bool close(connection_id_t connection_id);
   bool update_connection_context(const t_connection_context& contxt);
@@ -115,7 +115,7 @@ class async_protocol_handler
 {
   std::string m_fragment_buffer;
 
-  bool send_message(uint32_t command, epee::span<const uint8_t> in_buff, uint32_t flags, bool expect_response)
+  bool send_message(uint32_t command, std::span<const uint8_t> in_buff, uint32_t flags, bool expect_response)
   {
     const bucket_head2 head = make_header(command, in_buff.size(), flags, expect_response);
     std::string data;
@@ -164,7 +164,7 @@ public:
 
   struct invoke_response_handler_base
   {
-    virtual bool handle(int res, const epee::span<const uint8_t> buff, connection_context& context)=0;
+    virtual bool handle(int res, const std::span<const uint8_t> buff, connection_context& context)=0;
     virtual bool is_timer_started() const=0;
     virtual void cancel()=0;
     virtual bool cancel_timer()=0;
@@ -184,7 +184,7 @@ public:
         {
           if(ec == boost::asio::error::operation_aborted)
             return;
-          epee::span<const uint8_t> fake;
+          std::span<const uint8_t> fake;
           cb(LEVIN_ERROR_CONNECTION_TIMEDOUT, fake, con.get_context_ref());
           con.close();
           con.finish_outer_call();
@@ -202,7 +202,7 @@ public:
     bool m_timer_cancelled;
     std::chrono::milliseconds m_timeout;
     int m_command;
-    virtual bool handle(int res, const epee::span<const uint8_t> buff, typename async_protocol_handler::connection_context& context)
+    virtual bool handle(int res, const std::span<const uint8_t> buff, typename async_protocol_handler::connection_context& context)
     {
       if(!cancel_timer())
         return false;
@@ -218,7 +218,7 @@ public:
     {
       if(cancel_timer())
       {
-        epee::span<const uint8_t> fake;
+        std::span<const uint8_t> fake;
         m_cb(LEVIN_ERROR_CONNECTION_DESTROYED, fake, m_con.get_context_ref());
         m_con.finish_outer_call();
       }
@@ -243,7 +243,7 @@ public:
         {
           if(ec == boost::asio::error::operation_aborted)
             return;
-          epee::span<const uint8_t> fake;
+          std::span<const uint8_t> fake;
           cb(LEVIN_ERROR_CONNECTION_TIMEDOUT, fake, con.get_context_ref());
           con.close();
           con.finish_outer_call();
@@ -413,7 +413,7 @@ public:
 
         {
           std::string temp{};
-          epee::span<const uint8_t> buff_to_invoke = m_cache_in_buffer.carve((std::string::size_type)m_current_head.m_cb);
+          std::span<const uint8_t> buff_to_invoke = m_cache_in_buffer.carve((std::string::size_type)m_current_head.m_cb);
           m_state = stream_state_head;
 
           // abstract_tcp_server2.h manages max bandwidth for a p2p link
@@ -471,7 +471,7 @@ public:
               {
                 std::lock_guard lock{m_local_inv_buff_lock};
                 m_local_inv_buff = std::string((const char*)buff_to_invoke.data(), buff_to_invoke.size());
-                buff_to_invoke = epee::span<const uint8_t>((const uint8_t*)NULL, 0);
+                buff_to_invoke = {};
                 m_invoke_result_code = m_current_head.m_return_code;
                 m_invoke_buf_ready = true;
               }
@@ -560,7 +560,7 @@ public:
   }
 
   template<class callback_t>
-  bool async_invoke(int command, const epee::span<const uint8_t> in_buff, const callback_t &cb, std::chrono::nanoseconds timeout = 0ns)
+  bool async_invoke(int command, const std::span<const uint8_t> in_buff, const callback_t &cb, std::chrono::nanoseconds timeout = 0ns)
   {
     auto scope_exit_handler = misc_utils::create_scope_leave_handler(
       [this] { return finish_outer_call(); });
@@ -605,7 +605,7 @@ public:
 
     if (LEVIN_OK != err_code)
     {
-      epee::span<const uint8_t> stub_buff = nullptr;
+      std::span<const uint8_t> stub_buff;
       // Never call callback inside locked section, that can cause deadlock
       cb(err_code, stub_buff, m_connection_context);
       return false;
@@ -614,7 +614,7 @@ public:
     return true;
   }
 
-  int invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out)
+  int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out)
   {
     auto scope_exit_handler = misc_utils::create_scope_leave_handler(
       [this] { return finish_outer_call(); });
@@ -663,7 +663,7 @@ public:
     return m_invoke_result_code;
   }
 
-  int notify(int command, const epee::span<const uint8_t> in_buff)
+  int notify(int command, const std::span<const uint8_t> in_buff)
   {
     auto scope_exit_handler = misc_utils::create_scope_leave_handler(
       [this] { return finish_outer_call(); });
@@ -796,7 +796,7 @@ int async_protocol_handler_config<t_connection_context>::find_and_lock_connectio
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context>
-int async_protocol_handler_config<t_connection_context>::invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, connection_id_t connection_id)
+int async_protocol_handler_config<t_connection_context>::invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, connection_id_t connection_id)
 {
   async_protocol_handler<t_connection_context>* aph;
   int r = find_and_lock_connection(connection_id, aph);
@@ -804,7 +804,7 @@ int async_protocol_handler_config<t_connection_context>::invoke(int command, con
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context> template<class callback_t>
-int async_protocol_handler_config<t_connection_context>::invoke_async(int command, const epee::span<const uint8_t> in_buff, connection_id_t connection_id, const callback_t &cb, std::chrono::nanoseconds timeout)
+int async_protocol_handler_config<t_connection_context>::invoke_async(int command, const std::span<const uint8_t> in_buff, connection_id_t connection_id, const callback_t &cb, std::chrono::nanoseconds timeout)
 {
   async_protocol_handler<t_connection_context>* aph;
   int r = find_and_lock_connection(connection_id, aph);
@@ -875,7 +875,7 @@ void async_protocol_handler_config<t_connection_context>::set_handler(levin_comm
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context>
-int async_protocol_handler_config<t_connection_context>::notify(int command, const epee::span<const uint8_t> in_buff, connection_id_t connection_id)
+int async_protocol_handler_config<t_connection_context>::notify(int command, const std::span<const uint8_t> in_buff, connection_id_t connection_id)
 {
   async_protocol_handler<t_connection_context>* aph;
   int r = find_and_lock_connection(connection_id, aph);

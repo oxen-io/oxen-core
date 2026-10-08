@@ -13,7 +13,7 @@
 
 #include "common/exception.h"
 #include "common/format.h"
-#include "epee/span.h"  // epee
+#include "epee/byte_span.h"
 
 namespace tools {
 

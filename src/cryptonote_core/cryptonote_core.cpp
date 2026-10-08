@@ -33,7 +33,6 @@
 #include <fmt/std.h>
 #include <oxenmq/fmt.h>
 #include <sodium.h>
-#include <sqlite3.h>
 
 #ifdef ENABLE_SYSTEMD
 extern "C" {
@@ -724,10 +723,6 @@ bool core::init(
     // Checkpoints
     m_checkpoints_path = m_config_folder / JSON_HASH_FILE_NAME;
 
-    sqlite3* ons_db = ons::init_oxen_name_system(ons_db_file_path, db->is_read_only());
-    if (!ons_db)
-        return false;
-
     init_oxenmq(vm);
     m_bls_aggregator = std::make_unique<eth::bls_aggregator>(*this);
 
@@ -882,7 +877,7 @@ bool core::init(
     r = blockchain.init(
             std::move(db),
             m_nettype,
-            ons_db,
+            ons_db_file_path,
             sqliteDB.release(),
             m_l2_tracker.get(),
             (m_nettype == network_type::FAKECHAIN && !test_options) ? &regtest_test_options

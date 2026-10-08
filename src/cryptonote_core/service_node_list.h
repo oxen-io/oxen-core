@@ -269,6 +269,8 @@ struct service_node_info  // registration information
                 uint64_t amount) :
                 version{version}, key_image_pub_key{pubkey}, key_image{key_image}, amount{amount} {}
 
+        bool operator==(const contribution_t&) const = default;
+
         template <class Archive>
         void serialize_object(Archive& ar) {
             field_varint(ar, "version", version, [](auto& version) {
@@ -296,6 +298,8 @@ struct service_node_info  // registration information
             reserved = reserved_;
             address = address_;
         }
+
+        bool operator==(const contributor_t&) const = default;
 
         template <class Archive>
         void serialize_object(Archive& ar) {
@@ -346,6 +350,7 @@ struct service_node_info  // registration information
     pulse_sort_key pulse_sorter;
 
     service_node_info() = default;
+    bool operator==(const service_node_info&) const = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
     bool is_decommissioned() const { return active_since_height < 0; }
 
@@ -1179,7 +1184,6 @@ class service_node_list {
                 cryptonote::BlockchainSQLite* sqlite_db_ptr,
                 cryptonote::network_type nettype,
                 state_set const& state_history,
-                state_set const& state_archive,
                 std::unordered_map<crypto::hash, state_t> const& alt_states,
                 const cryptonote::block& block,
                 const std::vector<cryptonote::transaction>& txs,
@@ -1202,8 +1206,8 @@ class service_node_list {
         // Returns true if a service node changed state (deregistered, decommissioned, or
         // recommissioned)
         bool process_state_change_tx(
+                const cryptonote::BlockchainDB& db,
                 state_set const& state_history,
-                state_set const& state_archive,
                 std::unordered_map<crypto::hash, state_t> const& alt_states,
                 cryptonote::network_type nettype,
                 const cryptonote::block& block,

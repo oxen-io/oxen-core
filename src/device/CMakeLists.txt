@@ -40,7 +40,7 @@ target_link_libraries(device
     ringct_basic
     Boost::serialization
   PRIVATE
-    SQLiteCpp
+    sqlitedb
     version
     logging
     extra)
@@ -53,6 +53,7 @@ endif()
 
 if(BUILD_STATIC_DEPS)
   message(STATUS "Using HIDAPI from static build deps")
+  include(${PROJECT_SOURCE_DIR}/cmake/deps/hidapi.cmake)
 else()
   add_library(hidapi_libusb INTERFACE)
   find_package(HIDAPI)

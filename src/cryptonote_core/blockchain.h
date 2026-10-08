@@ -68,7 +68,6 @@ using io_service = io_context;
 #include "pulse.h"
 #include "rpc/core_rpc_server_binary_commands.h"
 
-struct sqlite3;
 namespace service_nodes {
 class service_node_list;
 };
@@ -153,9 +152,8 @@ class Blockchain {
      *
      * @param db a pointer to the backing store to use for the blockchain.
      * @param nettype network type
-     * @param ons_db a raw, unmanaged pointer to the ONS sqlite3 database.  NOTE: the Blockchain
-     * object takes over ownership of this pointer, if not nullptr.  Should not be nullptr when
-     * operating as a regular oxen node.
+     * @param ons_db_path the path of the ONS database to open.  Should be given when operating as
+     * a regular oxen node.
      * @param sqlite_db a raw, unmanaged pointer to the BlockchainSQLite object.  NOTE: the
      * Blockchain object takes over ownership of this pointer, if not nullptr.  Should not be
      * nullptr when operating as a regular oxen node.
@@ -173,7 +171,7 @@ class Blockchain {
     bool init(
             std::unique_ptr<BlockchainDB> db,
             const network_type nettype,
-            sqlite3* ons_db = nullptr,
+            std::optional<fs::path> ons_db_path = std::nullopt,
             cryptonote::BlockchainSQLite* sqlite_db = nullptr,
             eth::L2Tracker* l2_tracker = nullptr,
             const cryptonote::test_options* test_options = nullptr,
@@ -187,7 +185,12 @@ class Blockchain {
             const cryptonote::test_options& test_options,
             cryptonote::BlockchainSQLite* sqlite_db = nullptr) {
         return init(
-                std::move(db), network_type::FAKECHAIN, nullptr, sqlite_db, nullptr, &test_options);
+                std::move(db),
+                network_type::FAKECHAIN,
+                std::nullopt,
+                sqlite_db,
+                nullptr,
+                &test_options);
     }
 
     /**

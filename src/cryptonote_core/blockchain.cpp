@@ -216,7 +216,7 @@ bool Blockchain::scan_outputkeys_for_indexes(
     if (!found) {
         try {
             m_db->get_output_key(
-                    epee::span<const uint64_t>(&tx_in_to_key.amount, 1),
+                    std::span<const uint64_t>(&tx_in_to_key.amount, 1),
                     absolute_offsets,
                     outputs,
                     true);
@@ -242,7 +242,7 @@ bool Blockchain::scan_outputkeys_for_indexes(
                 add_offsets.push_back(absolute_offsets[i]);
             try {
                 m_db->get_output_key(
-                        epee::span<const uint64_t>(&tx_in_to_key.amount, 1),
+                        std::span<const uint64_t>(&tx_in_to_key.amount, 1),
                         add_offsets,
                         add_outputs,
                         true);
@@ -558,6 +558,10 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
     rescan.top_block_height = end_height;
     rescan.skip_verify = true;
 
+    std::optional<BlockchainSQLite::Batch> sql_batch;
+    if (m_sqlite_db && total_blocks > 0)
+        sql_batch.emplace(*m_sqlite_db);
+
     while (true) {
         ZoneScopedN("Load blocks into subsystem");
 
@@ -695,6 +699,8 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
         }
         TracyCZoneEnd(add_block_chunk_to_subsystems);
     }
+    if (sql_batch)
+        sql_batch->finish();
     auto end = clock::now();
 
     if (total_blocks > 0) {
@@ -768,7 +774,7 @@ static bool exec_detach_hooks(
 bool Blockchain::init(
         std::unique_ptr<BlockchainDB> db,
         const network_type nettype,
-        sqlite3* ons_db,
+        std::optional<fs::path> ons_db_path,
         cryptonote::BlockchainSQLite* sqlite_db,
         eth::L2Tracker* l2_tracker,
         const cryptonote::test_options* test_options,
@@ -935,7 +941,7 @@ bool Blockchain::init(
             return false;
     }
 
-    if (ons_db && !m_ons_db.init(this, nettype, ons_db)) {
+    if (ons_db_path && !m_ons_db.init(this, nettype, *ons_db_path, m_db->is_read_only())) {
         log::error(logcat, "ONS failed to initialise");
         return false;
     }
@@ -3206,8 +3212,7 @@ bool Blockchain::get_outs(
             amounts.push_back(i.amount);
             offsets.push_back(i.index);
         }
-        m_db->get_output_key(
-                epee::span<const uint64_t>(amounts.data(), amounts.size()), offsets, data);
+        m_db->get_output_key(amounts, offsets, data);
         if (data.size() != req.outputs.size()) {
             log::error(
                     logcat,
@@ -5829,7 +5834,9 @@ bool Blockchain::handle_block_to_main_chain(
     abort_block.cancel();
     uint64_t const fee_after_penalty = get_outs_money_amount(bl.miner_tx) - base_reward;
     if (bl.signatures.size() ==
-        service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(hf_version, prev_active_sns)) {
+        service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(
+                hf_version,
+                service_nodes::PULSE_QUORUM_NUM_VALIDATORS(hf_version, prev_active_sns))) {
         log::info(
                 logcat,
                 "\n+++++ PULSE BLOCK SUCCESSFULLY ADDED\n\tid: {}\n\tHEIGHT: {}, v{}.{}\n\tblock "
@@ -6511,8 +6518,8 @@ bool Blockchain::prepare_handle_incoming_blocks(
                             &waiter,
                             [this,
                              thread_height,
-                             blocks = epee::span<const block>(
-                                     &blocks[thread_height - height], nblocks),
+                             blocks = std::span<const block>{blocks}.subspan(
+                                     thread_height - height, nblocks),
                              &map = maps[i]] { block_longhash_worker(thread_height, blocks, map); },
                             true);
                     thread_height += nblocks;
@@ -6622,7 +6629,7 @@ bool Blockchain::prepare_handle_incoming_blocks(
 
         try {
             constexpr uint64_t amount{0};
-            m_db->get_output_key(epee::span<const uint64_t>(&amount, 1), offsets, txs, true);
+            m_db->get_output_key(std::span<const uint64_t>(&amount, 1), offsets, txs, true);
         } catch (const std::exception& e) {
             log::error(logverify, "EXCEPTION: {}", e.what());
         } catch (...) {

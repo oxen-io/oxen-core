@@ -29,8 +29,6 @@
 #include <array>
 #include <boost/predef/other/endian.h>
 #include <oxenc/endian.h>
-#include <boost/range/algorithm/equal.hpp>
-#include <boost/range/algorithm_ext/iota.hpp>
 #include <cstdint>
 #include <gtest/gtest.h>
 #include <iterator>
@@ -51,46 +49,11 @@
 #include "epee/net/local_ip.h"
 #include "epee/net/buffer.h"
 #include "p2p/net_peerlist_boost_serialization.h"
-#include "epee/span.h"
 #include "epee/string_tools.h"
 #include "epee/storages/parserse_base_utils.h"
 
 namespace
 {
-  template<typename Destination, typename Source>
-  bool can_construct()
-  {
-    const unsigned count =
-      unsigned(std::is_constructible<Destination, Source>()) +
-      unsigned(std::is_constructible<Destination, Source&>()) +
-      unsigned(std::is_convertible<Source, Destination>()) +
-      unsigned(std::is_convertible<Source&, Destination>()) +
-      unsigned(std::is_assignable<Destination, Source>()) +
-      unsigned(std::is_assignable<Destination, Source&>());
-    EXPECT_TRUE(count == 6 || count == 0) <<
-      "Mismatch on construction results - " << count << " were true";
-    return count == 6; 
-  }
-
-  // This is probably stressing the compiler more than the implementation ...
-  constexpr const epee::span<const char> test_string("a string");
-  static_assert(!test_string.empty(), "test failure");
-  static_assert(test_string.size() == 9, "test failure");
-  static_assert(test_string.size_bytes() == 9, "test_failure");
-  static_assert(test_string.begin() == test_string.cbegin(), "test failure");
-  static_assert(test_string.end() == test_string.cend(), "test failure");
-  static_assert(test_string.cend() - test_string.cbegin() == 9, "test failure");
-  static_assert(*test_string.cbegin() == 'a', "test failure");
-  static_assert(*(test_string.cend() - 2) == 'g', "test failure");
-  static_assert(
-    epee::span<const char>(test_string).cbegin() + 3 == test_string.cbegin() + 3,
-    "test failure"
-  );
-
-  static_assert(epee::span<char>().empty(), "test failure");
-  static_assert(epee::span<char>(nullptr).empty(), "test failure");
-  static_assert(epee::span<const char>("foo", 2).size() == 2, "test failure");
-
   #define CHECK_EQUAL(lhs, rhs) \
     EXPECT_TRUE( lhs == rhs );  \
     EXPECT_TRUE( rhs == lhs );  \
@@ -124,238 +87,6 @@ namespace
   #else
     #define CHECK_LESS_ENDIAN(lhs, rhs) CHECK_LESS( lhs , rhs )
   #endif
-}
-
-TEST(Span, Traits)
-{
-  EXPECT_TRUE((std::is_same<std::size_t, typename epee::span<char>::size_type>()));
-  EXPECT_TRUE((std::is_same<std::ptrdiff_t, typename epee::span<char>::difference_type>()));
-  EXPECT_TRUE((std::is_same<char, typename epee::span<char>::value_type>()));
-  EXPECT_TRUE((std::is_same<char*, typename epee::span<char>::pointer>()));
-  EXPECT_TRUE((std::is_same<const char*, typename epee::span<char>::const_pointer>()));
-  EXPECT_TRUE((std::is_same<char*, typename epee::span<char>::iterator>()));
-  EXPECT_TRUE((std::is_same<const char*, typename epee::span<char>::const_iterator>()));
-  EXPECT_TRUE((std::is_same<char&, typename epee::span<char>::reference>()));
-  EXPECT_TRUE((std::is_same<const char&, typename epee::span<char>::const_reference>()));
-
-  EXPECT_TRUE((std::is_same<std::size_t, typename epee::span<const char>::size_type>()));
-  EXPECT_TRUE((std::is_same<std::ptrdiff_t, typename epee::span<const char>::difference_type>()));
-  EXPECT_TRUE((std::is_same<const char, typename epee::span<const char>::value_type>()));
-  EXPECT_TRUE((std::is_same<const char*, typename epee::span<const char>::pointer>()));
-  EXPECT_TRUE((std::is_same<const char*, typename epee::span<const char>::const_pointer>()));
-  EXPECT_TRUE((std::is_same<const char*, typename epee::span<const char>::iterator>()));
-  EXPECT_TRUE((std::is_same<const char*, typename epee::span<const char>::const_iterator>()));
-  EXPECT_TRUE((std::is_same<const char&, typename epee::span<const char>::reference>()));
-  EXPECT_TRUE((std::is_same<const char&, typename epee::span<const char>::const_reference>()));
-}
-
-TEST(Span, MutableConstruction)
-{
-  struct no_conversion{};
-  struct inherited : no_conversion {};
-
-  EXPECT_TRUE(std::is_constructible<epee::span<char>>());
-  EXPECT_TRUE((std::is_constructible<epee::span<char>, char*, std::size_t>()));
-  EXPECT_FALSE((std::is_constructible<epee::span<char>, const char*, std::size_t>()));
-  EXPECT_FALSE((std::is_constructible<epee::span<char>, unsigned char*, std::size_t>()));
-
-  EXPECT_TRUE(std::is_constructible<epee::span<no_conversion>>());
-  EXPECT_TRUE((std::is_constructible<epee::span<no_conversion>, no_conversion*, std::size_t>()));
-  EXPECT_FALSE((std::is_constructible<epee::span<no_conversion>, inherited*, std::size_t>()));
-
-  EXPECT_TRUE((can_construct<epee::span<char>, std::nullptr_t>()));
-  EXPECT_TRUE((can_construct<epee::span<char>, char(&)[1]>()));
-
-  EXPECT_FALSE((can_construct<epee::span<char>, std::vector<char>>()));
-  EXPECT_FALSE((can_construct<epee::span<char>, std::array<char, 1>>()));
-
-  EXPECT_FALSE((can_construct<epee::span<char>, std::wstring>()));
-  EXPECT_FALSE((can_construct<epee::span<char>, const std::vector<char>>()));
-  EXPECT_FALSE((can_construct<epee::span<char>, std::vector<unsigned char>>()));
-  EXPECT_FALSE((can_construct<epee::span<char>, const std::array<char, 1>>()));
-  EXPECT_FALSE((can_construct<epee::span<char>, std::array<unsigned char, 1>>()));
-  EXPECT_FALSE((can_construct<epee::span<char>, const char[1]>()));
-  EXPECT_FALSE((can_construct<epee::span<char>, unsigned char[1]>()));
-  EXPECT_FALSE((can_construct<epee::span<char>, epee::span<const char>>()));
-  EXPECT_FALSE((can_construct<epee::span<char>, epee::span<unsigned char>>()));
-  EXPECT_FALSE((can_construct<epee::span<char>, no_conversion>()));
-}
-
-TEST(Span, ImmutableConstruction)
-{
-  struct no_conversion{};
-  struct inherited : no_conversion {};
-
-  EXPECT_TRUE(std::is_constructible<epee::span<const char>>());
-  EXPECT_TRUE((std::is_constructible<epee::span<const char>, char*, std::size_t>()));
-  EXPECT_TRUE((std::is_constructible<epee::span<const char>, const char*, std::size_t>()));
-  EXPECT_FALSE((std::is_constructible<epee::span<const char>, unsigned char*, std::size_t>()));
-
-  EXPECT_TRUE(std::is_constructible<epee::span<const no_conversion>>());
-  EXPECT_TRUE((std::is_constructible<epee::span<const no_conversion>, const no_conversion*, std::size_t>()));
-  EXPECT_TRUE((std::is_constructible<epee::span<const no_conversion>, no_conversion*, std::size_t>()));
-  EXPECT_FALSE((std::is_constructible<epee::span<const no_conversion>, const inherited*, std::size_t>()));
-  EXPECT_FALSE((std::is_constructible<epee::span<const no_conversion>, inherited*, std::size_t>()));
-
-  EXPECT_FALSE((can_construct<epee::span<const char>, std::string>()));
-  EXPECT_FALSE((can_construct<epee::span<const char>, std::vector<char>>()));
-  EXPECT_FALSE((can_construct<epee::span<const char>, const std::vector<char>>()));
-  EXPECT_FALSE((can_construct<epee::span<const char>, std::array<char, 1>>()));
-  EXPECT_FALSE((can_construct<epee::span<const char>, const std::array<char, 1>>()));
-
-  EXPECT_TRUE((can_construct<epee::span<const char>, std::nullptr_t>()));
-  EXPECT_TRUE((can_construct<epee::span<const char>, char[1]>()));
-  EXPECT_TRUE((can_construct<epee::span<const char>, const char[1]>()));
-  EXPECT_TRUE((can_construct<epee::span<const char>, epee::span<const char>>()));
-
-  EXPECT_FALSE((can_construct<epee::span<const char>, std::wstring>()));
-  EXPECT_FALSE((can_construct<epee::span<const char>, std::vector<unsigned char>>()));
-  EXPECT_FALSE((can_construct<epee::span<const char>, std::array<unsigned char, 1>>()));
-  EXPECT_FALSE((can_construct<epee::span<const char>, unsigned char[1]>()));
-  EXPECT_FALSE((can_construct<epee::span<const char>, epee::span<unsigned char>>()));
-  EXPECT_FALSE((can_construct<epee::span<const char>, no_conversion>()));
-}
-
-TEST(Span, NoExcept)
-{
-  EXPECT_TRUE(std::is_nothrow_default_constructible<epee::span<char>>());
-  EXPECT_TRUE(std::is_nothrow_move_constructible<epee::span<char>>());
-  EXPECT_TRUE(std::is_nothrow_copy_constructible<epee::span<char>>());
-  EXPECT_TRUE(std::is_move_assignable<epee::span<char>>());
-  EXPECT_TRUE(std::is_copy_assignable<epee::span<char>>());
-
-  char data[10];
-  epee::span<char> lvalue(data);
-  const epee::span<char> clvalue(data);
-  EXPECT_TRUE(noexcept(epee::span<char>()));
-  EXPECT_TRUE(noexcept(epee::span<char>(nullptr)));
-  EXPECT_TRUE(noexcept(epee::span<char>(data)));
-  EXPECT_TRUE(noexcept(epee::span<char>(lvalue)));
-  EXPECT_TRUE(noexcept(epee::span<char>(clvalue)));
-
-  // conversion from mutable to immutable not yet implemented
-  // EXPECT_TRUE(noexcept(epee::span<const char>(lvalue)));
-  // EXPECT_TRUE(noexcept(epee::span<const char>(clvalue)));
-
-  EXPECT_TRUE(noexcept(epee::span<char>(epee::span<char>(lvalue))));
-  EXPECT_TRUE(noexcept(lvalue = lvalue));
-  EXPECT_TRUE(noexcept(lvalue = clvalue));
-  EXPECT_TRUE(noexcept(lvalue = epee::span<char>(lvalue)));
-}
-
-TEST(Span, Nullptr)
-{
-  const auto check_empty = [](epee::span<const char> data)
-  {
-    EXPECT_TRUE(data.empty());
-    EXPECT_EQ(data.cbegin(), data.begin());
-    EXPECT_EQ(data.cend(), data.end());
-    EXPECT_EQ(data.cend(), data.cbegin());
-    EXPECT_EQ(0, data.size());
-    EXPECT_EQ(0, data.size_bytes());
-  };
-  check_empty({});
-  check_empty(nullptr); 
-}
-
-TEST(Span, Writing)
-{
-  const int expected[] = {-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-  std::vector<int> source;
-
-  epee::span<int> span;
-  EXPECT_TRUE(span.empty());
-  EXPECT_EQ(0, span.size());
-  EXPECT_EQ(0, span.size_bytes());
-
-  source.resize(15);
-  span = {source.data(), source.size()};
-  EXPECT_FALSE(span.empty());
-  EXPECT_EQ(15, span.size());
-  EXPECT_EQ(15 * 4, span.size_bytes());
-
-  boost::range::iota(span, -5);
-  EXPECT_EQ(span.begin(), span.cbegin());
-  EXPECT_EQ(span.end(), span.cend());
-  EXPECT_TRUE(boost::range::equal(expected, source));
-  EXPECT_TRUE(boost::range::equal(expected, span));
-}
-
-TEST(Span, RemovePrefix)
-{
-  const  std::array<unsigned, 4> expected{0, 1, 2, 3};
-  auto span = epee::to_span(expected);
-
-  EXPECT_EQ(expected.begin(), span.begin());
-  EXPECT_EQ(expected.end(), span.end());
-
-  EXPECT_EQ(2u, span.remove_prefix(2));
-  EXPECT_EQ(expected.begin() + 2, span.begin());
-  EXPECT_EQ(expected.end(), span.end());
-
-  EXPECT_EQ(2u, span.remove_prefix(3));
-  EXPECT_EQ(span.begin(), span.end());
-  EXPECT_EQ(expected.end(), span.begin());
-
-  EXPECT_EQ(0u, span.remove_prefix(100));
-}
-
-TEST(Span, ToByteSpan)
-{
-  const char expected[] = {56, 44, 11, 5};
-  EXPECT_TRUE(
-    boost::range::equal(
-      std::array<std::uint8_t, 4>{{56, 44, 11, 5}},
-      epee::to_byte_span<char>(expected)
-    )
-  );
-  EXPECT_TRUE(
-    boost::range::equal(
-      std::array<char, 4>{{56, 44, 11, 5}},
-      epee::to_byte_span(epee::span<const char>{expected})
-    )
-  );
-}
-
-TEST(Span, AsByteSpan)
-{
-  struct some_pod { char value[4]; };
-  const some_pod immutable {{ 5, 10, 12, 127 }};
-  EXPECT_TRUE(
-    boost::range::equal(
-      std::array<unsigned char, 4>{{5, 10, 12, 127}},
-      epee::as_byte_span(immutable)
-    )
-  );
-  EXPECT_TRUE(
-    boost::range::equal(
-      std::array<std::uint8_t, 3>{{'a', 'y', 0x00}}, epee::as_byte_span("ay")
-    )
-  );
-}
-
-TEST(Span, AsMutByteSpan)
-{
-  struct some_pod { char value[4]; };
-  some_pod actual {};
-
-  auto span = epee::as_mut_byte_span(actual);
-  boost::range::iota(span, 1);
-  EXPECT_TRUE(
-    boost::range::equal(
-      std::array<unsigned char, 4>{{1, 2, 3, 4}}, actual.value
-    )
-  );
-}
-
-TEST(Span, ToMutSpan)
-{
-  std::vector<unsigned> mut;
-  mut.resize(4);
-
-  auto span = epee::to_mut_span(mut);
-  boost::range::iota(span, 1);
-  EXPECT_EQ((std::vector<unsigned>{1, 2, 3, 4}), mut);
 }
 
 static_assert(std::is_default_constructible_v<epee::shared_sv>);
@@ -699,7 +430,7 @@ TEST(net_buffer, basic)
   ASSERT_EQ(buf.size(), 0);
   EXPECT_THROW(buf.span(1), std::runtime_error);
   buf.append("a", 1);
-  epee::span<const uint8_t> span = buf.span(1);
+  std::span<const uint8_t> span =buf.span(1);
   ASSERT_EQ(span.size(), 1);
   ASSERT_EQ(span.data()[0], 'a');
   EXPECT_THROW(buf.span(2), std::runtime_error);
@@ -730,7 +461,7 @@ TEST(net_buffer, existing_capacity)
   buf.append("abc", 3);
   buf.append("def", 3);
   ASSERT_EQ(buf.size(), 6);
-  epee::span<const uint8_t> span = buf.span(6);
+  std::span<const uint8_t> span =buf.span(6);
   ASSERT_TRUE(!memcmp(span.data(), "abcdef", 6));
 }
 
@@ -741,7 +472,7 @@ TEST(net_buffer, reallocate)
   buf.append(std::string(4000, ' ').c_str(), 4000);
   buf.append(std::string(8000, '0').c_str(), 8000);
   ASSERT_EQ(buf.size(), 12000);
-  epee::span<const uint8_t> span = buf.span(12000);
+  std::span<const uint8_t> span =buf.span(12000);
   ASSERT_TRUE(!memcmp(span.data(), std::string(4000, ' ').c_str(), 4000));
   ASSERT_TRUE(!memcmp(span.data() + 4000, std::string(8000, '0').c_str(), 8000));
 }
@@ -754,7 +485,7 @@ TEST(net_buffer, move)
   buf.erase(399);
   buf.append(std::string(4000, '0').c_str(), 4000);
   ASSERT_EQ(buf.size(), 4001);
-  epee::span<const uint8_t> span = buf.span(4001);
+  std::span<const uint8_t> span =buf.span(4001);
   ASSERT_TRUE(!memcmp(span.data(), std::string(1, ' ').c_str(), 1));
   ASSERT_TRUE(!memcmp(span.data() + 1, std::string(4000, '0').c_str(), 4000));
 }

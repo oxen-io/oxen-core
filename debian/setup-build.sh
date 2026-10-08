@@ -34,10 +34,10 @@ s/@IF_SPD \([^@]*\)@/${WITH_SPD:+\\1}/g;
 s/@IF_SECP \([^@]*\)@/${WITH_SECP:+\\1}/g;
 " debian/control.in >debian/control
 
-timestamp=${DRONE_BUILD_STARTED:-$(date +%s)}
+timestamp=${CI_PIPELINE_STARTED:-$(date +%s)}
 date_ver=$(date -u -d "@$timestamp" '+%Y%m%d%H%M%S')
 date_changelog=$(date -d "@$timestamp" -R)
-git_commit=${DRONE_COMMIT:-$(git rev-parse HEAD)}
+git_commit=${CI_COMMIT_SHA:-$(git rev-parse HEAD)}
 git_commit_short=${git_commit:0:6}
 pkg_ver=$OXEN_VERSION~dev$date_ver~git$git_commit_short${DEBIAN_SUFFIX:-1}
 

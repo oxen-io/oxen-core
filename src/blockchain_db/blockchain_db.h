@@ -33,7 +33,11 @@
 
 #include <boost/program_options.hpp>
 #include <exception>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "common/command_line.h"
 #include "common/fs.h"
@@ -1494,7 +1498,7 @@ class BlockchainDB {
      * @param outputs return-by-reference a list of outputs' metadata
      */
     virtual void get_output_key(
-            const epee::span<const uint64_t>& amounts,
+            std::span<const uint64_t> amounts,
             const std::vector<uint64_t>& offsets,
             std::vector<output_data_t>& outputs,
             bool allow_partial = false) const = 0;
@@ -1872,7 +1876,20 @@ class BlockchainDB {
     virtual void add_output_blacklist(std::vector<uint64_t> const& blacklist) = 0;
     virtual void set_service_node_data(const std::string& data, bool long_term) = 0;
     virtual bool get_service_node_data(std::string& data, bool long_term) const = 0;
+    /// Removes the single stored service node data blob for `long_term`, if present.
+    virtual void delete_service_node_data(bool long_term) = 0;
+    /// Removes all stored service node data blobs and all archived service node list states.
     virtual void clear_service_node_data() = 0;
+
+    /// Stores the serialized service node list state archived at `height`, replacing any existing
+    /// entry at that height.
+    virtual void put_service_node_archive(uint64_t height, std::string_view data) = 0;
+    /// Retrieves the serialized service node list state archived at exactly `height`, if any.
+    virtual std::optional<std::string> get_service_node_archive(uint64_t height) const = 0;
+    /// Returns the heights of all archived service node list states, in ascending order.
+    virtual std::vector<uint64_t> get_service_node_archive_heights() const = 0;
+    /// Deletes the archived service node list states with heights in [begin, end).
+    virtual void delete_service_node_archives(uint64_t begin, uint64_t end) = 0;
 
     /// Updates the given proof data with the latest stored info for the given service node. Returns
     /// true if found (and fields updated), false otherwise.

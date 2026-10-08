@@ -46,7 +46,7 @@ target_link_libraries(daemon
     daemon_rpc_server
     logging
     version
-    SQLiteCpp
+    sqlitedb
     systemd
     jemalloc::jemalloc
     extra)

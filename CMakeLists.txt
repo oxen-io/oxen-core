@@ -44,7 +44,7 @@ if(CCACHE_PROGRAM)
   endforeach()
 endif()
 
-cmake_minimum_required(VERSION 3.13...3.24)
+cmake_minimum_required(VERSION 3.18...3.24)
 message(STATUS "CMake version ${CMAKE_VERSION}")
 
 # Has to be set before `project()`, and ignored on non-macos:
@@ -263,52 +263,36 @@ option(BUILD_TESTS "Build tests." OFF)
 
 OPTION(USE_DEVICE_TREZOR "Build Trezor support (currently non-functional)" OFF)
 
-find_package(Git)
-if(NOT MANUAL_SUBMODULES)
-  if(GIT_FOUND)
-    function (check_submodule relative_path)
-      execute_process(COMMAND git rev-parse "HEAD" WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${relative_path} OUTPUT_VARIABLE localHead)
-      execute_process(COMMAND git rev-parse "HEAD:${relative_path}" WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE checkedHead)
-      string(COMPARE EQUAL "${localHead}" "${checkedHead}" upToDate)
-      if (upToDate)
-        message(STATUS "Submodule '${relative_path}' is up-to-date")
-      else()
-        message(FATAL_ERROR "Submodule '${relative_path}' is not up-to-date. Please update with\ngit submodule update --init --recursive\nor run cmake with -DMANUAL_SUBMODULES=1")
-      endif()
+# session-deps has its own LTO switch for static dependency builds that defaults ON regardless of
+# ours; leaving the two to disagree breaks the link, because an LTO'd static archive can't be
+# consumed by a non-LTO link (clang emits pure bitcode archives, which either fail to load or get
+# silently dropped).  Seed it from what we actually settled on above so USE_LTO is the only knob.
+set(SESSIONDEPS_LTO ${IPO_ENABLED} CACHE BOOL "Use LTO for static dependency builds, where supported" FORCE)
 
-      # Extra arguments check nested submodules
-      foreach(submod ${ARGN})
-        execute_process(COMMAND git rev-parse "HEAD" WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${relative_path}/${submod} OUTPUT_VARIABLE localHead)
-        execute_process(COMMAND git rev-parse "HEAD:${submod}" WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${relative_path} OUTPUT_VARIABLE checkedHead)
-        string(COMPARE EQUAL "${localHead}" "${checkedHead}" upToDate)
-        if (NOT upToDate)
-          message(FATAL_ERROR "Nested submodule '${relative_path}/${submod}' is not up-to-date. Please update with\ngit submodule update --init --recursive\nor run cmake with -DMANUAL_SUBMODULES=1")
-        endif()
-      endforeach()
-    endfunction ()
-    
-    message(STATUS "Checking submodules")
-    check_submodule(external/rapidjson)
-    check_submodule(external/trezor-common)
-    check_submodule(external/randomx)
-    check_submodule(external/oxen-encoding)
-    check_submodule(external/oxen-mq cppzmq)
-    check_submodule(external/SQLiteCpp)
-    if(BUILD_TESTS)
-      check_submodule(external/googletest)
-      check_submodule(external/Catch2)
-    endif()
-    check_submodule(external/uWebSockets uSockets)
-    check_submodule(external/SQLiteCpp)
-    check_submodule(external/pybind11)
-  endif()
+include(cmake/session-deps/Deps.cmake)
+
+message(STATUS "Checking submodules")
+check_submodule(cmake/session-deps)
+check_submodule(external/rapidjson)
+check_submodule(external/trezor-common)
+check_submodule(external/randomx)
+check_submodule(external/oxen-encoding)
+check_submodule(external/oxen-logging fmt spdlog)
+check_submodule(external/oxen-mq cppzmq)
+check_submodule(external/session-sqlite SQLiteCpp cmake/session-deps)
+check_submodule(external/ethyl external/cpr external/json)
+check_submodule(external/bn256)
+check_submodule(external/date)
+check_submodule(external/cpptrace)
+if(BUILD_TESTS)
+  check_submodule(external/googletest)
+  check_submodule(external/Catch2)
 endif()
+check_submodule(external/uWebSockets uSockets)
+check_submodule(external/pybind11)
 
 # set this to 0 if per-block checkpoint needs to be disabled
 option(PER_BLOCK_CHECKPOINT "Enables per-block checkpointing" ON)
-
-list(INSERT CMAKE_MODULE_PATH 0
-  "${CMAKE_SOURCE_DIR}/cmake")
 
 option(BOOST_IGNORE_SYSTEM_PATHS "Ignore boost system paths for local boost installation" OFF)
 
@@ -358,11 +342,6 @@ if(APPLE)
   if(POLICY CMP0042)
     cmake_policy(SET CMP0042 NEW)
   endif()
-endif()
-
-option(BUILD_STATIC_DEPS "Download, build and statically link against core dependencies" OFF)
-if(BUILD_STATIC_DEPS)
-  include(StaticBuild)
 endif()
 
 if(MSVC OR MINGW OR BUILD_STATIC_DEPS)
@@ -442,29 +421,13 @@ add_subdirectory(translations)
 
 add_library(systemd INTERFACE)  # Will do nothing unless we find and enable systemd support
 
-if(NOT TARGET sodium)
-# Allow -D DOWNLOAD_SODIUM=FORCE to download without even checking for a local libsodium
-  option(DOWNLOAD_SODIUM "Allow libsodium to be downloaded and built locally if not found on the system" OFF)
-  if(NOT DOWNLOAD_SODIUM STREQUAL "FORCE" AND NOT BUILD_STATIC_DEPS)
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SODIUM libsodium>=1.0.9 IMPORTED_TARGET)
-  endif()
-
-  add_library(sodium INTERFACE)
-  if(SODIUM_FOUND AND NOT DOWNLOAD_SODIUM STREQUAL "FORCE" AND NOT BUILD_STATIC_DEPS)
-    target_link_libraries(sodium INTERFACE PkgConfig::SODIUM)
-  else()
-    if(NOT DOWNLOAD_SODIUM AND NOT BUILD_STATIC_DEPS)
-      message(FATAL_ERROR "Could not find libsodium >= 1.0.9; either install it on your system or use -DDOWNLOAD_SODIUM=ON to download and build an internal copy")
-    endif()
-    message(STATUS "Sodium >= 1.0.9 not found, but DOWNLOAD_SODIUM specified, so downloading it")
-    include(DownloadLibSodium)
-    target_link_libraries(sodium INTERFACE sodium_vendor)
-  endif()
-
-  # Need this target export so that oxen-mq properly picks up sodium
-  export(TARGETS sodium NAMESPACE sodium:: FILE sodium-exports.cmake)
-endif()
+session_dep(libsodium 1.0.17)
+session_dep(libzstd 1.5.0)
+# 3.36 is required by session-sqlite for in-memory databases (which need the memdb VFS).  Anything
+# older falls back to a static sqlite3mc, which is a regular sqlite3 with encryption bolted on that
+# we simply don't use.
+session_dep(sqlite3 3.36.0)
+session_dep(gmp 6)
 
 option(WITH_SYSTEMD "Attempts to link against and enable systemd daemon notification support" ON)
 if (WITH_SYSTEMD AND NOT BUILD_STATIC_DEPS)
@@ -487,22 +450,6 @@ if (USE_JEMALLOC AND NOT BUILD_STATIC_DEPS)
   if(JEMALLOC_FOUND)
     target_link_libraries(jemalloc INTERFACE PkgConfig::JEMALLOC)
   endif()
-endif()
-
-if(NOT BUILD_STATIC_DEPS)
-  find_package(PkgConfig REQUIRED)
-
-  pkg_check_modules(SQLITE3 REQUIRED sqlite3>=3.24.0 IMPORTED_TARGET GLOBAL)
-  message(STATUS "Found sqlite3 ${SQLITE3_VERSION}")
-  add_library(SQLite::SQLite3 ALIAS PkgConfig::SQLITE3)
-
-  pkg_check_modules(GMP REQUIRED gmp IMPORTED_TARGET GLOBAL)
-  message(STATUS "Found gmp ${GMP_VERSION}")
-  add_library(gmp::gmp ALIAS PkgConfig::GMP)
-
-  pkg_check_modules(ZSTD REQUIRED libzstd IMPORTED_TARGET GLOBAL)
-  message(STATUS "Found zstd ${ZSTD_VERSION}")
-  add_library(zstd::zstd ALIAS PkgConfig::ZSTD)
 endif()
 
 set(OXEN_EXECUTABLE_SUFFIX "" CACHE STRING "suffix to add to executable names")
@@ -802,7 +749,7 @@ endif()
 set(Boost_USE_MULTITHREADED TRUE) # Needed for macOS, at least, and won't hurt elsewhere
 
 if(BUILD_STATIC_DEPS)
-  # StaticBuild.cmake sets Boost targets up for us
+  include(cmake/deps/boost.cmake)
 else()
   find_package(Boost 1.69 QUIET REQUIRED COMPONENTS thread serialization program_options)
 endif()
@@ -855,7 +802,7 @@ endif()
 
 option(USE_READLINE "Build with GNU readline support." ON)
 if(USE_READLINE AND BUILD_STATIC_DEPS)
-  # readline target already set up
+  message(STATUS "Building without readline support: static builds don't have a static readline")
 elseif(USE_READLINE)
   find_package(Readline)
   if(READLINE_FOUND AND GNU_READLINE_FOUND)

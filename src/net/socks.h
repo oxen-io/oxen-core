@@ -35,10 +35,10 @@
 #include <boost/type_traits/integral_constant.hpp>
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string_view>
 #include <utility>
 
-#include "epee/span.h"
 #include "net/fwd.h"
 
 namespace boost::asio {
@@ -131,7 +131,7 @@ class client {
     socks::version socks_version() const noexcept { return ver_; }
 
     //! \return Contents of internal buffer.
-    epee::span<const std::uint8_t> buffer() const noexcept { return {buffer_, buffer_size_}; }
+    std::span<const std::uint8_t> buffer() const noexcept { return {buffer_, buffer_size_}; }
 
     //! \post `buffer.empty()`.
     void clear_command() noexcept { buffer_size_ = 0; }
