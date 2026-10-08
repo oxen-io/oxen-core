@@ -34,6 +34,7 @@
 #include <session/placeholders.hpp>
 #include <unordered_map>
 
+#include "checkpoints/checkpoints.h"
 #include "common/format.h"
 #include "common/guts.h"
 #include "common/oxen.h"
@@ -131,10 +132,31 @@ CREATE TABLE properties (
     key   TEXT PRIMARY KEY,
     value ANY NOT NULL
 ) STRICT, WITHOUT ROWID;
+
+-- No foreign key to blocks: hardcoded checkpoints are stored at startup, long before the chain
+-- reaches their heights.
+CREATE TABLE checkpoints (
+    height INTEGER PRIMARY KEY,
+    hash   BLOB    NOT NULL CHECK(length(hash) = 32),
+    type   INTEGER NOT NULL
+) STRICT;
+CREATE TABLE checkpoint_signatures (
+    height      INTEGER NOT NULL REFERENCES checkpoints(height) ON DELETE CASCADE,
+    voter_index INTEGER NOT NULL,
+    signature   BLOB    NOT NULL CHECK(length(signature) = 64),
+    PRIMARY KEY(height, voter_index)
+) STRICT, WITHOUT ROWID;
 )";
 
     // Tables in the order they can be emptied in without violating a foreign key.
-    constexpr std::array ALL_TABLES{"key_images", "outputs", "transactions", "blocks", "properties"};
+    constexpr std::array ALL_TABLES{
+            "key_images",
+            "outputs",
+            "transactions",
+            "blocks",
+            "properties",
+            "checkpoint_signatures",
+            "checkpoints"};
 
     // Views a byte string as unsigned chars, so that it binds as a BLOB rather than as TEXT (which
     // a STRICT BLOB column refuses).
@@ -1434,6 +1456,116 @@ bool BlockchainSQLite::for_all_outputs(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Checkpoints
+// ---------------------------------------------------------------------------------------------
+
+void BlockchainSQLite::update_block_checkpoint(checkpoint_t const& checkpoint) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    auto& conn = write_conn();
+    const auto height = as_i64(checkpoint.height);
+    conn.prepared_exec(
+            "INSERT INTO checkpoints (height, hash, type) VALUES (?, ?, ?) "
+            "ON CONFLICT(height) DO UPDATE SET hash = excluded.hash, type = excluded.type",
+            height,
+            span_guts(checkpoint.block_hash),
+            checkpoint.type);
+    conn.prepared_exec("DELETE FROM checkpoint_signatures WHERE height = ?", height);
+    for (const auto& sig : checkpoint.signatures)
+        conn.prepared_exec(
+                "INSERT INTO checkpoint_signatures (height, voter_index, signature) "
+                "VALUES (?, ?, ?)",
+                height,
+                sig.voter_index,
+                span_guts(sig.signature));
+}
+
+void BlockchainSQLite::remove_block_checkpoint(uint64_t height) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    auto& conn = write_conn();
+    conn.prepared_exec("DELETE FROM checkpoints WHERE height = ?", as_i64(height));
+}
+
+static checkpoint_t load_checkpoint(
+        Connection& conn, int64_t height, const crypto::hash& hash, checkpoint_type type) {
+    checkpoint_t checkpoint{};
+    checkpoint.type = type;
+    checkpoint.height = as_u64(height);
+    checkpoint.block_hash = hash;
+    for (auto [voter_index, signature] : conn.prepared_results<int, blob_guts<crypto::signature>>(
+                 "SELECT voter_index, signature FROM checkpoint_signatures WHERE height = ? "
+                 "ORDER BY voter_index",
+                 height))
+        checkpoint.signatures.emplace_back(static_cast<uint16_t>(voter_index), signature);
+    return checkpoint;
+}
+
+bool BlockchainSQLite::get_block_checkpoint(uint64_t height, checkpoint_t& checkpoint) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    auto tx = read_tx(conn);
+    auto row = conn.prepared_maybe_get<blob_guts<crypto::hash>, checkpoint_type>(
+            "SELECT hash, type FROM checkpoints WHERE height = ?", as_i64(height));
+    if (!row)
+        return false;
+    checkpoint = load_checkpoint(conn, as_i64(height), std::get<0>(*row), std::get<1>(*row));
+    return true;
+}
+
+bool BlockchainSQLite::get_top_checkpoint(checkpoint_t& checkpoint) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    auto tx = read_tx(conn);
+    auto row = conn.prepared_maybe_get<int64_t, blob_guts<crypto::hash>, checkpoint_type>(
+            "SELECT height, hash, type FROM checkpoints ORDER BY height DESC LIMIT 1");
+    if (!row)
+        return false;
+    auto& [height, hash, type] = *row;
+    checkpoint = load_checkpoint(conn, height, hash, type);
+    return true;
+}
+
+// The same results as the LMDB backend's walk: start and end are clamped to the stored checkpoints'
+// heights, and the result is the checkpoints between them (both inclusive), in order from start
+// towards end (so descending if start > end), at most num_desired_checkpoints of them.
+std::vector<checkpoint_t> BlockchainSQLite::get_checkpoints_range(
+        uint64_t start, uint64_t end, size_t num_desired_checkpoints) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    std::vector<checkpoint_t> result;
+
+    auto conn = m_sql->conn();
+    auto tx = read_tx(conn);
+    auto [bottom, top] = conn.prepared_get<std::optional<int64_t>, std::optional<int64_t>>(
+            "SELECT MIN(height), MAX(height) FROM checkpoints");
+    if (!bottom)
+        return result;
+
+    start = std::clamp(start, as_u64(*bottom), as_u64(*top));
+    end = std::clamp(end, as_u64(*bottom), as_u64(*top));
+    const int64_t limit = num_desired_checkpoints == GET_ALL_CHECKPOINTS
+                                ? -1
+                                : as_i64(num_desired_checkpoints);
+
+    std::vector<std::tuple<int64_t, blob_guts<crypto::hash>, checkpoint_type>> rows;
+    for (auto row : conn.prepared_results<int64_t, blob_guts<crypto::hash>, checkpoint_type>(
+                 start <= end ? "SELECT height, hash, type FROM checkpoints "
+                                "WHERE height BETWEEN ? AND ? ORDER BY height LIMIT ?"
+                              : "SELECT height, hash, type FROM checkpoints "
+                                "WHERE height BETWEEN ? AND ? ORDER BY height DESC LIMIT ?",
+                 as_i64(std::min(start, end)),
+                 as_i64(std::max(start, end)),
+                 limit))
+        rows.push_back(std::move(row));
+
+    result.reserve(rows.size());
+    for (auto& [height, hash, type] : rows)
+        result.push_back(load_checkpoint(conn, height, hash, type));
+    return result;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Not yet implemented
 // ---------------------------------------------------------------------------------------------
 
@@ -1492,22 +1624,6 @@ bool BlockchainSQLite::for_all_alt_blocks(
                      const std::string*,
                      const std::string*)>,
         bool) const {
-    not_implemented(__func__);
-}
-
-void BlockchainSQLite::update_block_checkpoint(checkpoint_t const&) {
-    not_implemented(__func__);
-}
-void BlockchainSQLite::remove_block_checkpoint(uint64_t) {
-    not_implemented(__func__);
-}
-bool BlockchainSQLite::get_block_checkpoint(uint64_t, checkpoint_t&) const {
-    not_implemented(__func__);
-}
-bool BlockchainSQLite::get_top_checkpoint(checkpoint_t&) const {
-    not_implemented(__func__);
-}
-std::vector<checkpoint_t> BlockchainSQLite::get_checkpoints_range(uint64_t, uint64_t, size_t) const {
     not_implemented(__func__);
 }
 

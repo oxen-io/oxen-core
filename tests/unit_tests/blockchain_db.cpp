@@ -40,6 +40,7 @@
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/lmdb/db_lmdb.h"
 #include "blockchain_db/sqlite/blockchain_sqlite.h"
+#include "checkpoints/checkpoints.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "common/fs.h"
 #include "logging/oxen_logger.h"
@@ -626,6 +627,104 @@ TYPED_TEST(BlockchainDBTest, Batch)
   db.batch_stop();
   EXPECT_EQ(db.height(), 2);
   EXPECT_EQ(db.get_tx_count(), 3);
+}
+
+checkpoint_t make_checkpoint(uint64_t height, size_t num_signatures)
+{
+  checkpoint_t cp{};
+  cp.height = height;
+  cp.block_hash = crypto::cn_fast_hash(&height, sizeof(height));
+  cp.type = num_signatures ? checkpoint_type::service_node : checkpoint_type::hardcoded;
+  for (size_t i = 0; i < num_signatures; i++)
+  {
+    crypto::signature sig;
+    std::memset(&sig, static_cast<int>(height + i), sizeof(sig));
+    cp.signatures.emplace_back(static_cast<uint16_t>(2 * i + 1), sig);
+  }
+  return cp;
+}
+
+void expect_checkpoint_eq(const checkpoint_t& a, const checkpoint_t& b)
+{
+  EXPECT_EQ(a.height, b.height);
+  EXPECT_EQ(a.type, b.type);
+  ASSERT_HASH_EQ(a.block_hash, b.block_hash);
+  ASSERT_EQ(a.signatures.size(), b.signatures.size());
+  for (size_t i = 0; i < a.signatures.size(); i++)
+  {
+    EXPECT_EQ(a.signatures[i].voter_index, b.signatures[i].voter_index);
+    ASSERT_HASH_EQ(a.signatures[i].signature, b.signatures[i].signature);
+  }
+}
+
+std::vector<uint64_t> heights_of(const std::vector<checkpoint_t>& cps)
+{
+  std::vector<uint64_t> heights;
+  for (auto& cp : cps)
+    heights.push_back(cp.height);
+  return heights;
+}
+
+TYPED_TEST(BlockchainDBTest, Checkpoints)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  using v = std::vector<uint64_t>;
+
+  checkpoint_t cp;
+  EXPECT_FALSE(db.get_top_checkpoint(cp));
+  EXPECT_TRUE(db.get_checkpoints_range(0, 100).empty());
+
+  const std::vector<checkpoint_t> cps{
+      make_checkpoint(4, 0), make_checkpoint(8, 3), make_checkpoint(12, 2),
+      make_checkpoint(16, 5), make_checkpoint(20, 0)};
+  {
+    db_wtxn_guard guard{db};
+    for (auto& c : cps)
+      db.update_block_checkpoint(c);
+  }
+
+  ASSERT_TRUE(db.get_top_checkpoint(cp));
+  expect_checkpoint_eq(cp, cps[4]);
+  ASSERT_TRUE(db.get_block_checkpoint(8, cp));
+  expect_checkpoint_eq(cp, cps[1]);
+  EXPECT_FALSE(db.get_block_checkpoint(9, cp));
+
+  auto all = db.get_checkpoints_range(4, 20);
+  ASSERT_EQ(all.size(), cps.size());
+  for (size_t i = 0; i < cps.size(); i++)
+    expect_checkpoint_eq(all[i], cps[i]);
+
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(20, 4)), (v{20, 16, 12, 8, 4}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(5, 13)), (v{8, 12}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(13, 5)), (v{12, 8}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(8, 8)), (v{8}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(5, 7)), (v{}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(7, 5)), (v{}));
+  // Clamped to the stored checkpoints' heights
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 100)), (v{4, 8, 12, 16, 20}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(100, 0)), (v{20, 16, 12, 8, 4}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(100, 100)), (v{20}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 0)), (v{4}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 6)), (v{4}));
+  // Limited
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 100, 2)), (v{4, 8}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(100, 0, 2)), (v{20, 16}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(15, 0, 1)), (v{12}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(9, 100, 3)), (v{12, 16, 20}));
+
+  // Replacing a checkpoint replaces its signatures; removing a missing one is not an error.
+  {
+    db_wtxn_guard guard{db};
+    auto replaced = make_checkpoint(8, 1);
+    db.update_block_checkpoint(replaced);
+    db.remove_block_checkpoint(16);
+    db.remove_block_checkpoint(17);
+  }
+  ASSERT_TRUE(db.get_block_checkpoint(8, cp));
+  expect_checkpoint_eq(cp, make_checkpoint(8, 1));
+  EXPECT_FALSE(db.get_block_checkpoint(16, cp));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 100)), (v{4, 8, 12, 20}));
 }
 
 struct temp_data_dir
