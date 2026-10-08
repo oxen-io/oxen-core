@@ -130,11 +130,6 @@ int main(int argc, char* argv[]) {
     }
     r = core_storage->init(std::move(db), nettype);
 
-    if (core_storage->get_blockchain_pruning_seed() && !opt_blocks_dat) {
-        log::warning(logcat, "Blockchain is pruned, cannot export");
-        return 1;
-    }
-
     CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
     log::warning(logcat, "Source blockchain storage initialized OK");
     log::warning(logcat, "Exporting blockchain raw data...");

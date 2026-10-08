@@ -1691,31 +1691,6 @@ struct POP_BLOCKS : LEGACY {
     } request;
 };
 
-/// RPC: daemon/prune_blockchain
-///
-/// Pruning is the process of removing non-critical blockchain information from local storage.
-/// Full nodes keep an entire copy of everything that is stored on the blockchain, including data
-/// that is not very useful anymore. Pruned nodes remove much of this less relevant information
-/// to have a lighter footprint. Of course, running a full node is always better; however, pruned
-/// nodes have most of the important information and can still support the network.
-///
-/// Inputs:
-///
-/// - `check` -- Instead of running check if the blockchain has already been pruned.
-///
-/// Outputs:
-///
-/// - `status` -- General RPC status string. `"OK"` means everything looks good.
-/// - `pruned` -- Bool returning whether the blockchain was pruned or not.
-/// - `pruning_seed` -- The seed that determined how the blockchain was to be pruned.
-struct PRUNE_BLOCKCHAIN : RPC_COMMAND {
-    static constexpr auto names() { return NAMES("prune_blockchain"); }
-
-    struct request_parameters {
-        bool check;
-    } request;
-};
-
 /// RPC: network/get_quorum_state
 ///
 /// Accesses the list of public keys of the nodes who are participating or being tested in a quorum.
@@ -3083,7 +3058,6 @@ using core_rpc_types = tools::type_list<
         ONS_INFO,
         OUT_PEERS,
         POP_BLOCKS,
-        PRUNE_BLOCKCHAIN,
         REPORT_PEER_STATUS,
         SAVE_BC,
         SESSION_ROUTER_PING,

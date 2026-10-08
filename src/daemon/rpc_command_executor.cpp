@@ -2903,24 +2903,6 @@ bool rpc_command_executor::prepare_eth_registration(
     return true;
 }
 
-bool rpc_command_executor::prune_blockchain() {
-    tools::fail_msg_writer("Blockchain pruning is not supported in Oxen yet");
-    return true;
-}
-
-bool rpc_command_executor::check_blockchain_pruning() {
-    auto maybe_pruning = try_running(
-            [this] { return invoke<PRUNE_BLOCKCHAIN>(json{{"check", true}}); },
-            "Failed to check blockchain pruning status");
-    if (!maybe_pruning)
-        return false;
-    auto& pruning = *maybe_pruning;
-
-    tools::success_msg_writer(
-            "Blockchain {} pruned", pruning["pruning_seed"].get<uint64_t>() > 0 ? "is" : "is not");
-    return true;
-}
-
 bool rpc_command_executor::version() {
     auto version = try_running(
             [this] { return invoke<GET_INFO>().at("version").get<std::string>(); },

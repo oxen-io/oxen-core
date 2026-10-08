@@ -219,7 +219,6 @@ static const command_line::arg_descriptor<std::string> arg_block_notify = {
         "block-notify",
         "Run a program for each new block, '%s' will be replaced by the block hash",
         ""};
-static const command_line::arg_flag arg_prune_blockchain = {"prune-blockchain", "Prune blockchain"};
 static const command_line::arg_descriptor<std::string> arg_reorg_notify = {
         "reorg-notify",
         "Run a program for each reorg, '%s' will be replaced by the split height, "
@@ -370,9 +369,6 @@ void core::init_options(boost::program_options::options_description& desc) {
 
     command_line::add_arg(desc, arg_pad_transactions);
     command_line::add_arg(desc, arg_block_notify);
-#if 0  // TODO(oxen): Pruning not supported because of Service Node List
-    command_line::add_arg(desc, arg_prune_blockchain);
-#endif
     command_line::add_arg(desc, arg_reorg_notify);
     command_line::add_arg(desc, arg_keep_alt_blocks);
 
@@ -589,7 +585,6 @@ bool core::init(
     CHECK_AND_ASSERT_MES(r, false, "Failed to apply command line options.");
 
     size_t max_txpool_weight = command_line::get_arg(vm, arg_max_txpool_weight);
-    bool const prune_blockchain = false; /* command_line::get_arg(vm, arg_prune_blockchain); */
     bool keep_alt_blocks = command_line::get_arg(vm, arg_keep_alt_blocks);
 
     r = init_service_keys();
@@ -915,20 +910,6 @@ bool core::init(
 
     if (!keep_alt_blocks && !blockchain.db().is_read_only())
         blockchain.db().drop_alt_blocks();
-
-    if (prune_blockchain) {
-        // display a message if the blockchain is not pruned yet
-        if (!blockchain.get_blockchain_pruning_seed()) {
-            log::info(globallogcat, "Pruning blockchain...");
-            CHECK_AND_ASSERT_MES(
-                    blockchain.prune_blockchain(), false, "Failed to prune blockchain");
-        } else {
-            CHECK_AND_ASSERT_MES(
-                    blockchain.update_blockchain_pruning(),
-                    false,
-                    "Failed to update blockchain pruning");
-        }
-    }
 
     return true;
 }
@@ -2809,8 +2790,6 @@ Use "help <command>" to see a command's documentation.
         do_uptime_proof_call();
     }
 
-    m_blockchain_pruning_interval.do_call(
-            [this] { return blockchain.update_blockchain_pruning(); });
     miner.on_idle();
     mempool.on_idle();
 

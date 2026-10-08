@@ -108,7 +108,6 @@ public:
   cryptonote::network_type get_nettype() const { return cryptonote::network_type::MAINNET; }
   const cryptonote::network_config& get_net_config() const { return get_config(get_nettype()); }
   bool pad_transactions() { return false; }
-  bool prune_blockchain(uint32_t pruning_seed = 0) { return true; }
   void stop() {}
 
   // TODO(oxen): Write tests

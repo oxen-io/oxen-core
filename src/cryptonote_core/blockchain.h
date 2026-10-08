@@ -1100,10 +1100,9 @@ class Blockchain {
         return is_within_compiled_block_hash_area(m_db->height());
     }
     uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash>& hashes);
-    uint32_t get_blockchain_pruning_seed() const { return m_db->get_blockchain_pruning_seed(); }
-    bool prune_blockchain(uint32_t pruning_seed = 0);
-    bool update_blockchain_pruning();
-    bool check_blockchain_pruning();
+    // Blockchain pruning is not supported, so this is always 0; it remains only for the p2p code
+    // that still advertises and checks pruning seeds.
+    uint32_t get_blockchain_pruning_seed() const { return 0; }
 
     uint64_t get_immutable_height() const;
 

@@ -58,7 +58,6 @@ struct mdb_txn_cursors {
     MDB_cursor* txs_pruned;
     MDB_cursor* txs_prunable;
     MDB_cursor* txs_prunable_hash;
-    MDB_cursor* txs_prunable_tip;
     MDB_cursor* tx_indices;
     MDB_cursor* tx_outputs;
 
@@ -68,8 +67,6 @@ struct mdb_txn_cursors {
     MDB_cursor* txpool_blob;
 
     MDB_cursor* alt_blocks;
-
-    MDB_cursor* hf_versions;
 
     MDB_cursor* service_node_data;
     MDB_cursor* service_node_archive;
@@ -91,14 +88,12 @@ struct mdb_rflags {
     bool m_rf_txs_pruned;
     bool m_rf_txs_prunable;
     bool m_rf_txs_prunable_hash;
-    bool m_rf_txs_prunable_tip;
     bool m_rf_tx_indices;
     bool m_rf_tx_outputs;
     bool m_rf_spent_keys;
     bool m_rf_txpool_meta;
     bool m_rf_txpool_blob;
     bool m_rf_alt_blocks;
-    bool m_rf_hf_versions;
     bool m_rf_service_node_data;
     bool m_rf_service_node_archive;
     bool m_rf_service_node_proofs;
@@ -292,10 +287,6 @@ class BlockchainLMDB : public BlockchainDB {
     bool get_txpool_tx_meta(const crypto::hash& txid, txpool_tx_meta_t& meta) const override;
     bool get_txpool_tx_blob(const crypto::hash& txid, std::string& bd) const override;
     std::string get_txpool_tx_blob(const crypto::hash& txid) const override;
-    uint32_t get_blockchain_pruning_seed() const override;
-    bool prune_blockchain(uint32_t pruning_seed = 0) override;
-    bool update_pruning() override;
-    bool check_pruning() override;
 
     void add_alt_block(
             const crypto::hash& blkid,
@@ -443,8 +434,6 @@ class BlockchainLMDB : public BlockchainDB {
 
     void remove_output(const uint64_t amount, const uint64_t& out_index);
 
-    void prune_outputs(uint64_t amount) override;
-
     void add_spent_key(const crypto::key_image& k_image) override;
 
     void remove_spent_key(const crypto::key_image& k_image) override;
@@ -452,8 +441,6 @@ class BlockchainLMDB : public BlockchainDB {
     uint64_t num_outputs() const;
 
     inline void check_open() const;
-
-    bool prune_worker(int mode, uint32_t pruning_seed);
 
     bool is_read_only() const override;
 
@@ -518,7 +505,6 @@ class BlockchainLMDB : public BlockchainDB {
     MDB_dbi m_txs_pruned;
     MDB_dbi m_txs_prunable;
     MDB_dbi m_txs_prunable_hash;
-    MDB_dbi m_txs_prunable_tip;
     MDB_dbi m_tx_indices;
     MDB_dbi m_tx_outputs;
 
@@ -532,9 +518,6 @@ class BlockchainLMDB : public BlockchainDB {
     MDB_dbi m_txpool_blob;
 
     MDB_dbi m_alt_blocks;
-
-    MDB_dbi m_hf_starting_heights;
-    MDB_dbi m_hf_versions;
 
     MDB_dbi m_service_node_data;
     MDB_dbi m_service_node_archive;

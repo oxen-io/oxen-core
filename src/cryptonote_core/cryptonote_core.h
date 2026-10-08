@@ -889,8 +889,6 @@ class core final {
     /// interval for checking our own uptime proof; starts low, but will be set to
     /// get_net_config().UPTIME_PROOF_CHECK_INTERVAL after the first proof goes out.
     tools::periodic_task m_check_uptime_proof_interval{"uptime proof", 30s};
-    /// interval for incremental blockchain pruning
-    tools::periodic_task m_blockchain_pruning_interval{"pruning interval", 5h};
     /// interval for when we re-relay service node votes
     tools::periodic_task m_service_node_vote_relayer{"vote relay", 2min, false};
     /// interval for when we drop expired uptime proofs

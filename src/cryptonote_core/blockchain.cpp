@@ -5904,21 +5904,6 @@ bool Blockchain::handle_block_to_main_chain(
     return true;
 }
 //------------------------------------------------------------------
-bool Blockchain::prune_blockchain(uint32_t pruning_seed) {
-    auto lock = tools::unique_locks(tx_pool, *this);
-    return m_db->prune_blockchain(pruning_seed);
-}
-//------------------------------------------------------------------
-bool Blockchain::update_blockchain_pruning() {
-    auto lock = tools::unique_locks(tx_pool, *this);
-    return m_db->update_pruning();
-}
-//------------------------------------------------------------------
-bool Blockchain::check_blockchain_pruning() {
-    auto lock = tools::unique_locks(tx_pool, *this);
-    return m_db->check_pruning();
-}
-//------------------------------------------------------------------
 uint64_t Blockchain::get_next_long_term_block_weight(uint64_t block_weight) const {
 
     const uint64_t db_height = m_db->height();
@@ -6211,8 +6196,6 @@ bool Blockchain::cleanup_handle_incoming_blocks(bool force_sync) {
 
     unlock();
     tx_pool.unlock();
-
-    update_blockchain_pruning();
 
     return success;
 }

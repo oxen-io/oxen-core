@@ -249,10 +249,6 @@ class rpc_command_executor final {
 
     bool print_sn(const std::vector<std::string>& args, bool self = false);
 
-    bool prune_blockchain();
-
-    bool check_blockchain_pruning();
-
     bool print_net_stats();
 
     bool flush_cache(bool bad_txs, bool invalid_blocks);

@@ -306,12 +306,6 @@ class BaseTestDB : public cryptonote::BlockchainDB {
         return b;
     }
 
-    virtual uint32_t get_blockchain_pruning_seed() const override { return 0; }
-    virtual bool prune_blockchain(uint32_t pruning_seed = 0) override { return true; }
-    virtual bool update_pruning() override { return true; }
-    virtual bool check_pruning() override { return true; }
-    virtual void prune_outputs(uint64_t amount) override {}
-
     virtual uint64_t get_max_block_size() override { return 100000000; }
     virtual void add_max_block_size(uint64_t sz) override {}
 

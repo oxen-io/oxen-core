@@ -2343,25 +2343,6 @@ GET_OUTPUT_DISTRIBUTION_BIN::response core_rpc_server::invoke(
     return invoke(std::move(static_cast<GET_OUTPUT_DISTRIBUTION::request&>(req)), context, true);
 }
 //------------------------------------------------------------------------------------------------------------------------------
-void core_rpc_server::invoke(PRUNE_BLOCKCHAIN& prune_blockchain, rpc_context) {
-    try {
-        if (!(prune_blockchain.request.check ? m_core.blockchain.check_blockchain_pruning()
-                                             : m_core.blockchain.prune_blockchain()))
-            throw rpc_error{
-                    ERROR_INTERNAL,
-                    prune_blockchain.request.check ? "Failed to check blockchain pruning"
-                                                   : "Failed to prune blockchain"};
-        auto pruning_seed = m_core.blockchain.get_blockchain_pruning_seed();
-        prune_blockchain.response["pruning_seed"] = pruning_seed;
-        prune_blockchain.response["pruned"] = pruning_seed != 0;
-    } catch (const std::exception& e) {
-        throw rpc_error{ERROR_INTERNAL, "Failed to prune blockchain"};
-    }
-
-    prune_blockchain.response["status"] = STATUS_OK;
-}
-
-//------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_QUORUM_STATE& get_quorum_state, rpc_context context) {
     const auto& quorum_type = get_quorum_state.request.quorum_type;
 

@@ -129,7 +129,6 @@ namespace tests
     bool add_service_node_vote(const service_nodes::quorum_vote_t& vote, cryptonote::vote_verification_context &vvc) { return false; }
     void set_service_node_votes_relayed(const std::vector<service_nodes::quorum_vote_t> &votes) {}
     bool pad_transactions() const { return false; }
-    bool prune_blockchain(uint32_t pruning_seed) const { return true; }
 
     bool handle_incoming_blinks(const std::vector<cryptonote::serializable_blink_metadata> &blinks, std::vector<crypto::hash> *bad_blinks = nullptr, std::vector<crypto::hash> *missing_txs = nullptr) { return true; }
 

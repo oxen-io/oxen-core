@@ -1599,38 +1599,6 @@ class BlockchainDB {
     virtual std::string get_txpool_tx_blob(const crypto::hash& txid) const = 0;
 
     /**
-     * @brief prune output data for the given amount
-     *
-     * @param amount the amount for which to prune data
-     */
-    virtual void prune_outputs(uint64_t amount) = 0;
-
-    /**
-     * @brief get the blockchain pruning seed
-     * @return the blockchain pruning seed
-     */
-    virtual uint32_t get_blockchain_pruning_seed() const = 0;
-
-    /**
-     * @brief prunes the blockchain
-     * @param pruning_seed the seed to use, 0 for default (highly recommended)
-     * @return success iff true
-     */
-    virtual bool prune_blockchain(uint32_t pruning_seed = 0) = 0;
-
-    /**
-     * @brief prunes recent blockchain changes as needed, iff pruning is enabled
-     * @return success iff true
-     */
-    virtual bool update_pruning() = 0;
-
-    /**
-     * @brief checks pruning was done correctly, iff enabled
-     * @return success iff true
-     */
-    virtual bool check_pruning() = 0;
-
-    /**
      * @brief get the max block size
      */
     virtual uint64_t get_max_block_size() = 0;

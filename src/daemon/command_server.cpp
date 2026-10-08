@@ -273,17 +273,6 @@ or "default" to return the limit to its default value.)");
             "version",
             [this](const auto& x) { return m_parser.version(x); },
             "Print version information.");
-#if 0  // TODO(oxen): Pruning not supported because of Service Node List
-    m_command_lookup.set_handler(
-      "prune_blockchain"
-    , [this](const auto &x) { return m_parser.prune_blockchain(x); }
-    , "Prune the blockchain."
-    );
-#endif
-    m_command_lookup.set_handler(
-            "check_blockchain_pruning",
-            [this](const auto& x) { return m_parser.check_blockchain_pruning(x); },
-            "Check the blockchain pruning.");
     m_command_lookup.set_handler(
             "print_checkpoints",
             [this](const auto& x) { return m_parser.print_checkpoints(x); },
