@@ -47,8 +47,3 @@ target_link_libraries(blockchain_db
     logging
     ethyl
     extra)
-
-target_compile_definitions(blockchain_db PRIVATE
-    "DEFAULT_DB_TYPE=\"${BLOCKCHAIN_DB}\""
-    "BLOCKCHAIN_DB=${BLOCKCHAIN_DB}"
-    )
