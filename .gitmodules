@@ -19,9 +19,6 @@
 [submodule "external/Catch2"]
 	path = external/Catch2
 	url = https://github.com/catchorg/Catch2
-[submodule "external/SQLiteCpp"]
-	path = external/SQLiteCpp
-	url = https://github.com/SRombauts/SQLiteCpp
 [submodule "external/date"]
 	path = external/date
 	url = https://github.com/HowardHinnant/date.git
@@ -53,3 +50,6 @@
 [submodule "cmake/session-deps"]
 	path = cmake/session-deps
 	url = https://github.com/session-foundation/session-deps.git
+[submodule "external/session-sqlite"]
+	path = external/session-sqlite
+	url = https://github.com/session-foundation/session-sqlite.git

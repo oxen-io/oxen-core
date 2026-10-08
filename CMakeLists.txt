@@ -279,7 +279,7 @@ check_submodule(external/randomx)
 check_submodule(external/oxen-encoding)
 check_submodule(external/oxen-logging fmt spdlog)
 check_submodule(external/oxen-mq cppzmq)
-check_submodule(external/SQLiteCpp)
+check_submodule(external/session-sqlite SQLiteCpp cmake/session-deps)
 check_submodule(external/ethyl external/cpr external/json)
 check_submodule(external/bn256)
 check_submodule(external/date)
@@ -423,9 +423,10 @@ add_library(systemd INTERFACE)  # Will do nothing unless we find and enable syst
 
 session_dep(libsodium 1.0.17)
 session_dep(libzstd 1.5.0)
-# 3.24 is required for upserts (INSERT ... ON CONFLICT DO UPDATE).  Anything older falls back to a
-# static sqlite3mc, which is a regular sqlite3 with encryption bolted on that we simply don't use.
-session_dep(sqlite3 3.24.0)
+# 3.36 is required by session-sqlite for in-memory databases (which need the memdb VFS).  Anything
+# older falls back to a static sqlite3mc, which is a regular sqlite3 with encryption bolted on that
+# we simply don't use.
+session_dep(sqlite3 3.36.0)
 session_dep(gmp 6)
 
 option(WITH_SYSTEMD "Attempts to link against and enable systemd daemon notification support" ON)

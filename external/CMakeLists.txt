@@ -97,18 +97,16 @@ session_dep(zlib 1.2)
 target_link_libraries(uWebSockets INTERFACE sessiondep::zlib)
 
 
-# SQLiteCpp is built here directly rather than through its own cmake, which insists on
-# find_package(SQLite3) and so can't see a static sqlite3 that won't exist until build time.  Its
-# sources are a handful of files with no configuration of their own.
-file(GLOB sqlitecpp_sources CONFIGURE_DEPENDS SQLiteCpp/src/*.cpp)
-add_library(SQLiteCpp ${sqlitecpp_sources})
-target_include_directories(SQLiteCpp PUBLIC SQLiteCpp/include)
-target_link_libraries(SQLiteCpp PUBLIC sessiondep::sqlite3)
-target_compile_definitions(SQLiteCpp PUBLIC SQLITE_OMIT_LOAD_EXTENSION)
-if(WIN32 AND BUILD_SHARED_LIBS)
-    target_compile_definitions(SQLiteCpp PUBLIC SQLITECPP_COMPILE_DLL PRIVATE SQLITECPP_DLL_EXPORT)
-endif()
+# session-sqlite would otherwise build its own static sqlite3mc; instead it gets the same sqlite3 as
+# everything else, which is whatever session_dep(sqlite3) found or built.  That might be sqlite3mc,
+# but nothing here uses its encryption, so session-sqlite isn't told about it.
+set(SESSION_SQLITE_BUILD_SQLITE3MC OFF CACHE BOOL "" FORCE)
+add_library(SQLite::SQLite3 INTERFACE IMPORTED GLOBAL)
+target_link_libraries(SQLite::SQLite3 INTERFACE sessiondep::sqlite3)
+add_subdirectory(session-sqlite)
 oxen_install_library(SQLiteCpp)
+oxen_install_library(session_secure_buffer)
+oxen_install_library(session_sqlite)
 
 add_subdirectory(Catch2)
 
