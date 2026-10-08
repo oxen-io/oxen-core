@@ -727,6 +727,22 @@ TYPED_TEST(BlockchainDBTest, Checkpoints)
   EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 100)), (v{4, 8, 12, 20}));
 }
 
+TYPED_TEST(BlockchainDBTest, MaxBlockSize)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  EXPECT_EQ(db.get_max_block_size(), std::numeric_limits<uint64_t>::max());
+  {
+    db_wtxn_guard guard{db};
+    db.add_max_block_size(100);
+    EXPECT_EQ(db.get_max_block_size(), 100);
+    db.add_max_block_size(50);
+    EXPECT_EQ(db.get_max_block_size(), 100);
+    db.add_max_block_size(200);
+  }
+  EXPECT_EQ(db.get_max_block_size(), 200);
+}
+
 struct temp_data_dir
 {
   const fs::path path = random_tmp_file();
@@ -832,6 +848,22 @@ TEST(BlockchainSQLite, newer_schema)
   }
   BlockchainSQLite db;
   EXPECT_THROW(db.open(path, network_type::FAKECHAIN), DB_OPEN_FAILURE);
+}
+
+TEST(BlockchainSQLite, own_write_transaction)
+{
+  temp_data_dir dir;
+  BlockchainSQLite db;
+  db.open(dir.path / SQLITE_DB_FILENAME, network_type::FAKECHAIN);
+  BlockchainDB& base = db;
+  base.add_max_block_size(123);
+  EXPECT_EQ(base.get_max_block_size(), 123);
+
+  // ...including while this thread is in a read transaction, which it must not nest inside.
+  ASSERT_TRUE(db.block_rtxn_start());
+  base.add_max_block_size(456);
+  db.block_rtxn_stop();
+  EXPECT_EQ(base.get_max_block_size(), 456);
 }
 
 TEST(BlockchainSQLite, write_needs_transaction)

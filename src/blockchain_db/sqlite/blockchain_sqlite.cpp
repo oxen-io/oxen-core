@@ -395,6 +395,19 @@ Connection& BlockchainSQLite::write_conn() {
     return m_write->conn;
 }
 
+template <std::invocable<Connection&> F>
+void BlockchainSQLite::in_write_txn(F&& f) {
+    check_open();
+    if (m_writer.load() == std::this_thread::get_id()) {
+        f(m_write->conn);
+        return;
+    }
+    auto conn = m_sql->unique_conn();
+    SQLite::Transaction tx{with_sync_mode(conn, m_sync.load()), SQLite::TransactionBehavior::IMMEDIATE};
+    f(conn);
+    tx.commit();
+}
+
 SQLite::Transaction* BlockchainSQLite::active_write_transaction() {
     if (m_writer.load() != std::this_thread::get_id())
         return nullptr;
@@ -1566,6 +1579,29 @@ std::vector<checkpoint_t> BlockchainSQLite::get_checkpoints_range(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Properties
+// ---------------------------------------------------------------------------------------------
+
+uint64_t BlockchainSQLite::get_max_block_size() {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    auto size = conn.prepared_maybe_get<int64_t>(
+            "SELECT value FROM properties WHERE key = 'max_block_size'");
+    return size ? as_u64(*size) : std::numeric_limits<uint64_t>::max();
+}
+
+void BlockchainSQLite::add_max_block_size(uint64_t sz) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    in_write_txn([&](Connection& conn) {
+        conn.prepared_exec(
+                "INSERT INTO properties (key, value) VALUES ('max_block_size', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = MAX(value, excluded.value)",
+                as_i64(sz));
+    });
+}
+
+// ---------------------------------------------------------------------------------------------
 // Not yet implemented
 // ---------------------------------------------------------------------------------------------
 
@@ -1633,13 +1669,6 @@ std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> BlockchainSQLite::g
 }
 bool BlockchainSQLite::get_output_distribution(
         uint64_t, uint64_t, uint64_t, std::vector<uint64_t>&, uint64_t&) const {
-    not_implemented(__func__);
-}
-
-uint64_t BlockchainSQLite::get_max_block_size() {
-    not_implemented(__func__);
-}
-void BlockchainSQLite::add_max_block_size(uint64_t) {
     not_implemented(__func__);
 }
 

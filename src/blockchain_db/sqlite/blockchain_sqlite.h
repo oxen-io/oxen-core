@@ -28,6 +28,7 @@
 #pragma once
 
 #include <atomic>
+#include <concepts>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -291,6 +292,14 @@ class BlockchainSQLite : public BlockchainDB {
     // deferred foreign keys to `blocks` can only be satisfied when a block's transactions, outputs
     // and key images are committed together with its row.
     session::sqlite::Connection& write_conn();
+
+    // Runs `f(conn)` for a write that callers make both inside and outside of a write transaction
+    // (the txpool, alt blocks, max block size, proofs): inside the calling thread's write
+    // transaction if it holds one, otherwise inside a write transaction of its own, on a connection
+    // of its own (so that it can't nest inside a read transaction of this thread), committed when
+    // `f` returns.
+    template <std::invocable<session::sqlite::Connection&> F>
+    void in_write_txn(F&& f);
 
     // Starts a read transaction for a read made up of more than one statement, so that it sees one
     // consistent state of the database, unless the calling thread already has a read or write
