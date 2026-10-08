@@ -229,13 +229,63 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
         return {reinterpret_cast<const char*>(b.data()), b.size()};
     }
 
-    fs::path with_suffix(fs::path p, std::string_view suffix) {
-        p += suffix;
-        return p;
+    // The database file and the write-ahead log and shared memory files that SQLite keeps beside it.
+    std::array<fs::path, 3> db_files(const fs::path& db) {
+        std::array<fs::path, 3> files{db, db, db};
+        files[1] += "-wal";
+        files[2] += "-shm";
+        return files;
     }
 
     uint64_t chain_height(Connection& conn) {
         return as_u64(conn.prepared_get<int64_t>("SELECT COALESCE(MAX(height) + 1, 0) FROM blocks"));
+    }
+
+    uint64_t num_outputs(Connection& conn, int64_t amount) {
+        return as_u64(conn.prepared_get<int64_t>(
+                "SELECT COALESCE(MAX(amount_index) + 1, 0) FROM outputs WHERE amount = ?", amount));
+    }
+
+    template <typename T>
+        requires std::is_same_v<T, block> || std::is_same_v<T, block_header> ||
+                 std::is_same_v<T, std::string>
+    T convert_block_blob(std::string_view blob) {
+        T result;
+        if constexpr (std::is_same_v<T, block>) {
+            if (!parse_and_validate_block_from_blob(blob, result))
+                throw DB_ERROR("Failed to parse block from blob retrieved from the db");
+        } else if constexpr (std::is_same_v<T, block_header>) {
+            serialization::binary_string_unarchiver ba{blob};
+            serialization::value(ba, result);
+        } else {
+            result = blob;
+        }
+        return result;
+    }
+
+    // Converts a block's `blob` column, which is NULL for a block whose body is not kept.
+    template <typename T>
+    T convert_stored_block(const std::optional<blob>& data, uint64_t height, size_t* size = nullptr) {
+        if (!data)
+            throw BLOCK_DNE("Block at height {} is not stored in the db"_format(height));
+        if (size)
+            *size = data->size();
+        return convert_block_blob<T>(as_view(*data));
+    }
+
+    // Reads a tx's full blob into `bd`; false if the tx, or its prunable part, is not stored.
+    bool load_tx_blob(Connection& conn, const crypto::hash& h, std::string& bd) {
+        for (auto [unprunable, prunable] : conn.prepared_results<blob, std::optional<blob>>(
+                     "SELECT unprunable, prunable FROM transactions WHERE hash = ?",
+                     span_guts(h))) {
+            if (!prunable)
+                return false;
+            bd.reserve(bd.size() + unprunable.size() + prunable->size());
+            bd.append(as_view(unprunable));
+            bd.append(as_view(*prunable));
+            return true;
+        }
+        return false;
     }
 
     SQLite::Database& with_sync_mode(Connection& conn, int sync) {
@@ -329,9 +379,7 @@ void BlockchainSQLite::close() {
         return;
     if (m_write) {
         log::warning(logcat, "Closing the database with a write transaction open; rolling it back");
-        m_write.reset();
-        m_batch_active = false;
-        m_writer = std::thread::id{};
+        end_write(false);
     }
     {
         std::lock_guard lock{m_read_mutex};
@@ -372,11 +420,12 @@ void BlockchainSQLite::reset() {
 }
 
 std::vector<fs::path> BlockchainSQLite::get_filenames() const {
-    return {m_filename, with_suffix(m_filename, "-wal"), with_suffix(m_filename, "-shm")};
+    auto files = db_files(m_filename);
+    return {files.begin(), files.end()};
 }
 
 bool BlockchainSQLite::remove_data_file(const fs::path& filename) const {
-    for (auto& f : {filename, with_suffix(filename, "-wal"), with_suffix(filename, "-shm")}) {
+    for (auto& f : db_files(filename)) {
         std::error_code ec;
         fs::remove(f, ec);
         if (ec) {
@@ -408,14 +457,17 @@ bool BlockchainSQLite::is_read_only() const {
 }
 
 uint64_t BlockchainSQLite::get_database_size() const {
-    auto size = fs::file_size(m_filename);
+    check_open();
+    const auto files = db_files(m_filename);
+    auto size = fs::file_size(files[0]);
     std::error_code ec;
-    if (auto wal = fs::file_size(with_suffix(m_filename, "-wal"), ec); !ec)
+    if (auto wal = fs::file_size(files[1], ec); !ec)
         size += wal;
     return size;
 }
 
 void BlockchainSQLite::fixup(network_type nettype) {
+    check_open();
     BlockchainDB::fixup(nettype);
 }
 
@@ -489,28 +541,34 @@ void BlockchainSQLite::block_wtxn_start() {
                         __func__));
 }
 
-void BlockchainSQLite::block_wtxn_stop() {
-    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+void BlockchainSQLite::require_writer(std::string_view action) const {
     auto writer = m_writer.load();
     if (writer == std::thread::id{})
         throw DB_ERROR_TXN_START(
-                "Attempted to stop write txn when no such txn exists in {}"_format(__func__));
+                "Attempted to {} write txn when no such txn exists"_format(action));
     if (writer != std::this_thread::get_id())
-        throw DB_ERROR_TXN_START(
-                "Attempted to stop write txn from the wrong thread in {}"_format(__func__));
+        throw DB_ERROR_TXN_START("Attempted to {} write txn from the wrong thread"_format(action));
+}
+
+void BlockchainSQLite::require_batch_writer() const {
+    if (!m_batch_transactions)
+        throw DB_ERROR("batch transactions not enabled");
+    if (!m_batch_active)
+        throw DB_ERROR("batch transaction not in progress");
+    if (m_writer.load() != std::this_thread::get_id())
+        throw DB_ERROR("batch transaction owned by other thread");
+}
+
+void BlockchainSQLite::block_wtxn_stop() {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    require_writer("stop");
     if (!m_batch_active)
         end_write(true);
 }
 
 void BlockchainSQLite::block_wtxn_abort() {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    auto writer = m_writer.load();
-    if (writer == std::thread::id{})
-        throw DB_ERROR_TXN_START(
-                "Attempted to abort write txn when no such txn exists in {}"_format(__func__));
-    if (writer != std::this_thread::get_id())
-        throw DB_ERROR_TXN_START(
-                "Attempted to abort write txn from the wrong thread in {}"_format(__func__));
+    require_writer("abort");
     if (!m_batch_active)
         end_write(false);
 }
@@ -539,24 +597,14 @@ bool BlockchainSQLite::batch_start(uint64_t) {
 
 void BlockchainSQLite::batch_stop() {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    if (!m_batch_transactions)
-        throw DB_ERROR("batch transactions not enabled");
-    if (!m_batch_active)
-        throw DB_ERROR("batch transaction not in progress");
-    if (m_writer.load() != std::this_thread::get_id())
-        throw DB_ERROR("batch transaction owned by other thread");
+    require_batch_writer();
     end_write(true);
     log::trace(logcat, "batch transaction: end");
 }
 
 void BlockchainSQLite::batch_abort() {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    if (!m_batch_transactions)
-        throw DB_ERROR("batch transactions not enabled");
-    if (!m_batch_active)
-        throw DB_ERROR("batch transaction not in progress");
-    if (m_writer.load() != std::this_thread::get_id())
-        throw DB_ERROR("batch transaction owned by other thread");
+    require_batch_writer();
     end_write(false);
     log::trace(logcat, "batch transaction: aborted");
 }
@@ -739,57 +787,29 @@ T BlockchainSQLite::get_block_column(
     return *std::move(value);
 }
 
-namespace {
-    template <typename T>
-        requires std::is_same_v<T, block> || std::is_same_v<T, block_header> ||
-                 std::is_same_v<T, std::string>
-    T convert_block_blob(std::string_view blob) {
-        T result;
-        if constexpr (std::is_same_v<T, block>) {
-            if (!parse_and_validate_block_from_blob(blob, result))
-                throw DB_ERROR("Failed to parse block from blob retrieved from the db");
-        } else if constexpr (std::is_same_v<T, block_header>) {
-            serialization::binary_string_unarchiver ba{blob};
-            serialization::value(ba, result);
-        } else {
-            result = blob;
-        }
-        return result;
-    }
-}  // namespace
-
 template <typename T>
-static T get_converted_block(Connection& conn, uint64_t height, size_t* size) {
+T BlockchainSQLite::get_stored_block(uint64_t height, size_t* size) const {
+    check_open();
+    auto conn = m_sql->conn();
     for (auto data : conn.prepared_results<std::optional<blob>>(
-                 "SELECT blob FROM blocks WHERE height = ?", as_i64(height))) {
-        if (!data)
-            throw BLOCK_DNE("Block at height {} is not stored in the db"_format(height));
-        if (size)
-            *size = data->size();
-        return convert_block_blob<T>(as_view(*data));
-    }
+                 "SELECT blob FROM blocks WHERE height = ?", as_i64(height)))
+        return convert_stored_block<T>(data, height, size);
     throw BLOCK_DNE("Attempt to get block from height {} failed -- block not in db"_format(height));
 }
 
 block BlockchainSQLite::get_block_from_height(uint64_t height, size_t* size) const {
     log::trace(logcat, "BlockchainSQLite::{} {}", __func__, height);
-    check_open();
-    auto conn = m_sql->conn();
-    return get_converted_block<block>(conn, height, size);
+    return get_stored_block<block>(height, size);
 }
 
 block_header BlockchainSQLite::get_block_header_from_height(uint64_t height) const {
     log::trace(logcat, "BlockchainSQLite::{} {}", __func__, height);
-    check_open();
-    auto conn = m_sql->conn();
-    return get_converted_block<block_header>(conn, height, nullptr);
+    return get_stored_block<block_header>(height);
 }
 
 std::string BlockchainSQLite::get_block_blob_from_height(uint64_t height) const {
     log::trace(logcat, "BlockchainSQLite::{} {}", __func__, height);
-    check_open();
-    auto conn = m_sql->conn();
-    return get_converted_block<std::string>(conn, height, nullptr);
+    return get_stored_block<std::string>(height);
 }
 
 std::string BlockchainSQLite::get_block_blob(const crypto::hash& h) const {
@@ -837,8 +857,13 @@ size_t BlockchainSQLite::get_block_weight(const uint64_t& height) const {
     return as_u64(get_block_column<int64_t>(height, "weight", "block weight"));
 }
 
-static std::vector<uint64_t> get_block_weight_range(
-        Connection& conn, std::string_view column, uint64_t start_height, size_t count) {
+std::vector<uint64_t> BlockchainSQLite::get_block_weight_column(
+        std::string_view column, uint64_t start_height, size_t count) const {
+    check_open();
+    auto conn = m_sql->conn();
+    auto tx = read_tx(conn);
+    if (start_height >= chain_height(conn))
+        throw DB_ERROR("Height {} not in blockchain"_format(start_height));
     std::vector<uint64_t> ret;
     for (auto w : conn.prepared_results<int64_t>(
                  "SELECT {} FROM blocks WHERE height >= ? ORDER BY height LIMIT ?"_format(column),
@@ -850,23 +875,13 @@ static std::vector<uint64_t> get_block_weight_range(
 
 std::vector<uint64_t> BlockchainSQLite::get_block_weights(uint64_t start_height, size_t count) const {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    check_open();
-    auto conn = m_sql->conn();
-    auto tx = read_tx(conn);
-    if (start_height >= chain_height(conn))
-        throw DB_ERROR("Height {} not in blockchain"_format(start_height));
-    return get_block_weight_range(conn, "weight", start_height, count);
+    return get_block_weight_column("weight", start_height, count);
 }
 
 std::vector<uint64_t> BlockchainSQLite::get_long_term_block_weights(
         uint64_t start_height, size_t count) const {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    check_open();
-    auto conn = m_sql->conn();
-    auto tx = read_tx(conn);
-    if (start_height >= chain_height(conn))
-        throw DB_ERROR("Height {} not in blockchain"_format(start_height));
-    return get_block_weight_range(conn, "long_term_weight", start_height, count);
+    return get_block_weight_column("long_term_weight", start_height, count);
 }
 
 difficulty_type BlockchainSQLite::get_block_cumulative_difficulty(const uint64_t& height) const {
@@ -894,17 +909,39 @@ crypto::hash BlockchainSQLite::get_block_hash_from_height(const uint64_t& height
 }
 
 std::vector<block> BlockchainSQLite::get_blocks_range(const uint64_t& h1, const uint64_t& h2) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
     std::vector<block> v;
-    for (uint64_t height = h1; height <= h2; ++height)
-        v.push_back(get_block_from_height(height));
+    if (h1 > h2)
+        return v;
+    auto conn = m_sql->conn();
+    for (auto [height, data] : conn.prepared_results<int64_t, std::optional<blob>>(
+                 "SELECT height, blob FROM blocks WHERE height BETWEEN ? AND ? ORDER BY height",
+                 as_i64(h1),
+                 as_i64(h2)))
+        v.push_back(convert_stored_block<block>(data, as_u64(height)));
+    if (v.size() != h2 - h1 + 1)
+        throw BLOCK_DNE("Attempt to get block from height {} failed -- block not in db"_format(
+                h1 + v.size()));
     return v;
 }
 
 std::vector<crypto::hash> BlockchainSQLite::get_hashes_range(
         const uint64_t& h1, const uint64_t& h2) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
     std::vector<crypto::hash> v;
-    for (uint64_t height = h1; height <= h2; ++height)
-        v.push_back(get_block_hash_from_height(height));
+    if (h1 > h2)
+        return v;
+    auto conn = m_sql->conn();
+    for (auto hash : conn.prepared_results<blob_guts<crypto::hash>>(
+                 "SELECT hash FROM blocks WHERE height BETWEEN ? AND ? ORDER BY height",
+                 as_i64(h1),
+                 as_i64(h2)))
+        v.push_back(hash);
+    if (v.size() != h2 - h1 + 1)
+        throw BLOCK_DNE("Attempt to get hash from height {} failed -- hash not in db"_format(
+                h1 + v.size()));
     return v;
 }
 
@@ -925,12 +962,9 @@ block BlockchainSQLite::get_top_block() const {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     check_open();
     auto conn = m_sql->conn();
-    for (auto data : conn.prepared_results<std::optional<blob>>(
-                 "SELECT blob FROM blocks ORDER BY height DESC LIMIT 1")) {
-        if (!data)
-            throw BLOCK_DNE("Top block is not stored in the db");
-        return convert_block_blob<block>(as_view(*data));
-    }
+    for (auto [height, data] : conn.prepared_results<int64_t, std::optional<blob>>(
+                 "SELECT height, blob FROM blocks ORDER BY height DESC LIMIT 1"))
+        return convert_stored_block<block>(data, as_u64(height));
     return block{};
 }
 
@@ -1039,16 +1073,7 @@ bool BlockchainSQLite::get_tx_blob(const crypto::hash& h, std::string& bd) const
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     check_open();
     auto conn = m_sql->conn();
-    for (auto [unprunable, prunable] : conn.prepared_results<blob, std::optional<blob>>(
-                 "SELECT unprunable, prunable FROM transactions WHERE hash = ?", span_guts(h))) {
-        if (!prunable)
-            return false;
-        bd.reserve(bd.size() + unprunable.size() + prunable->size());
-        bd.append(as_view(unprunable));
-        bd.append(as_view(*prunable));
-        return true;
-    }
-    return false;
+    return load_tx_blob(conn, h, bd);
 }
 
 bool BlockchainSQLite::get_pruned_tx_blob(const crypto::hash& h, std::string& bd) const {
@@ -1119,9 +1144,20 @@ uint64_t BlockchainSQLite::get_tx_count() const {
 
 std::vector<transaction> BlockchainSQLite::get_tx_list(
         const std::vector<crypto::hash>& hlist) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    auto tx = read_tx(conn);
     std::vector<transaction> v;
-    for (auto& h : hlist)
-        v.push_back(get_tx(h));
+    v.reserve(hlist.size());
+    std::string bd;
+    for (auto& h : hlist) {
+        bd.clear();
+        if (!load_tx_blob(conn, h, bd))
+            throw TX_DNE("tx with hash {} not found in db"_format(h));
+        if (!parse_and_validate_tx_from_blob(bd, v.emplace_back()))
+            throw DB_ERROR("Failed to parse transaction from blob retrieved from the db");
+    }
     return v;
 }
 
@@ -1205,9 +1241,7 @@ uint64_t BlockchainSQLite::get_num_outputs(const uint64_t& amount) const {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     check_open();
     auto conn = m_sql->conn();
-    return as_u64(conn.prepared_get<int64_t>(
-            "SELECT COALESCE(MAX(amount_index) + 1, 0) FROM outputs WHERE amount = ?",
-            as_i64(amount)));
+    return num_outputs(conn, as_i64(amount));
 }
 
 output_data_t BlockchainSQLite::get_output_key(
@@ -1263,7 +1297,7 @@ void BlockchainSQLite::get_output_key(
 
     auto amount_at = [&](size_t i) { return amounts.size() == 1 ? amounts[0] : amounts[i]; };
 
-    // Intent: each distinct amount's wanted indices, deduplicated, so that each can be fetched with
+    // Each distinct amount's wanted indices (deduplicated below), so that they can be fetched with
     // as few IN-list queries as possible.
     std::unordered_map<uint64_t, std::vector<int64_t>> wanted;
     for (size_t i = 0; i < offsets.size(); ++i)
@@ -1416,24 +1450,20 @@ std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> BlockchainSQLite::g
     auto conn = m_sql->conn();
     auto tx = read_tx(conn);
 
-    auto count = [&](int64_t amount) {
-        return as_u64(conn.prepared_get<int64_t>(
-                "SELECT COALESCE(MAX(amount_index) + 1, 0) FROM outputs WHERE amount = ?", amount));
-    };
     if (amounts.empty()) {
-        // Intent: visit each distinct amount by seeking to the next one, rather than scanning
-        // every output (nearly all of which have amount 0).
+        // Visits each distinct amount by seeking to the next one, rather than scanning every
+        // output (nearly all of which have amount 0).
         for (auto amount = conn.prepared_get<std::optional<int64_t>>(
                      "SELECT MIN(amount) FROM outputs");
              amount;
              amount = conn.prepared_get<std::optional<int64_t>>(
                      "SELECT MIN(amount) FROM outputs WHERE amount > ?", *amount)) {
-            if (auto n = count(*amount); n >= min_count)
+            if (auto n = num_outputs(conn, *amount); n >= min_count)
                 histogram[as_u64(*amount)] = {n, 0, 0};
         }
     } else {
         for (auto amount : amounts)
-            if (auto n = count(as_i64(amount)); n >= min_count)
+            if (auto n = num_outputs(conn, as_i64(amount)); n >= min_count)
                 histogram[amount] = {n, 0, 0};
     }
 
@@ -1573,9 +1603,7 @@ bool BlockchainSQLite::for_blocks_range(
                  "SELECT height, blob FROM blocks WHERE height BETWEEN ? AND ? ORDER BY height",
                  as_i64(h1),
                  as_i64(h2))) {
-        if (!data)
-            throw DB_ERROR("Block at height {} is not stored in the db"_format(height));
-        auto b = convert_block_blob<block>(as_view(*data));
+        auto b = convert_stored_block<block>(data, as_u64(height));
         crypto::hash hash;
         if (!get_block_hash(b, hash))
             throw DB_ERROR("Failed to get block hash from blob retrieved from the db");
@@ -1784,6 +1812,26 @@ namespace {
             "max_used_block_hash, last_failed_height, last_failed_hash, l2_height, kept_by_block, "
             "relayed, do_not_relay, double_spend_seen"sv;
 
+    // `meta`'s values for the TXPOOL_META_COLUMNS, in order, for binding.
+    auto txpool_meta_values(const txpool_tx_meta_t& meta) {
+        return std::tuple{
+                as_i64(meta.weight),
+                as_i64(meta.fee),
+                as_i64(meta.receive_time),
+                as_i64(meta.last_relayed_time),
+                as_i64(meta.max_used_block_height),
+                span_guts(meta.max_used_block_id),
+                as_i64(meta.last_failed_height),
+                span_guts(meta.last_failed_id),
+                as_i64(meta.l2_height),
+                int{meta.kept_by_block},
+                int{meta.relayed},
+                int{meta.do_not_relay},
+                int{meta.double_spend_seen}};
+    }
+    const auto TXPOOL_META_PLACEHOLDERS = placeholders(static_cast<int>(
+            std::tuple_size_v<decltype(txpool_meta_values(std::declval<txpool_tx_meta_t>()))>));
+
     // Reads the TXPOOL_META_COLUMNS of the current row of `st`, which start at column `col`.
     txpool_tx_meta_t read_txpool_meta(SQLite::Statement& st, int col) {
         auto u64 = [&](int i) { return as_u64(st.getColumn(col + i).getInt64()); };
@@ -1816,49 +1864,31 @@ void BlockchainSQLite::add_txpool_tx(
         throw DB_ERROR("Attempting to add txpool tx with empty blob");
     // Adding a tx that is already there replaces it, as it always has with LMDB.
     in_write_txn([&](Connection& conn) {
-        conn.prepared_exec(
-                "INSERT OR REPLACE INTO txpool (hash, blob, {}) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"_format(TXPOOL_META_COLUMNS),
-                span_guts(txid),
-                as_blob(blob),
-                as_i64(meta.weight),
-                as_i64(meta.fee),
-                as_i64(meta.receive_time),
-                as_i64(meta.last_relayed_time),
-                as_i64(meta.max_used_block_height),
-                span_guts(meta.max_used_block_id),
-                as_i64(meta.last_failed_height),
-                span_guts(meta.last_failed_id),
-                as_i64(meta.l2_height),
-                meta.kept_by_block,
-                meta.relayed,
-                meta.do_not_relay,
-                static_cast<int>(meta.double_spend_seen));
+        std::apply(
+                [&](const auto&... meta_values) {
+                    conn.prepared_exec(
+                            "INSERT OR REPLACE INTO txpool (hash, blob, {}) VALUES (?, ?, {})"_format(
+                                    TXPOOL_META_COLUMNS, TXPOOL_META_PLACEHOLDERS),
+                            span_guts(txid),
+                            as_blob(blob),
+                            meta_values...);
+                },
+                txpool_meta_values(meta));
     });
 }
 
 void BlockchainSQLite::update_txpool_tx(const crypto::hash& txid, const txpool_tx_meta_t& meta) {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     in_write_txn([&](Connection& conn) {
-        auto updated = conn.prepared_exec(
-                "UPDATE txpool SET weight = ?, fee = ?, receive_time = ?, last_relayed_time = ?, "
-                "max_used_block_height = ?, max_used_block_hash = ?, last_failed_height = ?, "
-                "last_failed_hash = ?, l2_height = ?, kept_by_block = ?, relayed = ?, "
-                "do_not_relay = ?, double_spend_seen = ? WHERE hash = ?",
-                as_i64(meta.weight),
-                as_i64(meta.fee),
-                as_i64(meta.receive_time),
-                as_i64(meta.last_relayed_time),
-                as_i64(meta.max_used_block_height),
-                span_guts(meta.max_used_block_id),
-                as_i64(meta.last_failed_height),
-                span_guts(meta.last_failed_id),
-                as_i64(meta.l2_height),
-                meta.kept_by_block,
-                meta.relayed,
-                meta.do_not_relay,
-                static_cast<int>(meta.double_spend_seen),
-                span_guts(txid));
+        auto updated = std::apply(
+                [&](const auto&... meta_values) {
+                    return conn.prepared_exec(
+                            "UPDATE txpool SET ({}) = ({}) WHERE hash = ?"_format(
+                                    TXPOOL_META_COLUMNS, TXPOOL_META_PLACEHOLDERS),
+                            meta_values...,
+                            span_guts(txid));
+                },
+                txpool_meta_values(meta));
         if (updated == 0)
             throw DB_ERROR("Error finding txpool tx meta to update");
     });
@@ -1917,7 +1947,7 @@ bool BlockchainSQLite::get_txpool_tx_blob(const crypto::hash& txid, std::string&
 std::string BlockchainSQLite::get_txpool_tx_blob(const crypto::hash& txid) const {
     std::string bd;
     if (!get_txpool_tx_blob(txid, bd))
-        throw DB_ERROR("Tx not found in txpool: ");
+        throw DB_ERROR("Tx not found in txpool: {}"_format(txid));
     return bd;
 }
 

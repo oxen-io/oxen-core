@@ -594,6 +594,18 @@ TYPED_TEST(BlockchainDBTest, BlockWeights)
   uint64_t top;
   ASSERT_HASH_EQ(db.top_block_hash(&top), get_block_hash(this->m_blocks[1].first));
   EXPECT_EQ(top, 1);
+
+  EXPECT_EQ(db.get_blocks_range(1, 1).size(), 1);
+  EXPECT_TRUE(db.get_blocks_range(1, 0).empty());
+  EXPECT_THROW(db.get_blocks_range(1, 3), BLOCK_DNE);
+  EXPECT_EQ(db.get_hashes_range(0, 1).size(), 2);
+  EXPECT_THROW(db.get_hashes_range(0, 2), BLOCK_DNE);
+
+  const auto& tx0 = this->m_txs[0][0];
+  auto txs = db.get_tx_list({get_transaction_hash(tx0.first)});
+  ASSERT_EQ(txs.size(), 1);
+  ASSERT_HASH_EQ(get_transaction_hash(txs[0]), get_transaction_hash(tx0.first));
+  EXPECT_THROW(db.get_tx_list({missing_hash()}), TX_DNE);
 }
 
 TYPED_TEST(BlockchainDBTest, OutputHistogramAndDistribution)

@@ -311,8 +311,20 @@ class BlockchainSQLite : public BlockchainDB {
     void begin_write(bool batch);
     void end_write(bool commit);
 
+    // Throw unless the calling thread holds the write transaction (respectively: a batch); `action`
+    // is what was attempted.
+    void require_writer(std::string_view action) const;
+    void require_batch_writer() const;
+
     template <typename T>
     T get_block_column(uint64_t height, std::string_view column, std::string_view what) const;
+
+    // The stored block at `height`, as a block, block_header or (serialized) std::string.
+    template <typename T>
+    T get_stored_block(uint64_t height, size_t* size = nullptr) const;
+
+    std::vector<uint64_t> get_block_weight_column(
+            std::string_view column, uint64_t start_height, size_t count) const;
 
     std::unique_ptr<session::sqlite::Database> m_sql;
     fs::path m_filename;
