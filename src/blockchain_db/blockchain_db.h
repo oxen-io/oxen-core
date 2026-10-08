@@ -2023,6 +2023,13 @@ db_backend select_db_backend(
         const fs::path& folder, const boost::program_options::variables_map& vm);
 
 /**
+ * @brief gets the backend explicitly requested with the `--db-backend` option, if any
+ *
+ * @throw DB_ERROR if the option value is not a backend name
+ */
+std::optional<db_backend> requested_db_backend(const boost::program_options::variables_map& vm);
+
+/**
  * @brief constructs an (unopened) database object for the given backend
  */
 std::unique_ptr<BlockchainDB> new_db(db_backend backend);

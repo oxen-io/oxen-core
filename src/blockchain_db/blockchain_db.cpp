@@ -93,19 +93,22 @@ db_backend select_db_backend(const fs::path& folder, std::optional<db_backend> r
 
 db_backend select_db_backend(
         const fs::path& folder, const boost::program_options::variables_map& vm) {
-    std::optional<db_backend> requested;
+    return select_db_backend(folder, requested_db_backend(vm));
+}
+
+std::optional<db_backend> requested_db_backend(const boost::program_options::variables_map& vm) {
     auto name = command_line::get_arg(vm, arg_db_backend);
     if (name == to_string(db_backend::lmdb))
-        requested = db_backend::lmdb;
-    else if (name == to_string(db_backend::sqlite))
-        requested = db_backend::sqlite;
-    else if (!name.empty())
+        return db_backend::lmdb;
+    if (name == to_string(db_backend::sqlite))
+        return db_backend::sqlite;
+    if (!name.empty())
         throw DB_ERROR{"Invalid --{} value '{}': expected '{}' or '{}'"_format(
                 arg_db_backend.name,
                 name,
                 to_string(db_backend::lmdb),
                 to_string(db_backend::sqlite))};
-    return select_db_backend(folder, requested);
+    return std::nullopt;
 }
 
 std::unique_ptr<BlockchainDB> new_db(db_backend backend) {

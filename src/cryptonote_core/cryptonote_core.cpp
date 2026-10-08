@@ -929,10 +929,16 @@ std::unique_ptr<BlockchainDB> core::init_blockchain_db(
         return nullptr;
     }
 
+    const bool reset_fakechain =
+            m_nettype == network_type::FAKECHAIN && !command_line::get_arg(vm, arg_keep_fakechain);
+
     std::unique_ptr<BlockchainDB> db;
     db_backend backend;
     try {
-        backend = select_db_backend(folder, vm);
+        // A fakechain database that is about to be wiped can't be switched away from by accident,
+        // so an explicit choice there doesn't have to agree with what the directory holds.
+        auto requested = requested_db_backend(vm);
+        backend = reset_fakechain && requested ? *requested : select_db_backend(folder, requested);
         db = new_db(backend);
     } catch (const DB_ERROR& e) {
         log::error(logcat, "Unable to set up the blockchain database: {}", e.what());
@@ -942,7 +948,7 @@ std::unique_ptr<BlockchainDB> core::init_blockchain_db(
     folder /= db->get_db_name();
     log::info(globallogcat, "Loading {} blockchain from {} ...", to_string(backend), folder);
 
-    if (m_nettype == network_type::FAKECHAIN && !command_line::get_arg(vm, arg_keep_fakechain)) {
+    if (reset_fakechain) {
         // reset the db by removing the database file before opening it
         if (!db->remove_data_file(folder)) {
             log::error(logcat, "Failed to remove data file in {}", folder);

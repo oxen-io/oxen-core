@@ -979,6 +979,10 @@ struct get_test_options {
   };
 };
 //--------------------------------------------------------------------------
+// Command line arguments given to each core that test events are replayed through (such as the
+// --db-backend given to core_tests itself).
+inline std::vector<std::string> core_test_core_args;
+
 template<class t_test_class>
 inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cryptonote::core *core, t_test_class &validator)
 {
@@ -988,7 +992,8 @@ inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cry
   boost::program_options::variables_map vm;
   bool r = command_line::handle_error_helper(desc, [&]()
   {
-    boost::program_options::store(boost::program_options::basic_parsed_options<char>(&desc), vm);
+    boost::program_options::store(
+        boost::program_options::command_line_parser(core_test_core_args).options(desc).run(), vm);
     boost::program_options::notify(vm);
     return true;
   });

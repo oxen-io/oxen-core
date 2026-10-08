@@ -59,6 +59,7 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_options, arg_filter);
   command_line::add_arg(desc_options, arg_list_tests);
   command_line::add_arg(desc_options, arg_log_level);
+  command_line::add_arg(desc_options, cryptonote::arg_db_backend);
 
   po::variables_map vm;
   bool r = command_line::handle_error_helper(desc_options, [&]()
@@ -84,6 +85,10 @@ int main(int argc, char* argv[])
   oxen::logging::init("core_tests.log", log_level); 
 
   const std::string filter = command_line::get_arg(vm, arg_filter);
+
+  if (!command_line::is_arg_defaulted(vm, cryptonote::arg_db_backend))
+    core_test_core_args.push_back(
+        "--" + cryptonote::arg_db_backend.name + "=" + command_line::get_arg(vm, cryptonote::arg_db_backend));
 
   size_t tests_count = 0;
   std::vector<std::string> failed_tests;
