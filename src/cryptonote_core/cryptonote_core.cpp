@@ -45,7 +45,7 @@ extern "C" {
 #include <unordered_set>
 
 #include "blockchain_db/blockchain_db.h"
-#include "blockchain_db/sqlite/db_sqlite.h"
+#include "blockchain_db/sqlite/rewards_db.h"
 #include "bls/bls_crypto.h"
 #include "checkpoints/checkpoints.h"
 #include "common/command_line.h"
@@ -614,9 +614,9 @@ bool core::init(
     if (m_nettype == network_type::FAKECHAIN && !command_line::get_arg(vm, arg_keep_fakechain))
         fs::remove(ons_db_file_path);
 
-    auto sqlite_db_file_path = folder / "sqlite.db";
+    auto rewards_db_file_path = folder / "sqlite.db";
     if (m_nettype == network_type::FAKECHAIN) {
-        sqlite_db_file_path = ":memory:";
+        rewards_db_file_path = ":memory:";
     }
 
     if ((m_nettype == network_type::STAGENET || m_nettype == network_type::DEVNET) &&
@@ -651,7 +651,7 @@ bool core::init(
             db->remove_data_file(folder / db->get_db_name());
             db.reset();
             log::warning(globallogcat, "Removing sqlite.db");
-            fs::remove(sqlite_db_file_path);
+            fs::remove(rewards_db_file_path);
             log::warning(globallogcat, "Removing ons.db");
             fs::remove(ons_db_file_path);
 
@@ -661,7 +661,7 @@ bool core::init(
         }
     }
 
-    auto sqliteDB = std::make_unique<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
+    auto rewards_db = std::make_unique<cryptonote::RewardsDB>(m_nettype, rewards_db_file_path);
 
     // We need this hook to get added before the block hook below, so that it fires first and
     // catches the start of a reorg before the block hook fires for the block in the reorg.
@@ -878,7 +878,7 @@ bool core::init(
             std::move(db),
             m_nettype,
             ons_db_file_path,
-            sqliteDB.release(),
+            rewards_db.release(),
             m_l2_tracker.get(),
             (m_nettype == network_type::FAKECHAIN && !test_options) ? &regtest_test_options
                                                                     : test_options,

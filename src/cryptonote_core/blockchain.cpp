@@ -46,7 +46,7 @@
 #include <stdexcept>
 
 #include "blockchain_db/blockchain_db.h"
-#include "blockchain_db/sqlite/db_sqlite.h"
+#include "blockchain_db/sqlite/rewards_db.h"
 #include "common/exception.h"
 #include "common/guts.h"
 #include "common/lock.h"
@@ -362,7 +362,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
 
     if (total_blocks > 0) {
         std::string sql_height =
-                "{}"_format(m_sqlite_db ? std::to_string(m_sqlite_db->height + 1) : "N/A");
+                "{}"_format(m_rewards_db ? std::to_string(m_rewards_db->height + 1) : "N/A");
         log::info(
                 globallogcat,
                 "Loading blocks into oxen subsystems, scanning blockchain from height: {} to: {} "
@@ -558,9 +558,9 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
     rescan.top_block_height = end_height;
     rescan.skip_verify = true;
 
-    std::optional<BlockchainSQLite::Batch> sql_batch;
-    if (m_sqlite_db && total_blocks > 0)
-        sql_batch.emplace(*m_sqlite_db);
+    std::optional<RewardsDB::Batch> rewards_batch;
+    if (m_rewards_db && total_blocks > 0)
+        rewards_batch.emplace(*m_rewards_db);
 
     while (true) {
         ZoneScopedN("Load blocks into subsystem");
@@ -699,14 +699,14 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
         }
         TracyCZoneEnd(add_block_chunk_to_subsystems);
     }
-    if (sql_batch)
-        sql_batch->finish();
+    if (rewards_batch)
+        rewards_batch->finish();
     auto end = clock::now();
 
     if (total_blocks > 0) {
         // NOTE: Check that all subsystems ended up synchronised to the same height
         if (service_node_list.height() != m_ons_db.height() ||
-            (m_sqlite_db && m_ons_db.height() != m_sqlite_db->height) ||
+            (m_rewards_db && m_ons_db.height() != m_rewards_db->height) ||
             service_node_list.height() != end_height - 1) {
             log::critical(
                     logcat,
@@ -715,7 +715,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
                     end_height - 1,
                     service_node_list.height(),
                     m_ons_db.height(),
-                    m_sqlite_db ? ", rewards ({})"_format(m_sqlite_db->height) : "");
+                    m_rewards_db ? ", rewards ({})"_format(m_rewards_db->height) : "");
             return false;
         }
 
@@ -775,7 +775,7 @@ bool Blockchain::init(
         std::unique_ptr<BlockchainDB> db,
         const network_type nettype,
         std::optional<fs::path> ons_db_path,
-        cryptonote::BlockchainSQLite* sqlite_db,
+        cryptonote::RewardsDB* rewards_db,
         eth::L2Tracker* l2_tracker,
         const cryptonote::test_options* test_options,
         difficulty_type fixed_difficulty,
@@ -821,11 +821,11 @@ bool Blockchain::init(
 
     if (test_options)  // Fakechain mode
         fakechain_hardforks = test_options->hard_forks;
-    if (sqlite_db) {
-        m_sqlite_db.reset(sqlite_db);
+    if (rewards_db) {
+        m_rewards_db.reset(rewards_db);
     } else {
         if (m_nettype != network_type::FAKECHAIN)
-            throw oxen::traced<std::logic_error>("Blockchain missing SQLite Database");
+            throw oxen::traced<std::logic_error>("Blockchain missing rewards database");
     }
 
     // if the blockchain is new, add the genesis block
@@ -963,13 +963,13 @@ bool Blockchain::init(
 
         // NOTE: Can happen out-of-band (e.g. SQL DB was corrupt/deleted)
         uint64_t detach_height = m_db->height();
-        if (m_sqlite_db && service_node_list.height() != m_sqlite_db->height) {
+        if (m_rewards_db && service_node_list.height() != m_rewards_db->height) {
             detach_height = std::min(detach_height, service_node_list.height() + 1);
-            detach_height = std::min(detach_height, m_sqlite_db->height + 1);
+            detach_height = std::min(detach_height, m_rewards_db->height + 1);
             detach_height = std::max(detach_height, static_cast<uint64_t>(1));
         }
 
-        auto fixup_detach = m_sqlite_db->fixup();
+        auto fixup_detach = m_rewards_db->fixup();
         if (fixup_detach)
             detach_height = std::min(detach_height, *fixup_detach + 1);
 
@@ -986,7 +986,7 @@ bool Blockchain::init(
 
         // Only check the rewards values are correct, just once afterwards, on the initial migration
         if (fixup_detach) {
-            if (m_sqlite_db->fixup(/*recheck=*/true))
+            if (m_rewards_db->fixup(/*recheck=*/true))
                 log::critical(
                         globallogcat,
                         "Invalid rewards were detected. A rescan was attempted but the incorrect "
@@ -1823,9 +1823,9 @@ bool Blockchain::validate_block_rewards(
         return false;
 
     std::vector<cryptonote::batch_sn_payment> batched_sn_payments;
-    if (m_sqlite_db) {
+    if (m_rewards_db) {
         if (version < cryptonote::feature::ETH_BLS)
-            batched_sn_payments = m_sqlite_db->get_sn_payments(height);
+            batched_sn_payments = m_rewards_db->get_sn_payments(height);
     } else {
         if (m_nettype != network_type::FAKECHAIN)
             throw oxen::traced<std::logic_error>("Blockchain missing SQLite Database");
@@ -2208,7 +2208,7 @@ bool Blockchain::create_block_template_internal(
     // This will check the batching database for who is due to be paid out in this block
     std::vector<cryptonote::batch_sn_payment> sn_rwds;
     if (hf_version >= hf::hf19_reward_batching) {
-        sn_rwds = m_sqlite_db->get_sn_payments(height);  // Rewards to pay out
+        sn_rwds = m_rewards_db->get_sn_payments(height);  // Rewards to pay out
     }
 
     b.miner_tx.emplace();
@@ -5807,8 +5807,8 @@ bool Blockchain::handle_block_to_main_chain(
     }
 
     assert(service_node_list.height() == m_ons_db.height());
-    if (m_sqlite_db)
-        assert(service_node_list.height() == m_sqlite_db->height);
+    if (m_rewards_db)
+        assert(service_node_list.height() == m_rewards_db->height);
 
     block_add_info hook_data{bl, only_txs, checkpoint};
     for (const auto& hook : m_block_add_hooks) {

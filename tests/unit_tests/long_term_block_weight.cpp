@@ -34,7 +34,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/uptime_proof.h"
 #include "blockchain_utilities/blockchain_objects.h"
-#include "blockchain_db/sqlite/db_sqlite.h"
+#include "blockchain_db/sqlite/rewards_db.h"
 #include "blockchain_db/testdb.h"
 
 #define TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW 5000
@@ -118,8 +118,8 @@ static uint32_t lcg()
     window, \
   }; \
   cryptonote::Blockchain *bc = &bc_objects.m_blockchain; \
-  auto sqliteDB = std::make_unique<cryptonote::BlockchainSQLite>(cryptonote::network_type::FAKECHAIN, ":memory:"); \
-  bool r = bc->init(std::make_unique<TestDB>(), test_options, sqliteDB.release()); \
+  auto rewardsDB = std::make_unique<cryptonote::RewardsDB>(cryptonote::network_type::FAKECHAIN, ":memory:"); \
+  bool r = bc->init(std::make_unique<TestDB>(), test_options, rewardsDB.release()); \
   ASSERT_TRUE(r)
 
 #define PREFIX(hf_version) PREFIX_WINDOW(hf_version, TEST_LONG_TERM_BLOCK_WEIGHT_WINDOW)

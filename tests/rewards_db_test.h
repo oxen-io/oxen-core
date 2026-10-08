@@ -1,4 +1,4 @@
-#include <blockchain_db/sqlite/db_sqlite.h>
+#include <blockchain_db/sqlite/rewards_db.h>
 
 namespace test {
 
@@ -8,17 +8,17 @@ inline fs::path check_if_copy_filename(fs::path db_path) {
   return db_path;
 }
 
-class BlockchainSQLiteTest : public cryptonote::BlockchainSQLite
+class RewardsDBTest : public cryptonote::RewardsDB
 {
     private:
         fs::path filename;
 public:
-  BlockchainSQLiteTest(cryptonote::network_type nettype, fs::path db_path)
-    : BlockchainSQLite(nettype, db_path), filename{std::move(db_path)} {};
+  RewardsDBTest(cryptonote::network_type nettype, fs::path db_path)
+    : RewardsDB(nettype, db_path), filename{std::move(db_path)} {};
 
 
-  BlockchainSQLiteTest(BlockchainSQLiteTest &other)
-    : BlockchainSQLiteTest(other.nettype, check_if_copy_filename(other.filename)) {
+  RewardsDBTest(RewardsDBTest &other)
+    : RewardsDBTest(other.nettype, check_if_copy_filename(other.filename)) {
 
     auto conn = db.conn();
     SQLite::Transaction transaction {

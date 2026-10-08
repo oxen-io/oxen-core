@@ -170,7 +170,7 @@ std::vector<cryptonote::block> oxen_chain_generator_db::get_blocks_range(const u
 oxen_chain_generator::oxen_chain_generator(std::vector<test_event_entry>& events, const std::vector<cryptonote::hard_fork>& hard_forks, std::string_view first_miner_seed)
 : events_(events)
 , hard_forks_(hard_forks)
-, sqlite_db_(std::make_unique<test::BlockchainSQLiteTest>(cryptonote::network_type::FAKECHAIN, ":memory:"))
+, rewards_db_(std::make_unique<test::RewardsDBTest>(cryptonote::network_type::FAKECHAIN, ":memory:"))
 {
   bool init = ons_db_->init(nullptr, cryptonote::network_type::FAKECHAIN, ":memory:", false /*read_only*/);
   assert(init);
@@ -1072,7 +1072,7 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
   size_t target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
   std::vector<cryptonote::batch_sn_payment> sn_rwds;
   if (hf_version_ < hf::hf21_eth)
-    sn_rwds = sqlite_db_->get_sn_payments(height);
+    sn_rwds = rewards_db_->get_sn_payments(height);
   if (hf_version_ < hf::hf19_reward_batching)
     CHECK_AND_ASSERT_MES(sn_rwds.empty(), false, "batch payments should be empty before hf19");
   uint64_t block_rewards = 0;
@@ -1184,7 +1184,7 @@ void oxen_chain_generator::block_end(oxen_blockchain_entry &entry, oxen_create_b
   entry.service_node_state = params.prev.service_node_state;
   auto block_add = entry.service_node_state.update_from_block(
           db_,
-          sqlite_db_.get(),
+          rewards_db_.get(),
           cryptonote::network_type::FAKECHAIN,
           state_history_,
           {} /*alt_states*/,
@@ -1192,7 +1192,7 @@ void oxen_chain_generator::block_end(oxen_blockchain_entry &entry, oxen_create_b
           entry.txs,
           nullptr,
           nullptr);
-  sqlite_db_->add_block(entry.block, entry.service_node_state, block_add);
+  rewards_db_->add_block(entry.block, entry.service_node_state, block_add);
 }
 
 bool oxen_chain_generator::process_registration_tx(cryptonote::transaction& tx, uint64_t block_height, hf hf_version)

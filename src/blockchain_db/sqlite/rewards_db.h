@@ -50,10 +50,10 @@ struct sql_payment {
 using block_payments = std::
         unordered_map<std::variant<eth::address, cryptonote::account_public_address>, sql_payment>;
 
-class BlockchainSQLite {
+class RewardsDB {
   public:
-    explicit BlockchainSQLite(cryptonote::network_type nettype, std::filesystem::path db_path);
-    BlockchainSQLite(const BlockchainSQLite&) = delete;
+    explicit RewardsDB(cryptonote::network_type nettype, std::filesystem::path db_path);
+    RewardsDB(const RewardsDB&) = delete;
 
     session::sqlite::Database db;
 
@@ -67,21 +67,21 @@ class BlockchainSQLite {
     // `height` reverts to the committed height; the next startup then sees the rewards DB behind
     // the SN list and replays the missing blocks.
     //
-    // A Batch can't be moved, as the BlockchainSQLite refers to it while it exists; construct it in
+    // A Batch can't be moved, as the RewardsDB refers to it while it exists; construct it in
     // place, e.g. in a std::optional.
     class Batch {
-        BlockchainSQLite& sql;
+        RewardsDB& sql;
         session::sqlite::Connection conn;
         std::optional<SQLite::Transaction> tx;
         int blocks = 0;
 
-        friend class BlockchainSQLite;
+        friend class RewardsDB;
         void block_added();
 
       public:
         static constexpr int BLOCKS = 100;
 
-        explicit Batch(BlockchainSQLite& sql);
+        explicit Batch(RewardsDB& sql);
         Batch(const Batch&) = delete;
         Batch& operator=(const Batch&) = delete;
 
@@ -90,7 +90,7 @@ class BlockchainSQLite {
         ~Batch();
     };
 
-    // Database management functions. Should be called on creation of BlockchainSQLite
+    // Database management functions. Should be called on creation of RewardsDB
     void create_schema();
     void upgrade_schema();
     void reset_database();
@@ -201,7 +201,7 @@ class BlockchainSQLite {
         // `height` is the DB height as seen by `conn`, which isn't necessarily the writer's
         // `height` when called from another thread.
         wallet_info(
-                const BlockchainSQLite& sql,
+                const RewardsDB& sql,
                 session::sqlite::Connection& conn,
                 uint64_t height,
                 std::span<const unsigned char> addr_bytes,

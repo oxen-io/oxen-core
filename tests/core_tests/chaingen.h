@@ -63,7 +63,7 @@
 
 #include "blockchain_db/testdb.h"
 
-#include "../blockchain_sqlite_test.h"
+#include "../rewards_db_test.h"
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "tests.core"
@@ -1476,7 +1476,7 @@ struct oxen_chain_generator
   service_nodes::service_node_list::state_set                        state_history_;
   uint64_t                                                           last_cull_height_ = 0;
   std::shared_ptr<ons::name_system_db>                               ons_db_ = std::make_shared<ons::name_system_db>();
-  std::unique_ptr<test::BlockchainSQLiteTest>                        sqlite_db_;
+  std::unique_ptr<test::RewardsDBTest>                               rewards_db_;
   oxen_chain_generator_db                                            db_;
   cryptonote::hf                                                     hf_version_ = cryptonote::hf::hf7;
   std::vector<test_event_entry>&                                     events_;
@@ -1485,7 +1485,7 @@ struct oxen_chain_generator
 
   oxen_chain_generator(std::vector<test_event_entry>& events, const std::vector<cryptonote::hard_fork>& hard_forks, std::string_view first_miner_seed = "");
   oxen_chain_generator(const oxen_chain_generator &other)
-    :tx_table_(other.tx_table_), service_node_keys_(other.service_node_keys_), state_history_(other.state_history_), last_cull_height_(other.last_cull_height_), sqlite_db_(std::make_unique<test::BlockchainSQLiteTest>(*other.sqlite_db_)),
+    :tx_table_(other.tx_table_), service_node_keys_(other.service_node_keys_), state_history_(other.state_history_), last_cull_height_(other.last_cull_height_), rewards_db_(std::make_unique<test::RewardsDBTest>(*other.rewards_db_)),
   ons_db_(other.ons_db_ ), db_(other.db_), hf_version_(other.hf_version_), events_(other.events_), hard_forks_(other.hard_forks_), first_miner_(other.first_miner_) {};
 
   uint64_t                                             height()       const { return db_.blocks.back().block.get_height(); }

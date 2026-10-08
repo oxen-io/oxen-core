@@ -85,7 +85,7 @@ struct block_and_checkpoint {
 class tx_memory_pool;
 struct tx_pool_options;
 struct test_options;
-class BlockchainSQLite;
+class RewardsDB;
 
 /** Declares ways in which the BlockchainDB backend should be told to sync
  *
@@ -154,7 +154,7 @@ class Blockchain {
      * @param nettype network type
      * @param ons_db_path the path of the ONS database to open.  Should be given when operating as
      * a regular oxen node.
-     * @param sqlite_db a raw, unmanaged pointer to the BlockchainSQLite object.  NOTE: the
+     * @param rewards_db a raw, unmanaged pointer to the RewardsDB object.  NOTE: the
      * Blockchain object takes over ownership of this pointer, if not nullptr.  Should not be
      * nullptr when operating as a regular oxen node.
      * @param l2_tracker a pointer to the L2Tracker instance; this pointer is *not* managed by the
@@ -172,7 +172,7 @@ class Blockchain {
             std::unique_ptr<BlockchainDB> db,
             const network_type nettype,
             std::optional<fs::path> ons_db_path = std::nullopt,
-            cryptonote::BlockchainSQLite* sqlite_db = nullptr,
+            cryptonote::RewardsDB* rewards_db = nullptr,
             eth::L2Tracker* l2_tracker = nullptr,
             const cryptonote::test_options* test_options = nullptr,
             difficulty_type fixed_difficulty = 0,
@@ -183,12 +183,12 @@ class Blockchain {
     bool init(
             std::unique_ptr<BlockchainDB> db,
             const cryptonote::test_options& test_options,
-            cryptonote::BlockchainSQLite* sqlite_db = nullptr) {
+            cryptonote::RewardsDB* rewards_db = nullptr) {
         return init(
                 std::move(db),
                 network_type::FAKECHAIN,
                 std::nullopt,
-                sqlite_db,
+                rewards_db,
                 nullptr,
                 &test_options);
     }
@@ -1178,10 +1178,10 @@ class Blockchain {
 
     const ons::name_system_db& name_system_db() const { return m_ons_db; }
 
-    cryptonote::BlockchainSQLite& sqlite_db() { return *m_sqlite_db; }
+    cryptonote::RewardsDB& rewards_db() { return *m_rewards_db; }
 
-    /// SQLite DB can be nullptr in some unit tests
-    cryptonote::BlockchainSQLite* maybe_sqlite_db() { return m_sqlite_db.get(); }
+    /// The rewards DB can be nullptr in some unit tests
+    cryptonote::RewardsDB* maybe_rewards_db() { return m_rewards_db.get(); }
 
     /// NOTE: unchecked access; should only be called in service node more where this is guaranteed
     /// to be set.
@@ -1322,7 +1322,7 @@ class Blockchain {
     std::unique_ptr<BlockchainDB> m_db;
 
     ons::name_system_db m_ons_db;
-    std::unique_ptr<cryptonote::BlockchainSQLite> m_sqlite_db;
+    std::unique_ptr<cryptonote::RewardsDB> m_rewards_db;
 
     mutable std::recursive_mutex m_blockchain_lock;  // TODO: add here reader/writer lock
 

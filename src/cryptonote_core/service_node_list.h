@@ -61,7 +61,7 @@
 namespace cryptonote {
 class Blockchain;
 class BlockchainDB;
-class BlockchainSQLite;
+class RewardsDB;
 struct checkpoint_t;
 struct wallet_info;
 };  // namespace cryptonote
@@ -1177,11 +1177,11 @@ class service_node_list {
                 uint64_t block_height) const;
 
         // oxen_chain_generator in core_tests does not have a Blockchain,
-        // but we can't include db_sqlite header here because it includes us,
+        // but we can't include rewards_db header here because it includes us,
         // so this overload is necessary.
         block_add_result update_from_block(
                 const cryptonote::BlockchainDB& db,
-                cryptonote::BlockchainSQLite* sqlite_db_ptr,
+                cryptonote::RewardsDB* rewards_db_ptr,
                 cryptonote::network_type nettype,
                 state_set const& state_history,
                 std::unordered_map<crypto::hash, state_t> const& alt_states,

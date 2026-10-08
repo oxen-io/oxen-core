@@ -43,7 +43,7 @@
 #include <type_traits>
 #include <variant>
 
-#include "blockchain_db/sqlite/db_sqlite.h"
+#include "blockchain_db/sqlite/rewards_db.h"
 #include "bls/bls_aggregator.h"
 #include "bls/bls_crypto.h"
 #include "common/command_line.h"
@@ -3892,7 +3892,7 @@ static std::string address_str(
 }
 
 static nlohmann::json wallet_info_to_json(
-        std::string address, const BlockchainSQLite::wallet_info& wallet_info) {
+        std::string address, const RewardsDB::wallet_info& wallet_info) {
     return nlohmann::json{
             {"found", wallet_info.found},
             {"address", std::move(address)},
@@ -3912,14 +3912,14 @@ void core_rpc_server::invoke(GET_ACCRUED_REWARDS& rpc, rpc_context) {
 
     auto& req = rpc.request;
     auto net = nettype();
-    BlockchainSQLite& sql_db = m_core.blockchain.sqlite_db();
+    RewardsDB& sql_db = m_core.blockchain.rewards_db();
 
     nlohmann::json::array_t& array = balances.get_ref<nlohmann::json::array_t&>();
     uint64_t height = 0;
     if (req.addresses.size() > 0) {
         array.reserve(req.addresses.size());
         for (auto& address : req.addresses) {
-            BlockchainSQLite::wallet_info wallet_info = {};
+            RewardsDB::wallet_info wallet_info = {};
             if (eth::address eth{}; tools::try_load_from_hex_guts<eth::address>(address, eth)) {
                 address = "{}"_format(eth);  // Reformat so that we use the proper checksum even if
                                              // a non-checksummed value was in the request.

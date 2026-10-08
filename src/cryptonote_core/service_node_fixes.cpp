@@ -46,7 +46,7 @@ std::pair<std::vector<hf22_fixup>, std::vector<crypto::public_key>> get_hf22_fix
                 //
                 // Note that this purge did *not* get properly accounted for in the lifetime stakes
                 // accounting because of a different bug that only counted the last one.  This
-                // accounting value is corrected in db_sqlite.cpp when upgrading the database upon
+                // accounting value is corrected in rewards_db.cpp when upgrading the database upon
                 // first 11.4.0 load of an earlier database.
                 {HF22Fix::Purge, 1852106, 0, 0, "488b88449534170e93b6f695840b9f3040239ec7045d9c82ec3e18cba16e3261"_edpk, "0x3adA97D64272aC01cF832E930259f078f337e5A5"_eth, 25'000'000'000'000},
 

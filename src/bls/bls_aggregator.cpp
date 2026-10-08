@@ -1,6 +1,6 @@
 #include "bls_aggregator.h"
 
-#include <blockchain_db/sqlite/db_sqlite.h>
+#include <blockchain_db/sqlite/rewards_db.h>
 #include <common/bigint.h>
 #include <common/exception.h>
 #include <common/guts.h>
@@ -817,8 +817,8 @@ void bls_aggregator::get_rewards(oxenmq::Message& m) const {
         return;
     }
 
-    cryptonote::BlockchainSQLite::wallet_info wallet_info =
-            core.blockchain.sqlite_db().get_accrued_rewards(eth_addr, height);
+    cryptonote::RewardsDB::wallet_info wallet_info =
+            core.blockchain.rewards_db().get_accrued_rewards(eth_addr, height);
     if (!wallet_info.found) {
         m.send_reply("410", "Balances for height {} are not available"_format(height));
         return;
@@ -849,8 +849,8 @@ void bls_aggregator::rewards_request(
         uint64_t height,
         std::function<void(std::shared_ptr<const bls_rewards_response>)> callback) {
     ZoneScoped;
-    cryptonote::BlockchainSQLite::wallet_info wallet_info =
-            core.blockchain.sqlite_db().get_accrued_rewards(addr, height);
+    cryptonote::RewardsDB::wallet_info wallet_info =
+            core.blockchain.rewards_db().get_accrued_rewards(addr, height);
 
     // FIXME: make this async
     oxen::log::trace(
