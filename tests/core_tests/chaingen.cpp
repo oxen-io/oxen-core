@@ -67,7 +67,6 @@ extern "C"
 #include <sodium.h>
 }
 
-#include <sqlite3.h>
 void oxen_register_callback(std::vector<test_event_entry> &events,
                             std::string const &callback_name,
                             oxen_callback callback)
@@ -173,7 +172,7 @@ oxen_chain_generator::oxen_chain_generator(std::vector<test_event_entry>& events
 , hard_forks_(hard_forks)
 , sqlite_db_(std::make_unique<test::BlockchainSQLiteTest>(cryptonote::network_type::FAKECHAIN, ":memory:"))
 {
-  bool init = ons_db_->init(nullptr, cryptonote::network_type::FAKECHAIN, ons::init_oxen_name_system("", false /*read_only*/));
+  bool init = ons_db_->init(nullptr, cryptonote::network_type::FAKECHAIN, ":memory:", false /*read_only*/);
   assert(init);
 
   if (first_miner_seed == "") {

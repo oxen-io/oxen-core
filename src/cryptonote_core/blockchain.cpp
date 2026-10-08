@@ -774,7 +774,7 @@ static bool exec_detach_hooks(
 bool Blockchain::init(
         std::unique_ptr<BlockchainDB> db,
         const network_type nettype,
-        sqlite3* ons_db,
+        std::optional<fs::path> ons_db_path,
         cryptonote::BlockchainSQLite* sqlite_db,
         eth::L2Tracker* l2_tracker,
         const cryptonote::test_options* test_options,
@@ -941,7 +941,7 @@ bool Blockchain::init(
             return false;
     }
 
-    if (ons_db && !m_ons_db.init(this, nettype, ons_db)) {
+    if (ons_db_path && !m_ons_db.init(this, nettype, *ons_db_path, m_db->is_read_only())) {
         log::error(logcat, "ONS failed to initialise");
         return false;
     }
