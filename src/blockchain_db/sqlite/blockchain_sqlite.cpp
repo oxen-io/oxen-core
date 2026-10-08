@@ -81,10 +81,17 @@ namespace {
     // transaction (for every transaction served to syncing peers and wallets), which would
     // otherwise be a scan of the whole table.  It is partial so that outputs whose transaction has
     // been dropped (light mode) do not take up space in it.
+    //
+    // Blocks and transactions are found by hash through an index of the hash's first 8 bytes
+    // (`hash8`, a virtual column, so it takes no space in the row) rather than a unique index of
+    // the whole hash, which is about three times the size; every lookup also compares the full
+    // hash, which settles the (vanishingly rare) prefix collision.  Hashes are kept unique by
+    // add_block and add_transaction_data, which check for them before inserting.
     constexpr auto SCHEMA = R"(
 CREATE TABLE blocks (
     height                INTEGER PRIMARY KEY,
-    hash                  BLOB    NOT NULL UNIQUE CHECK(length(hash) = 32),
+    hash                  BLOB    NOT NULL CHECK(length(hash) = 32),
+    hash8                 BLOB    GENERATED ALWAYS AS (substr(hash, 1, 8)) VIRTUAL,
     timestamp             INTEGER NOT NULL,
     weight                INTEGER NOT NULL,
     long_term_weight      INTEGER NOT NULL,
@@ -93,10 +100,12 @@ CREATE TABLE blocks (
     rct_outputs           INTEGER NOT NULL,
     blob                  BLOB
 ) STRICT;
+CREATE INDEX blocks_hash8 ON blocks(hash8);
 
 CREATE TABLE transactions (
     id            INTEGER PRIMARY KEY,
-    hash          BLOB    NOT NULL UNIQUE CHECK(length(hash) = 32),
+    hash          BLOB    NOT NULL CHECK(length(hash) = 32),
+    hash8         BLOB    GENERATED ALWAYS AS (substr(hash, 1, 8)) VIRTUAL,
     height        INTEGER NOT NULL REFERENCES blocks(height) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
     type          INTEGER NOT NULL,
     miner         INTEGER NOT NULL DEFAULT 0,
@@ -106,6 +115,7 @@ CREATE TABLE transactions (
     prunable_hash BLOB    CHECK(prunable_hash IS NULL OR length(prunable_hash) = 32)
 ) STRICT;
 CREATE INDEX transactions_height ON transactions(height);
+CREATE INDEX transactions_hash8  ON transactions(hash8);
 
 CREATE TABLE outputs (
     id           INTEGER PRIMARY KEY,
@@ -276,7 +286,8 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
     // Reads a tx's full blob into `bd`; false if the tx, or its prunable part, is not stored.
     bool load_tx_blob(Connection& conn, const crypto::hash& h, std::string& bd) {
         for (auto [unprunable, prunable] : conn.prepared_results<blob, std::optional<blob>>(
-                     "SELECT unprunable, prunable FROM transactions WHERE hash = ?",
+                     "SELECT unprunable, prunable FROM transactions "
+                     "WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
                      span_guts(h))) {
             if (!prunable)
                 return false;
@@ -688,7 +699,7 @@ void BlockchainSQLite::add_block(
     uint64_t height = chain_height(conn);
 
     if (conn.prepared_maybe_get<int64_t>(
-                "SELECT height FROM blocks WHERE hash = ?", span_guts(blk_hash)))
+                "SELECT height FROM blocks WHERE hash8 = substr(?1, 1, 8) AND hash = ?1", span_guts(blk_hash)))
         throw BLOCK_EXISTS("Attempting to add block that's already in the db");
 
     int64_t prev_rct_outputs = 0;
@@ -756,7 +767,7 @@ bool BlockchainSQLite::block_exists(const crypto::hash& h, uint64_t* height) con
     check_open();
     auto conn = m_sql->conn();
     auto found = conn.prepared_maybe_get<int64_t>(
-            "SELECT height FROM blocks WHERE hash = ?", span_guts(h));
+            "SELECT height FROM blocks WHERE hash8 = substr(?1, 1, 8) AND hash = ?1", span_guts(h));
     if (!found) {
         log::trace(logcat, "Block with hash {} not found in db", h);
         return false;
@@ -987,7 +998,7 @@ uint64_t BlockchainSQLite::add_transaction_data(
     auto& conn = write_conn();
 
     if (auto id = conn.prepared_maybe_get<int64_t>(
-                "SELECT id FROM transactions WHERE hash = ?", span_guts(tx_hash)))
+                "SELECT id FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1", span_guts(tx_hash)))
         throw TX_EXISTS(
                 "Attempting to add transaction that's already in the db (tx id {})"_format(*id));
 
@@ -1032,9 +1043,12 @@ void BlockchainSQLite::remove_transaction_data(const crypto::hash& tx_hash, cons
     // not use (removing a block's row removes its transactions and outputs through the cascade),
     // so the rows may well already be gone: that is not an error.
     conn.prepared_exec(
-            "DELETE FROM outputs WHERE tx_id = (SELECT id FROM transactions WHERE hash = ?)",
+            "DELETE FROM outputs WHERE tx_id = "
+            "(SELECT id FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1)",
             span_guts(tx_hash));
-    conn.prepared_exec("DELETE FROM transactions WHERE hash = ?", span_guts(tx_hash));
+    conn.prepared_exec(
+            "DELETE FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
+            span_guts(tx_hash));
 }
 
 bool BlockchainSQLite::tx_exists(const crypto::hash& h) const {
@@ -1048,7 +1062,7 @@ bool BlockchainSQLite::tx_exists(const crypto::hash& h, uint64_t& tx_id) const {
     auto conn = m_sql->conn();
     auto started = std::chrono::steady_clock::now();
     auto id = conn.prepared_maybe_get<int64_t>(
-            "SELECT id FROM transactions WHERE hash = ?", span_guts(h));
+            "SELECT id FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1", span_guts(h));
     time_tx_exists += std::chrono::steady_clock::now() - started;
     if (!id) {
         log::info(logcat, "transaction with hash {} not found in db", h);
@@ -1063,7 +1077,8 @@ uint64_t BlockchainSQLite::get_tx_unlock_time(const crypto::hash& h) const {
     check_open();
     auto conn = m_sql->conn();
     auto unlock = conn.prepared_maybe_get<int64_t>(
-            "SELECT unlock_time FROM transactions WHERE hash = ?", span_guts(h));
+            "SELECT unlock_time FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
+            span_guts(h));
     if (!unlock)
         throw TX_DNE("tx data with hash {} not found in db"_format(h));
     return as_u64(*unlock);
@@ -1081,7 +1096,8 @@ bool BlockchainSQLite::get_pruned_tx_blob(const crypto::hash& h, std::string& bd
     check_open();
     auto conn = m_sql->conn();
     for (auto unprunable : conn.prepared_results<blob>(
-                 "SELECT unprunable FROM transactions WHERE hash = ?", span_guts(h))) {
+                 "SELECT unprunable FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
+                 span_guts(h))) {
         bd.assign(as_view(unprunable));
         return true;
     }
@@ -1099,7 +1115,8 @@ bool BlockchainSQLite::get_pruned_tx_blobs_from(
     size_t found = 0;
     for (auto unprunable : conn.prepared_results<blob>(
                  "SELECT unprunable FROM transactions "
-                 "WHERE id >= (SELECT id FROM transactions WHERE hash = ?) ORDER BY id LIMIT ?",
+                 "WHERE id >= (SELECT id FROM transactions "
+                 "WHERE hash8 = substr(?1, 1, 8) AND hash = ?1) ORDER BY id LIMIT ?2",
                  span_guts(h),
                  as_i64(count))) {
         bd.emplace_back(as_view(unprunable));
@@ -1113,7 +1130,8 @@ bool BlockchainSQLite::get_prunable_tx_blob(const crypto::hash& h, std::string& 
     check_open();
     auto conn = m_sql->conn();
     for (auto prunable : conn.prepared_results<std::optional<blob>>(
-                 "SELECT prunable FROM transactions WHERE hash = ?", span_guts(h))) {
+                 "SELECT prunable FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
+                 span_guts(h))) {
         if (!prunable)
             return false;
         bd.assign(as_view(*prunable));
@@ -1128,7 +1146,8 @@ bool BlockchainSQLite::get_prunable_tx_hash(
     check_open();
     auto conn = m_sql->conn();
     auto row = conn.prepared_maybe_get<std::optional<blob_guts<crypto::hash>>>(
-            "SELECT prunable_hash FROM transactions WHERE hash = ?", span_guts(tx_hash));
+            "SELECT prunable_hash FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
+            span_guts(tx_hash));
     if (!row || !*row)
         return false;
     prunable_hash = **row;
@@ -1171,7 +1190,8 @@ std::vector<uint64_t> BlockchainSQLite::get_tx_block_heights(
     result.reserve(hs.size());
     for (const auto& h : hs)
         result.push_back(as_u64(conn.prepared_maybe_get<int64_t>(
-                                            "SELECT height FROM transactions WHERE hash = ?",
+                                            "SELECT height FROM transactions "
+                                            "WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
                                             span_guts(h))
                                         .value_or(-1)));
     return result;
@@ -1205,7 +1225,8 @@ uint64_t BlockchainSQLite::add_output(
             "(SELECT COALESCE(MAX(id) + 1, 0) FROM outputs), ?1, "
             "(SELECT COALESCE(MAX(amount_index) + 1, 0) FROM outputs WHERE amount = ?1), "
             "(SELECT COALESCE(MAX(height) + 1, 0) FROM blocks), ?2, ?3, ?4, "
-            "(SELECT id FROM transactions WHERE hash = ?5), ?6) RETURNING amount_index",
+            "(SELECT id FROM transactions WHERE hash8 = substr(?5, 1, 8) AND hash = ?5), ?6) "
+            "RETURNING amount_index",
             as_i64(tx_output.amount),
             as_i64(unlock_time),
             span_guts(std::get<txout_to_key>(tx_output.target).key),

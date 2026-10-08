@@ -608,6 +608,101 @@ TYPED_TEST(BlockchainDBTest, BlockWeights)
   EXPECT_THROW(db.get_tx_list({missing_hash()}), TX_DNE);
 }
 
+// A copy of `h` with byte `i` changed.
+crypto::hash flip_byte(crypto::hash h, size_t i)
+{
+  h.data()[i] ^= 0xff;
+  return h;
+}
+
+TYPED_TEST(BlockchainDBTest, HashPrefixes)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  const auto& [tx0, tx0_blob] = this->m_txs[0][0];
+
+  // Transaction hashes are taken from the block (only miner tx hashes are computed), so two txes
+  // can be given hashes that differ only after their first 8 bytes.  The second tx is the first
+  // with a different key image, so that it is not a double spend.
+  const auto h1 = crypto::cn_fast_hash("prefix twins", 12);
+  const auto h2 = flip_byte(h1, 31);
+  const auto h3 = flip_byte(h1, 8);
+  transaction tx1 = tx0;
+  std::get<txin_to_key>(tx1.vin[0]).k_image.data()[0] ^= 1;
+  tx1.unprunable_size = 0;
+  tx1.invalidate_hashes();
+
+  block a = this->m_blocks[0].first;
+  a.tx_hashes = {h1};
+  a.invalidate_hashes();
+  block b = this->m_blocks[1].first;
+  b.prev_id = get_block_hash(a);
+  b.tx_hashes = {h2};
+  b.invalidate_hashes();
+  {
+    db_wtxn_guard guard{db};
+    db.add_block({a, block_to_blob(a)}, t_sizes[0], t_sizes[0], t_diffs[0], t_coins[0], {{tx0, tx0_blob}});
+    db.add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {{tx1, tx_to_blob(tx1)}});
+  }
+
+  EXPECT_TRUE(db.tx_exists(h1));
+  EXPECT_TRUE(db.tx_exists(h2));
+  EXPECT_FALSE(db.tx_exists(h3));
+  EXPECT_EQ(
+      db.get_tx_block_heights({h1, h2, h3}),
+      (std::vector<uint64_t>{0, 1, std::numeric_limits<uint64_t>::max()}));
+  EXPECT_EQ(
+      std::get<txin_to_key>(db.get_tx(h1).vin[0]).k_image,
+      std::get<txin_to_key>(tx0.vin[0]).k_image);
+  EXPECT_EQ(
+      std::get<txin_to_key>(db.get_tx(h2).vin[0]).k_image,
+      std::get<txin_to_key>(tx1.vin[0]).k_image);
+
+  EXPECT_TRUE(db.block_exists(get_block_hash(a)));
+  EXPECT_FALSE(db.block_exists(flip_byte(get_block_hash(a), 31)));
+
+  // A tx whose hash is already stored (in a block with a new miner tx and key image) is refused.
+  block c = this->m_blocks[1].first;
+  c.prev_id = get_block_hash(b);
+  c.miner_tx->vin[0] = txin_gen{2};
+  c.miner_tx->unprunable_size = 0;
+  c.miner_tx->invalidate_hashes();
+  c.tx_hashes = {h1};
+  c.invalidate_hashes();
+  transaction tx2 = tx0;
+  std::get<txin_to_key>(tx2.vin[0]).k_image.data()[0] ^= 2;
+  tx2.unprunable_size = 0;
+  tx2.invalidate_hashes();
+  {
+    db_wtxn_guard guard{db};
+    EXPECT_THROW(
+        db.add_block({c, block_to_blob(c)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {{tx2, tx_to_blob(tx2)}}),
+        TX_EXISTS);
+    guard.abort();
+  }
+
+  // A block that is already stored is refused (one without a miner tx, so that it gets that far).
+  block d = this->m_blocks[1].first;
+  d.major_version = feature::ETH_BLS;
+  d.miner_tx.reset();
+  d.tx_hashes.clear();
+  d.prev_id = get_block_hash(b);
+  d.invalidate_hashes();
+  {
+    db_wtxn_guard guard{db};
+    db.add_block({d, block_to_blob(d)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {});
+  }
+  {
+    db_wtxn_guard guard{db};
+    EXPECT_THROW(
+        db.add_block({d, block_to_blob(d)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {}),
+        BLOCK_EXISTS);
+    guard.abort();
+  }
+  EXPECT_EQ(db.height(), 3);
+  EXPECT_EQ(db.get_tx_count(), 4);
+}
+
 TYPED_TEST(BlockchainDBTest, OutputHistogramAndDistribution)
 {
   this->open_with_blocks();
