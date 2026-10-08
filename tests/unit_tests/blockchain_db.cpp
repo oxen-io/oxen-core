@@ -41,6 +41,10 @@
 #include "blockchain_db/lmdb/db_lmdb.h"
 #include "blockchain_db/sqlite/blockchain_sqlite.h"
 #include "checkpoints/checkpoints.h"
+#include "cryptonote_core/service_node_list.h"
+#include "cryptonote_core/uptime_proof.h"
+
+#include <sodium/crypto_sign.h>
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "common/fs.h"
 #include "logging/oxen_logger.h"
@@ -825,6 +829,103 @@ TYPED_TEST(BlockchainDBTest, Txpool)
   EXPECT_EQ(std::memcmp(&got, &meta, sizeof(got)), 0);
   EXPECT_EQ(db.get_txpool_tx_count(), 1);
   EXPECT_FALSE(db.txpool_has_tx(h2));
+}
+
+TYPED_TEST(BlockchainDBTest, ServiceNodeData)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  std::string data;
+  EXPECT_FALSE(db.get_service_node_data(data, false));
+  {
+    db_wtxn_guard guard{db};
+    db.set_service_node_data("short", false);
+    db.set_service_node_data("long", true);
+    db.put_service_node_archive(0, "archive 0");
+    db.put_service_node_archive(1, "archive 1");
+  }
+  ASSERT_TRUE(db.get_service_node_data(data, false));
+  EXPECT_EQ(data, "short");
+  ASSERT_TRUE(db.get_service_node_data(data, true));
+  EXPECT_EQ(data, "long");
+  EXPECT_EQ(db.get_service_node_archive_heights(), (std::vector<uint64_t>{0, 1}));
+  EXPECT_EQ(db.get_service_node_archive(1), "archive 1");
+  EXPECT_EQ(db.get_service_node_archive(5), std::nullopt);
+
+  {
+    db_wtxn_guard guard{db};
+    db.delete_service_node_data(false);
+    db.delete_service_node_archives(1, std::numeric_limits<uint64_t>::max());
+  }
+  EXPECT_FALSE(db.get_service_node_data(data, false));
+  EXPECT_EQ(db.get_service_node_archive_heights(), (std::vector<uint64_t>{0}));
+
+  {
+    db_wtxn_guard guard{db};
+    db.clear_service_node_data();
+  }
+  EXPECT_FALSE(db.get_service_node_data(data, true));
+  EXPECT_TRUE(db.get_service_node_archive_heights().empty());
+}
+
+TYPED_TEST(BlockchainDBTest, ServiceNodeProofs)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+
+  // Since SN_PK_IS_ED25519 a service node's pubkey is its ed25519 pubkey.
+  unsigned char pk[crypto_sign_PUBLICKEYBYTES], sk[crypto_sign_SECRETKEYBYTES];
+  crypto_sign_keypair(pk, sk);
+  crypto::public_key pubkey;
+  std::memcpy(&pubkey, pk, sizeof(pubkey));
+  crypto::ed25519_public_key pubkey_ed25519;
+  std::memcpy(pubkey_ed25519.data(), pk, sizeof(pk));
+
+  service_nodes::proof_info proof;
+  proof.timestamp = 1700000000;
+  proof.proof->public_ip = 0x01020304;
+  proof.proof->storage_https_port = 22021;
+  proof.proof->storage_omq_port = 22020;
+  proof.proof->qnet_port = 22025;
+  proof.proof->version = {11, 6, 1};
+  proof.proof->storage_server_version = {2, 10, 0};
+  proof.proof->lokinet_version = {0, 9, 11};
+  proof.proof->pubkey_ed25519 = pubkey_ed25519;
+
+  {
+    db_wtxn_guard guard{db};
+    db.set_service_node_proof(pubkey, proof);
+  }
+
+  service_nodes::proof_info got;
+  ASSERT_TRUE(db.get_service_node_proof(pubkey, got));
+  EXPECT_FALSE(db.get_service_node_proof(crypto::public_key{}, got));
+  auto check = [&](const service_nodes::proof_info& p) {
+    EXPECT_EQ(p.timestamp, proof.timestamp);
+    EXPECT_GE(p.effective_timestamp, proof.timestamp);
+    EXPECT_EQ(p.proof->public_ip, proof.proof->public_ip);
+    EXPECT_EQ(p.proof->storage_https_port, proof.proof->storage_https_port);
+    EXPECT_EQ(p.proof->storage_omq_port, proof.proof->storage_omq_port);
+    EXPECT_EQ(p.proof->qnet_port, proof.proof->qnet_port);
+    EXPECT_EQ(p.proof->version, proof.proof->version);
+    EXPECT_EQ(p.proof->storage_server_version, proof.proof->storage_server_version);
+    EXPECT_EQ(p.proof->lokinet_version, proof.proof->lokinet_version);
+    ASSERT_HASH_EQ(p.proof->pubkey_ed25519, pubkey_ed25519);
+    EXPECT_TRUE(p.pubkey_x25519);
+  };
+  check(got);
+
+  auto all = db.get_all_service_node_proofs();
+  ASSERT_EQ(all.size(), 1);
+  ASSERT_TRUE(all.count(pubkey));
+  check(all.at(pubkey));
+
+  {
+    db_wtxn_guard guard{db};
+    EXPECT_TRUE(db.remove_service_node_proof(pubkey));
+    EXPECT_FALSE(db.remove_service_node_proof(pubkey));
+  }
+  EXPECT_TRUE(db.get_all_service_node_proofs().empty());
 }
 
 struct temp_data_dir

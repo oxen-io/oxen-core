@@ -39,6 +39,8 @@
 #include "common/guts.h"
 #include "common/oxen.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
+#include "cryptonote_core/service_node_list.h"
+#include "cryptonote_core/uptime_proof.h"
 #include "logging/oxen_logger.h"
 #include "ringct/rctOps.h"
 
@@ -164,6 +166,29 @@ CREATE TABLE txpool (
     do_not_relay          INTEGER NOT NULL,
     double_spend_seen     INTEGER NOT NULL
 ) STRICT, WITHOUT ROWID;
+
+-- The service node list's short-term (0) and long-term (1) state blobs.
+CREATE TABLE sn_data (
+    long_term INTEGER PRIMARY KEY,
+    blob      BLOB    NOT NULL
+) STRICT, WITHOUT ROWID;
+
+CREATE TABLE sn_states (
+    height INTEGER PRIMARY KEY REFERENCES blocks(height) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+    blob   BLOB    NOT NULL
+) STRICT;
+
+CREATE TABLE sn_proofs (
+    pubkey             BLOB    PRIMARY KEY CHECK(length(pubkey) = 32),
+    timestamp          INTEGER NOT NULL,
+    ip                 INTEGER NOT NULL,
+    storage_https_port INTEGER NOT NULL,
+    storage_omq_port   INTEGER NOT NULL,
+    quorumnet_port     INTEGER NOT NULL,
+    version            INTEGER NOT NULL,
+    storage_version    INTEGER NOT NULL,
+    lokinet_version    INTEGER NOT NULL
+) STRICT, WITHOUT ROWID;
 )";
 
     // Tables in the order they can be emptied in without violating a foreign key.
@@ -171,11 +196,14 @@ CREATE TABLE txpool (
             "key_images",
             "outputs",
             "transactions",
+            "sn_states",
             "blocks",
             "properties",
             "checkpoint_signatures",
             "checkpoints",
-            "txpool"};
+            "txpool",
+            "sn_data",
+            "sn_proofs"};
 
     // Views a byte string as unsigned chars, so that it binds as a BLOB rather than as TEXT (which
     // a STRICT BLOB column refuses).
@@ -1792,6 +1820,184 @@ bool BlockchainSQLite::for_all_txpool_txes(
 }
 
 // ---------------------------------------------------------------------------------------------
+// Service nodes
+// ---------------------------------------------------------------------------------------------
+
+void BlockchainSQLite::set_service_node_data(const std::string& data, bool long_term) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    in_write_txn([&](Connection& conn) {
+        conn.prepared_exec(
+                "INSERT OR REPLACE INTO sn_data (long_term, blob) VALUES (?, ?)",
+                long_term ? 1 : 0,
+                as_blob(data));
+    });
+}
+
+bool BlockchainSQLite::get_service_node_data(std::string& data, bool long_term) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    for (auto b : conn.prepared_results<blob>(
+                 "SELECT blob FROM sn_data WHERE long_term = ?", long_term ? 1 : 0)) {
+        data.assign(as_view(b));
+        return true;
+    }
+    return false;
+}
+
+void BlockchainSQLite::delete_service_node_data(bool long_term) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    in_write_txn([&](Connection& conn) {
+        conn.prepared_exec("DELETE FROM sn_data WHERE long_term = ?", long_term ? 1 : 0);
+    });
+}
+
+void BlockchainSQLite::clear_service_node_data() {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    in_write_txn([&](Connection& conn) {
+        conn.prepared_exec("DELETE FROM sn_data");
+        conn.prepared_exec("DELETE FROM sn_states");
+    });
+}
+
+void BlockchainSQLite::put_service_node_archive(uint64_t height, std::string_view data) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    in_write_txn([&](Connection& conn) {
+        conn.prepared_exec(
+                "INSERT OR REPLACE INTO sn_states (height, blob) VALUES (?, ?)",
+                as_i64(height),
+                as_blob(data));
+    });
+}
+
+std::optional<std::string> BlockchainSQLite::get_service_node_archive(uint64_t height) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    for (auto b : conn.prepared_results<blob>(
+                 "SELECT blob FROM sn_states WHERE height = ?", as_i64(height)))
+        return std::string{as_view(b)};
+    return std::nullopt;
+}
+
+std::vector<uint64_t> BlockchainSQLite::get_service_node_archive_heights() const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    std::vector<uint64_t> heights;
+    for (auto h : conn.prepared_results<int64_t>("SELECT height FROM sn_states ORDER BY height"))
+        heights.push_back(as_u64(h));
+    return heights;
+}
+
+void BlockchainSQLite::delete_service_node_archives(uint64_t begin, uint64_t end) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    in_write_txn([&](Connection& conn) {
+        // Heights are stored as signed integers, so an `end` past the largest one (as given to
+        // delete everything from `begin` on) has to become an open upper bound.
+        if (end > static_cast<uint64_t>(std::numeric_limits<int64_t>::max()))
+            conn.prepared_exec("DELETE FROM sn_states WHERE height >= ?", as_i64(begin));
+        else
+            conn.prepared_exec(
+                    "DELETE FROM sn_states WHERE height >= ? AND height < ?",
+                    as_i64(begin),
+                    as_i64(end));
+    });
+}
+
+namespace {
+    constexpr auto SN_PROOF_COLUMNS =
+            "pubkey, timestamp, ip, storage_https_port, storage_omq_port, quorumnet_port, version, "
+            "storage_version, lokinet_version"sv;
+
+    int64_t pack_version(const std::array<uint16_t, 3>& v) {
+        return v[0] * int64_t{1'000'000} + v[1] * int64_t{1'000} + v[2];
+    }
+    std::array<uint16_t, 3> unpack_version(int64_t v) {
+        return {static_cast<uint16_t>(v / 1'000'000),
+                static_cast<uint16_t>(v / 1'000 % 1'000),
+                static_cast<uint16_t>(v % 1'000)};
+    }
+
+    // Updates `info` from the SN_PROOF_COLUMNS of the current row of `st`, as the LMDB backend's
+    // stored proof does: the effective timestamp only ever moves forward.
+    void update_proof_info(SQLite::Statement& st, service_nodes::proof_info& info) {
+        if (!info.proof)
+            info.proof = std::make_unique<uptime_proof::Proof>();
+        info.timestamp = as_u64(st.getColumn(1).getInt64());
+        if (info.timestamp > info.effective_timestamp)
+            info.effective_timestamp = info.timestamp;
+        info.proof->public_ip = static_cast<uint32_t>(st.getColumn(2).getInt64());
+        info.proof->storage_https_port = static_cast<uint16_t>(st.getColumn(3).getInt());
+        info.proof->storage_omq_port = static_cast<uint16_t>(st.getColumn(4).getInt());
+        info.proof->qnet_port = static_cast<uint16_t>(st.getColumn(5).getInt());
+        info.proof->version = unpack_version(st.getColumn(6).getInt64());
+        info.proof->storage_server_version = unpack_version(st.getColumn(7).getInt64());
+        info.proof->lokinet_version = unpack_version(st.getColumn(8).getInt64());
+        // Since SN_PK_IS_ED25519 a service node's pubkey is its ed25519 pubkey, so that is not
+        // stored separately.
+        info.update_pubkey(blob_guts<crypto::ed25519_public_key>{st.getColumn(0)});
+    }
+}  // namespace
+
+bool BlockchainSQLite::get_service_node_proof(
+        const crypto::public_key& pubkey, service_nodes::proof_info& proof) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    auto st = conn.prepared_bind(
+            "SELECT {} FROM sn_proofs WHERE pubkey = ?"_format(SN_PROOF_COLUMNS), span_guts(pubkey));
+    if (!st->executeStep())
+        return false;
+    update_proof_info(st, proof);
+    return true;
+}
+
+void BlockchainSQLite::set_service_node_proof(
+        const crypto::public_key& pubkey, const service_nodes::proof_info& proof) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    const auto& p = *proof.proof;
+    in_write_txn([&](Connection& conn) {
+        conn.prepared_exec(
+                "INSERT OR REPLACE INTO sn_proofs ({}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"_format(
+                        SN_PROOF_COLUMNS),
+                span_guts(pubkey),
+                as_i64(proof.timestamp),
+                p.public_ip,
+                p.storage_https_port,
+                p.storage_omq_port,
+                p.qnet_port,
+                pack_version(p.version),
+                pack_version(p.storage_server_version),
+                pack_version(p.lokinet_version));
+    });
+}
+
+std::unordered_map<crypto::public_key, service_nodes::proof_info>
+BlockchainSQLite::get_all_service_node_proofs() const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    std::unordered_map<crypto::public_key, service_nodes::proof_info> result;
+    auto conn = m_sql->conn();
+    auto st = conn.prepared_st("SELECT {} FROM sn_proofs"_format(SN_PROOF_COLUMNS));
+    while (st->executeStep()) {
+        crypto::public_key pubkey = blob_guts<crypto::public_key>{st->getColumn(0)};
+        update_proof_info(st, result[pubkey]);
+    }
+    return result;
+}
+
+bool BlockchainSQLite::remove_service_node_proof(const crypto::public_key& pubkey) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    bool removed = false;
+    in_write_txn([&](Connection& conn) {
+        removed = conn.prepared_exec("DELETE FROM sn_proofs WHERE pubkey = ?", span_guts(pubkey)) >
+                  0;
+    });
+    return removed;
+}
+
+// ---------------------------------------------------------------------------------------------
 // Not yet implemented
 // ---------------------------------------------------------------------------------------------
 
@@ -1831,46 +2037,5 @@ bool BlockchainSQLite::get_output_distribution(
     not_implemented(__func__);
 }
 
-void BlockchainSQLite::set_service_node_data(const std::string&, bool) {
-    not_implemented(__func__);
-}
-bool BlockchainSQLite::get_service_node_data(std::string&, bool) const {
-    not_implemented(__func__);
-}
-void BlockchainSQLite::delete_service_node_data(bool) {
-    not_implemented(__func__);
-}
-void BlockchainSQLite::clear_service_node_data() {
-    not_implemented(__func__);
-}
-
-void BlockchainSQLite::put_service_node_archive(uint64_t, std::string_view) {
-    not_implemented(__func__);
-}
-std::optional<std::string> BlockchainSQLite::get_service_node_archive(uint64_t) const {
-    not_implemented(__func__);
-}
-std::vector<uint64_t> BlockchainSQLite::get_service_node_archive_heights() const {
-    not_implemented(__func__);
-}
-void BlockchainSQLite::delete_service_node_archives(uint64_t, uint64_t) {
-    not_implemented(__func__);
-}
-
-bool BlockchainSQLite::get_service_node_proof(
-        const crypto::public_key&, service_nodes::proof_info&) const {
-    not_implemented(__func__);
-}
-void BlockchainSQLite::set_service_node_proof(
-        const crypto::public_key&, const service_nodes::proof_info&) {
-    not_implemented(__func__);
-}
-std::unordered_map<crypto::public_key, service_nodes::proof_info>
-BlockchainSQLite::get_all_service_node_proofs() const {
-    not_implemented(__func__);
-}
-bool BlockchainSQLite::remove_service_node_proof(const crypto::public_key&) {
-    not_implemented(__func__);
-}
 
 }  // namespace cryptonote
