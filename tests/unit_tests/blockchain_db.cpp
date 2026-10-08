@@ -28,6 +28,7 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <cstdio>
+#include <fstream>
 #include <iostream>
 #include <chrono>
 #include <random>
@@ -334,6 +335,82 @@ TYPED_TEST(BlockchainDBTest, RetrieveBlockData)
 
   ASSERT_HASH_EQ(get_block_hash(this->m_blocks[0].first), hashes[0]);
   ASSERT_HASH_EQ(get_block_hash(this->m_blocks[1].first), hashes[1]);
+}
+
+struct temp_data_dir
+{
+  const fs::path path = random_tmp_file();
+
+  temp_data_dir() { fs::create_directories(path); }
+  ~temp_data_dir() { fs::remove_all(path); }
+
+  void touch(const fs::path& relative)
+  {
+    fs::create_directories((path / relative).parent_path());
+    std::ofstream{path / relative};
+  }
+};
+
+TEST(db_backend, detect)
+{
+  temp_data_dir dir;
+  EXPECT_EQ(select_db_backend(dir.path, std::nullopt), FRESH_DB_BACKEND);
+
+  // An lmdb directory without a data.mdb in it is not an LMDB database
+  fs::create_directories(dir.path / "lmdb");
+  EXPECT_EQ(select_db_backend(dir.path, std::nullopt), FRESH_DB_BACKEND);
+
+  dir.touch("lmdb/data.mdb");
+  EXPECT_EQ(select_db_backend(dir.path, std::nullopt), db_backend::lmdb);
+
+  dir.touch("oxen.db");
+  EXPECT_EQ(select_db_backend(dir.path, std::nullopt), db_backend::sqlite);
+}
+
+TEST(db_backend, explicit_choice)
+{
+  temp_data_dir dir;
+  EXPECT_EQ(select_db_backend(dir.path, db_backend::lmdb), db_backend::lmdb);
+  EXPECT_EQ(select_db_backend(dir.path, db_backend::sqlite), db_backend::sqlite);
+
+  dir.touch("lmdb/data.mdb");
+  EXPECT_EQ(select_db_backend(dir.path, db_backend::lmdb), db_backend::lmdb);
+  EXPECT_THROW(select_db_backend(dir.path, db_backend::sqlite), DB_ERROR);
+
+  dir.touch("oxen.db");
+  EXPECT_EQ(select_db_backend(dir.path, db_backend::lmdb), db_backend::lmdb);
+  EXPECT_EQ(select_db_backend(dir.path, db_backend::sqlite), db_backend::sqlite);
+
+  fs::remove_all(dir.path / "lmdb");
+  EXPECT_THROW(select_db_backend(dir.path, db_backend::lmdb), DB_ERROR);
+  EXPECT_EQ(select_db_backend(dir.path, db_backend::sqlite), db_backend::sqlite);
+}
+
+TEST(db_backend, option)
+{
+  temp_data_dir dir;
+  dir.touch("lmdb/data.mdb");
+
+  auto parse = [](std::vector<std::string> args) {
+    boost::program_options::options_description desc;
+    BlockchainDB::init_options(desc);
+    boost::program_options::variables_map vm;
+    boost::program_options::store(
+        boost::program_options::command_line_parser(args).options(desc).run(), vm);
+    boost::program_options::notify(vm);
+    return vm;
+  };
+
+  EXPECT_EQ(select_db_backend(dir.path, parse({})), db_backend::lmdb);
+  EXPECT_EQ(select_db_backend(dir.path, parse({"--db-backend=lmdb"})), db_backend::lmdb);
+  EXPECT_THROW(select_db_backend(dir.path, parse({"--db-backend=sqlite"})), DB_ERROR);
+  EXPECT_THROW(select_db_backend(dir.path, parse({"--db-backend=bdb"})), DB_ERROR);
+}
+
+TEST(db_backend, new_db)
+{
+  EXPECT_NE(dynamic_cast<BlockchainLMDB*>(new_db(db_backend::lmdb).get()), nullptr);
+  EXPECT_THROW(new_db(db_backend::sqlite), DB_ERROR);
 }
 
 }  // anonymous namespace

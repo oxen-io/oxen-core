@@ -156,6 +156,9 @@ struct mdb_txn_safe {
 // write for block and tx data, so no write transaction is open at the time.
 class BlockchainLMDB : public BlockchainDB {
   public:
+    /// The LMDB environment's directory, inside the data directory
+    static constexpr std::string_view DB_NAME = "lmdb";
+
     BlockchainLMDB(bool batch_transactions = true);
     ~BlockchainLMDB();
 

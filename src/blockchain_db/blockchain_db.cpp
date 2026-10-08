@@ -29,6 +29,8 @@
 
 #include "blockchain_db.h"
 
+#include <fmt/std.h>
+
 #include <chrono>
 
 #include "checkpoints/checkpoints.h"
@@ -53,14 +55,70 @@ const command_line::arg_descriptor<std::string> arg_db_sync_mode = {
         "fast:async:250000000bytes"};
 const command_line::arg_flag arg_db_salvage = {
         "db-salvage", "Try to salvage a blockchain database if it seems corrupted"};
+const command_line::arg_descriptor<std::string> arg_db_backend = {
+        "db-backend",
+        "Blockchain database backend: lmdb or sqlite.  If omitted, the backend of the existing "
+        "database in the data directory is used, or "s +
+                std::string{to_string(FRESH_DB_BACKEND)} + " for a new data directory.",
+        ""};
 
-std::unique_ptr<BlockchainDB> new_db() {
-    return std::make_unique<BlockchainLMDB>();
+std::string_view to_string(db_backend backend) {
+    switch (backend) {
+        case db_backend::lmdb: return "lmdb"sv;
+        case db_backend::sqlite: return "sqlite"sv;
+    }
+    return "unknown"sv;
+}
+
+db_backend select_db_backend(const fs::path& folder, std::optional<db_backend> requested) {
+    const auto sqlite_path = folder / SQLITE_DB_FILENAME;
+    const auto lmdb_path = folder / BlockchainLMDB::DB_NAME / BLOCKCHAINDATA_FILENAME;
+    const bool have_sqlite = fs::exists(sqlite_path);
+    const bool have_lmdb = fs::exists(lmdb_path);
+
+    if (!requested)
+        return have_sqlite ? db_backend::sqlite : have_lmdb ? db_backend::lmdb : FRESH_DB_BACKEND;
+
+    if (*requested == db_backend::lmdb && have_sqlite && !have_lmdb)
+        throw DB_ERROR{
+                "--{}=lmdb was given, but {} contains a SQLite blockchain database ({}) and no "
+                "LMDB database ({})"_format(arg_db_backend.name, folder, sqlite_path, lmdb_path)};
+    if (*requested == db_backend::sqlite && have_lmdb && !have_sqlite)
+        throw DB_ERROR{
+                "--{}=sqlite was given, but {} contains an LMDB blockchain database ({}) and no "
+                "SQLite database ({})"_format(arg_db_backend.name, folder, lmdb_path, sqlite_path)};
+    return *requested;
+}
+
+db_backend select_db_backend(
+        const fs::path& folder, const boost::program_options::variables_map& vm) {
+    std::optional<db_backend> requested;
+    auto name = command_line::get_arg(vm, arg_db_backend);
+    if (name == to_string(db_backend::lmdb))
+        requested = db_backend::lmdb;
+    else if (name == to_string(db_backend::sqlite))
+        requested = db_backend::sqlite;
+    else if (!name.empty())
+        throw DB_ERROR{"Invalid --{} value '{}': expected '{}' or '{}'"_format(
+                arg_db_backend.name,
+                name,
+                to_string(db_backend::lmdb),
+                to_string(db_backend::sqlite))};
+    return select_db_backend(folder, requested);
+}
+
+std::unique_ptr<BlockchainDB> new_db(db_backend backend) {
+    switch (backend) {
+        case db_backend::lmdb: return std::make_unique<BlockchainLMDB>();
+        case db_backend::sqlite: throw DB_ERROR{"SQLite blockchain backend is not implemented yet"};
+    }
+    throw DB_ERROR{"Unknown blockchain database backend"};
 }
 
 void BlockchainDB::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_db_sync_mode);
     command_line::add_arg(desc, arg_db_salvage);
+    command_line::add_arg(desc, arg_db_backend);
 }
 
 void BlockchainDB::pop_block() {

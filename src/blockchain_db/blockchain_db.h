@@ -113,6 +113,17 @@ typedef std::pair<crypto::hash, uint64_t> tx_out_index;
 
 extern const command_line::arg_descriptor<std::string> arg_db_sync_mode;
 extern const command_line::arg_flag arg_db_salvage;
+extern const command_line::arg_descriptor<std::string> arg_db_backend;
+
+enum class db_backend { lmdb, sqlite };
+
+std::string_view to_string(db_backend backend);
+
+/// The backend used for a data directory that does not yet contain a blockchain database.
+inline constexpr db_backend FRESH_DB_BACKEND = db_backend::lmdb;  // TODO(stage 2): sqlite
+
+/// The SQLite backend's database file, directly inside the data directory.
+inline constexpr std::string_view SQLITE_DB_FILENAME = "oxen.db";
 
 #pragma pack(push, 1)
 
@@ -679,14 +690,15 @@ class BlockchainDB {
      */
     virtual bool remove_data_file(const fs::path& folder) const = 0;
 
-    // return the name of the folder the db's file(s) should reside in
     /**
-     * @brief gets the name of the folder the BlockchainDB's file(s) should be in
+     * @brief gets the name of the BlockchainDB's location inside the data directory
      *
-     * The subclass implementation should return the name of the folder in which
-     * it stores files, or an empty string if there is none.
+     * The subclass implementation should return the name of the folder in which it stores files
+     * (e.g. "lmdb"), or of its database file if it uses a single file (e.g. "oxen.db"), or an
+     * empty string if there is none.  This is the path that gets passed to `open()`, relative to
+     * the data directory.
      *
-     * @return the name of the folder with the BlockchainDB's files, if any.
+     * @return the name of the BlockchainDB's folder or file, if any.
      */
     virtual std::string get_db_name() const = 0;
 
@@ -1963,7 +1975,41 @@ class db_wtxn_guard : public db_txn_guard {
     explicit db_wtxn_guard(BlockchainDB& db) : db_txn_guard{db, false} {}
 };
 
-std::unique_ptr<BlockchainDB> new_db();
+/**
+ * @brief selects the blockchain database backend for a data directory
+ *
+ * Without an explicit choice this is the backend of the database already in `folder`: sqlite if it
+ * contains a `SQLITE_DB_FILENAME` file, otherwise lmdb if it contains an `lmdb/data.mdb` file,
+ * otherwise (a fresh data directory) FRESH_DB_BACKEND.
+ *
+ * An explicit choice is used as given, but must not contradict the data directory: it is an error
+ * to request a backend when `folder` contains only the other backend's database.
+ *
+ * @param folder the data directory
+ * @param requested the explicitly requested backend, if any
+ *
+ * @return the backend to use
+ *
+ * @throw DB_ERROR if `requested` contradicts the database found in `folder`
+ */
+db_backend select_db_backend(const fs::path& folder, std::optional<db_backend> requested);
+
+/**
+ * @brief selects the blockchain database backend for a data directory, taking the explicit choice
+ * (if any) from the `--db-backend` option.
+ *
+ * @throw DB_ERROR if the option value is not a backend name, or contradicts the database found in
+ * `folder`
+ */
+db_backend select_db_backend(
+        const fs::path& folder, const boost::program_options::variables_map& vm);
+
+/**
+ * @brief constructs an (unopened) database object for the given backend
+ *
+ * @throw DB_ERROR if the backend is not available
+ */
+std::unique_ptr<BlockchainDB> new_db(db_backend backend);
 
 }  // namespace cryptonote
 

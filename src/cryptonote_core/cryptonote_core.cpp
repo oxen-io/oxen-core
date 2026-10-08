@@ -929,14 +929,18 @@ std::unique_ptr<BlockchainDB> core::init_blockchain_db(
         return nullptr;
     }
 
-    auto db = new_db();
-    if (!db) {
-        log::error(logcat, "Failed to initialize a database");
+    std::unique_ptr<BlockchainDB> db;
+    db_backend backend;
+    try {
+        backend = select_db_backend(folder, vm);
+        db = new_db(backend);
+    } catch (const DB_ERROR& e) {
+        log::error(logcat, "Unable to set up the blockchain database: {}", e.what());
         return nullptr;
     }
 
     folder /= db->get_db_name();
-    log::info(globallogcat, "Loading blockchain from folder {} ...", folder);
+    log::info(globallogcat, "Loading {} blockchain from {} ...", to_string(backend), folder);
 
     if (m_nettype == network_type::FAKECHAIN && !command_line::get_arg(vm, arg_keep_fakechain)) {
         // reset the db by removing the database file before opening it

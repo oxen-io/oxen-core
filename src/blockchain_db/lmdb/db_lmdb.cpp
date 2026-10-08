@@ -1624,7 +1624,7 @@ bool BlockchainLMDB::remove_data_file(const fs::path& folder) const {
 std::string BlockchainLMDB::get_db_name() const {
     log::trace(logcat, "BlockchainLMDB::{}", __func__);
 
-    return "lmdb"s;
+    return std::string{DB_NAME};
 }
 
 void BlockchainLMDB::lock() {

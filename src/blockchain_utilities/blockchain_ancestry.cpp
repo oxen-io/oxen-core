@@ -347,6 +347,7 @@ int main(int argc, char* argv[]) {
     const command_line::arg_flag arg_show_cache_stats{"show-cache-stats", "Show cache statistics"};
 
     command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
+    command_line::add_arg(desc_cmd_sett, cryptonote::arg_db_backend);
     command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
     command_line::add_arg(desc_cmd_sett, arg_txid);
@@ -419,17 +420,13 @@ int main(int argc, char* argv[]) {
     log::warning(logcat, "Initializing source blockchain (BlockchainDB)");
     blockchain_objects_t blockchain_objects = {};
     Blockchain* core_storage = &blockchain_objects.m_blockchain;
-    auto bdb = new_db();
-    if (!bdb) {
-        log::error(logcat, "Failed to initialize a database");
-        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
-    }
-    log::warning(logcat, "database: LMDB");
-
-    fs::path filename = tools::utf8_path(opt_data_dir) / bdb->get_db_name();
-    log::warning(logcat, "Loading blockchain from folder {} ...", filename);
-
+    std::unique_ptr<BlockchainDB> bdb;
     try {
+        auto backend = select_db_backend(tools::utf8_path(opt_data_dir), vm);
+        log::warning(logcat, "database: {}", to_string(backend));
+        bdb = new_db(backend);
+        fs::path filename = tools::utf8_path(opt_data_dir) / bdb->get_db_name();
+        log::warning(logcat, "Loading blockchain from {} ...", filename);
         bdb->open(filename, core_storage->nettype(), DBF_RDONLY);
     } catch (const std::exception& e) {
         log::warning(logcat, "Error opening database: {}", e.what());
