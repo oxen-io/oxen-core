@@ -124,7 +124,7 @@ enum class db_backend { lmdb, sqlite };
 std::string_view to_string(db_backend backend);
 
 /// The backend used for a data directory that does not yet contain a blockchain database.
-inline constexpr db_backend FRESH_DB_BACKEND = db_backend::lmdb;  // TODO(stage 3): sqlite
+inline constexpr db_backend FRESH_DB_BACKEND = db_backend::sqlite;
 
 /// The SQLite backend's database file, directly inside the data directory.
 inline constexpr std::string_view SQLITE_DB_FILENAME = "oxen.db";
