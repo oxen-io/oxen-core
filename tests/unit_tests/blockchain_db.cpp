@@ -743,6 +743,90 @@ TYPED_TEST(BlockchainDBTest, MaxBlockSize)
   EXPECT_EQ(db.get_max_block_size(), 200);
 }
 
+TYPED_TEST(BlockchainDBTest, Txpool)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+
+  txpool_tx_meta_t meta{};
+  meta.max_used_block_id = crypto::cn_fast_hash("max used", 8);
+  meta.last_failed_id = crypto::cn_fast_hash("last failed", 11);
+  meta.weight = 1234;
+  meta.fee = 5678;
+  meta.max_used_block_height = 9;
+  meta.last_failed_height = 7;
+  meta.receive_time = 1700000000;
+  meta.last_relayed_time = 1700000123;
+  meta.kept_by_block = 1;
+  meta.relayed = 1;
+  meta.double_spend_seen = 1;
+  meta.l2_height = 77;
+  txpool_tx_meta_t unrelayed = meta;
+  unrelayed.do_not_relay = 1;
+  unrelayed.double_spend_seen = 0;
+
+  const auto h1 = crypto::cn_fast_hash("tx1", 3), h2 = crypto::cn_fast_hash("tx2", 3);
+  const std::string blob1 = "tx one", blob2 = "tx two!";
+  {
+    db_wtxn_guard guard{db};
+    db.add_txpool_tx(h1, blob1, meta);
+    db.add_txpool_tx(h2, blob2, unrelayed);
+    // Adding an existing tx replaces it
+    db.add_txpool_tx(h1, "replaced", unrelayed);
+    EXPECT_EQ(db.get_txpool_tx_blob(h1), "replaced");
+    db.add_txpool_tx(h1, blob1, meta);
+    EXPECT_THROW(db.add_txpool_tx(missing_hash(), "", meta), DB_ERROR);
+  }
+
+  EXPECT_EQ(db.get_txpool_tx_count(), 2);
+  EXPECT_EQ(db.get_txpool_tx_count(false), 1);
+  EXPECT_TRUE(db.txpool_has_tx(h2));
+  EXPECT_FALSE(db.txpool_has_tx(missing_hash()));
+
+  txpool_tx_meta_t got;
+  ASSERT_TRUE(db.get_txpool_tx_meta(h2, got));
+  EXPECT_EQ(std::memcmp(&got, &unrelayed, sizeof(got)), 0);
+  EXPECT_FALSE(db.get_txpool_tx_meta(missing_hash(), got));
+  EXPECT_EQ(db.get_txpool_tx_blob(h1), blob1);
+  std::string bd;
+  EXPECT_FALSE(db.get_txpool_tx_blob(missing_hash(), bd));
+  EXPECT_THROW(db.get_txpool_tx_blob(missing_hash()), DB_ERROR);
+
+  std::vector<std::pair<crypto::hash, std::string>> seen;
+  db.for_all_txpool_txes(
+      [&](const crypto::hash& h, const txpool_tx_meta_t& m, const std::string* b) {
+        EXPECT_EQ(std::memcmp(&m, &meta, sizeof(m)), 0);
+        seen.emplace_back(h, b ? *b : "(none)");
+        return true;
+      },
+      true, false);
+  ASSERT_EQ(seen.size(), 1);
+  ASSERT_HASH_EQ(seen[0].first, h1);
+  EXPECT_EQ(seen[0].second, blob1);
+
+  size_t count = 0;
+  db.for_all_txpool_txes([&](const crypto::hash&, const txpool_tx_meta_t&, const std::string* b) {
+    EXPECT_EQ(b, nullptr);
+    ++count;
+    return true;
+  });
+  EXPECT_EQ(count, 2);
+
+  {
+    db_wtxn_guard guard{db};
+    meta.fee = 1;
+    meta.relayed = 0;
+    db.update_txpool_tx(h1, meta);
+    EXPECT_THROW(db.update_txpool_tx(missing_hash(), meta), DB_ERROR);
+    db.remove_txpool_tx(h2);
+    db.remove_txpool_tx(missing_hash());
+  }
+  ASSERT_TRUE(db.get_txpool_tx_meta(h1, got));
+  EXPECT_EQ(std::memcmp(&got, &meta, sizeof(got)), 0);
+  EXPECT_EQ(db.get_txpool_tx_count(), 1);
+  EXPECT_FALSE(db.txpool_has_tx(h2));
+}
+
 struct temp_data_dir
 {
   const fs::path path = random_tmp_file();

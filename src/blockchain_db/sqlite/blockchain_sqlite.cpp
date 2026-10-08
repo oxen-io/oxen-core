@@ -146,6 +146,24 @@ CREATE TABLE checkpoint_signatures (
     signature   BLOB    NOT NULL CHECK(length(signature) = 64),
     PRIMARY KEY(height, voter_index)
 ) STRICT, WITHOUT ROWID;
+
+CREATE TABLE txpool (
+    hash                  BLOB    PRIMARY KEY CHECK(length(hash) = 32),
+    blob                  BLOB    NOT NULL,
+    weight                INTEGER NOT NULL,
+    fee                   INTEGER NOT NULL,
+    receive_time          INTEGER NOT NULL,
+    last_relayed_time     INTEGER NOT NULL,
+    max_used_block_height INTEGER NOT NULL,
+    max_used_block_hash   BLOB    NOT NULL,
+    last_failed_height    INTEGER NOT NULL,
+    last_failed_hash      BLOB    NOT NULL,
+    l2_height             INTEGER NOT NULL,
+    kept_by_block         INTEGER NOT NULL,
+    relayed               INTEGER NOT NULL,
+    do_not_relay          INTEGER NOT NULL,
+    double_spend_seen     INTEGER NOT NULL
+) STRICT, WITHOUT ROWID;
 )";
 
     // Tables in the order they can be emptied in without violating a foreign key.
@@ -156,7 +174,8 @@ CREATE TABLE checkpoint_signatures (
             "blocks",
             "properties",
             "checkpoint_signatures",
-            "checkpoints"};
+            "checkpoints",
+            "txpool"};
 
     // Views a byte string as unsigned chars, so that it binds as a BLOB rather than as TEXT (which
     // a STRICT BLOB column refuses).
@@ -1602,39 +1621,179 @@ void BlockchainSQLite::add_max_block_size(uint64_t sz) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Not yet implemented
+// Txpool
 // ---------------------------------------------------------------------------------------------
 
-void BlockchainSQLite::add_txpool_tx(const crypto::hash&, const std::string&, const txpool_tx_meta_t&) {
-    not_implemented(__func__);
+namespace {
+    constexpr auto TXPOOL_META_COLUMNS =
+            "weight, fee, receive_time, last_relayed_time, max_used_block_height, "
+            "max_used_block_hash, last_failed_height, last_failed_hash, l2_height, kept_by_block, "
+            "relayed, do_not_relay, double_spend_seen"sv;
+
+    // Reads the TXPOOL_META_COLUMNS of the current row of `st`, which start at column `col`.
+    txpool_tx_meta_t read_txpool_meta(SQLite::Statement& st, int col) {
+        auto u64 = [&](int i) { return as_u64(st.getColumn(col + i).getInt64()); };
+        auto u8 = [&](int i) { return static_cast<uint8_t>(st.getColumn(col + i).getInt()); };
+        auto hash = [&](int i) -> crypto::hash {
+            return blob_guts<crypto::hash>{st.getColumn(col + i)};
+        };
+        txpool_tx_meta_t meta{};
+        meta.weight = u64(0);
+        meta.fee = u64(1);
+        meta.receive_time = u64(2);
+        meta.last_relayed_time = u64(3);
+        meta.max_used_block_height = u64(4);
+        meta.max_used_block_id = hash(5);
+        meta.last_failed_height = u64(6);
+        meta.last_failed_id = hash(7);
+        meta.l2_height = u64(8);
+        meta.kept_by_block = u8(9);
+        meta.relayed = u8(10);
+        meta.do_not_relay = u8(11);
+        meta.double_spend_seen = u8(12);
+        return meta;
+    }
+}  // namespace
+
+void BlockchainSQLite::add_txpool_tx(
+        const crypto::hash& txid, const std::string& blob, const txpool_tx_meta_t& meta) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    if (blob.empty())
+        throw DB_ERROR("Attempting to add txpool tx with empty blob");
+    // Adding a tx that is already there replaces it, as it always has with LMDB.
+    in_write_txn([&](Connection& conn) {
+        conn.prepared_exec(
+                "INSERT OR REPLACE INTO txpool (hash, blob, {}) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"_format(TXPOOL_META_COLUMNS),
+                span_guts(txid),
+                as_blob(blob),
+                as_i64(meta.weight),
+                as_i64(meta.fee),
+                as_i64(meta.receive_time),
+                as_i64(meta.last_relayed_time),
+                as_i64(meta.max_used_block_height),
+                span_guts(meta.max_used_block_id),
+                as_i64(meta.last_failed_height),
+                span_guts(meta.last_failed_id),
+                as_i64(meta.l2_height),
+                meta.kept_by_block,
+                meta.relayed,
+                meta.do_not_relay,
+                static_cast<int>(meta.double_spend_seen));
+    });
 }
-void BlockchainSQLite::update_txpool_tx(const crypto::hash&, const txpool_tx_meta_t&) {
-    not_implemented(__func__);
+
+void BlockchainSQLite::update_txpool_tx(const crypto::hash& txid, const txpool_tx_meta_t& meta) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    in_write_txn([&](Connection& conn) {
+        auto updated = conn.prepared_exec(
+                "UPDATE txpool SET weight = ?, fee = ?, receive_time = ?, last_relayed_time = ?, "
+                "max_used_block_height = ?, max_used_block_hash = ?, last_failed_height = ?, "
+                "last_failed_hash = ?, l2_height = ?, kept_by_block = ?, relayed = ?, "
+                "do_not_relay = ?, double_spend_seen = ? WHERE hash = ?",
+                as_i64(meta.weight),
+                as_i64(meta.fee),
+                as_i64(meta.receive_time),
+                as_i64(meta.last_relayed_time),
+                as_i64(meta.max_used_block_height),
+                span_guts(meta.max_used_block_id),
+                as_i64(meta.last_failed_height),
+                span_guts(meta.last_failed_id),
+                as_i64(meta.l2_height),
+                meta.kept_by_block,
+                meta.relayed,
+                meta.do_not_relay,
+                static_cast<int>(meta.double_spend_seen),
+                span_guts(txid));
+        if (updated == 0)
+            throw DB_ERROR("Error finding txpool tx meta to update");
+    });
 }
-uint64_t BlockchainSQLite::get_txpool_tx_count(bool) const {
-    not_implemented(__func__);
+
+uint64_t BlockchainSQLite::get_txpool_tx_count(bool include_unrelayed_txes) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    return as_u64(conn.prepared_get<int64_t>(
+            include_unrelayed_txes ? "SELECT COUNT(*) FROM txpool"
+                                   : "SELECT COUNT(*) FROM txpool WHERE NOT do_not_relay"));
 }
-bool BlockchainSQLite::txpool_has_tx(const crypto::hash&) const {
-    not_implemented(__func__);
+
+bool BlockchainSQLite::txpool_has_tx(const crypto::hash& txid) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    return conn.prepared_maybe_get<int>("SELECT 1 FROM txpool WHERE hash = ?", span_guts(txid))
+            .has_value();
 }
-void BlockchainSQLite::remove_txpool_tx(const crypto::hash&) {
-    not_implemented(__func__);
+
+void BlockchainSQLite::remove_txpool_tx(const crypto::hash& txid) {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    in_write_txn([&](Connection& conn) {
+        conn.prepared_exec("DELETE FROM txpool WHERE hash = ?", span_guts(txid));
+    });
 }
-bool BlockchainSQLite::get_txpool_tx_meta(const crypto::hash&, txpool_tx_meta_t&) const {
-    not_implemented(__func__);
+
+bool BlockchainSQLite::get_txpool_tx_meta(const crypto::hash& txid, txpool_tx_meta_t& meta) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    auto st = conn.prepared_bind(
+            "SELECT {} FROM txpool WHERE hash = ?"_format(TXPOOL_META_COLUMNS), span_guts(txid));
+    if (!st->executeStep())
+        return false;
+    meta = read_txpool_meta(st, 0);
+    return true;
 }
-bool BlockchainSQLite::get_txpool_tx_blob(const crypto::hash&, std::string&) const {
-    not_implemented(__func__);
+
+bool BlockchainSQLite::get_txpool_tx_blob(const crypto::hash& txid, std::string& bd) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    for (auto data : conn.prepared_results<blob>(
+                 "SELECT blob FROM txpool WHERE hash = ?", span_guts(txid))) {
+        if (data.empty())
+            throw DB_ERROR("Error finding txpool tx blob: tx is present, but data is empty");
+        bd.assign(as_view(data));
+        return true;
+    }
+    return false;
 }
-std::string BlockchainSQLite::get_txpool_tx_blob(const crypto::hash&) const {
-    not_implemented(__func__);
+
+std::string BlockchainSQLite::get_txpool_tx_blob(const crypto::hash& txid) const {
+    std::string bd;
+    if (!get_txpool_tx_blob(txid, bd))
+        throw DB_ERROR("Tx not found in txpool: ");
+    return bd;
 }
+
 bool BlockchainSQLite::for_all_txpool_txes(
-        std::function<bool(const crypto::hash&, const txpool_tx_meta_t&, const std::string*)>,
-        bool,
-        bool) const {
-    not_implemented(__func__);
+        std::function<bool(const crypto::hash&, const txpool_tx_meta_t&, const std::string*)> f,
+        bool include_blob,
+        bool include_unrelayed_txes) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    auto st = conn.prepared_st(
+            "SELECT hash, {}{} FROM txpool{} ORDER BY hash"_format(
+                    TXPOOL_META_COLUMNS,
+                    include_blob ? ", blob" : "",
+                    include_unrelayed_txes ? "" : " WHERE NOT do_not_relay"));
+    std::string bd;
+    while (st->executeStep()) {
+        crypto::hash txid = blob_guts<crypto::hash>{st->getColumn(0)};
+        auto meta = read_txpool_meta(st, 1);
+        if (include_blob)
+            bd.assign(as_view(blob{st->getColumn(14)}));
+        if (!f(txid, meta, include_blob ? &bd : nullptr))
+            return false;
+    }
+    return true;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Not yet implemented
+// ---------------------------------------------------------------------------------------------
 
 void BlockchainSQLite::add_alt_block(
         const crypto::hash&, const alt_block_data_t&, const std::string&, const std::string*) {
