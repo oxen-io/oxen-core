@@ -16,6 +16,9 @@
 namespace session::sqlite {
 class Database;
 }
+namespace SQLite {
+class Transaction;
+}
 namespace cryptonote {
 struct checkpoint_t;
 struct block;
@@ -315,7 +318,15 @@ struct name_system_db {
     // Saves the current height to the database, and stops using it.  Does nothing if not
     // initialized (or already closed).
     void close();
-    bool add_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
+
+    // Adds the ONS records of a block.  `active_tx`, if given, is a transaction open on this
+    // thread's shared connection to the database (such as the blockchain's write transaction, when
+    // the ONS tables are in the blockchain database) that the writes belong in; otherwise they get
+    // a transaction of their own, which is only committed when there is something worth saving.
+    bool add_block(
+            const cryptonote::block& block,
+            const std::vector<cryptonote::transaction>& txs,
+            SQLite::Transaction* active_tx = nullptr);
 
     cryptonote::network_type network_type() const { return nettype; }
     uint64_t height() const { return last_processed_height; }
@@ -331,8 +342,12 @@ struct name_system_db {
     bool save_settings(uint64_t top_height, crypto::hash const& top_hash, int version);
 
     // Delete all mappings that are registered after height followed by deleting all owners no
-    // longer referenced in the DB.  Updates the state to the given height and hash.
-    bool prune_db(uint64_t top_height, const crypto::hash& top_hash);
+    // longer referenced in the DB.  Updates the state to the given height and hash.  `active_tx`
+    // is as for add_block.
+    bool prune_db(
+            uint64_t top_height,
+            const crypto::hash& top_hash,
+            SQLite::Transaction* active_tx = nullptr);
 
     owner_record get_owner_by_key(generic_owner const& owner);
     // Returns a wallet address from the passed ONS name in "str"

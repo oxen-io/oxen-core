@@ -841,8 +841,9 @@ class core final {
     std::array<uint16_t, 3> srouter_version;
 
   private:
-    // The databases holding the rewards (sqlite.db) and ONS (ons.db) tables.  Declared before
-    // `blockchain` because they must outlive it.
+    // The databases holding the rewards (sqlite.db) and ONS (ons.db) tables when the blockchain is
+    // not stored in SQLite (when it is, they are kept in the blockchain database).  Declared
+    // before `blockchain` because they must outlive it.
     std::unique_ptr<session::sqlite::Database> m_rewards_sql;
     std::unique_ptr<session::sqlite::Database> m_ons_sql;
 

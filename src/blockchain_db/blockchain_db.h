@@ -108,6 +108,9 @@ struct proof_info;
 namespace SQLite {
 class Transaction;
 }
+namespace session::sqlite {
+class Database;
+}
 
 namespace cryptonote {
 struct checkpoint_t;
@@ -816,14 +819,25 @@ class BlockchainDB {
      * calling thread has open, if any
      *
      * A backend that stores the blockchain in a SQLite database returns its open write transaction
-     * so that other SQLite writes made on the same thread and connection (the rewards and ONS
-     * databases, when they share the file) can run inside it rather than trying to open a second,
-     * nested transaction.
+     * so that other writes to that database made on the same thread (to the rewards and ONS
+     * tables, which are kept in it) can run inside it rather than trying to open a second, nested
+     * transaction.  The transaction is on the calling thread's shared connection to the database,
+     * i.e. the one that sqlite_database()->conn() returns.
      *
      * @return the open write transaction, or nullptr if the calling thread has none or the backend
      * does not use SQLite.
      */
     virtual SQLite::Transaction* active_write_transaction() { return nullptr; }
+
+    /**
+     * @brief gets the SQLite database the blockchain is stored in, if the backend uses one
+     *
+     * Only valid while the database is open.  Other things (the rewards and ONS tables) can be
+     * kept in it too.
+     *
+     * @return the database, or nullptr if the backend does not use SQLite (or is not open).
+     */
+    virtual session::sqlite::Database* sqlite_database() { return nullptr; }
 
     // adds a block with the given metadata to the top of the blockchain, returns the new height
     /**

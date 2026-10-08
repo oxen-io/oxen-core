@@ -66,6 +66,10 @@ struct checkpoint_t;
 struct wallet_info;
 };  // namespace cryptonote
 
+namespace SQLite {
+class Transaction;
+}
+
 namespace service_nodes {
 inline constexpr uint64_t INVALID_HEIGHT = static_cast<uint64_t>(-1);
 
@@ -1179,9 +1183,12 @@ class service_node_list {
         // oxen_chain_generator in core_tests does not have a Blockchain,
         // but we can't include rewards_db header here because it includes us,
         // so this overload is necessary.
+        //
+        // `rewards_tx` is the `active_tx` for the writes to `rewards_db_ptr` (see RewardsDB).
         block_add_result update_from_block(
                 const cryptonote::BlockchainDB& db,
                 cryptonote::RewardsDB* rewards_db_ptr,
+                SQLite::Transaction* rewards_tx,
                 cryptonote::network_type nettype,
                 state_set const& state_history,
                 std::unordered_map<crypto::hash, state_t> const& alt_states,

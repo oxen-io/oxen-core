@@ -1183,6 +1183,16 @@ class Blockchain {
     /// The rewards DB can be nullptr in some unit tests
     cryptonote::RewardsDB* maybe_rewards_db() { return m_rewards_db.get(); }
 
+    /// The transaction to give, as their `active_tx`, to the RewardsDB writes made while adding or
+    /// removing blocks: the blockchain database's write transaction of this thread, when the
+    /// rewards tables are in the blockchain database; the transaction grouping the writes of a
+    /// replay of blocks, while one is replaying with the rewards tables in a database of their own;
+    /// otherwise nullptr.  Only for the thread holding the blockchain lock.
+    SQLite::Transaction* rewards_write_tx();
+
+    /// As rewards_write_tx(), for the ONS tables (which a replay doesn't group).
+    SQLite::Transaction* ons_write_tx();
+
     /// NOTE: unchecked access; should only be called in service node more where this is guaranteed
     /// to be set.
     eth::L2Tracker& l2_tracker() { return *m_l2_tracker; }
@@ -1323,6 +1333,14 @@ class Blockchain {
 
     ons::name_system_db m_ons_db;
     std::unique_ptr<cryptonote::RewardsDB> m_rewards_db;
+
+    // While load_missing_blocks_into_oxen_subsystems replays blocks with the rewards tables in a
+    // database of their own, the transaction of the RewardsDB::Batch grouping their writes.
+    SQLite::Transaction* m_rewards_replay_tx = nullptr;
+
+    // The blockchain database's write transaction of this thread, if `db` is the blockchain
+    // database; otherwise nullptr.
+    SQLite::Transaction* chain_write_tx_for(const session::sqlite::Database* db);
 
     mutable std::recursive_mutex m_blockchain_lock;  // TODO: add here reader/writer lock
 

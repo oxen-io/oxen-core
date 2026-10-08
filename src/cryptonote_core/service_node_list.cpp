@@ -2439,7 +2439,7 @@ service_node_list::state_t::confirm_result service_node_list::state_t::process_c
         // NOTE: Add the funds to the unlock queue in the DB, can be retrieved by BLS aggregation
         // when fully unlocked..
         sn_list->blockchain.rewards_db().add_delayed_payments(
-                result.exit_stakes, height, block_delay);
+                result.exit_stakes, height, block_delay, sn_list->blockchain.rewards_write_tx());
     }
 
     x25519_map.erase(snpk_to_xpk(node->service_node_pubkey));
@@ -3296,7 +3296,7 @@ void service_node_list::block_add(
 
     // NOTE: Add block to SQL in lock-step with SNL
     if (auto* sql_db = blockchain.maybe_rewards_db())
-        sql_db->add_block(block, m_state, result, rescan);
+        sql_db->add_block(block, m_state, result, rescan, blockchain.rewards_write_tx());
 
     if (mocknet_is_forking(m_state.height)) {
         mocknet_inject_nodes(
@@ -3827,6 +3827,7 @@ static bool is_expired_node_hf10_onwards(
 static void apply_fixups(
         cryptonote::network_type nettype,
         cryptonote::RewardsDB* sql_db,
+        SQLite::Transaction* rewards_tx,
         service_node_list::state_t& state,
         const cryptonote::block& block) {
     if (block.major_version == cryptonote::hf::hf22_eth_fixup &&
@@ -3889,7 +3890,7 @@ static void apply_fixups(
             // and so get_accrued_rewards's default behaviour of applying the current hf based on
             // the current db height will apply the wrong hf rules for db amount calculations.
             book_keeping[entry.addr].before =
-                    sql_db->get_accrued_rewards(entry.addr, block.major_version).amount;
+                    sql_db->get_accrued_rewards(entry.addr, block.major_version, rewards_tx).amount;
         }
 
         // Submit and credit the address to fixup
@@ -3903,7 +3904,7 @@ static void apply_fixups(
                 payments.size());
 
         try {
-            sql_db->submit_stakes_metadata(block_add);
+            sql_db->submit_stakes_metadata(block_add, rewards_tx);
             sql_db->add_sn_rewards(block.major_version, payments, false /*rewards_payment*/);
         } catch (const std::exception& e) {
             log::error(logcat, "Failed to submit fixup batch data: {}", e.what());
@@ -3912,7 +3913,7 @@ static void apply_fixups(
 
         for (const auto& entry : fixups)
             book_keeping[entry.addr].after =
-                    sql_db->get_accrued_rewards(entry.addr, block.major_version).amount;
+                    sql_db->get_accrued_rewards(entry.addr, block.major_version, rewards_tx).amount;
 
         size_t book_index = 0;
         for (const auto& [addr, amounts] : book_keeping)
@@ -3932,6 +3933,7 @@ static void apply_fixups(
 block_add_result service_node_list::state_t::update_from_block(
         cryptonote::BlockchainDB const& db,
         cryptonote::RewardsDB* rewards_db_ptr,
+        SQLite::Transaction* rewards_tx,
         cryptonote::network_type nettype,
         state_set const& state_history,
         std::unordered_map<crypto::hash, state_t> const& alt_states,
@@ -3950,7 +3952,7 @@ block_add_result service_node_list::state_t::update_from_block(
     quorums = {};
     auto hf_version = block.major_version;
 
-    apply_fixups(nettype, rewards_db_ptr, *this, block);
+    apply_fixups(nettype, rewards_db_ptr, rewards_tx, *this, block);
 
     // NOTE: In the update step there are multiple pieces of information we want
     // to extract from the SN list. Instead of the various steps independently
@@ -4704,6 +4706,7 @@ block_add_result service_node_list::process_block(
     result = m_state.update_from_block(
             blockchain.db(),
             blockchain.maybe_rewards_db(),
+            blockchain.rewards_write_tx(),
             blockchain.nettype(),
             m_transient->state_history,
             {},
@@ -4872,7 +4875,8 @@ void service_node_list::blockchain_detached(uint64_t height) {
             m_state.height,
             detach_label);
 
-    blockchain.rewards_db().blockchain_detached(history, m_state.height);
+    blockchain.rewards_db().blockchain_detached(
+            history, m_state.height, blockchain.rewards_write_tx());
 }
 
 service_nodes::payout service_node_list::state_t::get_next_block_leader() const {
@@ -5462,6 +5466,7 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     alt_state.update_from_block(
             blockchain.db(),
             blockchain.maybe_rewards_db(),
+            blockchain.rewards_write_tx(),
             blockchain.nettype(),
             m_transient->state_history,
             m_transient->alt_state,
@@ -6969,16 +6974,14 @@ void service_node_list::reset(bool delete_db_entry) {
     if (blockchain.has_db() && delete_db_entry) {
         cryptonote::db_wtxn_guard txn_guard{blockchain.db()};
         blockchain.db().clear_service_node_data();
-    }
 
-    m_state.height = hard_fork_begins(blockchain.nettype(), hf::hf9_service_nodes).value_or(1) - 1;
-
-    if (delete_db_entry) {
         // NOTE: Rescanning the SNL has side-effects on the SQL DB in particular, if we encounter
         // any ETH exits, a 'delayed_payment' row is added to the DB. If we _don't_ reset the SQL DB
         // then we double up on exit payments to be handed to them.
-        blockchain.rewards_db().reset_database();
+        blockchain.rewards_db().reset_database(blockchain.rewards_write_tx());
     }
+
+    m_state.height = hard_fork_begins(blockchain.nettype(), hf::hf9_service_nodes).value_or(1) - 1;
 }
 
 size_t service_node_info::total_num_locked_contributions() const {

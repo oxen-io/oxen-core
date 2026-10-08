@@ -603,11 +603,17 @@ bool core::init(
     if (!db)
         return false;
 
+    // With the SQLite backend the rewards and ONS tables are kept in the blockchain database
+    // itself; otherwise they get databases of their own (which a fakechain reset deletes, as it
+    // does the blockchain database).
+    const bool separate_sql = !db->sqlite_database();
+
     auto ons_db_file_path = folder / "ons.db";
     if (fs::exists(folder / "lns.db"))
         ons_db_file_path = folder / "lns.db";
 
-    if (m_nettype == network_type::FAKECHAIN && !command_line::get_arg(vm, arg_keep_fakechain))
+    if (separate_sql && m_nettype == network_type::FAKECHAIN &&
+        !command_line::get_arg(vm, arg_keep_fakechain))
         fs::remove(ons_db_file_path);
 
     auto rewards_db_file_path = folder / "sqlite.db";
@@ -646,10 +652,12 @@ bool core::init(
             log::warning(globallogcat, "Removing blockchain database");
             db->remove_data_file(folder / db->get_db_name());
             db.reset();
-            log::warning(globallogcat, "Removing sqlite.db");
-            fs::remove(rewards_db_file_path);
-            log::warning(globallogcat, "Removing ons.db");
-            fs::remove(ons_db_file_path);
+            if (separate_sql) {
+                log::warning(globallogcat, "Removing sqlite.db");
+                fs::remove(rewards_db_file_path);
+                log::warning(globallogcat, "Removing ons.db");
+                fs::remove(ons_db_file_path);
+            }
 
             db = init_blockchain_db(folder, vm);
             if (!db)
@@ -657,22 +665,29 @@ bool core::init(
         }
     }
 
-    try {
-        m_rewards_sql = std::make_unique<session::sqlite::Database>(rewards_db_file_path);
-    } catch (const std::exception& e) {
-        log::error(logcat, "Failed to open rewards db at {}: {}", rewards_db_file_path, e.what());
-        return false;
+    session::sqlite::Database* rewards_sql = db->sqlite_database();
+    session::sqlite::Database* ons_sql = rewards_sql;
+    if (separate_sql) {
+        try {
+            m_rewards_sql = std::make_unique<session::sqlite::Database>(rewards_db_file_path);
+        } catch (const std::exception& e) {
+            log::error(
+                    logcat, "Failed to open rewards db at {}: {}", rewards_db_file_path, e.what());
+            return false;
+        }
+        try {
+            m_ons_sql = std::make_unique<session::sqlite::Database>(
+                    ons_db_file_path,
+                    session::sqlite::open_readonly{db->is_read_only()},
+                    session::sqlite::open_create{!db->is_read_only()});
+        } catch (const std::exception& e) {
+            log::error(logcat, "Failed to open ONS db at {}: {}", ons_db_file_path, e.what());
+            return false;
+        }
+        rewards_sql = m_rewards_sql.get();
+        ons_sql = m_ons_sql.get();
     }
-    try {
-        m_ons_sql = std::make_unique<session::sqlite::Database>(
-                ons_db_file_path,
-                session::sqlite::open_readonly{db->is_read_only()},
-                session::sqlite::open_create{!db->is_read_only()});
-    } catch (const std::exception& e) {
-        log::error(logcat, "Failed to open ONS db at {}: {}", ons_db_file_path, e.what());
-        return false;
-    }
-    auto rewards_db = std::make_unique<cryptonote::RewardsDB>(m_nettype, *m_rewards_sql);
+    auto rewards_db = std::make_unique<cryptonote::RewardsDB>(m_nettype, *rewards_sql);
 
     // We need this hook to get added before the block hook below, so that it fires first and
     // catches the start of a reorg before the block hook fires for the block in the reorg.
@@ -888,7 +903,7 @@ bool core::init(
     r = blockchain.init(
             std::move(db),
             m_nettype,
-            m_ons_sql.get(),
+            ons_sql,
             rewards_db.release(),
             m_l2_tracker.get(),
             (m_nettype == network_type::FAKECHAIN && !test_options) ? &regtest_test_options

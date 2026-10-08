@@ -1965,17 +1965,20 @@ SELECT                    type, name_hash, ?,    ?)";
 }  // namespace
 
 bool name_system_db::add_block(
-        const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs) {
+        const cryptonote::block& block,
+        const std::vector<cryptonote::transaction>& txs,
+        SQLite::Transaction* active_tx) {
     uint64_t height = block.get_height();
     if (last_processed_height >= height)
         return true;
 
     try {
         // Everything below (including the save_* calls, which get this same connection back from
-        // `conn()` on this thread) happens inside this transaction, which only gets committed if
-        // the block actually changed something worth saving.
+        // `conn()` on this thread) happens inside `active_tx` or else this transaction.
         auto conn = db->conn();
-        SQLite::Transaction db_tx{conn.sql};
+        std::optional<SQLite::Transaction> db_tx;
+        if (!active_tx)
+            db_tx.emplace(conn.sql);
 
         bool ons_parsed_from_block = false;
         if (block.major_version >= hf::hf15_ons) {
@@ -2008,10 +2011,14 @@ bool name_system_db::add_block(
         last_processed_height = height;
         last_processed_hash = cryptonote::get_block_hash(block);
 
-        bool do_commit = (height % 16384 == 0) || ons_parsed_from_block;
-        if (do_commit) {
+        // Our own transaction only gets committed if the block changed something worth saving, but
+        // `active_tx` gets committed regardless, and the height saved in it has to keep up with
+        // what else it commits (such as the blockchain itself), or else the next startup would
+        // see ONS behind and replay blocks into it.
+        if (active_tx || height % 16384 == 0 || ons_parsed_from_block) {
             save_settings(last_processed_height, last_processed_hash, static_cast<int>(DB_VERSION));
-            db_tx.commit();
+            if (db_tx)
+                db_tx->commit();
         }
     } catch (const std::exception& e) {
         log::error(logcat, "Failed to add block {} to the ONS DB: {}", height, e.what());
@@ -2110,13 +2117,23 @@ bool name_system_db::save_settings(uint64_t top_height, crypto::hash const& top_
     }
 }
 
-bool name_system_db::prune_db(uint64_t top_height, const crypto::hash& top_hash) {
+bool name_system_db::prune_db(
+        uint64_t top_height, const crypto::hash& top_hash, SQLite::Transaction* active_tx) {
     bool result = false;
     if (db) {
         try {
             auto conn = db->conn();
+            std::optional<SQLite::Transaction> tx;
+            if (!active_tx)
+                tx.emplace(conn.sql, SQLite::TransactionBehavior::IMMEDIATE);
             conn.prepared_exec(PRUNE_MAPPINGS_STR, as_i64(top_height));
             conn.prepared_exec(PRUNE_OWNERS_STR);
+            // Otherwise the saved top block could be one that is no longer in the chain, which the
+            // next startup would take as the ONS tables being out of sync, and rebuild them.
+            if (top_height < last_processed_height)
+                save_settings(top_height, top_hash, static_cast<int>(DB_VERSION));
+            if (tx)
+                tx->commit();
             result = true;
         } catch (const std::exception& e) {
             log::error(logcat, "Failed to prune ONS DB: {}", e.what());

@@ -558,9 +558,42 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
     rescan.top_block_height = end_height;
     rescan.skip_verify = true;
 
+    // The writes of the replay go into one transaction per REPLAY_BATCH_BLOCKS blocks, rather than
+    // one per block, which considerably reduces disk writes: the blockchain database's batch
+    // transaction, when the rewards tables are in the blockchain database (unless the caller
+    // already has a write transaction open, in which case everything goes into that); otherwise a
+    // RewardsDB::Batch for the rewards tables.  Failing partway through rolls back everything
+    // since the last commit.
+    constexpr int REPLAY_BATCH_BLOCKS = 100;
+    bool chain_batch = false;
     std::optional<RewardsDB::Batch> rewards_batch;
-    if (m_rewards_db && total_blocks > 0)
-        rewards_batch.emplace(*m_rewards_db);
+    auto end_batch = oxen::defer([&] {
+        m_rewards_replay_tx = nullptr;
+        if (chain_batch)
+            m_db->batch_abort();
+    });
+    if (m_rewards_db && total_blocks > 0) {
+        if (m_db->sqlite_database() == &m_rewards_db->db) {
+            chain_batch = !m_db->active_write_transaction() && m_db->batch_start();
+        } else {
+            rewards_batch.emplace(*m_rewards_db);
+            m_rewards_replay_tx = &rewards_batch->transaction();
+        }
+    }
+    int batch_blocks = 0;
+    auto block_replayed = [&] {
+        if (++batch_blocks < REPLAY_BATCH_BLOCKS)
+            return;
+        batch_blocks = 0;
+        if (chain_batch) {
+            chain_batch = false;
+            m_db->batch_stop();
+            chain_batch = m_db->batch_start();
+        } else if (rewards_batch) {
+            rewards_batch->commit();
+            m_rewards_replay_tx = &rewards_batch->transaction();
+        }
+    };
 
     while (true) {
         ZoneScopedN("Load blocks into subsystem");
@@ -687,7 +720,7 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
 
             if (m_ons_db.db) {
                 auto ons_start = clock::now();
-                if (!m_ons_db.add_block(blk, txs)) {
+                if (!m_ons_db.add_block(blk, txs, ons_write_tx())) {
                     log::critical(
                             logcat,
                             "Unable to process block for updating ONS DB: {}",
@@ -696,11 +729,19 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
                 }
                 ons_interval_duration += clock::now() - ons_start;
             }
+
+            block_replayed();
         }
         TracyCZoneEnd(add_block_chunk_to_subsystems);
     }
-    if (rewards_batch)
+    if (chain_batch) {
+        chain_batch = false;
+        m_db->batch_stop();
+    }
+    if (rewards_batch) {
+        m_rewards_replay_tx = nullptr;
         rewards_batch->finish();
+    }
     auto end = clock::now();
 
     if (total_blocks > 0) {
@@ -947,7 +988,7 @@ bool Blockchain::init(
     }
     hook_blockchain_detached([this](const auto& info) {
         uint64_t top_height = info.height - 1;
-        m_ons_db.prune_db(top_height, get_block_id_by_height(top_height));
+        m_ons_db.prune_db(top_height, get_block_id_by_height(top_height), ons_write_tx());
     });
 
     hook_block_add([this](const auto& info) { m_checkpoints.block_add(info); });
@@ -1028,6 +1069,22 @@ bool Blockchain::store_blockchain() {
                 "Blockchain stored OK, took: {}",
                 tools::friendly_duration(std::chrono::steady_clock::now() - save));
     return true;
+}
+//------------------------------------------------------------------
+SQLite::Transaction* Blockchain::chain_write_tx_for(const session::sqlite::Database* db) {
+    if (db && db == m_db->sqlite_database())
+        return m_db->active_write_transaction();
+    return nullptr;
+}
+//------------------------------------------------------------------
+SQLite::Transaction* Blockchain::rewards_write_tx() {
+    if (m_rewards_replay_tx)
+        return m_rewards_replay_tx;
+    return m_rewards_db ? chain_write_tx_for(&m_rewards_db->db) : nullptr;
+}
+//------------------------------------------------------------------
+SQLite::Transaction* Blockchain::ons_write_tx() {
+    return chain_write_tx_for(m_ons_db.db);
 }
 //------------------------------------------------------------------
 bool Blockchain::deinit() {
@@ -5804,7 +5861,7 @@ bool Blockchain::handle_block_to_main_chain(
         return false;
     }
 
-    if (!m_ons_db.add_block(bl, only_txs)) {
+    if (!m_ons_db.add_block(bl, only_txs, ons_write_tx())) {
         log::info(logcat, fg(fmt::terminal_color::red), "Failed to add block to ONS DB.");
         bvc.m_verifivation_failed = true;
         return false;

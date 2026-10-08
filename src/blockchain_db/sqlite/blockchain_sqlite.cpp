@@ -214,14 +214,14 @@ CREATE TABLE alt_blocks (
 CREATE INDEX alt_blocks_height ON alt_blocks(height);
 )";
 
-    // Tables in the order they can be emptied in without violating a foreign key.
+    // Tables in the order they can be emptied in without violating a foreign key.  (Not
+    // properties, which also holds rows of the other things kept in the database.)
     constexpr std::array ALL_TABLES{
             "key_images",
             "outputs",
             "transactions",
             "sn_states",
             "blocks",
-            "properties",
             "checkpoint_signatures",
             "checkpoints",
             "txpool",
@@ -427,6 +427,9 @@ void BlockchainSQLite::reset() {
     SQLite::Transaction tx{conn.sql, SQLite::TransactionBehavior::IMMEDIATE};
     for (auto table : ALL_TABLES)
         conn.sql.exec("DELETE FROM {}"_format(table));
+    // The rewards and ONS tables, which can be in this database too, are left alone (as with
+    // LMDB, where they are in databases of their own), and so is their row of properties.
+    conn.sql.exec("DELETE FROM properties WHERE key = 'max_block_size'");
     tx.commit();
 }
 

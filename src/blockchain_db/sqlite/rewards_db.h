@@ -34,7 +34,6 @@
 #include <optional>
 #include <sqlitedb/sqlite.hpp>
 #include <string>
-#include <thread>
 
 namespace cryptonote {
 
@@ -58,34 +57,47 @@ class RewardsDB {
 
     session::sqlite::Database& db;
 
-    // Groups the writes of consecutive add_block calls, such as a rescan replaying the chain, into
-    // one transaction per BLOCKS blocks rather than one per block, which considerably reduces disk
-    // writes.  While a Batch exists, add_block and the other writes on the Batch's thread go into
-    // its transaction.
+    // Transactions
+    // ------------
+    // Methods that write more than one thing, and that are called while adding or removing blocks,
+    // take an `active_tx`: the transaction that their writes belong in, if the caller has one open
+    // on this database.  It must be open on this thread's shared connection (i.e. the one that
+    // `db.conn()` returns), as the blockchain database's write transaction and Batch's both are.
+    // Given nullptr, such a method makes its own transaction, which the caller must then not have
+    // one open on that connection.
     //
-    // A Batch must be completed with `finish()`.  If it is destroyed without that (e.g. because the
-    // replay failed partway through) then everything since its last commit is rolled back and
-    // `height` reverts to the committed height; the next startup then sees the rewards DB behind
-    // the SN list and replays the missing blocks.
+    // Methods that read more than one thing (e.g. a height and the values at that height) read in
+    // a read transaction on a connection of their own, so they see the committed state of the
+    // database; get_accrued_rewards, for the thread adding blocks, can instead take the
+    // `active_tx` it needs to see the writes not yet committed.
+
+    // Groups the writes of consecutive blocks, such as those of a replay of the chain, into one
+    // transaction, which considerably reduces disk writes when the rewards tables have a database
+    // of their own.  (In the blockchain database, its batch transactions do this instead.)  The
+    // writes go into the Batch's transaction by being given it as their `active_tx`.  Must be used
+    // only on the thread that created it.
     //
-    // A Batch can't be moved, as the RewardsDB refers to it while it exists; construct it in
-    // place, e.g. in a std::optional.
+    // If a Batch is destroyed without `finish()` (e.g. because the replay failed partway through)
+    // then everything since its last commit is rolled back and `height` reverts to the committed
+    // height; the next startup then sees the rewards DB behind the SN list and replays the missing
+    // blocks.
     class Batch {
         RewardsDB& sql;
         session::sqlite::Connection conn;
         std::optional<SQLite::Transaction> tx;
-        int blocks = 0;
-
-        friend class RewardsDB;
-        void block_added();
 
       public:
-        static constexpr int BLOCKS = 100;
-
         explicit Batch(RewardsDB& sql);
         Batch(const Batch&) = delete;
         Batch& operator=(const Batch&) = delete;
 
+        // The transaction to give as `active_tx`.  commit() replaces it.
+        SQLite::Transaction& transaction() { return *tx; }
+
+        // Commits everything so far, and starts a new transaction for what follows.
+        void commit();
+
+        // Commits everything so far, ending the Batch.
         void finish();
 
         ~Batch();
@@ -93,8 +105,8 @@ class RewardsDB {
 
     // Database management functions. Should be called on creation of RewardsDB
     void create_schema();
-    void upgrade_schema();
-    void reset_database();
+    void upgrade_schema(SQLite::Transaction* active_tx = nullptr);
+    void reset_database(SQLite::Transaction* active_tx = nullptr);
 
     // Update the height stored in the SQL DB that indicates the last block height that this DB has
     // synchronised to in.
@@ -109,7 +121,8 @@ class RewardsDB {
 
     // Rewinds the SQL DB to the specified height. This function is called internally by the SNL on
     // detach.
-    void blockchain_detached(PaymentTableType type, uint64_t height);
+    void blockchain_detached(
+            PaymentTableType type, uint64_t height, SQLite::Transaction* active_tx = nullptr);
 
     // Return the number of rows for the current payments accrued table.
     int batch_payments_accrued_row_count();
@@ -128,7 +141,8 @@ class RewardsDB {
     // Submit locked and purged stakes to the DB to update the non-consensus metadata that tracks
     // the lifetime total locked stakes for a given ethereum address.
     void submit_stakes_metadata(
-            const service_nodes::block_add_result& block_add, bool _no_transaction = false);
+            const service_nodes::block_add_result& block_add,
+            SQLite::Transaction* active_tx = nullptr);
 
     enum class delayed_payments_type {
         all,
@@ -153,15 +167,6 @@ class RewardsDB {
             const service_nodes::block_add_result& block_add);
 
     std::pair<hf, cryptonote::address_parse_info> parsed_governance_addr = {hf::none, {}};
-
-    Batch* batch = nullptr;
-    std::thread::id batch_thread;
-
-    // Returns a new transaction on `conn` *unless* a Batch is active, in which case you get nullopt
-    // and the writes go into the Batch's transaction.
-    std::optional<SQLite::Transaction> begin_tx(
-            session::sqlite::Connection& conn,
-            SQLite::TransactionBehavior behave = SQLite::TransactionBehavior::IMMEDIATE);
 
   public:
     struct wallet_info {
@@ -213,7 +218,9 @@ class RewardsDB {
 
     // See `wallet_info`
     wallet_info get_accrued_rewards(
-            const eth::address& address, std::optional<hf> hf_version = std::nullopt);
+            const eth::address& address,
+            std::optional<hf> hf_version = std::nullopt,
+            SQLite::Transaction* active_tx = nullptr);
 
     // See `wallet_info`
     wallet_info get_accrued_rewards(const account_public_address& address);
@@ -257,19 +264,25 @@ class RewardsDB {
     // payouts. The function will then process this block add and subtracting to the batching DB
     // appropriately. This is the primary entry point for the blockchain to add to the batching
     // database. Each accepted block should call this passing in the SN list structure.
+    //
+    // On failure (returning false), nothing that it wrote remains, even in `active_tx`.
     bool add_block(
             const cryptonote::block& block,
             const service_nodes::service_node_list::state_t& service_nodes_state,
             const service_nodes::block_add_result& block_add,
-            const std::optional<service_nodes::rescan_context>& rescan = std::nullopt);
+            const std::optional<service_nodes::rescan_context>& rescan = std::nullopt,
+            SQLite::Transaction* active_tx = nullptr);
 
     // Add a payment to the delayed_payments table. 'at_height' should be greater than or equal to
     // the height of the table or otherwise the payments may be deleted without taking effect. This
     // function asserts if 'at_height' does not meet this criteria.
+    //
+    // On failure (returning false), nothing that it wrote remains, even in `active_tx`.
     bool add_delayed_payments(
             std::span<const service_nodes::eth_stake> payments,
             uint64_t at_height,
-            uint64_t delay_blocks);
+            uint64_t delay_blocks,
+            SQLite::Transaction* active_tx = nullptr);
 
     // validate_batch_payment -> used to make sure that list of miner_tx_vouts is correct. Compares
     // the miner_tx_vouts with a list previously extracted payments to make sure that the correct
@@ -302,7 +315,7 @@ class RewardsDB {
     // nullopt then all is good; if it returns a value then that means the rescan did *not* resolve
     // the problem it was supposed to resolve!  (The actual value returned by such a failed recheck
     // call is meaningless).
-    std::optional<uint64_t> fixup(bool recheck = false);
+    std::optional<uint64_t> fixup(bool recheck = false, SQLite::Transaction* active_tx = nullptr);
 
     // Only meaningful to the thread adding blocks, which may be partway through a transaction that
     // other threads can't see yet; they need the height committed to the DB itself, as the

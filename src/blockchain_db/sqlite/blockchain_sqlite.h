@@ -172,6 +172,7 @@ class BlockchainSQLite : public BlockchainDB {
     void block_rtxn_abort() const override;
 
     SQLite::Transaction* active_write_transaction() override;
+    session::sqlite::Database* sqlite_database() override { return m_sql.get(); }
 
     bool is_read_only() const override;
     uint64_t get_database_size() const override;

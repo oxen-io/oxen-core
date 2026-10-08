@@ -27,6 +27,7 @@
 
 #include "rewards_db.h"
 
+#include <SQLiteCpp/Savepoint.h>
 #include <common/exception.h>
 #include <common/formattable.h>
 #include <common/guts.h>
@@ -99,14 +100,60 @@ static uint64_t db_height(Connection& conn) {
     return as_u64(conn.prepared_get<int64_t>("SELECT height FROM batch_db_height WHERE id = 1"));
 }
 
-// Readers on other threads make more than one query (for the height, and the values at that
-// height), so need them in one read transaction to see a consistent state of the DB.  On a
-// connection already in a transaction (i.e. the thread adding blocks) that one is used instead.
-static std::optional<SQLite::Transaction> read_tx(Connection& conn) {
-    if (!sqlite3_get_autocommit(conn.sql.getHandle()))
+// For a write that belongs in `active_tx` if given one, or else in a transaction of its own: returns
+// that new transaction (for the caller to commit), or nullopt when given one.
+static std::optional<SQLite::Transaction> own_tx(Connection& conn, SQLite::Transaction* active_tx) {
+    if (active_tx) {
+        assert(!sqlite3_get_autocommit(conn.sql.getHandle()));
         return std::nullopt;
-    return std::make_optional<SQLite::Transaction>(conn.sql, SQLite::TransactionBehavior::DEFERRED);
+    }
+    return std::make_optional<SQLite::Transaction>(
+            conn.sql, SQLite::TransactionBehavior::IMMEDIATE);
 }
+
+// For a write that reports failure rather than throwing, so whose caller won't abandon its
+// transaction when it fails: inside `active_tx` this is a savepoint, so that the failure doesn't
+// leave partial writes for that transaction to commit.
+class atomic_write {
+    SQLite::Transaction* outer;
+    std::optional<SQLite::Transaction> tx;
+    std::optional<SQLite::Savepoint> savepoint;
+
+  public:
+    atomic_write(Connection& conn, SQLite::Transaction* active_tx, const std::string& name) :
+            outer{active_tx}, tx{own_tx(conn, active_tx)} {
+        if (active_tx)
+            savepoint.emplace(conn.sql, name);
+    }
+
+    // The transaction that the writes are in, to give as `active_tx` to methods called within.
+    SQLite::Transaction* active_tx() { return tx ? &*tx : outer; }
+
+    void commit() {
+        if (tx)
+            tx->commit();
+        else
+            savepoint->release();
+    }
+};
+
+// A connection and read transaction for reading more than one thing (such as the height, and the
+// values at that height) from a consistent state of the database.  Given `active_tx`, the reads
+// happen in that instead, as only it can see its uncommitted writes.  Otherwise the read
+// transaction is on a connection of its own, as this thread's shared connection might be in the
+// middle of a transaction (such as a blockchain read transaction) already.
+struct read_view {
+    Connection conn;
+    std::optional<SQLite::Transaction> tx;
+
+    explicit read_view(session::sqlite::Database& db, SQLite::Transaction* active_tx = nullptr) :
+            conn{active_tx ? db.conn() : db.unique_conn()} {
+        if (active_tx)
+            assert(!sqlite3_get_autocommit(conn.sql.getHandle()));
+        else
+            tx.emplace(conn.sql, SQLite::TransactionBehavior::DEFERRED);
+    }
+};
 
 RewardsDB::RewardsDB(network_type nettype, session::sqlite::Database& db) :
         db{db}, nettype{nettype} {
@@ -114,9 +161,13 @@ RewardsDB::RewardsDB(network_type nettype, session::sqlite::Database& db) :
     height = 0;
 
     auto conn = db.conn();
-    if (!conn.table_exists("batched_payments_accrued"))
-        create_schema();
-    upgrade_schema();
+    {
+        SQLite::Transaction tx{conn.sql, SQLite::TransactionBehavior::IMMEDIATE};
+        if (!conn.table_exists("batched_payments_accrued"))
+            create_schema();
+        upgrade_schema(&tx);
+        tx.commit();
+    }
 
     height = db_height(conn);
 
@@ -233,31 +284,15 @@ void RewardsDB::create_schema() {
     log::debug(logcat, "Database setup complete");
 }
 
-std::optional<SQLite::Transaction> RewardsDB::begin_tx(
-        Connection& conn, SQLite::TransactionBehavior behave) {
-    if (batch) {
-        assert(std::this_thread::get_id() == batch_thread);
-        return std::nullopt;
-    }
-    return std::make_optional<SQLite::Transaction>(conn.sql, behave);
-}
-
 RewardsDB::Batch::Batch(RewardsDB& sql) :
         sql{sql},
         conn{sql.db.conn()},
-        tx{std::in_place, conn.sql, SQLite::TransactionBehavior::IMMEDIATE} {
-    assert(!sql.batch);
-    sql.batch = this;
-    sql.batch_thread = std::this_thread::get_id();
-}
+        tx{std::in_place, conn.sql, SQLite::TransactionBehavior::IMMEDIATE} {}
 
-void RewardsDB::Batch::block_added() {
-    if (++blocks < BLOCKS)
-        return;
+void RewardsDB::Batch::commit() {
     log::debug(logcat, "committing batched blocks at height {}", sql.height);
     tx->commit();
     tx.emplace(conn.sql, SQLite::TransactionBehavior::IMMEDIATE);
-    blocks = 0;
 }
 
 void RewardsDB::Batch::finish() {
@@ -266,7 +301,6 @@ void RewardsDB::Batch::finish() {
 }
 
 RewardsDB::Batch::~Batch() {
-    sql.batch = nullptr;
     if (!tx)
         return;
     try {
@@ -288,13 +322,13 @@ static bool has_column(Connection& conn, std::string_view table, std::string_vie
     return false;
 }
 
-void RewardsDB::upgrade_schema() {
+void RewardsDB::upgrade_schema(SQLite::Transaction* active_tx) {
     auto conn = db.conn();
+    auto transaction = own_tx(conn, active_tx);
+
     bool have_offset = has_column(conn, "batched_payments_accrued", "payout_offset");
 
     auto& netconf = get_config(nettype);
-
-    auto transaction = begin_tx(conn);
 
     // The fixup version used to be kept in PRAGMA user_version, which isn't ours to use when these
     // tables share a database with other things.
@@ -762,10 +796,11 @@ DROP TABLE batch_db_info;
         transaction->commit();
 }
 
-void RewardsDB::reset_database() {
+void RewardsDB::reset_database(SQLite::Transaction* active_tx) {
     log::trace(logcat, "RewardsDB::{}", __func__);
 
     auto conn = db.conn();
+    auto transaction = own_tx(conn, active_tx);
     conn.sql.exec(R"(
       DROP TABLE IF EXISTS delayed_payments;
 
@@ -777,8 +812,10 @@ void RewardsDB::reset_database() {
     )");
 
     create_schema();
-    upgrade_schema();
+    upgrade_schema(transaction ? &*transaction : active_tx);
     update_height(0);
+    if (transaction)
+        transaction->commit();
     log::debug(logcat, "Database reset complete");
 }
 
@@ -794,7 +831,10 @@ void RewardsDB::update_height(uint64_t new_height) {
     db.conn().prepared_exec("UPDATE batch_db_height SET height = ? WHERE id = 1", as_i64(height));
 }
 
-void RewardsDB::blockchain_detached(PaymentTableType history, uint64_t new_height) {
+void RewardsDB::blockchain_detached(
+        PaymentTableType history, uint64_t new_height, SQLite::Transaction* active_tx) {
+    auto conn = db.conn();
+    auto transaction = own_tx(conn, active_tx);
     std::string detach_label = "";
     int rows_restored = 0;
     int rows_removed = 0;
@@ -802,12 +842,11 @@ void RewardsDB::blockchain_detached(PaymentTableType history, uint64_t new_heigh
         detach_label = " (DB is already at requested height)";
     } else if (history == PaymentTableType::Nil) {
         // Detach, with nothing to restore so wipe everything
-        reset_database();
+        reset_database(transaction ? &*transaction : active_tx);
         detach_label = " (via reset)";
     } else {
         // Detached to the given archive/recent height
         const auto suffix = history == PaymentTableType::Archive ? "archive"sv : "recent"sv;
-        auto conn = db.conn();
         rows_removed = conn.prepared_exec("DELETE FROM batched_payments_accrued");
         rows_restored = conn.prepared_exec(
                 "INSERT INTO batched_payments_accrued ({batched_fields}) "
@@ -818,6 +857,8 @@ void RewardsDB::blockchain_detached(PaymentTableType history, uint64_t new_heigh
     }
 
     update_height(new_height);
+    if (transaction)
+        transaction->commit();
 
     log::debug(
             logcat,
@@ -1138,7 +1179,6 @@ static RewardsDB::wallet_info get_accrued_rewards_at_impl(
         std::span<const unsigned char> addr_bytes,
         uint64_t at_height) {
     log::trace(logcat, "RewardsDB {}", __func__);
-    auto tx = read_tx(conn);
     auto curr_top_height = db_height(conn);
     if (at_height > curr_top_height)
         return {};
@@ -1166,29 +1206,28 @@ static RewardsDB::wallet_info get_accrued_rewards_at_impl(
 }
 
 RewardsDB::wallet_info RewardsDB::get_accrued_rewards(
-        const eth::address& address, std::optional<hf> hf) {
-    auto conn = db.conn();
-    auto tx = read_tx(conn);
-    return get_accrued_rewards_impl(*this, conn, db_height(conn), span_guts(address), hf);
+        const eth::address& address, std::optional<hf> hf, SQLite::Transaction* active_tx) {
+    read_view view{db, active_tx};
+    return get_accrued_rewards_impl(
+            *this, view.conn, db_height(view.conn), span_guts(address), hf);
 }
 
 RewardsDB::wallet_info RewardsDB::get_accrued_rewards(
         const account_public_address& address) {
-    auto conn = db.conn();
-    auto tx = read_tx(conn);
-    return get_accrued_rewards_impl(*this, conn, db_height(conn), span_guts(address));
+    read_view view{db};
+    return get_accrued_rewards_impl(*this, view.conn, db_height(view.conn), span_guts(address));
 }
 
 RewardsDB::wallet_info RewardsDB::get_accrued_rewards(
         const eth::address& address, uint64_t at_height) {
-    auto conn = db.conn();
-    return get_accrued_rewards_at_impl(*this, conn, span_guts(address), at_height);
+    read_view view{db};
+    return get_accrued_rewards_at_impl(*this, view.conn, span_guts(address), at_height);
 }
 
 RewardsDB::wallet_info RewardsDB::get_accrued_rewards(
         const account_public_address& address, uint64_t at_height) {
-    auto conn = db.conn();
-    return get_accrued_rewards_at_impl(*this, conn, span_guts(address), at_height);
+    read_view view{db};
+    return get_accrued_rewards_at_impl(*this, view.conn, span_guts(address), at_height);
 }
 
 std::vector<std::pair<
@@ -1200,8 +1239,8 @@ RewardsDB::get_all_accrued_rewards() {
 
     std::vector<std::pair<std::variant<eth::address, account_public_address>, wallet_info>> result;
 
-    auto conn = db.conn();
-    auto tx = read_tx(conn);
+    read_view view{db};
+    auto& conn = view.conn;
     auto h = db_height(conn);
     for (blob b : conn.prepared_results<blob>("SELECT address FROM batched_payments_accrued")) {
         std::span<const unsigned char> addr{
@@ -1373,20 +1412,18 @@ void RewardsDB::reward_handler(
 
 block_payments RewardsDB::get_delayed_payments() {
     ZoneScoped;
-    auto conn = db.conn();
-    auto tx = read_tx(conn);
+    read_view view{db};
     return get_delayed_payments_impl(
-            conn.prepared_results<blob_guts<eth::address>, int64_t, int64_t>(
+            view.conn.prepared_results<blob_guts<eth::address>, int64_t, int64_t>(
                     "SELECT eth_address, amount, liquidation_amount FROM delayed_payments"
                     " WHERE payout_height > ?",
-                    as_i64(db_height(conn))));
+                    as_i64(db_height(view.conn))));
 }
 
 block_payments RewardsDB::get_delayed_payments(const eth::address& addr) {
     ZoneScoped;
-    auto conn = db.conn();
-    auto tx = read_tx(conn);
-    return pending_delayed_payments(conn, addr, db_height(conn));
+    read_view view{db};
+    return pending_delayed_payments(view.conn, addr, db_height(view.conn));
 }
 
 block_payments RewardsDB::get_delayed_payments(uint64_t payout_height) {
@@ -1399,7 +1436,7 @@ block_payments RewardsDB::get_delayed_payments(uint64_t payout_height) {
 }
 
 void RewardsDB::submit_stakes_metadata(
-        const service_nodes::block_add_result& block_add, bool _no_transaction) {
+        const service_nodes::block_add_result& block_add, SQLite::Transaction* active_tx) {
     // NOTE: Submit (locked) stakes information
     // New ETH addresses that are staking may not exist in the table yet if it's their first
     // time because they haven't received rewards yet. The adding of locked stakes has to
@@ -1413,8 +1450,7 @@ void RewardsDB::submit_stakes_metadata(
     )";
 
     auto conn = db.conn();
-    std::optional<SQLite::Transaction> transaction =
-            _no_transaction ? std::nullopt : begin_tx(conn, SQLite::TransactionBehavior::DEFERRED);
+    auto transaction = own_tx(conn, active_tx);
 
     // NOTE: Submit locked stakes
     for (const auto& stake : block_add.locked_stakes) {
@@ -1512,7 +1548,8 @@ bool RewardsDB::add_block(
         const block& block,
         const service_nodes::service_node_list::state_t& service_nodes_state,
         const service_nodes::block_add_result& block_add,
-        const std::optional<service_nodes::rescan_context>& rescan) {
+        const std::optional<service_nodes::rescan_context>& rescan,
+        SQLite::Transaction* active_tx) {
     ZoneScoped;
     auto block_height = block.get_height();
     log::trace(logcat, "RewardsDB::{} called on height: {}", __func__, block_height);
@@ -1520,14 +1557,12 @@ bool RewardsDB::add_block(
     auto hf_version = block.major_version;
     if (hf_version < hf::hf19_reward_batching) {
         update_height(block_height);
-        if (batch)
-            batch->block_added();
         return true;
     }
 
     if (block_height == hard_fork_begins(nettype, hf::hf19_reward_batching).value_or(0)) {
         log::debug(logcat, "Batching of Service Node Rewards Begins");
-        reset_database();
+        reset_database(active_tx);
         update_height(block_height - 1);
     }
 
@@ -1559,7 +1594,10 @@ bool RewardsDB::add_block(
 
     try {
         auto conn = db.conn();
-        auto transaction = begin_tx(conn);
+        // The SN list ignores a failure here, so the block still gets added.  Partial writes left
+        // in `active_tx` would then stay for good: `height` doesn't advance, so a detach back to
+        // here wouldn't undo them.
+        atomic_write write{conn, active_tx, "rewards_add_block"};
 
         // Goes through the miner transactions vouts checks they are right and marks them as paid in
         // the database
@@ -1568,15 +1606,11 @@ bool RewardsDB::add_block(
 
         reward_handler(block, service_nodes_state, block_add);
         if (hf_version >= hf::hf21_eth)
-            submit_stakes_metadata(block_add, true);
+            submit_stakes_metadata(block_add, write.active_tx());
         update_height(
                 height + 1);  // NOTE: Update height which synchronises the archive/recent tables
 
-        if (transaction)
-            transaction->commit();
-        else
-            batch->block_added();
-
+        write.commit();
     } catch (std::exception& e) {
         log::error(
                 logcat,
@@ -1591,12 +1625,14 @@ bool RewardsDB::add_block(
 bool RewardsDB::add_delayed_payments(
         std::span<const service_nodes::eth_stake> payments,
         uint64_t at_height,
-        uint64_t delay_blocks) {
+        uint64_t delay_blocks,
+        SQLite::Transaction* active_tx) {
     ZoneScoped;
     log::trace(logcat, "RewardsDB::{} called", __func__);
     try {
         auto conn = db.conn();
-        auto transaction = begin_tx(conn);
+        // The SN list ignores a failure here, and so mustn't be left with partial writes.
+        atomic_write write{conn, active_tx, "rewards_add_delayed_payments"};
 
         // Basic checks can be done here
         // if (amount > max_staked_amount)
@@ -1634,8 +1670,7 @@ bool RewardsDB::add_delayed_payments(
                     static_cast<int64_t>(payment.liquidation.to_db_atomic()));
         }
 
-        if (transaction)
-            transaction->commit();
+        write.commit();
     } catch (std::exception& e) {
         log::error(logcat, "Error returning stakes: {}", e.what());
         return false;
@@ -1764,9 +1799,9 @@ bool RewardsDB::save_payments(
     return true;
 }
 
-std::optional<uint64_t> RewardsDB::fixup(bool recheck) {
+std::optional<uint64_t> RewardsDB::fixup(bool recheck, SQLite::Transaction* active_tx) {
     auto conn = db.conn();
-    auto tx = begin_tx(conn);
+    auto tx = own_tx(conn, active_tx);
 
     auto with_commit = [&tx](std::optional<uint64_t> ret) {
         if (tx)
