@@ -343,7 +343,7 @@ def test_sn_exits_by_request_signature_and_liquidation(eth_sns: list[Daemon], sn
         total_sleep_time += sleep_time
         time.sleep(sleep_time)
 
-        sql_db_height_row = sql_cursor.execute("SELECT height FROM batch_db_info").fetchone()
+        sql_db_height_row = sql_cursor.execute("SELECT height FROM batch_db_height").fetchone()
         if sql_db_height_row[0] != sql_db_height:
             vprint("... SQL DB height changed from {}->{}".format(sql_db_height, sql_db_height_row[0]))
             sql_db_height = sql_db_height_row[0]
@@ -390,10 +390,10 @@ def test_sn_exits_by_request_signature_and_liquidation(eth_sns: list[Daemon], sn
     row_count  = row_result[0] if row_result else 0
     assert row_count == 0, "Expected the delayed payments row to be undone on pop_blocks @ height {}, found {}".format(eth_sns[0].height(), row_count)
 
-    # Verify batch_db_info height rewinded #####################################################
-    row_result           = sql_cursor.execute("SELECT height FROM batch_db_info").fetchone()
+    # Verify batch_db_height height rewinded ###################################################
+    row_result           = sql_cursor.execute("SELECT height FROM batch_db_height").fetchone()
     sql_db_height        = row_result[0] if row_result else 0
-    assert sql_db_height == eth_sns[0].height() - 1, "Expected batch_db_info table 'height' ({}) to be undone as well. Oxen block index is {}".format(sql_db_height, eth_sns[0].height() - 1)
+    assert sql_db_height == eth_sns[0].height() - 1, "Expected batch_db_height table 'height' ({}) to be undone as well. Oxen block index is {}".format(sql_db_height, eth_sns[0].height() - 1)
 
     # Verify that deregistration stake is claimable ############################################
     vprint(f"Sleeping until dereg stake is unlocked, blockchain height is {eth_sns[0].height()} (after popping, we will resync the chain)")

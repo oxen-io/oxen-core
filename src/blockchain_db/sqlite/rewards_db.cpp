@@ -87,6 +87,7 @@ namespace cryptonote {
 using namespace fmt::literals;
 using db::as_i64;
 using db::as_u64;
+using db::CREATE_PROPERTIES;
 using session::sqlite::blob;
 using session::sqlite::blob_guts;
 using session::sqlite::Connection;
@@ -95,7 +96,7 @@ using tools::span_guts;
 // The DB height as seen by `conn`, which may differ from the `height` member when used from a
 // thread other than the one adding blocks.
 static uint64_t db_height(Connection& conn) {
-    return as_u64(conn.prepared_get<int64_t>("SELECT height FROM batch_db_info"));
+    return as_u64(conn.prepared_get<int64_t>("SELECT height FROM batch_db_height WHERE id = 1"));
 }
 
 // Readers on other threads make more than one query (for the height, and the values at that
@@ -107,8 +108,8 @@ static std::optional<SQLite::Transaction> read_tx(Connection& conn) {
     return std::make_optional<SQLite::Transaction>(conn.sql, SQLite::TransactionBehavior::DEFERRED);
 }
 
-RewardsDB::RewardsDB(network_type nettype, std::filesystem::path db_path) :
-        db{std::move(db_path)}, nettype{nettype} {
+RewardsDB::RewardsDB(network_type nettype, session::sqlite::Database& db) :
+        db{db}, nettype{nettype} {
     log::trace(logcat, "RewardsDB::{}", __func__);
     height = 0;
 
@@ -159,7 +160,7 @@ static std::string CREATE_BATCHED_PAYMENTS(std::string_view table_name, bool wit
   lifetime_rewards           INTEGER NOT NULL DEFAULT 0, -- Lifetime accumulated rewards (i.e. not including unlocked stakes)
   PRIMARY KEY({pk})
   CHECK(amount >= 0)
-);)"_format("table"_a = table_name, "pk"_a = with_height ? "height, address" : "address");
+) STRICT;)"_format("table"_a = table_name, "pk"_a = with_height ? "height, address" : "address");
 
     return result;
 }
@@ -186,28 +187,49 @@ CREATE TABLE {table}(
   CHECK(block_height      >= 0)
   CHECK(block_tx_index    >= 0)
   CHECK(contributor_index >= 0)
-);
+) STRICT;
 CREATE INDEX {table}_height_idx ON {table}(height);
    )"_format("table"_a = table_name);
 }
 
-// Constants for PRAGMA user_version for DB fixup handling:
+// Values of the rewards_fixup_version property for DB fixup handling:
 constexpr int FIXUP_DELAYED_PAYMENT_REWARDS = 2;
 
 constexpr int FIXUP_MAX = FIXUP_DELAYED_PAYMENT_REWARDS;
 
+static std::optional<int> get_fixup_version(Connection& conn) {
+    return conn.prepared_maybe_get<int>(
+            "SELECT value FROM properties WHERE key = 'rewards_fixup_version'");
+}
+
+static void set_fixup_version(Connection& conn, int version) {
+    conn.prepared_exec(
+            "INSERT INTO properties (key, value) VALUES ('rewards_fixup_version', ?)"
+            " ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+            version);
+}
+
+// The rewards height, as its single row
+constexpr auto CREATE_BATCH_DB_HEIGHT = R"(
+CREATE TABLE batch_db_height (
+  id     INTEGER PRIMARY KEY CHECK (id = 1),
+  height INTEGER NOT NULL
+) STRICT;
+)";
+
 void RewardsDB::create_schema() {
     log::trace(logcat, "RewardsDB::{}", __func__);
-    auto& netconf = get_config(nettype);
 
     auto conn = db.conn();
     assert(!conn.table_exists("batched_payments_accrued"));
     conn.sql.exec(CREATE_BATCHED_PAYMENTS("batched_payments_accrued", false));
     conn.sql.exec(
-            R"(CREATE INDEX IF NOT EXISTS batched_payments_accrued_payout_offset_idx ON batched_payments_accrued(payout_offset);
-               CREATE TABLE IF NOT EXISTS batch_db_info(height INTEGER NOT NULL);
-               INSERT INTO  batch_db_info(height) VALUES(0);)");
-    conn.sql.exec("PRAGMA user_version = {}"_format(FIXUP_MAX));
+            "CREATE INDEX IF NOT EXISTS batched_payments_accrued_payout_offset_idx ON "
+            "batched_payments_accrued(payout_offset)");
+    conn.sql.exec(CREATE_BATCH_DB_HEIGHT);
+    conn.sql.exec("INSERT INTO batch_db_height (id, height) VALUES (1, 0)");
+    conn.sql.exec(CREATE_PROPERTIES);
+    set_fixup_version(conn, FIXUP_MAX);
     log::debug(logcat, "Database setup complete");
 }
 
@@ -273,6 +295,23 @@ void RewardsDB::upgrade_schema() {
     auto& netconf = get_config(nettype);
 
     auto transaction = begin_tx(conn);
+
+    // The fixup version used to be kept in PRAGMA user_version, which isn't ours to use when these
+    // tables share a database with other things.
+    conn.sql.exec(CREATE_PROPERTIES);
+    if (!get_fixup_version(conn))
+        set_fixup_version(conn, conn.sql.execAndGet("PRAGMA user_version").getInt());
+
+    // The height used to be in a batch_db_info table, which nothing kept to a single row.  Dropping
+    // it drops its triggers too; they get recreated, on batch_db_height, below.
+    if (conn.table_exists("batch_db_info")) {
+        conn.sql.exec(CREATE_BATCH_DB_HEIGHT);
+        conn.sql.exec(R"(
+INSERT INTO batch_db_height (id, height) SELECT 1, height FROM batch_db_info LIMIT 1;
+DROP TABLE batch_db_info;
+)");
+    }
+
     // NOTE: Rename 'batched_payments_accrued_archive' 'archive_height' column to 'height'. This
     // unifies the height label across the batch payment, recent and archive table making querying
     // from them require less code.
@@ -562,7 +601,8 @@ void RewardsDB::upgrade_schema() {
             }
 
             if (fixup_height) {
-                auto db_h = conn.prepared_get<int64_t>("SELECT height FROM batch_db_info");
+                auto db_h = conn.prepared_get<int64_t>(
+                        "SELECT height FROM batch_db_height WHERE id = 1");
                 if (is_hard_fork_at_least(nettype, hf::hf22_eth_fixup, db_h)) {
                     log::critical(
                             logcat,
@@ -656,7 +696,7 @@ void RewardsDB::upgrade_schema() {
                 R"(
         -- Saves the current payments into their recent table(s) for the current height
         DROP   TRIGGER IF EXISTS make_recent;
-        CREATE TRIGGER           make_recent AFTER UPDATE ON batch_db_info
+        CREATE TRIGGER           make_recent AFTER UPDATE ON batch_db_height
         FOR EACH ROW WHEN NEW.height > OLD.height BEGIN
             -- Batched payments
             INSERT INTO batched_payments_accrued_recent ({batched_fields}, height)
@@ -679,7 +719,7 @@ void RewardsDB::upgrade_schema() {
         -- since in those cases we won't have the batched_payments_accrued archive and will need a
         -- full rescan anyway.
         DROP   TRIGGER IF EXISTS make_archive;
-        CREATE TRIGGER           make_archive AFTER UPDATE ON batch_db_info
+        CREATE TRIGGER           make_archive AFTER UPDATE ON batch_db_height
         FOR EACH ROW WHEN (NEW.height % {archive_interval}) = 0 AND NEW.height > OLD.height BEGIN
 
             -- Batch payments
@@ -695,7 +735,7 @@ void RewardsDB::upgrade_schema() {
         -- On re-org to a lower height, delete all recent rows that are newer
         -- than the re-org height in all the tables
         DROP   TRIGGER IF EXISTS clear_recent_and_archive;
-        CREATE TRIGGER           clear_recent_and_archive AFTER UPDATE ON batch_db_info
+        CREATE TRIGGER           clear_recent_and_archive AFTER UPDATE ON batch_db_height
         FOR EACH ROW WHEN NEW.height < OLD.height BEGIN
 
             -- Batched payments
@@ -733,7 +773,7 @@ void RewardsDB::reset_database() {
       DROP TABLE IF EXISTS batched_payments_accrued_archive;
       DROP TABLE IF EXISTS batched_payments_accrued_recent;
 
-      DROP TABLE IF EXISTS batch_db_info;
+      DROP TABLE IF EXISTS batch_db_height;
     )");
 
     create_schema();
@@ -751,7 +791,7 @@ void RewardsDB::update_height(uint64_t new_height) {
             new_height,
             height);
     height = new_height;
-    db.conn().prepared_exec("UPDATE batch_db_info SET height = ?", as_i64(height));
+    db.conn().prepared_exec("UPDATE batch_db_height SET height = ? WHERE id = 1", as_i64(height));
 }
 
 void RewardsDB::blockchain_detached(PaymentTableType history, uint64_t new_height) {
@@ -1734,12 +1774,12 @@ std::optional<uint64_t> RewardsDB::fixup(bool recheck) {
         return ret;
     };
 
-    auto prev_db_version = conn.prepared_get<int>("PRAGMA user_version");
+    auto prev_db_version = get_fixup_version(conn).value_or(0);
     if (!recheck) {
         if (prev_db_version >= FIXUP_DELAYED_PAYMENT_REWARDS)
             return with_commit(std::nullopt);
 
-        conn.sql.exec("PRAGMA user_version = {}"_format(FIXUP_DELAYED_PAYMENT_REWARDS));
+        set_fixup_version(conn, FIXUP_DELAYED_PAYMENT_REWARDS);
     } else {
         assert(prev_db_version >= FIXUP_DELAYED_PAYMENT_REWARDS);
     }

@@ -304,13 +304,17 @@ struct mapping_record {
 };
 
 struct name_system_db {
-    // Opens (creating if needed, unless read-only) the ONS database at the given path, which may be
-    // ":memory:", and brings it up to date.  Returns false (after logging the reason) on failure.
+    // Uses (creating or upgrading as needed) the ONS tables in `db`, which may also hold other
+    // things, such as the blockchain itself; it must stay alive until close() or destruction.
+    // Returns false (after logging the reason) on failure.
     bool init(
             cryptonote::Blockchain const* blockchain,
             cryptonote::network_type nettype,
-            const fs::path& file_path,
-            bool read_only);
+            session::sqlite::Database& db);
+
+    // Saves the current height to the database, and stops using it.  Does nothing if not
+    // initialized (or already closed).
+    void close();
     bool add_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
 
     cryptonote::network_type network_type() const { return nettype; }
@@ -369,10 +373,11 @@ struct name_system_db {
             cryptonote::tx_extra_oxen_name_system& entry,
             std::string* reason);
 
-    // Destructor; saves the current height to the database, if one is open
+    // Destructor; calls close()
     ~name_system_db();
 
-    std::unique_ptr<session::sqlite::Database> db;
+    // The database holding the ONS tables, or nullptr if not initialized.  Not owned.
+    session::sqlite::Database* db = nullptr;
 
   private:
     cryptonote::network_type nettype;

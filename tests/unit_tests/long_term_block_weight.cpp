@@ -110,6 +110,7 @@ static uint32_t lcg()
 }
 
 #define PREFIX_WINDOW(hf_version,window) \
+  session::sqlite::Database rewards_sql{":memory:"}; \
   blockchain_objects_t bc_objects = {}; \
   const std::vector<cryptonote::hard_fork> hard_forks{ \
     {cryptonote::hf::hf7,0,0,0}, {hf_version,0,1,0}}; \
@@ -118,7 +119,7 @@ static uint32_t lcg()
     window, \
   }; \
   cryptonote::Blockchain *bc = &bc_objects.m_blockchain; \
-  auto rewardsDB = std::make_unique<cryptonote::RewardsDB>(cryptonote::network_type::FAKECHAIN, ":memory:"); \
+  auto rewardsDB = std::make_unique<cryptonote::RewardsDB>(cryptonote::network_type::FAKECHAIN, rewards_sql); \
   bool r = bc->init(std::make_unique<TestDB>(), test_options, rewardsDB.release()); \
   ASSERT_TRUE(r)
 

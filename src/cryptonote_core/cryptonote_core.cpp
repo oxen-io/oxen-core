@@ -304,6 +304,7 @@ core::core() :
 #pragma GCC diagnostic pop
     m_checkpoints_updating.clear();
 }
+core::~core() = default;
 void core::set_cryptonote_protocol(i_cryptonote_protocol* pprotocol) {
     if (pprotocol)
         m_pprotocol = pprotocol;
@@ -656,7 +657,22 @@ bool core::init(
         }
     }
 
-    auto rewards_db = std::make_unique<cryptonote::RewardsDB>(m_nettype, rewards_db_file_path);
+    try {
+        m_rewards_sql = std::make_unique<session::sqlite::Database>(rewards_db_file_path);
+    } catch (const std::exception& e) {
+        log::error(logcat, "Failed to open rewards db at {}: {}", rewards_db_file_path, e.what());
+        return false;
+    }
+    try {
+        m_ons_sql = std::make_unique<session::sqlite::Database>(
+                ons_db_file_path,
+                session::sqlite::open_readonly{db->is_read_only()},
+                session::sqlite::open_create{!db->is_read_only()});
+    } catch (const std::exception& e) {
+        log::error(logcat, "Failed to open ONS db at {}: {}", ons_db_file_path, e.what());
+        return false;
+    }
+    auto rewards_db = std::make_unique<cryptonote::RewardsDB>(m_nettype, *m_rewards_sql);
 
     // We need this hook to get added before the block hook below, so that it fires first and
     // catches the start of a reorg before the block hook fires for the block in the reorg.
@@ -872,7 +888,7 @@ bool core::init(
     r = blockchain.init(
             std::move(db),
             m_nettype,
-            ons_db_file_path,
+            m_ons_sql.get(),
             rewards_db.release(),
             m_l2_tracker.get(),
             (m_nettype == network_type::FAKECHAIN && !test_options) ? &regtest_test_options

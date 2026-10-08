@@ -152,8 +152,9 @@ class Blockchain {
      *
      * @param db a pointer to the backing store to use for the blockchain.
      * @param nettype network type
-     * @param ons_db_path the path of the ONS database to open.  Should be given when operating as
-     * a regular oxen node.
+     * @param ons_sql the database in which to keep the ONS tables (which may be the blockchain
+     * database itself).  Not owned: it must remain alive until deinit() (or destruction).  Should
+     * be given when operating as a regular oxen node.
      * @param rewards_db a raw, unmanaged pointer to the RewardsDB object.  NOTE: the
      * Blockchain object takes over ownership of this pointer, if not nullptr.  Should not be
      * nullptr when operating as a regular oxen node.
@@ -171,7 +172,7 @@ class Blockchain {
     bool init(
             std::unique_ptr<BlockchainDB> db,
             const network_type nettype,
-            std::optional<fs::path> ons_db_path = std::nullopt,
+            session::sqlite::Database* ons_sql = nullptr,
             cryptonote::RewardsDB* rewards_db = nullptr,
             eth::L2Tracker* l2_tracker = nullptr,
             const cryptonote::test_options* test_options = nullptr,
@@ -187,7 +188,7 @@ class Blockchain {
         return init(
                 std::move(db),
                 network_type::FAKECHAIN,
-                std::nullopt,
+                nullptr,
                 rewards_db,
                 nullptr,
                 &test_options);

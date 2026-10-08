@@ -122,6 +122,8 @@ class core final {
      */
     core();
 
+    ~core();
+
     // Non-copyable:
     core(const core&) = delete;
     core& operator=(const core&) = delete;
@@ -838,6 +840,13 @@ class core final {
     std::array<uint16_t, 3> lokinet_version;
     std::array<uint16_t, 3> srouter_version;
 
+  private:
+    // The databases holding the rewards (sqlite.db) and ONS (ons.db) tables.  Declared before
+    // `blockchain` because they must outlive it.
+    std::unique_ptr<session::sqlite::Database> m_rewards_sql;
+    std::unique_ptr<session::sqlite::Database> m_ons_sql;
+
+  public:
     tx_memory_pool mempool;  //!< transaction pool instance
     Blockchain blockchain;   //!< Blockchain instance
 

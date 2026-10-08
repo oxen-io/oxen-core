@@ -1,5 +1,7 @@
 #include <blockchain_db/sqlite/rewards_db.h>
 
+#include "common/fs.h"
+
 namespace test {
 
 inline fs::path check_if_copy_filename(fs::path db_path) {
@@ -8,13 +10,19 @@ inline fs::path check_if_copy_filename(fs::path db_path) {
   return db_path;
 }
 
-class RewardsDBTest : public cryptonote::RewardsDB
+// Holds the database for RewardsDBTest; a base class (rather than a member) so that it gets
+// constructed before, and destroyed after, the RewardsDB base that uses it.
+struct rewards_test_sql {
+  session::sqlite::Database sql;
+};
+
+class RewardsDBTest : private rewards_test_sql, public cryptonote::RewardsDB
 {
     private:
         fs::path filename;
 public:
   RewardsDBTest(cryptonote::network_type nettype, fs::path db_path)
-    : RewardsDB(nettype, db_path), filename{std::move(db_path)} {};
+    : rewards_test_sql{session::sqlite::Database{db_path}}, RewardsDB(nettype, sql), filename{std::move(db_path)} {};
 
 
   RewardsDBTest(RewardsDBTest &other)

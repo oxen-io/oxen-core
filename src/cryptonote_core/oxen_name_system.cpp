@@ -53,7 +53,7 @@ namespace ons {
 namespace log = oxen::log;
 static auto logcat = log::Cat("ons");
 
-// The columns of `mappings.*`, followed (in queries selecting mappings with their owners) by the
+// The columns of `ons_mappings.*`, followed (in queries selecting mappings with their owners) by the
 // owner and backup owner addresses.
 enum struct mapping_record_column {
     id,
@@ -1487,49 +1487,80 @@ std::optional<cryptonote::address_parse_info> mapping_value::get_wallet_address_
 
 namespace {
 
+    // The ONS tables used to be named without the "ons_" prefix, back when they always had a
+    // database file of their own.  Indices are recreated under new names by build_default_tables.
+    void rename_legacy_tables(Connection& conn) {
+        for (auto [old_name, new_name] :
+             {std::pair{"owner"sv, "ons_owners"sv}, std::pair{"mappings"sv, "ons_mappings"sv}})
+            if (conn.table_exists(old_name))
+                conn.sql.exec("ALTER TABLE {} RENAME TO {}"_format(old_name, new_name));
+        conn.sql.exec(R"(
+DROP INDEX IF EXISTS owner_id_index;
+DROP INDEX IF EXISTS backup_owner_id_index;
+DROP INDEX IF EXISTS backup_owner_index;
+DROP INDEX IF EXISTS name_type_update;
+DROP INDEX IF EXISTS mapping_type_name_exp;
+)");
+    }
+
+    // The ONS settings used to be the single row of a table of their own, rather than keys of
+    // properties (which must exist already).
+    void move_legacy_settings(Connection& conn) {
+        for (auto table : {"settings"sv, "ons_settings"sv}) {
+            if (!conn.table_exists(table))
+                continue;
+            // Fails, harmlessly, unless the table is old enough not to have it yet
+            conn.sql.tryExec(
+                    "ALTER TABLE {} ADD COLUMN pruned_height INTEGER NOT NULL DEFAULT 0"_format(
+                            table));
+            conn.sql.exec(R"(
+INSERT OR REPLACE INTO properties (key, value)
+          SELECT 'ons_top_height', top_height FROM {0} WHERE id = 1
+UNION ALL SELECT 'ons_top_hash', top_hash FROM {0} WHERE id = 1
+UNION ALL SELECT 'ons_version', version FROM {0} WHERE id = 1
+UNION ALL SELECT 'ons_pruned_height', pruned_height FROM {0} WHERE id = 1;
+DROP TABLE {0};
+)"_format(table));
+        }
+    }
+
+    constexpr auto MAPPINGS_INDICES = R"(
+CREATE INDEX IF NOT EXISTS ons_mappings_owner_idx ON ons_mappings(owner_id);
+CREATE INDEX IF NOT EXISTS ons_mappings_backup_owner_idx ON ons_mappings(backup_owner_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ons_mappings_name_type_update_idx ON ons_mappings(name_hash, type, update_height DESC);
+CREATE INDEX IF NOT EXISTS ons_mappings_type_name_exp_idx ON ons_mappings(type, name_hash, expiration_height DESC);
+)"sv;
+
     void build_default_tables(Connection& conn) {
         std::string mappings_columns = R"(
     id INTEGER PRIMARY KEY NOT NULL,
     type INTEGER NOT NULL,
-    name_hash VARCHAR NOT NULL,
+    name_hash TEXT NOT NULL,
     encrypted_value BLOB NOT NULL,
     txid BLOB NOT NULL,
-    owner_id INTEGER NOT NULL REFERENCES owner(id),
-    backup_owner_id INTEGER REFERENCES owner(id),
+    owner_id INTEGER NOT NULL REFERENCES ons_owners(id),
+    backup_owner_id INTEGER REFERENCES ons_owners(id),
     update_height INTEGER NOT NULL,
     expiration_height INTEGER
 )";
 
         const std::string BUILD_TABLE_SQL = R"(
-CREATE TABLE IF NOT EXISTS owner(
+CREATE TABLE IF NOT EXISTS ons_owners(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     address BLOB NOT NULL UNIQUE
-);
+) STRICT;
 
-CREATE TABLE IF NOT EXISTS settings (
-    id INTEGER PRIMARY KEY NOT NULL,
-    top_height INTEGER NOT NULL,
-    top_hash VARCHAR NOT NULL,
-    version INTEGER NOT NULL,
-    pruned_height INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS mappings ()" + mappings_columns +
-                                            R"();
-CREATE INDEX IF NOT EXISTS owner_id_index ON mappings(owner_id);
-DROP INDEX IF EXISTS backup_owner_id_index;
-CREATE INDEX IF NOT EXISTS backup_owner_index ON mappings(backup_owner_id);
-CREATE UNIQUE INDEX IF NOT EXISTS name_type_update ON mappings (name_hash, type, update_height DESC);
-CREATE INDEX IF NOT EXISTS mapping_type_name_exp ON mappings (type, name_hash, expiration_height DESC);
-)";
+CREATE TABLE IF NOT EXISTS ons_mappings ()" + mappings_columns +
+                                            ") STRICT;" + std::string{MAPPINGS_INDICES};
 
         conn.sql.exec(BUILD_TABLE_SQL);
+        conn.sql.exec(db::CREATE_PROPERTIES);
 
         // In Loki 8 we dropped some columns that are no longer needed, but SQLite can't do this
         // easily: instead we have to manually recreate the table, so check it and see if the
         // prev_txid or register_height columns still exist: if so, we need to recreate.
         bool need_mappings_migration = false;
-        for (const auto& col : conn.get_columns("mappings")) {
+        for (const auto& col : conn.get_columns("ons_mappings")) {
             if (col.name == "prev_txid" || col.name == "register_height") {
                 need_mappings_migration = true;
                 break;
@@ -1540,42 +1571,33 @@ CREATE INDEX IF NOT EXISTS mapping_type_name_exp ON mappings (type, name_hash, e
             // Earlier version migration: we need "update_height" to exist (if this fails it's
             // fine).
             conn.sql.tryExec(
-                    "ALTER TABLE mappings ADD COLUMN update_height INTEGER NOT NULL DEFAULT "
+                    "ALTER TABLE ons_mappings ADD COLUMN update_height INTEGER NOT NULL DEFAULT "
                     "register_height");
 
             log::info(logcat, "Migrating ONS mappings database to new format");
             const std::string migrate = R"(
 BEGIN TRANSACTION;
-ALTER TABLE mappings RENAME TO mappings_old;
-CREATE TABLE mappings ()" + mappings_columns +
-                                        R"();
-INSERT INTO mappings
+ALTER TABLE ons_mappings RENAME TO ons_mappings_old;
+CREATE TABLE ons_mappings ()" + mappings_columns +
+                                        R"() STRICT;
+INSERT INTO ons_mappings
   SELECT id, type, name_hash, encrypted_value, txid, owner_id, backup_owner_id, update_height, NULL
-  FROM mappings_old;
-DROP TABLE mappings_old;
-CREATE UNIQUE INDEX name_type_update ON mappings(name_hash, type, update_height DESC);
-CREATE INDEX owner_id_index ON mappings(owner_id);
-CREATE INDEX backup_owner_index ON mappings(backup_owner_id);
-CREATE INDEX mapping_type_name_exp ON mappings(type, name_hash, expiration_height DESC);
+  FROM ons_mappings_old;
+DROP TABLE ons_mappings_old;
+)" + std::string{MAPPINGS_INDICES} +
+                                        R"(
 COMMIT TRANSACTION;
 )";
 
             conn.sql.exec(migrate);
         }
-
-        // Updates to add columns; we ignore errors on these since they will fail if the column
-        // already exists
-        for (const auto& upgrade : {
-                     "ALTER TABLE settings ADD COLUMN pruned_height INTEGER NOT NULL DEFAULT 0",
-             })
-            conn.sql.tryExec(upgrade);
     }
 
     const std::string sql_select_mappings_and_owners_prefix = R"(
-SELECT mappings.*, o1.address, o2.address, MAX(update_height)
-FROM mappings
-  JOIN owner o1 ON mappings.owner_id = o1.id
-  LEFT JOIN owner o2 ON mappings.backup_owner_id = o2.id
+SELECT ons_mappings.*, o1.address, o2.address, MAX(update_height)
+FROM ons_mappings
+  JOIN ons_owners o1 ON ons_mappings.owner_id = o1.id
+  LEFT JOIN ons_owners o2 ON ons_mappings.backup_owner_id = o2.id
 )"s;
     const std::string sql_select_mappings_and_owners_suffix = " GROUP BY name_hash, type";
 
@@ -1593,57 +1615,55 @@ FROM mappings
 
     const std::string GET_MAPPING_COUNTS_STR = R"(
     SELECT type, COUNT(*) FROM (
-      SELECT DISTINCT type, name_hash FROM mappings WHERE )" +
+      SELECT DISTINCT type, name_hash FROM ons_mappings WHERE )" +
                                                std::string{EXPIRATION} + R"(
     )
     GROUP BY type)";
 
     const std::string RESOLVE_STR = R"(
 SELECT encrypted_value, MAX(update_height)
-FROM mappings
+FROM ons_mappings
 WHERE type = ? AND name_hash = ? AND)" +
                                     std::string{EXPIRATION};
 
-    const std::string GET_SETTINGS_STR =
-            "SELECT top_height, top_hash, version FROM settings WHERE id = 1";
-    const std::string GET_OWNER_ID_BY_KEY_STR = "SELECT id FROM owner WHERE address = ?";
+    // No ons_version means no settings saved yet
+    const std::string GET_SETTINGS_STR = R"(
+SELECT (SELECT value FROM properties WHERE key = 'ons_top_height'),
+       (SELECT value FROM properties WHERE key = 'ons_top_hash'),
+       value
+FROM properties WHERE key = 'ons_version')";
+    const std::string GET_OWNER_ID_BY_KEY_STR = "SELECT id FROM ons_owners WHERE address = ?";
 
     // Prune queries used when we need to rollback to remove records added after the detach point:
-    const std::string PRUNE_MAPPINGS_STR = "DELETE FROM mappings WHERE update_height > ?";
+    const std::string PRUNE_MAPPINGS_STR = "DELETE FROM ons_mappings WHERE update_height > ?";
     const std::string PRUNE_OWNERS_STR = R"(
-DELETE FROM owner
-WHERE NOT EXISTS (SELECT * FROM mappings WHERE owner.id = mappings.owner_id)
-AND NOT EXISTS   (SELECT * FROM mappings WHERE owner.id = mappings.backup_owner_id))";
+DELETE FROM ons_owners
+WHERE NOT EXISTS (SELECT * FROM ons_mappings WHERE ons_owners.id = ons_mappings.owner_id)
+AND NOT EXISTS   (SELECT * FROM ons_mappings WHERE ons_owners.id = ons_mappings.backup_owner_id))";
 
     const std::string SAVE_MAPPING_STR =
-            "INSERT INTO mappings (type, name_hash, encrypted_value, txid, owner_id, "
+            "INSERT INTO ons_mappings (type, name_hash, encrypted_value, txid, owner_id, "
             "backup_owner_id, update_height, expiration_height) VALUES (?,?,?,?,?,?,?,?)";
-    const std::string SAVE_OWNER_STR = "INSERT INTO owner (address) VALUES (?)";
-    const std::string SAVE_SETTINGS_STR =
-            "INSERT OR REPLACE INTO settings (id, top_height, top_hash, version) VALUES (1,?,?,?)";
+    const std::string SAVE_OWNER_STR = "INSERT INTO ons_owners (address) VALUES (?)";
+    const std::string SAVE_SETTINGS_STR = R"(
+INSERT INTO properties (key, value)
+    VALUES ('ons_top_height', ?1), ('ons_top_hash', ?2), ('ons_version', ?3)
+    ON CONFLICT (key) DO UPDATE SET value = excluded.value)";
 
 }  // namespace
 
 bool name_system_db::init(
         cryptonote::Blockchain const* blockchain,
         cryptonote::network_type nettype,
-        const fs::path& file_path,
-        bool read_only) {
+        session::sqlite::Database& db) {
     this->nettype = nettype;
+    this->db = &db;
 
     try {
-        db = std::make_unique<session::sqlite::Database>(
-                file_path,
-                session::sqlite::open_readonly{read_only},
-                session::sqlite::open_create{!read_only});
-    } catch (const std::exception& e) {
-        log::error(logcat, "Failed to open ONS db at: {}, reason: {}", file_path, e.what());
-        return false;
-    }
-
-    try {
-        auto conn = db->conn();
+        auto conn = db.conn();
+        rename_legacy_tables(conn);
         build_default_tables(conn);
+        move_legacy_settings(conn);
 
         // -----------------------------------------------------------------------------------------
         //
@@ -1680,7 +1700,7 @@ bool name_system_db::init(
 
                     std::vector<uint64_t> heights = blockchain->get_transactions_heights(hashes);
                     SQLite::Statement update_height{
-                            conn.sql, "UPDATE mappings SET update_height = ? WHERE id = ?"};
+                            conn.sql, "UPDATE ons_mappings SET update_height = ? WHERE id = ?"};
                     for (size_t i = 0; i < all_mappings.size(); i++) {
                         session::sqlite::exec_query(
                                 update_height, as_i64(heights[i]), all_mappings[i].id);
@@ -1691,8 +1711,9 @@ bool name_system_db::init(
                 if (settings.version <
                     static_cast<decltype(settings.version)>(db_version::v2_full_rows))
                     conn.sql.exec(
-                            "UPDATE settings SET pruned_height = (SELECT MAX(update_height) FROM "
-                            "mappings)");
+                            "INSERT OR REPLACE INTO properties (key, value)"
+                            " SELECT 'ons_pruned_height', COALESCE(MAX(update_height), 0)"
+                            " FROM ons_mappings");
 
                 save_settings(
                         settings.top_height,
@@ -1740,14 +1761,17 @@ bool name_system_db::init(
             // Otherwise we've got something unrecoverable: a top_hash + top_height that are
             // different from what we have in the blockchain, which means the ons db and blockchain
             // are out of sync. This likely means something external changed the lmdb and/or the
-            // ons.db, and we can't recover from it: so just drop and recreate the tables completely
-            // and rescan from scratch.
+            // ONS tables, and we can't recover from it: so just drop and recreate the tables
+            // completely and rescan from scratch.
             //
-            // mappings has to go before owner: it references owner, and with foreign keys enforced
-            // dropping owner first fails.
-            conn.sql.exec(
-                    "DROP TABLE IF EXISTS mappings; DROP TABLE IF EXISTS owner; DROP TABLE IF "
-                    "EXISTS settings");
+            // ons_mappings has to go before ons_owners: it references ons_owners, and with foreign
+            // keys enforced dropping ons_owners first fails.
+            conn.sql.exec(R"(
+DROP TABLE IF EXISTS ons_mappings;
+DROP TABLE IF EXISTS ons_owners;
+DELETE FROM properties
+    WHERE key IN ('ons_top_height', 'ons_top_hash', 'ons_version', 'ons_pruned_height');
+)");
             build_default_tables(conn);
         }
     } catch (const std::exception& e) {
@@ -1758,9 +1782,15 @@ bool name_system_db::init(
     return true;
 }
 
+void name_system_db::close() {
+    if (!db)
+        return;
+    save_settings(last_processed_height, last_processed_hash, static_cast<int>(DB_VERSION));
+    db = nullptr;
+}
+
 name_system_db::~name_system_db() {
-    if (db)
-        save_settings(last_processed_height, last_processed_hash, static_cast<int>(DB_VERSION));
+    close();
 }
 
 namespace {
@@ -1806,14 +1836,15 @@ namespace {
 
         sql.reserve(500);
         sql += R"(
-INSERT INTO mappings (type, name_hash, txid, update_height, expiration_height, owner_id, backup_owner_id, encrypted_value)
-SELECT                type, name_hash, ?,    ?)";
+INSERT INTO ons_mappings (type, name_hash, txid, update_height, expiration_height, owner_id, backup_owner_id, encrypted_value)
+SELECT                    type, name_hash, ?,    ?)";
 
         bind.emplace_back(span_guts(tx_hash));
         bind.emplace_back(as_i64(height));
 
         constexpr auto suffix =
-                " FROM mappings WHERE type = ? AND name_hash = ? ORDER BY update_height DESC LIMIT 1"sv;
+                " FROM ons_mappings WHERE type = ? AND name_hash = ?"
+                " ORDER BY update_height DESC LIMIT 1"sv;
 
         if (entry.is_renewing()) {
             sql += ", expiration_height + ?, owner_id, backup_owner_id, encrypted_value";

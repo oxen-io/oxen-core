@@ -31,7 +31,6 @@
 #include <cryptonote_config.h>
 #include <cryptonote_core/service_node_list.h>  // service_node_list::state_t...
 
-#include <filesystem>
 #include <optional>
 #include <sqlitedb/sqlite.hpp>
 #include <string>
@@ -52,10 +51,12 @@ using block_payments = std::
 
 class RewardsDB {
   public:
-    explicit RewardsDB(cryptonote::network_type nettype, std::filesystem::path db_path);
+    // Uses (creating or upgrading as needed) the rewards tables in `db`, which must outlive this
+    // object.  The tables can share a database with other things, such as the blockchain itself.
+    RewardsDB(cryptonote::network_type nettype, session::sqlite::Database& db);
     RewardsDB(const RewardsDB&) = delete;
 
-    session::sqlite::Database db;
+    session::sqlite::Database& db;
 
     // Groups the writes of consecutive add_block calls, such as a rescan replaying the chain, into
     // one transaction per BLOCKS blocks rather than one per block, which considerably reduces disk

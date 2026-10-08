@@ -172,7 +172,7 @@ oxen_chain_generator::oxen_chain_generator(std::vector<test_event_entry>& events
 , hard_forks_(hard_forks)
 , rewards_db_(std::make_unique<test::RewardsDBTest>(cryptonote::network_type::FAKECHAIN, ":memory:"))
 {
-  bool init = ons_db_->init(nullptr, cryptonote::network_type::FAKECHAIN, ":memory:", false /*read_only*/);
+  bool init = ons_db_->init(nullptr, cryptonote::network_type::FAKECHAIN, *ons_sql_);
   assert(init);
 
   if (first_miner_seed == "") {

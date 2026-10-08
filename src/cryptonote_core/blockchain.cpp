@@ -774,7 +774,7 @@ static bool exec_detach_hooks(
 bool Blockchain::init(
         std::unique_ptr<BlockchainDB> db,
         const network_type nettype,
-        std::optional<fs::path> ons_db_path,
+        session::sqlite::Database* ons_sql,
         cryptonote::RewardsDB* rewards_db,
         eth::L2Tracker* l2_tracker,
         const cryptonote::test_options* test_options,
@@ -941,7 +941,7 @@ bool Blockchain::init(
             return false;
     }
 
-    if (ons_db_path && !m_ons_db.init(this, nettype, *ons_db_path, m_db->is_read_only())) {
+    if (ons_sql && !m_ons_db.init(this, nettype, *ons_sql)) {
         log::error(logcat, "ONS failed to initialise");
         return false;
     }
@@ -1039,6 +1039,10 @@ bool Blockchain::deinit() {
     m_async_work_idle.reset();
     m_async_thread.join();
     m_async_service.stop();
+
+    // These can keep their tables in the blockchain database, so must be done before it closes.
+    m_ons_db.close();
+    m_rewards_db.reset();
 
     // as this should be called if handling a SIGSEGV, need to check
     // if m_db is a NULL pointer (and thus may have caused the illegal

@@ -29,8 +29,144 @@
 #include <gtest/gtest.h>
 
 #include "blockchain_db/sqlite/rewards_db.h"
+#include "common/guts.h"
+#include "cryptonote_core/oxen_name_system.h"
 
 #include "../rewards_db_test.h"
+
+namespace {
+
+bool has_table(session::sqlite::Database& db, std::string_view name) {
+  return db.conn().table_exists(name);
+}
+
+std::optional<int64_t> int_property(session::sqlite::Database& db, std::string_view key) {
+  return db.conn().prepared_maybe_get<int64_t>("SELECT value FROM properties WHERE key = ?", key);
+}
+
+}
+
+// A sqlite.db as left by 11.4+ releases: the height in batch_db_info, and the fixup version in
+// PRAGMA user_version.
+TEST(SQLITE, LegacyRewardsUpgrade)
+{
+  session::sqlite::Database sql{":memory:"};
+  sql.conn().sql.exec(R"(
+CREATE TABLE batched_payments_accrued(
+  address BLOB NOT NULL, amount INTEGER NOT NULL DEFAULT 0, payout_offset INTEGER,
+  lifetime_locked_stakes INTEGER NOT NULL DEFAULT 0, lifetime_unlocked_stakes INTEGER NOT NULL DEFAULT 0,
+  lifetime_liquidated_stakes INTEGER NOT NULL DEFAULT 0, lifetime_rewards INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(address) CHECK(amount >= 0));
+CREATE TABLE batched_payments_accrued_recent(
+  address BLOB NOT NULL, amount INTEGER NOT NULL DEFAULT 0, payout_offset INTEGER,
+  height INTEGER NOT NULL DEFAULT 0,
+  lifetime_locked_stakes INTEGER NOT NULL DEFAULT 0, lifetime_unlocked_stakes INTEGER NOT NULL DEFAULT 0,
+  lifetime_liquidated_stakes INTEGER NOT NULL DEFAULT 0, lifetime_rewards INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(height, address) CHECK(amount >= 0));
+CREATE TABLE batch_db_info(height INTEGER NOT NULL);
+INSERT INTO batch_db_info(height) VALUES(1234);
+CREATE TRIGGER make_recent AFTER UPDATE ON batch_db_info FOR EACH ROW BEGIN SELECT 1; END;
+INSERT INTO batched_payments_accrued (address, amount) VALUES (x'0123456789', 42);
+PRAGMA user_version = 1;
+)");
+
+  cryptonote::RewardsDB rewardsDB(cryptonote::network_type::FAKECHAIN, sql);
+
+  EXPECT_EQ(rewardsDB.height, 1234);
+  EXPECT_FALSE(has_table(sql, "batch_db_info"));
+  ASSERT_TRUE(has_table(sql, "batch_db_height"));
+  EXPECT_EQ(sql.conn().prepared_get<int64_t>("SELECT height FROM batch_db_height WHERE id = 1"), 1234);
+  EXPECT_EQ(int_property(sql, "rewards_fixup_version"), 1);
+
+  // The retention triggers moved to the new table along with the height
+  rewardsDB.update_height(1235);
+  EXPECT_EQ(sql.conn().prepared_get<int>(
+                "SELECT COUNT(*) FROM batched_payments_accrued_recent WHERE height = 1235"),
+            1);
+}
+
+TEST(SQLITE, NewRewardsFixupVersion)
+{
+  session::sqlite::Database sql{":memory:"};
+  // A database's user_version isn't the rewards' to take, if it already has one of its own
+  sql.conn().sql.exec("PRAGMA user_version = 1");
+  cryptonote::RewardsDB rewardsDB(cryptonote::network_type::FAKECHAIN, sql);
+  EXPECT_EQ(int_property(sql, "rewards_fixup_version"), 2);
+  EXPECT_EQ(sql.conn().prepared_get<int>("PRAGMA user_version"), 1);
+}
+
+// An ons.db (or lns.db) as left by earlier releases: tables without the ons_ prefix, and the
+// settings in a single-row table.
+TEST(SQLITE, LegacyONSUpgrade)
+{
+  session::sqlite::Database sql{":memory:"};
+  crypto::ed25519_public_key pk{};
+  pk.data_[0] = 0x42;
+  auto owner = ons::make_ed25519_owner(pk);
+  crypto::hash top_hash{};
+  top_hash.data_[0] = 0x99;
+  crypto::hash txid{};
+  txid.data_[0] = 0x77;
+  {
+    auto conn = sql.conn();
+    conn.sql.exec(R"(
+CREATE TABLE owner(id INTEGER PRIMARY KEY AUTOINCREMENT, address BLOB NOT NULL UNIQUE);
+CREATE TABLE settings(id INTEGER PRIMARY KEY NOT NULL, top_height INTEGER NOT NULL,
+  top_hash VARCHAR NOT NULL, version INTEGER NOT NULL, pruned_height INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE mappings(id INTEGER PRIMARY KEY NOT NULL, type INTEGER NOT NULL,
+  name_hash VARCHAR NOT NULL, encrypted_value BLOB NOT NULL, txid BLOB NOT NULL,
+  owner_id INTEGER NOT NULL REFERENCES owner(id), backup_owner_id INTEGER REFERENCES owner(id),
+  update_height INTEGER NOT NULL, expiration_height INTEGER);
+CREATE INDEX owner_id_index ON mappings(owner_id);
+CREATE INDEX backup_owner_index ON mappings(backup_owner_id);
+CREATE UNIQUE INDEX name_type_update ON mappings (name_hash, type, update_height DESC);
+CREATE INDEX mapping_type_name_exp ON mappings (type, name_hash, expiration_height DESC);
+)");
+    conn.prepared_exec("INSERT INTO owner (address) VALUES (?)", tools::span_guts(owner));
+    conn.prepared_exec(
+        "INSERT INTO settings VALUES (1, 100, ?, 2, 50)", tools::span_guts(top_hash));
+    conn.prepared_exec(
+        "INSERT INTO mappings VALUES (1, 0, ?, x'00112233', ?, 1, NULL, 10, NULL)",
+        std::string(43, 'A') + "=",
+        tools::span_guts(txid));
+  }
+
+  {
+    ons::name_system_db ons;
+    ASSERT_TRUE(ons.init(nullptr, cryptonote::network_type::FAKECHAIN, sql));
+
+    for (auto old : {"owner", "mappings", "settings", "ons_settings"})
+      EXPECT_FALSE(has_table(sql, old)) << old;
+    EXPECT_TRUE(has_table(sql, "ons_owners"));
+    EXPECT_TRUE(has_table(sql, "ons_mappings"));
+    EXPECT_EQ(sql.conn().prepared_get<int>(
+                  "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN "
+                  "('owner_id_index', 'backup_owner_index', 'name_type_update', 'mapping_type_name_exp')"),
+              0);
+    EXPECT_EQ(sql.conn().prepared_get<int>(
+                  "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND tbl_name = 'ons_mappings'"
+                  " AND name LIKE 'ons_mappings_%'"),
+              4);
+    // The foreign keys follow the owner table's rename
+    EXPECT_NE(sql.conn().prepared_get<std::string>(
+                  "SELECT sql FROM sqlite_master WHERE name = 'ons_mappings'").find("ons_owners"),
+              std::string::npos);
+
+    EXPECT_EQ(int_property(sql, "ons_top_height"), 100);
+    EXPECT_EQ(int_property(sql, "ons_version"), 2);
+    EXPECT_EQ(int_property(sql, "ons_pruned_height"), 50);
+    auto settings = ons.get_settings();
+    ASSERT_TRUE(settings);
+    EXPECT_EQ(settings.top_height, 100);
+    EXPECT_EQ(settings.top_hash, top_hash);
+    EXPECT_EQ(settings.version, 2);
+
+    auto mappings = ons.get_mappings_by_owner(owner);
+    ASSERT_EQ(mappings.size(), 1);
+    EXPECT_EQ(mappings[0].update_height, 10);
+    EXPECT_EQ(mappings[0].txid, txid);
+  }
+}
 
 TEST(SQLITE, AddressModulus)
 {
@@ -42,6 +178,21 @@ TEST(SQLITE, AddressModulus)
 
   EXPECT_EQ(wallet_address.address.next_payout_height(50, 100), 90);
   EXPECT_EQ(wallet_address.address.next_payout_height(100, 100), 190);
+}
+
+TEST(SQLITE, BatchDbHeightSingleton)
+{
+  test::RewardsDBTest rewardsDB(cryptonote::network_type::FAKECHAIN, ":memory:");
+  auto conn = rewardsDB.db.conn();
+  auto row_count = [&] { return conn.prepared_get<int>("SELECT COUNT(*) FROM batch_db_height"); };
+
+  EXPECT_EQ(row_count(), 1);
+  for (int id : {1, 2, 0, -1})
+    EXPECT_THROW(
+        conn.prepared_exec("INSERT INTO batch_db_height (id, height) VALUES (?, 5)", id),
+        std::exception) << "id " << id;
+  EXPECT_THROW(conn.prepared_exec("INSERT INTO batch_db_height (height) VALUES (5)"), std::exception);
+  EXPECT_EQ(row_count(), 1);
 }
 
 TEST(SQLITE, AddSNRewards)
