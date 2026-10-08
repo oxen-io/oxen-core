@@ -27,7 +27,7 @@
 #pragma once
 
 #include "portable_storage_template_helper.h"
-#include "../span.h"
+#include "../byte_span.h"
 #include "../net/levin_base.h"
 
 namespace epee
@@ -106,7 +106,7 @@ namespace epee
       const_cast<t_arg&>(out_struct).store(stg);//TODO: add true const support to searilzation
       std::string buff_to_send;
       stg.store_to_binary(buff_to_send);
-      int res = transport.invoke_async(command, epee::strspan<uint8_t>(buff_to_send), conn_id, [cb](int code, const epee::span<const uint8_t> buff, typename t_transport::connection_context& context)
+      int res = transport.invoke_async(command, epee::strspan<uint8_t>(buff_to_send), conn_id, [cb](int code, const std::span<const uint8_t> buff, typename t_transport::connection_context& context)
       {
         t_result result_struct{};
         if( code <=0 )
@@ -154,7 +154,7 @@ namespace epee
     //----------------------------------------------------------------------------------------------------
     //----------------------------------------------------------------------------------------------------
     template<class t_owner, class t_in_type, class t_out_type, class t_context, class callback_t>
-    int buff_to_t_adapter(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, callback_t cb, t_context& context )
+    int buff_to_t_adapter(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, callback_t cb, t_context& context )
     {
       serialization::portable_storage strg;
       if(!strg.load_from_binary(in_buff))
@@ -181,7 +181,7 @@ namespace epee
     }
 
     template<class t_owner, class t_in_type, class t_context, class callback_t>
-    int buff_to_t_adapter(t_owner* powner, int command, const epee::span<const uint8_t> in_buff, callback_t cb, t_context& context)
+    int buff_to_t_adapter(t_owner* powner, int command, const std::span<const uint8_t> in_buff, callback_t cb, t_context& context)
     {
       serialization::portable_storage strg;
       if(!strg.load_from_binary(in_buff))
@@ -197,14 +197,14 @@ namespace epee
     }
 
 #define CHAIN_LEVIN_INVOKE_MAP2(context_type) \
-  int invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, context_type& context) \
+  int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, context_type& context) \
   { \
   bool handled = false; \
   return handle_invoke_map(false, command, in_buff, buff_out, context, handled); \
   } 
 
 #define CHAIN_LEVIN_NOTIFY_MAP2(context_type) \
-  int notify(int command, const epee::span<const uint8_t> in_buff, context_type& context) \
+  int notify(int command, const std::span<const uint8_t> in_buff, context_type& context) \
   { \
   bool handled = false; std::string fake_str;\
   return handle_invoke_map(true, command, in_buff, fake_str, context, handled); \
@@ -212,27 +212,27 @@ namespace epee
 
 
 #define CHAIN_LEVIN_INVOKE_MAP() \
-  int invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, epee::net_utils::connection_context_base& context) \
+  int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, epee::net_utils::connection_context_base& context) \
   { \
   bool handled = false; \
   return handle_invoke_map(false, command, in_buff, buff_out, context, handled); \
   } 
 
 #define CHAIN_LEVIN_NOTIFY_MAP() \
-  int notify(int command, const epee::span<const uint8_t> in_buff, epee::net_utils::connection_context_base& context) \
+  int notify(int command, const std::span<const uint8_t> in_buff, epee::net_utils::connection_context_base& context) \
   { \
   bool handled = false; std::string fake_str;\
   return handle_invoke_map(true, command, in_buff, fake_str, context, handled); \
   } 
 
 #define CHAIN_LEVIN_NOTIFY_STUB() \
-  int notify(int command, const epee::span<const uint8_t> in_buff, epee::net_utils::connection_context_base& context) \
+  int notify(int command, const std::span<const uint8_t> in_buff, epee::net_utils::connection_context_base& context) \
   { \
   return -1; \
   } 
 
 #define BEGIN_INVOKE_MAP2(owner_type) \
-  template <class t_context> int handle_invoke_map(bool is_notify, int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, t_context& context, bool& handled) \
+  template <class t_context> int handle_invoke_map(bool is_notify, int command, const std::span<const uint8_t> in_buff, std::string& buff_out, t_context& context, bool& handled) \
   { \
   typedef owner_type internal_owner_type_name;
 

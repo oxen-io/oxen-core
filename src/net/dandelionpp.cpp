@@ -30,6 +30,7 @@
 
 #include <boost/container/small_vector.hpp>
 #include <chrono>
+#include <span>
 
 #include "common/expect.h"
 #include "crypto/crypto.h"
@@ -53,7 +54,7 @@ namespace {
     };
 
     std::size_t select_stem(
-            epee::span<const std::size_t> usage, epee::span<const connection_id_t> out_map) {
+            std::span<const std::size_t> usage, std::span<const connection_id_t> out_map) {
         assert(usage.size() < std::numeric_limits<std::size_t>::max());  // prevented in constructor
         if (usage.size() < out_map.size())
             return std::numeric_limits<std::size_t>::max();
@@ -63,9 +64,8 @@ namespace {
         boost::container::small_vector<std::size_t, expected_max_channels> choices;
         static_assert(sizeof(choices) < 256, "choices is too large based on current configuration");
 
-        for (const connection_id_t& out : out_map) {
-            if (!out.is_nil()) {
-                const std::size_t location = std::addressof(out) - out_map.begin();
+        for (std::size_t location = 0; location < out_map.size(); ++location) {
+            if (!out_map[location].is_nil()) {
                 if (usage[location] < lowest) {
                     lowest = usage[location];
                     choices = {location};
@@ -154,8 +154,7 @@ std::size_t connection_map::size() const noexcept {
 connection_id_t connection_map::get_stem(const connection_id_t& source) {
     auto elem = std::lower_bound(in_mapping_.begin(), in_mapping_.end(), source, key_less{});
     if (elem == in_mapping_.end() || elem->first != source) {
-        const std::size_t index =
-                select_stem(epee::to_span(usage_count_), epee::to_span(out_mapping_));
+        const std::size_t index = select_stem(usage_count_, out_mapping_);
         if (out_mapping_.size() < index)
             return {};
 
@@ -165,8 +164,7 @@ connection_id_t connection_map::get_stem(const connection_id_t& source) {
                        .is_nil())  // stem connection disconnected after mapping
     {
         usage_count_.at(elem->second)--;
-        const std::size_t index =
-                select_stem(epee::to_span(usage_count_), epee::to_span(out_mapping_));
+        const std::size_t index = select_stem(usage_count_, out_mapping_);
         if (out_mapping_.size() < index) {
             in_mapping_.erase(elem);
             return {};

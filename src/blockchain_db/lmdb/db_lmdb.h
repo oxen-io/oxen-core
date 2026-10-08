@@ -257,7 +257,7 @@ class BlockchainLMDB : public BlockchainDB {
     output_data_t get_output_key(
             const uint64_t& amount, const uint64_t& index, bool include_commitmemt) const override;
     void get_output_key(
-            const epee::span<const uint64_t>& amounts,
+            std::span<const uint64_t> amounts,
             const std::vector<uint64_t>& offsets,
             std::vector<output_data_t>& outputs,
             bool allow_partial = false) const override;

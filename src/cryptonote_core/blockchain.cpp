@@ -216,7 +216,7 @@ bool Blockchain::scan_outputkeys_for_indexes(
     if (!found) {
         try {
             m_db->get_output_key(
-                    epee::span<const uint64_t>(&tx_in_to_key.amount, 1),
+                    std::span<const uint64_t>(&tx_in_to_key.amount, 1),
                     absolute_offsets,
                     outputs,
                     true);
@@ -242,7 +242,7 @@ bool Blockchain::scan_outputkeys_for_indexes(
                 add_offsets.push_back(absolute_offsets[i]);
             try {
                 m_db->get_output_key(
-                        epee::span<const uint64_t>(&tx_in_to_key.amount, 1),
+                        std::span<const uint64_t>(&tx_in_to_key.amount, 1),
                         add_offsets,
                         add_outputs,
                         true);
@@ -3206,8 +3206,7 @@ bool Blockchain::get_outs(
             amounts.push_back(i.amount);
             offsets.push_back(i.index);
         }
-        m_db->get_output_key(
-                epee::span<const uint64_t>(amounts.data(), amounts.size()), offsets, data);
+        m_db->get_output_key(amounts, offsets, data);
         if (data.size() != req.outputs.size()) {
             log::error(
                     logcat,
@@ -6511,8 +6510,8 @@ bool Blockchain::prepare_handle_incoming_blocks(
                             &waiter,
                             [this,
                              thread_height,
-                             blocks = epee::span<const block>(
-                                     &blocks[thread_height - height], nblocks),
+                             blocks = std::span<const block>{blocks}.subspan(
+                                     thread_height - height, nblocks),
                              &map = maps[i]] { block_longhash_worker(thread_height, blocks, map); },
                             true);
                     thread_height += nblocks;
@@ -6622,7 +6621,7 @@ bool Blockchain::prepare_handle_incoming_blocks(
 
         try {
             constexpr uint64_t amount{0};
-            m_db->get_output_key(epee::span<const uint64_t>(&amount, 1), offsets, txs, true);
+            m_db->get_output_key(std::span<const uint64_t>(&amount, 1), offsets, txs, true);
         } catch (const std::exception& e) {
             log::error(logverify, "EXCEPTION: {}", e.what());
         } catch (...) {

@@ -66,7 +66,7 @@ namespace epee
     }
     //-----------------------------------------------------------------------------------------------------------
     template<class t_struct>
-    bool load_t_from_binary(t_struct& out, const epee::span<const uint8_t> binary_buff)
+    bool load_t_from_binary(t_struct& out, const std::span<const uint8_t> binary_buff)
     {
       portable_storage ps;
       bool rs = ps.load_from_binary(binary_buff);

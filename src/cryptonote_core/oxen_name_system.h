@@ -4,13 +4,13 @@
 #include <oxenc/hex.h>
 
 #include <cassert>
+#include <span>
 #include <string>
 
 #include "common/fs.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_config.h"
-#include "epee/span.h"
 
 struct sqlite3;
 struct sqlite3_stmt;

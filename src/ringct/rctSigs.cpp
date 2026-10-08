@@ -30,6 +30,8 @@
 
 #include "rctSigs.h"
 
+#include <span>
+
 #include "bulletproofs.h"
 #include "common/threadpool.h"
 #include "common/util.h"
@@ -75,7 +77,7 @@ Bulletproof proveRangeBulletproof(
         keyV& C,
         keyV& masks,
         const std::vector<uint64_t>& amounts,
-        epee::span<const key> sk,
+        std::span<const key> sk,
         hw::device& hwdev) {
     CHECK_AND_ASSERT_THROW_MES(amounts.size() == sk.size(), "Invalid amounts/sk sizes");
     masks.resize(amounts.size());
@@ -865,8 +867,8 @@ rctSig genRctSimple(
             // use a fake bulletproof for speed
             rv.p.bulletproofs.push_back(make_dummy_bulletproof(outamounts, C, masks));
         } else {
-            const epee::span<const key> keys{&amount_keys[0], amount_keys.size()};
-            rv.p.bulletproofs.push_back(proveRangeBulletproof(C, masks, outamounts, keys, hwdev));
+            rv.p.bulletproofs.push_back(
+                    proveRangeBulletproof(C, masks, outamounts, amount_keys, hwdev));
 #ifdef DBG
             CHECK_AND_ASSERT_THROW_MES(
                     verBulletproof(rv.p.bulletproofs.back()),
@@ -892,7 +894,8 @@ rctSig genRctSimple(
                 // use a fake bulletproof for speed
                 rv.p.bulletproofs.push_back(make_dummy_bulletproof(batch_amounts, C, masks));
             } else {
-                const epee::span<const key> keys{&amount_keys[amounts_proved], batch_size};
+                const auto keys =
+                        std::span<const key>{amount_keys}.subspan(amounts_proved, batch_size);
                 rv.p.bulletproofs.push_back(
                         proveRangeBulletproof(C, masks, batch_amounts, keys, hwdev));
 #ifdef DBG

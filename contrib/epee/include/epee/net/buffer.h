@@ -28,8 +28,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <span>
 #include <vector>
-#include "../span.h"
 
 #define NET_BUFFER_LOG(x) ((void)0)
 
@@ -44,8 +45,8 @@ public:
 
   void append(const void *data, size_t sz);
   void erase(size_t sz);
-  epee::span<const uint8_t> span(size_t sz) const;
-  epee::span<const uint8_t> carve(size_t sz);
+  std::span<const uint8_t> span(size_t sz) const;
+  std::span<const uint8_t> carve(size_t sz);
   size_t size() const { return storage.size() - offset; }
 
 private:

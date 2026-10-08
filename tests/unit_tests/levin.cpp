@@ -42,7 +42,7 @@
 #include "p2p/net_node.h"
 #include "net/dandelionpp.h"
 #include "epee/net/levin_base.h"
-#include "epee/span.h"
+#include "epee/byte_span.h"
 
 namespace
 {
@@ -181,7 +181,7 @@ namespace
             return {connection, std::move(request)};
         }
 
-        virtual int invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, cryptonote::levin::detail::p2p_context& context) override final
+        virtual int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, cryptonote::levin::detail::p2p_context& context) override final
         {
             buff_out.clear();
             invoked_.push_back(
@@ -190,7 +190,7 @@ namespace
             return 1;
         }
 
-        virtual int notify(int command, const epee::span<const uint8_t> in_buff, cryptonote::levin::detail::p2p_context& context) override final
+        virtual int notify(int command, const std::span<const uint8_t> in_buff, cryptonote::levin::detail::p2p_context& context) override final
         {
             notified_.push_back(
                 {context.m_connection_id, command, std::string{reinterpret_cast<const char*>(in_buff.data()), in_buff.size()}}
@@ -309,7 +309,7 @@ TEST(make_header, expect_return)
 
 TEST(make_notify, empty_payload)
 {
-    const epee::shared_sv message{epee::levin::make_notify(443, nullptr)};
+    const epee::shared_sv message{epee::levin::make_notify(443, {})};
     const epee::levin::bucket_head2 header =
         epee::levin::make_header(443, 0, LEVIN_PACKET_REQUEST, false);
     ASSERT_EQ(sizeof(header), message.size());
@@ -351,13 +351,13 @@ TEST(make_noise, valid)
 
 TEST(make_fragment, invalid)
 {
-    EXPECT_TRUE(epee::levin::make_fragmented_notify({}, 0, nullptr).empty());
+    EXPECT_TRUE(epee::levin::make_fragmented_notify({}, 0, {}).empty());
 }
 
 TEST(make_fragment, single)
 {
     const epee::shared_sv noise{epee::levin::make_noise_notify(1024)};
-    const epee::shared_sv fragment{epee::levin::make_fragmented_notify(noise.view, 11, nullptr)};
+    const epee::shared_sv fragment{epee::levin::make_fragmented_notify(noise.view, 11, {})};
     const epee::levin::bucket_head2 header =
         epee::levin::make_header(11, 1024 - sizeof(epee::levin::bucket_head2), LEVIN_PACKET_REQUEST, false);
 

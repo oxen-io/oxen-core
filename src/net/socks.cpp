@@ -36,6 +36,7 @@
 #include <boost/asio/write.hpp>
 #include <cstring>
 #include <limits>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -58,7 +59,7 @@ namespace {
     };
 
     std::size_t write_domain_header(
-            epee::span<std::uint8_t> out,
+            std::span<std::uint8_t> out,
             const std::uint8_t command,
             const std::uint16_t port,
             std::string_view domain) {
@@ -73,15 +74,15 @@ namespace {
         const v4_header temp{
                 4, command, oxenc::host_to_little(port), oxenc::host_to_little(std::uint32_t{1})};
         std::memcpy(out.data(), std::addressof(temp), sizeof(temp));
-        out.remove_prefix(sizeof(temp));
+        out = out.subspan(sizeof(temp));
 
-        *(out.data()) = 0;
-        out.remove_prefix(1);
+        out[0] = 0;
+        out = out.subspan(1);
 
         std::memcpy(out.data(), domain.data(), domain.size());
-        out.remove_prefix(domain.size());
+        out = out.subspan(domain.size());
 
-        *(out.data()) = 0;
+        out[0] = 0;
         return buf_size;
     }
 

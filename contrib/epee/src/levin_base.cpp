@@ -27,6 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "epee/net/levin_base.h"
+#include <algorithm>
 #include <cstring>
 
 #include "epee/int-util.h"
@@ -50,7 +51,7 @@ namespace levin
     return head;
   }
 
-  std::string make_notify(int command, epee::span<const std::uint8_t> payload)
+  std::string make_notify(int command, std::span<const std::uint8_t> payload)
   {
     const bucket_head2 head = make_header(command, payload.size(), LEVIN_PACKET_REQUEST, false);
     std::string result;
@@ -75,7 +76,7 @@ namespace levin
     return buffer;
   }
 
-  std::string make_fragmented_notify(const std::string_view noise_message, int command, epee::span<const std::uint8_t> payload)
+  std::string make_fragmented_notify(const std::string_view noise_message, int command, std::span<const std::uint8_t> payload)
   {
     std::string result;
     const size_t noise_size = noise_message.size();
@@ -111,8 +112,14 @@ namespace levin
     head.m_cb = payload.size();
     result.append(reinterpret_cast<const char*>(&head), sizeof(head));
 
-    size_t copy_size = payload.remove_prefix(payload_space - sizeof(bucket_head2));
-    result.append(reinterpret_cast<const char*>(payload.data()) - copy_size, copy_size);
+    auto take = [&payload](size_t n) {
+      auto chunk = payload.first(std::min(payload.size(), n));
+      payload = payload.subspan(chunk.size());
+      return chunk;
+    };
+
+    auto chunk = take(payload_space - sizeof(bucket_head2));
+    result.append(reinterpret_cast<const char*>(chunk.data()), chunk.size());
 
     head.m_command = 0;
     head.m_flags = 0;
@@ -120,16 +127,16 @@ namespace levin
 
     while (!payload.empty())
     {
-      copy_size = payload.remove_prefix(payload_space);
+      chunk = take(payload_space);
 
       if (payload.empty())
         head.m_flags = LEVIN_PACKET_END;
 
       result.append(reinterpret_cast<const char*>(&head), sizeof(head));
-      result.append(reinterpret_cast<const char*>(payload.data()) - copy_size, copy_size);
+      result.append(reinterpret_cast<const char*>(chunk.data()), chunk.size());
     }
 
-    result.append(noise_message.substr(copy_size + sizeof(bucket_head2)));
+    result.append(noise_message.substr(chunk.size() + sizeof(bucket_head2)));
 
     return result;
   }

@@ -188,7 +188,7 @@ class BaseTestDB : public cryptonote::BlockchainDB {
             const std::vector<uint64_t>& offsets,
             std::vector<cryptonote::tx_out_index>& indices) const override {}
     virtual void get_output_key(
-            const epee::span<const uint64_t>& amounts,
+            std::span<const uint64_t> amounts,
             const std::vector<uint64_t>& offsets,
             std::vector<cryptonote::output_data_t>& outputs,
             bool allow_partial = false) const override {}

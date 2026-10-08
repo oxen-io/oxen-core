@@ -16611,13 +16611,6 @@ std::string wallet2::encrypt(
     return ciphertext;
 }
 //----------------------------------------------------------------------------------------------------
-std::string wallet2::encrypt(
-        const epee::span<char>& plaintext,
-        const crypto::secret_key& skey,
-        bool authenticated) const {
-    return encrypt(std::string_view{plaintext.data(), plaintext.size()}, skey, authenticated);
-}
-//----------------------------------------------------------------------------------------------------
 std::string wallet2::encrypt_with_view_secret_key(
         std::string_view plaintext, bool authenticated) const {
     return encrypt(plaintext, get_account().get_keys().m_view_secret_key, authenticated);

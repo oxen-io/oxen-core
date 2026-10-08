@@ -33,6 +33,7 @@
 
 #include <boost/program_options.hpp>
 #include <exception>
+#include <span>
 #include <string>
 
 #include "common/command_line.h"
@@ -1494,7 +1495,7 @@ class BlockchainDB {
      * @param outputs return-by-reference a list of outputs' metadata
      */
     virtual void get_output_key(
-            const epee::span<const uint64_t>& amounts,
+            std::span<const uint64_t> amounts,
             const std::vector<uint64_t>& offsets,
             std::vector<output_data_t>& outputs,
             bool allow_partial = false) const = 0;

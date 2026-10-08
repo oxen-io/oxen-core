@@ -1593,10 +1593,6 @@ class wallet2 {
             std::string_view plaintext,
             const crypto::secret_key& skey,
             bool authenticated = true) const;
-    std::string encrypt(
-            const epee::span<char>& span,
-            const crypto::secret_key& skey,
-            bool authenticated = true) const;
     std::string encrypt_with_view_secret_key(
             std::string_view plaintext, bool authenticated = true) const;
     epee::wipeable_string decrypt(

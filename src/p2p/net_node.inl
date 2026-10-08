@@ -2034,7 +2034,7 @@ void node_server<t_payload_net_handler>::request_callback(
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::relay_notify_to_list(
         int command,
-        const epee::span<const uint8_t> data_buff,
+        const std::span<const uint8_t> data_buff,
         std::vector<std::pair<epee::net_utils::zone, connection_id_t>> connections) {
     std::sort(connections.begin(), connections.end());
     auto zone = m_network_zones.begin();
@@ -2122,7 +2122,7 @@ void node_server<t_payload_net_handler>::callback(p2p_connection_context& contex
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::invoke_notify_to_peer(
         int command,
-        const epee::span<const uint8_t> req_buff,
+        const std::span<const uint8_t> req_buff,
         const epee::net_utils::connection_context_base& context) {
     if (is_filtered_command(context.m_remote_address, command))
         return false;
@@ -2136,7 +2136,7 @@ bool node_server<t_payload_net_handler>::invoke_notify_to_peer(
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::invoke_command_to_peer(
         int command,
-        const epee::span<const uint8_t> req_buff,
+        const std::span<const uint8_t> req_buff,
         std::string& resp_buff,
         const epee::net_utils::connection_context_base& context) {
     if (is_filtered_command(context.m_remote_address, command))
