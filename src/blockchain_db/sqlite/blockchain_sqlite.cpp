@@ -250,9 +250,9 @@ void BlockchainSQLite::close() {
         return;
     if (m_write) {
         log::warning(logcat, "Closing the database with a write transaction open; rolling it back");
+        m_write.reset();
         m_batch_active = false;
         m_writer = std::thread::id{};
-        m_write.reset();
     }
     {
         std::lock_guard lock{m_read_mutex};
@@ -353,10 +353,11 @@ void BlockchainSQLite::begin_write(bool batch) {
 }
 
 void BlockchainSQLite::end_write(bool commit) {
+    // m_write must be gone before other threads can see that there is no writer.
     auto done = oxen::defer([this] {
-        m_writer = std::thread::id{};
-        m_batch_active = false;
         m_write.reset();  // Rolls back if not committed
+        m_batch_active = false;
+        m_writer = std::thread::id{};
     });
     if (commit) {
         auto started = std::chrono::steady_clock::now();
