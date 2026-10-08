@@ -247,6 +247,12 @@ protected:
     get_filenames();
   }
 
+  void reopen_db()
+  {
+    m_db->close();
+    m_db->open(db_open_path<T>(m_prefix), network_type::FAKECHAIN);
+  }
+
   void add_test_block(size_t i)
   {
     m_db->add_block(m_blocks[i], t_sizes[i], t_sizes[i], t_diffs[i], t_coins[i], m_txs[i]);
@@ -831,6 +837,17 @@ TYPED_TEST(BlockchainDBTest, Checkpoints)
   expect_checkpoint_eq(cp, make_checkpoint(8, 1));
   EXPECT_FALSE(db.get_block_checkpoint(16, cp));
   EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 100)), (v{4, 8, 12, 20}));
+
+  // A checkpoint signed by a full quorum
+  const auto full = make_checkpoint(24, service_nodes::CHECKPOINT_QUORUM_SIZE);
+  {
+    db_wtxn_guard guard{db};
+    db.update_block_checkpoint(full);
+  }
+  this->reopen_db();
+  ASSERT_TRUE(db.get_top_checkpoint(cp));
+  expect_checkpoint_eq(cp, full);
+  EXPECT_EQ(cp.signatures.size(), service_nodes::CHECKPOINT_QUORUM_SIZE);
 }
 
 TYPED_TEST(BlockchainDBTest, MaxBlockSize)
@@ -931,6 +948,26 @@ TYPED_TEST(BlockchainDBTest, Txpool)
   EXPECT_EQ(std::memcmp(&got, &meta, sizeof(got)), 0);
   EXPECT_EQ(db.get_txpool_tx_count(), 1);
   EXPECT_FALSE(db.txpool_has_tx(h2));
+
+  // Toggling do_not_relay moves a tx in and out of the relayable count.
+  {
+    db_wtxn_guard guard{db};
+    meta.do_not_relay = 1;
+    db.update_txpool_tx(h1, meta);
+  }
+  EXPECT_EQ(db.get_txpool_tx_count(false), 0);
+  EXPECT_EQ(db.get_txpool_tx_count(true), 1);
+  {
+    db_wtxn_guard guard{db};
+    meta.do_not_relay = 0;
+    db.update_txpool_tx(h1, meta);
+  }
+  EXPECT_EQ(db.get_txpool_tx_count(false), 1);
+
+  this->reopen_db();
+  ASSERT_TRUE(db.get_txpool_tx_meta(h1, got));
+  EXPECT_EQ(std::memcmp(&got, &meta, sizeof(got)), 0);
+  EXPECT_EQ(db.get_txpool_tx_blob(h1), blob1);
 }
 
 TYPED_TEST(BlockchainDBTest, ServiceNodeData)
@@ -1022,6 +1059,24 @@ TYPED_TEST(BlockchainDBTest, ServiceNodeProofs)
   ASSERT_TRUE(all.count(pubkey));
   check(all.at(pubkey));
 
+  // Reloaded from disk, and replaced by a newer proof with the largest version components that
+  // can be stored.
+  this->reopen_db();
+  service_nodes::proof_info reloaded;
+  ASSERT_TRUE(db.get_service_node_proof(pubkey, reloaded));
+  check(reloaded);
+  proof.timestamp += 3600;
+  proof.proof->version = {999, 999, 999};
+  proof.proof->storage_server_version = {0, 0, 1};
+  proof.proof->lokinet_version = {1, 0, 0};
+  {
+    db_wtxn_guard guard{db};
+    db.set_service_node_proof(pubkey, proof);
+  }
+  this->reopen_db();
+  ASSERT_TRUE(db.get_service_node_proof(pubkey, reloaded));
+  check(reloaded);
+
   {
     db_wtxn_guard guard{db};
     EXPECT_TRUE(db.remove_service_node_proof(pubkey));
@@ -1073,6 +1128,21 @@ TYPED_TEST(BlockchainDBTest, AltBlocks)
   EXPECT_EQ(checkpoint, checkpoint_blob);
   ASSERT_TRUE(db.get_alt_block(id0, &got, nullptr, nullptr));
   EXPECT_EQ(got.checkpointed, 0);
+  // A block without a checkpoint leaves the checkpoint output alone.
+  checkpoint = "untouched";
+  ASSERT_TRUE(db.get_alt_block(id0, &got, &blob, &checkpoint));
+  EXPECT_EQ(blob, blob0);
+  EXPECT_EQ(checkpoint, "untouched");
+
+  size_t without_blobs = 0;
+  db.for_all_alt_blocks(
+      [&](const crypto::hash&, const alt_block_data_t&, const std::string* b, const std::string* c) {
+        EXPECT_EQ(b, nullptr);
+        EXPECT_EQ(c, nullptr);
+        ++without_blobs;
+        return true;
+      });
+  EXPECT_EQ(without_blobs, 2);
 
   size_t count = 0;
   db.for_all_alt_blocks(
@@ -1100,6 +1170,112 @@ TYPED_TEST(BlockchainDBTest, AltBlocks)
   EXPECT_EQ(db.get_alt_block_count(), 1);
   db.drop_alt_blocks();
   EXPECT_EQ(db.get_alt_block_count(), 0);
+}
+
+TYPED_TEST(BlockchainDBTest, ServiceNodeArchiveRanges)
+{
+  this->open_with_blocks();
+  this->add_synthetic_blocks(std::vector<uint64_t>(8, 1000));
+  auto& db = *this->m_db;
+  using v = std::vector<uint64_t>;
+  {
+    db_wtxn_guard guard{db};
+    for (uint64_t h = 0; h < 10; h++)
+      db.put_service_node_archive(h, "state " + std::to_string(h));
+    db.put_service_node_archive(4, "state 4, again");
+  }
+  EXPECT_EQ(db.get_service_node_archive_heights(), (v{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
+  EXPECT_EQ(db.get_service_node_archive(4), "state 4, again");
+
+  {
+    db_wtxn_guard guard{db};
+    db.delete_service_node_archives(3, 6);
+  }
+  EXPECT_EQ(db.get_service_node_archive_heights(), (v{0, 1, 2, 6, 7, 8, 9}));
+  {
+    db_wtxn_guard guard{db};
+    db.delete_service_node_archives(8, std::numeric_limits<uint64_t>::max());
+  }
+  EXPECT_EQ(db.get_service_node_archive_heights(), (v{0, 1, 2, 6, 7}));
+  {
+    db_wtxn_guard guard{db};
+    db.delete_service_node_archives(0, 1);
+  }
+  this->reopen_db();
+  EXPECT_EQ(db.get_service_node_archive_heights(), (v{1, 2, 6, 7}));
+  EXPECT_EQ(db.get_service_node_archive(6), "state 6");
+}
+
+TYPED_TEST(BlockchainDBTest, Reset)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  const auto& blk0 = this->m_blocks[0].first;
+  const uint64_t a = blk0.miner_tx->vout[0].amount;
+  txpool_tx_meta_t meta{};
+  {
+    db_wtxn_guard guard{db};
+    db.update_block_checkpoint(make_checkpoint(1, 2));
+    db.set_service_node_data("data", true);
+    db.put_service_node_archive(1, "archive");
+    db.add_max_block_size(1000);
+    db.add_txpool_tx(missing_hash(), "a tx", meta);
+    db.add_alt_block(get_block_hash(blk0), alt_block_data_t{}, this->m_blocks[0].second, nullptr);
+  }
+
+  db.reset();
+
+  EXPECT_EQ(db.height(), 0);
+  EXPECT_EQ(db.get_tx_count(), 0);
+  EXPECT_EQ(db.get_num_outputs(a), 0);
+  EXPECT_FALSE(db.tx_exists(blk0.tx_hashes[0]));
+  checkpoint_t cp;
+  EXPECT_FALSE(db.get_top_checkpoint(cp));
+  std::string data;
+  EXPECT_FALSE(db.get_service_node_data(data, true));
+  EXPECT_TRUE(db.get_service_node_archive_heights().empty());
+  EXPECT_EQ(db.get_max_block_size(), std::numeric_limits<uint64_t>::max());
+  // The LMDB backend's reset leaves the txpool and alt blocks alone; the SQLite one empties every
+  // table.
+  if constexpr (std::is_same_v<TypeParam, BlockchainSQLite>)
+  {
+    EXPECT_EQ(db.get_txpool_tx_count(), 0);
+    EXPECT_EQ(db.get_alt_block_count(), 0);
+  }
+
+  {
+    db_wtxn_guard guard{db};
+    this->add_test_block(0);
+    this->add_test_block(1);
+  }
+  EXPECT_EQ(db.height(), 2);
+  EXPECT_EQ(db.get_tx_count(), 3);
+}
+
+TYPED_TEST(BlockchainDBTest, RemoveDataFile)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  const auto files = db.get_filenames();
+  const auto path = db_open_path<TypeParam>(this->m_prefix);
+  db.close();
+  ASSERT_TRUE(fs::exists(files[0]));
+
+  // SQLite removes its write-ahead log and shared memory files when the last connection closes;
+  // make sure that remove_data_file removes them when they are left behind.
+  if constexpr (std::is_same_v<TypeParam, BlockchainSQLite>)
+    for (const auto& f : files)
+      if (!fs::exists(f))
+        std::ofstream{f} << "left behind";
+
+  EXPECT_TRUE(db.remove_data_file(path));
+  EXPECT_FALSE(fs::exists(files[0]));
+  if constexpr (std::is_same_v<TypeParam, BlockchainSQLite>)
+    for (const auto& f : files)
+      EXPECT_FALSE(fs::exists(f)) << f;
+
+  // Missing files are not an error.
+  EXPECT_TRUE(db.remove_data_file(path));
 }
 
 struct temp_data_dir
