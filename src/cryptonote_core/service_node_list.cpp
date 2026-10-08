@@ -4855,8 +4855,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
             m_state.height,
             detach_label);
 
-    blockchain.sqlite_db().blockchain_detached(
-            history, m_state.height, blockchain.get_current_blockchain_height());
+    blockchain.sqlite_db().blockchain_detached(history, m_state.height);
 }
 
 service_nodes::payout service_node_list::state_t::get_next_block_leader() const {

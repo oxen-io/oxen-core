@@ -36,7 +36,7 @@ if(BUILD_BLOCKCHAIN_UTILS)
         cryptonote_core
         blockchain_db
         version
-        SQLiteCpp
+        sqlitedb
         logging
         extra)
 

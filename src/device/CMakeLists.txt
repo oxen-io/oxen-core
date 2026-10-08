@@ -40,7 +40,7 @@ target_link_libraries(device
     ringct_basic
     Boost::serialization
   PRIVATE
-    SQLiteCpp
+    sqlitedb
     version
     logging
     extra)

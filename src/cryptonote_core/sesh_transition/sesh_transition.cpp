@@ -799,7 +799,7 @@ void transition(
     // All OXEN rewards are wiped first, any unconverted are dropped (but were paid out last block
     // anyway).
     {
-        sql.db.exec("DELETE FROM batched_payments_accrued");
+        sql.db.conn().sql.exec("DELETE FROM batched_payments_accrued");
         cryptonote::block_payments rewards_payments;
         for (const auto& [eth_addr, amt] : unallocated) {
             cryptonote::sql_payment payment = {};

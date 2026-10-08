@@ -558,6 +558,10 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
     rescan.top_block_height = end_height;
     rescan.skip_verify = true;
 
+    std::optional<BlockchainSQLite::Batch> sql_batch;
+    if (m_sqlite_db && total_blocks > 0)
+        sql_batch.emplace(*m_sqlite_db);
+
     while (true) {
         ZoneScopedN("Load blocks into subsystem");
 
@@ -695,6 +699,8 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
         }
         TracyCZoneEnd(add_block_chunk_to_subsystems);
     }
+    if (sql_batch)
+        sql_batch->finish();
     auto end = clock::now();
 
     if (total_blocks > 0) {

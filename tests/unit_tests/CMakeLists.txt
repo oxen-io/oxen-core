@@ -101,7 +101,7 @@ target_link_libraries(unit_tests
     wallet
     p2p
     version
-    SQLiteCpp
+    sqlitedb
     Boost::thread
     gtest
     logging

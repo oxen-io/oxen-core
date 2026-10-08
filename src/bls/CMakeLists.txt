@@ -46,7 +46,7 @@ target_link_libraries(bls_aggregator
     bls_crypto
     cryptonote_basic
     PRIVATE
-    SQLiteCpp
+    sqlitedb
     logging
     ethyl
     extra)

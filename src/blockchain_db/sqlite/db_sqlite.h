@@ -27,15 +27,15 @@
 
 #pragma once
 
-#include <SQLiteCpp/SQLiteCpp.h>
 #include <cryptonote_basic/cryptonote_basic_impl.h>  // cryptonote::address_parse_info...
 #include <cryptonote_config.h>
 #include <cryptonote_core/service_node_list.h>  // service_node_list::state_t...
 
 #include <filesystem>
 #include <optional>
-#include <sqlitedb/database.hpp>
+#include <sqlitedb/sqlite.hpp>
 #include <string>
+#include <thread>
 
 namespace cryptonote {
 
@@ -50,12 +50,45 @@ struct sql_payment {
 using block_payments = std::
         unordered_map<std::variant<eth::address, cryptonote::account_public_address>, sql_payment>;
 
-class BlockchainSQLite : public db::Database {
+class BlockchainSQLite {
   public:
     explicit BlockchainSQLite(cryptonote::network_type nettype, std::filesystem::path db_path);
     BlockchainSQLite(const BlockchainSQLite&) = delete;
 
-    ~BlockchainSQLite() { rescan_stop(); }
+    session::sqlite::Database db;
+
+    // Groups the writes of consecutive add_block calls, such as a rescan replaying the chain, into
+    // one transaction per BLOCKS blocks rather than one per block, which considerably reduces disk
+    // writes.  While a Batch exists, add_block and the other writes on the Batch's thread go into
+    // its transaction.
+    //
+    // A Batch must be completed with `finish()`.  If it is destroyed without that (e.g. because the
+    // replay failed partway through) then everything since its last commit is rolled back and
+    // `height` reverts to the committed height; the next startup then sees the rewards DB behind
+    // the SN list and replays the missing blocks.
+    //
+    // A Batch can't be moved, as the BlockchainSQLite refers to it while it exists; construct it in
+    // place, e.g. in a std::optional.
+    class Batch {
+        BlockchainSQLite& sql;
+        session::sqlite::Connection conn;
+        std::optional<SQLite::Transaction> tx;
+        int blocks = 0;
+
+        friend class BlockchainSQLite;
+        void block_added();
+
+      public:
+        static constexpr int BLOCKS = 100;
+
+        explicit Batch(BlockchainSQLite& sql);
+        Batch(const Batch&) = delete;
+        Batch& operator=(const Batch&) = delete;
+
+        void finish();
+
+        ~Batch();
+    };
 
     // Database management functions. Should be called on creation of BlockchainSQLite
     void create_schema();
@@ -75,7 +108,7 @@ class BlockchainSQLite : public db::Database {
 
     // Rewinds the SQL DB to the specified height. This function is called internally by the SNL on
     // detach.
-    void blockchain_detached(PaymentTableType type, uint64_t height, uint64_t target_height = 0);
+    void blockchain_detached(PaymentTableType type, uint64_t height);
 
     // Return the number of rows for the current payments accrued table.
     int batch_payments_accrued_row_count();
@@ -120,23 +153,13 @@ class BlockchainSQLite : public db::Database {
 
     std::pair<hf, cryptonote::address_parse_info> parsed_governance_addr = {hf::none, {}};
 
-    bool table_exists(const std::string& name);
-    bool index_exists(const std::string& name);
-    bool trigger_exists(const std::string& name);
+    Batch* batch = nullptr;
+    std::thread::id batch_thread;
 
-    // Long rescans can take quite a while to process.  Batching block inserts into one database
-    // transaction speeds this up considerably.  This is called automatically if a rescan is
-    // larger than 5000 blocks.
-    void rescan_start();
-    void rescan_stop();
-
-    std::optional<SQLite::Transaction> rescan_tx{std::nullopt};
-    size_t rescan_count{0};
-    uint64_t rescan_target{0};
-
-    // Returns a new transaction *unless* the rescan_tx is already active, in which case you get
-    // nullopt.
+    // Returns a new transaction on `conn` *unless* a Batch is active, in which case you get nullopt
+    // and the writes go into the Batch's transaction.
     std::optional<SQLite::Transaction> begin_tx(
+            session::sqlite::Connection& conn,
             SQLite::TransactionBehavior behave = SQLite::TransactionBehavior::IMMEDIATE);
 
   public:
@@ -175,8 +198,12 @@ class BlockchainSQLite : public db::Database {
         cryptonote::reward_money timelocked_stakes;
 
         wallet_info() = default;
+        // `height` is the DB height as seen by `conn`, which isn't necessarily the writer's
+        // `height` when called from another thread.
         wallet_info(
-                BlockchainSQLite& db,
+                const BlockchainSQLite& sql,
+                session::sqlite::Connection& conn,
+                uint64_t height,
                 std::span<const unsigned char> addr_bytes,
                 std::optional<std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t>> metadata,
                 std::optional<hf> hf_version = std::nullopt);
@@ -276,6 +303,9 @@ class BlockchainSQLite : public db::Database {
     // call is meaningless).
     std::optional<uint64_t> fixup(bool recheck = false);
 
+    // Only meaningful to the thread adding blocks, which may be partway through a transaction that
+    // other threads can't see yet; they need the height committed to the DB itself, as the
+    // get_accrued_rewards methods use.
     uint64_t height;
     const cryptonote::network_type nettype;
 };
