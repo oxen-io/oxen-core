@@ -423,10 +423,10 @@ add_library(systemd INTERFACE)  # Will do nothing unless we find and enable syst
 
 session_dep(libsodium 1.0.17)
 session_dep(libzstd 1.5.0)
-# 3.36 is required by session-sqlite for in-memory databases (which need the memdb VFS).  Anything
-# older falls back to a static sqlite3mc, which is a regular sqlite3 with encryption bolted on that
-# we simply don't use.
-session_dep(sqlite3 3.36.0)
+# 3.37 is required for the STRICT tables of the SQLite blockchain database (and 3.36 by
+# session-sqlite for in-memory databases, which need the memdb VFS).  Anything older falls back to a
+# static sqlite3mc, which is a regular sqlite3 with encryption bolted on that we simply don't use.
+session_dep(sqlite3 3.37.0)
 session_dep(gmp 6)
 
 option(WITH_SYSTEMD "Attempts to link against and enable systemd daemon notification support" ON)

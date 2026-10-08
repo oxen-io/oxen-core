@@ -105,6 +105,10 @@ namespace service_nodes {
 struct proof_info;
 }
 
+namespace SQLite {
+class Transaction;
+}
+
 namespace cryptonote {
 struct checkpoint_t;
 
@@ -806,6 +810,20 @@ class BlockchainDB {
     virtual bool block_rtxn_start() const = 0;
     virtual void block_rtxn_stop() const = 0;
     virtual void block_rtxn_abort() const = 0;
+
+    /**
+     * @brief gets the SQLite transaction of the write (block or batch) transaction that the
+     * calling thread has open, if any
+     *
+     * A backend that stores the blockchain in a SQLite database returns its open write transaction
+     * so that other SQLite writes made on the same thread and connection (the rewards and ONS
+     * databases, when they share the file) can run inside it rather than trying to open a second,
+     * nested transaction.
+     *
+     * @return the open write transaction, or nullptr if the calling thread has none or the backend
+     * does not use SQLite.
+     */
+    virtual SQLite::Transaction* active_write_transaction() { return nullptr; }
 
     // adds a block with the given metadata to the top of the blockchain, returns the new height
     /**
