@@ -37,6 +37,8 @@
 #include <boost/circular_buffer.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <chrono>
+#include <deque>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -246,6 +248,15 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
             uint64_t current_blockchain_height, uint64_t target_blockchain_height);
     std::string get_periodic_sync_estimate(
             uint64_t current_blockchain_height, uint64_t target_blockchain_height);
+
+    // Blocks per second synced since the sync started.
+    double average_sync_rate(uint64_t current_blockchain_height) const;
+    // Records the current height and returns the blocks per second synced over (roughly) the last
+    // minute, falling back to average_sync_rate until there is enough history for that.
+    double sync_rate(uint64_t current_blockchain_height);
+    // (time, height) samples for sync_rate; reset whenever a sync (re)starts.
+    std::deque<std::pair<std::chrono::steady_clock::time_point, uint64_t>> m_sync_rate_samples;
+    std::mutex m_sync_rate_mutex;
 
     std::mutex m_buffer_mutex;
     boost::circular_buffer<size_t> m_avg_buffer = boost::circular_buffer<size_t>(10);

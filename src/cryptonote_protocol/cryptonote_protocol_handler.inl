@@ -453,6 +453,10 @@ namespace cryptonote
 
       m_period_start_time = m_sync_start_time = std::chrono::steady_clock::now();
       m_sync_start_height = curr_height;
+      {
+        std::lock_guard lock{m_sync_rate_mutex};
+        m_sync_rate_samples.clear();
+      }
 
       if (hshd.current_height >= curr_height + 5) // don't switch to unsafe mode just for a few blocks
       {
@@ -1252,6 +1256,40 @@ namespace cryptonote
   }
 
   template<class t_core>
+  double t_cryptonote_protocol_handler<t_core>::average_sync_rate(uint64_t current_blockchain_height) const
+  {
+    seconds_f sync_time = std::chrono::steady_clock::now() - m_sync_start_time;
+    if (sync_time.count() <= 0 || current_blockchain_height <= m_sync_start_height)
+      return 0;
+    return (current_blockchain_height - m_sync_start_height) / sync_time.count();
+  }
+
+  template<class t_core>
+  double t_cryptonote_protocol_handler<t_core>::sync_rate(uint64_t current_blockchain_height)
+  {
+    constexpr auto WINDOW = 60s;
+    // Shorter than this, the window could hold just a couple of spans added back to back, giving
+    // their processing rate rather than the rate of progress.
+    constexpr auto MIN_WINDOW = 10s;
+
+    const auto now = std::chrono::steady_clock::now();
+    std::lock_guard lock{m_sync_rate_mutex};
+    m_sync_rate_samples.emplace_back(now, current_blockchain_height);
+    while (now - m_sync_rate_samples.front().first > WINDOW)
+      m_sync_rate_samples.pop_front();
+
+    const auto& [oldest_time, oldest_height] = m_sync_rate_samples.front();
+    if (now - oldest_time < MIN_WINDOW)
+      return average_sync_rate(current_blockchain_height);
+    return (current_blockchain_height - oldest_height) / seconds_f{now - oldest_time}.count();
+  }
+
+  static std::string format_sync_rate(double blocks_per_second)
+  {
+    return blocks_per_second >= 100 ? "{:.0f}"_format(blocks_per_second) : "{:.1f}"_format(blocks_per_second);
+  }
+
+  template<class t_core>
   int t_cryptonote_protocol_handler<t_core>::try_add_next_blocks(cryptonote_connection_context& context)
   {
     bool force_next_span = false;
@@ -1525,12 +1563,16 @@ namespace cryptonote
             }
             const uint32_t previous_stripe = tools::get_pruning_stripe(previous_height, target_blockchain_height, PRUNING_LOG_STRIPES);
             const uint32_t current_stripe = tools::get_pruning_stripe(current_blockchain_height, target_blockchain_height, PRUNING_LOG_STRIPES);
+            const auto rate = format_sync_rate(sync_rate(current_blockchain_height));
             std::string timing_message;
+            // The span figures only cover adding this span's blocks (not downloading or waiting for
+            // them), so they measure block processing speed, not sync progress.
             if (logcat->should_log(log::Level::info))
                 timing_message =
-                        " ({:.3f} sec, {:.3f} blocks/sec), {:.3f} MB queued in {} spans, stripe {} -> {}{}"_format(
+                        " ({} blocks/sec; span: {:.3f} s, {} blocks/s processed), {:.3f} MB queued in {} spans, stripe {} -> {}{}"_format(
+                                rate,
                                 dt.count(),
-                                (current_blockchain_height - previous_height) / dt.count(),
+                                format_sync_rate((current_blockchain_height - previous_height) / dt.count()),
                                 m_block_queue.get_data_size() / 1000000.f,
                                 m_block_queue.get_num_filled_spans(),
                                 previous_stripe,
@@ -1539,11 +1581,8 @@ namespace cryptonote
                                         ? ": {}"_format(m_block_queue.get_overview(
                                                   current_blockchain_height))
                                         : "");
-            else {
-                auto speed = (current_blockchain_height - previous_height) / dt.count();
-                timing_message = " ({} blocks/sec)"_format(
-                        speed >= 100 ? "{:.0f}"_format(speed) : "{:.1f}"_format(speed));
-            }
+            else
+                timing_message = " ({} blocks/sec)"_format(rate);
             log::info(globallogcat, fg(fmt::terminal_color::yellow), "Synced {}/{} {} {}", current_blockchain_height, target_blockchain_height, progress_message, timing_message);
             if (previous_stripe != current_stripe)
               notify_new_stripe(context, current_stripe);
@@ -2241,10 +2280,7 @@ skip:
         if (synced_blocks > 20)
         {
           auto synced_seconds = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - m_sync_start_time);
-          if (synced_seconds == 0s)
-            synced_seconds = 1s;
-          float blocks_per_second = synced_blocks / (float)synced_seconds.count();
-          log::info(globallogcat, fg(fmt::terminal_color::yellow), "Synced {} blocks in {} ({} blocks per second)", synced_blocks, tools::get_human_readable_timespan(synced_seconds), blocks_per_second);
+          log::info(globallogcat, fg(fmt::terminal_color::yellow), "Synced {} blocks in {} ({} blocks per second)", synced_blocks, tools::get_human_readable_timespan(synced_seconds), format_sync_rate(average_sync_rate(current_blockchain_height)));
         }
       }
       log::info(globallogcat, fg(fmt::terminal_color::yellow) | fmt::emphasis::bold, R"(
