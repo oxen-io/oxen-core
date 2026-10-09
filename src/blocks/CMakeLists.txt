@@ -27,6 +27,8 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 foreach(NET mainnet devnet testnet)
+    # The data is embedded when CMake runs, so a changed file has to make it run again.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${NET}_blocks.dat")
     file(READ "${NET}_blocks.dat" ${NET}_blocks_data HEX)
     string(REGEX REPLACE "([0-9a-f][0-9a-f])" "\\\\x\\1" ${NET}_blocks_data "${${NET}_blocks_data}")
 endforeach()
