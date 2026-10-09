@@ -77,6 +77,12 @@ inline constexpr uint64_t INVALID_HEIGHT = static_cast<uint64_t>(-1);
 // this, inside that block's transaction, so a restart replays at most this many blocks.
 inline constexpr uint64_t STATE_SNAPSHOT_INTERVAL = 60;
 
+// The lowest archive height (a multiple of HISTORY_ARCHIVE_INTERVAL) whose full state the archive
+// still retains once the chain reaches `height`.  The rewards keep their snapshots at archive
+// heights for exactly as long, which makes each of those archived states a height that both can be
+// restored to.
+uint64_t oldest_retained_archive(const cryptonote::network_config& netconf, uint64_t height);
+
 struct rescan_context {
     bool skip_verify;
     uint64_t top_block_height;

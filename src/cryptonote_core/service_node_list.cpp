@@ -305,20 +305,17 @@ static uint64_t min_recent_height(cryptonote::network_type nettype, uint64_t hei
     return result;
 }
 
-// Returns the lowest height whose archived state is retained once the chain reaches `height`.
-//
-// NOTE: This must be equivalent to the logic in the SQL DB when the archive rows are pruned. This
-// ensures that when the blockchain detaches, both systems detach to the same height and resync from
-// the same starting point as they both must update in lockstep.
+uint64_t oldest_retained_archive(const cryptonote::network_config& netconf, uint64_t height) {
+    uint64_t oldest = height < netconf.HISTORY_ARCHIVE_KEEP_WINDOW
+                            ? 0
+                            : height - netconf.HISTORY_ARCHIVE_KEEP_WINDOW;
+    return oldest - oldest % netconf.HISTORY_ARCHIVE_INTERVAL;
+}
+
+// Returns the lowest height whose archived state is retained once the chain reaches `height`: the
+// oldest retained archive height, less the quorums before it that restoring it needs.
 static uint64_t archive_cull_height(const cryptonote::network_config& netconf, uint64_t height) {
-    uint64_t cull_height = height < netconf.HISTORY_ARCHIVE_KEEP_WINDOW
-                                 ? 0
-                                 : height - netconf.HISTORY_ARCHIVE_KEEP_WINDOW;
-
-    // NOTE: Floor to closest interval
-    cull_height -= cull_height % netconf.HISTORY_ARCHIVE_INTERVAL;
-
-    // NOTE: Exclude the quorums we need to store to validate the SNL at the archive interval
+    uint64_t cull_height = oldest_retained_archive(netconf, height);
     if (cull_height >= PREDECESSOR_QUORUMS)
         cull_height -= PREDECESSOR_QUORUMS;
     return cull_height;
