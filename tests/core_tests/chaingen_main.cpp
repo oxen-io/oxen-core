@@ -162,6 +162,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(oxen_batch_sn_rewards_bad_address);
     GENERATE_AND_PLAY(oxen_batch_sn_rewards_pop_blocks);
     GENERATE_AND_PLAY(oxen_batch_sn_rewards_pop_blocks_after_big_cycle);
+    GENERATE_AND_PLAY(oxen_batch_sn_rewards_reorg_balances);
 
     // NOTE: Monero Tests
     GENERATE_AND_PLAY(gen_simple_chain_001);

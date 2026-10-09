@@ -1185,9 +1185,8 @@ class Blockchain {
 
     /// The transaction to give, as their `active_tx`, to the RewardsDB writes made while adding or
     /// removing blocks: the blockchain database's write transaction of this thread, when the
-    /// rewards tables are in the blockchain database; the transaction grouping the writes of a
-    /// replay of blocks, while one is replaying with the rewards tables in a database of their own;
-    /// otherwise nullptr.  Only for the thread holding the blockchain lock.
+    /// rewards tables are in the blockchain database; otherwise nullptr.  Only for the thread
+    /// holding the blockchain lock.
     SQLite::Transaction* rewards_write_tx();
 
     /// As rewards_write_tx(), for the ONS tables (which a replay doesn't group).
@@ -1333,10 +1332,6 @@ class Blockchain {
 
     ons::name_system_db m_ons_db;
     std::unique_ptr<cryptonote::RewardsDB> m_rewards_db;
-
-    // While load_missing_blocks_into_oxen_subsystems replays blocks with the rewards tables in a
-    // database of their own, the transaction of the RewardsDB::Batch grouping their writes.
-    SQLite::Transaction* m_rewards_replay_tx = nullptr;
 
     // The blockchain database's write transaction of this thread, if `db` is the blockchain
     // database; otherwise nullptr.

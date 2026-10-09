@@ -558,28 +558,20 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
     rescan.top_block_height = end_height;
     rescan.skip_verify = true;
 
-    // The writes of the replay go into one transaction per REPLAY_BATCH_BLOCKS blocks, rather than
-    // one per block, which considerably reduces disk writes: the blockchain database's batch
-    // transaction, when the rewards tables are in the blockchain database (unless the caller
-    // already has a write transaction open, in which case everything goes into that); otherwise a
-    // RewardsDB::Batch for the rewards tables.  Failing partway through rolls back everything
-    // since the last commit.
+    // When the rewards tables are in the blockchain database, the writes of the replay go into the
+    // blockchain database's batch transaction, committed every REPLAY_BATCH_BLOCKS blocks rather than
+    // with every block, which considerably reduces disk writes (unless the caller already has a
+    // write transaction open, in which case everything goes into that).  Failing partway through
+    // rolls back everything since the last commit.  (With a database of their own, the rewards
+    // write too rarely, only snapshots and delayed payments, for grouping them to matter.)
     constexpr int REPLAY_BATCH_BLOCKS = 100;
     bool chain_batch = false;
-    std::optional<RewardsDB::Batch> rewards_batch;
     auto end_batch = oxen::defer([&] {
-        m_rewards_replay_tx = nullptr;
         if (chain_batch)
             m_db->batch_abort();
     });
-    if (m_rewards_db && total_blocks > 0) {
-        if (m_db->sqlite_database() == &m_rewards_db->db) {
-            chain_batch = !m_db->active_write_transaction() && m_db->batch_start();
-        } else {
-            rewards_batch.emplace(*m_rewards_db);
-            m_rewards_replay_tx = &rewards_batch->transaction();
-        }
-    }
+    if (m_rewards_db && total_blocks > 0 && m_db->sqlite_database() == &m_rewards_db->db)
+        chain_batch = !m_db->active_write_transaction() && m_db->batch_start();
     int batch_blocks = 0;
     auto block_replayed = [&] {
         if (++batch_blocks < REPLAY_BATCH_BLOCKS)
@@ -589,9 +581,6 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
             chain_batch = false;
             m_db->batch_stop();
             chain_batch = m_db->batch_start();
-        } else if (rewards_batch) {
-            rewards_batch->commit();
-            m_rewards_replay_tx = &rewards_batch->transaction();
         }
     };
 
@@ -737,10 +726,6 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
     if (chain_batch) {
         chain_batch = false;
         m_db->batch_stop();
-    }
-    if (rewards_batch) {
-        m_rewards_replay_tx = nullptr;
-        rewards_batch->finish();
     }
     auto end = clock::now();
 
@@ -1078,8 +1063,6 @@ SQLite::Transaction* Blockchain::chain_write_tx_for(const session::sqlite::Datab
 }
 //------------------------------------------------------------------
 SQLite::Transaction* Blockchain::rewards_write_tx() {
-    if (m_rewards_replay_tx)
-        return m_rewards_replay_tx;
     return m_rewards_db ? chain_write_tx_for(&m_rewards_db->db) : nullptr;
 }
 //------------------------------------------------------------------

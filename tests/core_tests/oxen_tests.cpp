@@ -3927,3 +3927,79 @@ bool oxen_batch_sn_rewards_pop_blocks_after_big_cycle::generate(std::vector<test
 
   return true;
 }
+
+// A reorg replaces the last few blocks with ones that accrue different rewards (a transaction's fee
+// goes to the producer of the block it is in, whose operator, as of all the nodes, is alice); the
+// balances held for those heights must then be the replacement chain's, not the abandoned one's.
+bool oxen_batch_sn_rewards_reorg_balances::generate(std::vector<test_event_entry> &events)
+{
+  constexpr auto& conf = cryptonote::get_config(cryptonote::network_type::FAKECHAIN);
+  auto hard_forks = oxen_generate_hard_fork_table();
+  oxen_chain_generator gen(events, hard_forks);
+  const auto miner = gen.first_miner();
+  const auto alice = gen.add_account();
+  const auto bob = gen.add_account();
+  auto min_service_nodes = pulse_min_sns();
+
+  gen.add_blocks_until_version(cryptonote::hf::hf19_reward_batching);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    const auto tx0 = gen.create_and_add_tx(miner, alice.get_keys().m_account_address, MK_COINS(101));
+    gen.create_and_add_next_block({tx0});
+  }
+  gen.add_transfer_unlock_blocks();
+
+  std::vector<cryptonote::transaction> registration_txs(min_service_nodes);
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    registration_txs[i] = gen.create_and_add_registration_tx(alice);
+    gen.process_registration_tx(registration_txs[i], 12+i, hard_forks.back().version);
+  }
+  gen.create_and_add_next_block({registration_txs});
+  gen.add_n_blocks(conf.SERVICE_NODE_PAYABLE_AFTER_BLOCKS + 5);
+
+  constexpr uint64_t REORG = 3;
+  static_assert(REORG < cryptonote::REWARDS_HISTORY);
+  oxen_chain_generator fork = gen;
+  gen.add_n_blocks(REORG);
+  const uint64_t top = gen.height();
+  const auto& alice_addr = alice.get_keys().m_account_address;
+
+  auto abandoned = std::make_shared<std::vector<cryptonote::reward_money>>();
+  oxen_register_callback(events, "record_and_pop", [=](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("record_and_pop");
+    auto& rewards = c.blockchain.rewards_db();
+    CHECK_EQ(rewards.height, top);
+    for (uint64_t h = top - REORG + 1; h <= top; h++) {
+      auto info = rewards.get_accrued_rewards(alice_addr, h);
+      CHECK_TEST_CONDITION(info && info->found);
+      abandoned->push_back(info->amount);
+    }
+    c.blockchain.pop_blocks(REORG);
+    CHECK_EQ(rewards.height, top - REORG);
+    CHECK_TEST_CONDITION(!rewards.get_accrued_rewards(alice_addr, top));
+    return true;
+  });
+
+  auto tx = fork.create_and_add_tx(miner, bob.get_keys().m_account_address, MK_COINS(1));
+  fork.create_and_add_next_block({tx});
+  fork.add_n_blocks(REORG - 1);
+
+  oxen_register_callback(events, "check_replaced_balances", [=](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_replaced_balances");
+    auto& rewards = c.blockchain.rewards_db();
+    CHECK_EQ(rewards.height, top);
+    CHECK_EQ(abandoned->size(), REORG);
+    for (uint64_t i = 0; i < REORG; i++) {
+      auto info = rewards.get_accrued_rewards(alice_addr, top - REORG + 1 + i);
+      CHECK_TEST_CONDITION(info && info->found);
+      CHECK_TEST_CONDITION(info->amount > (*abandoned)[i]);
+    }
+    return true;
+  });
+
+  return true;
+}

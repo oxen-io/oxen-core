@@ -1628,50 +1628,72 @@ std::vector<service_nodes::eth_stake> test_stakes(uint32_t tx_index, int count)
   return stakes;
 }
 
+// The rewards, with access to the last step of adding a block (which is all these tests need of it)
+struct test_rewards : cryptonote::RewardsDB
+{
+  using RewardsDB::RewardsDB;
+  using RewardsDB::publish_block;
+};
+
 TEST(BlockchainSQLite, rewards_in_write_transaction)
 {
   shared_sqlite s;
-  cryptonote::RewardsDB rewards{network_type::FAKECHAIN, s.sql()};
+  test_rewards rewards{network_type::FAKECHAIN, s.sql()};
   const std::string delayed = "SELECT COUNT(*) FROM delayed_payments";
-  const std::string height = "SELECT height FROM batch_db_height";
+  const std::string snapshots = "SELECT COUNT(*) FROM rewards_snapshot_heights";
+  auto add_blocks = [&](SQLite::Transaction* tx) {
+    rewards.add_delayed_payments(test_stakes(0, 1), rewards.height + 1, 100);
+    while (rewards.height < service_nodes::STATE_SNAPSHOT_INTERVAL)
+      rewards.publish_block(std::nullopt, tx);
+  };
 
   s.db.block_wtxn_start();
   auto* tx = s.db.active_write_transaction();
   ASSERT_NE(tx, nullptr);
-  EXPECT_TRUE(rewards.add_delayed_payments(test_stakes(0, 1), 100, 10, tx));
-  rewards.update_height(5);
+  add_blocks(tx);
   EXPECT_EQ(s.committed(delayed), 0);
-  EXPECT_EQ(s.committed(height), 0);
-  // A reader on another connection doesn't see them either
-  EXPECT_EQ(rewards.get_delayed_payments().size(), 0);
+  EXPECT_EQ(s.committed(snapshots), 0);
   s.db.block_wtxn_abort();
   EXPECT_EQ(s.committed(delayed), 0);
-  EXPECT_EQ(s.committed(height), 0);
+  EXPECT_EQ(s.committed(snapshots), 0);
+  // As the blockchain would, after the failure of the blocks it was adding
+  rewards.blockchain_detached(0);
 
   s.db.block_wtxn_start();
-  tx = s.db.active_write_transaction();
-  EXPECT_TRUE(rewards.add_delayed_payments(test_stakes(0, 1), 100, 10, tx));
-  rewards.update_height(5);
+  add_blocks(s.db.active_write_transaction());
   s.db.block_wtxn_stop();
   EXPECT_EQ(s.committed(delayed), 1);
-  EXPECT_EQ(s.committed(height), 5);
+  EXPECT_EQ(s.committed(snapshots), 1);
+  EXPECT_EQ(rewards.get_delayed_payments().size(), 1);
 }
 
 TEST(BlockchainSQLite, rewards_failure_leaves_nothing_in_write_transaction)
 {
   shared_sqlite s;
-  cryptonote::RewardsDB rewards{network_type::FAKECHAIN, s.sql()};
+  test_rewards rewards{network_type::FAKECHAIN, s.sql()};
 
   s.db.block_wtxn_start();
   auto* tx = s.db.active_write_transaction();
-  EXPECT_TRUE(rewards.add_delayed_payments(test_stakes(0, 1), 100, 10, tx));
-  // The second of these is a duplicate of the first, so fails after the first is written; the
-  // first mustn't then be left for the blockchain's transaction to commit.
-  EXPECT_FALSE(rewards.add_delayed_payments(test_stakes(1, 2), 100, 10, tx));
+  rewards.add_delayed_payments(test_stakes(0, 1), 1, 10);
+  // A duplicate of the first doesn't get added
+  rewards.add_delayed_payments(test_stakes(0, 1), 1, 10);
+  rewards.publish_block(std::nullopt, tx);
+
+  // A block whose changes are invalid (here, by making an amount negative) changes nothing
+  cryptonote::block_payments payments;
+  auto& p = payments[eth::address{}];
+  p.amount = cryptonote::reward_money::from_coin(1);
+  p.liquidation = cryptonote::reward_money::from_coin(2);
+  rewards.add_delayed_payments(test_stakes(1, 1), 2, 10);
+  rewards.add_sn_rewards(hf::hf21_eth, payments, false);
+  EXPECT_THROW(rewards.publish_block(std::nullopt, tx), std::exception);
+  EXPECT_EQ(rewards.height, 1);
+  EXPECT_TRUE(rewards.get_accrued_rows().empty());
   s.db.block_wtxn_stop();
 
   EXPECT_EQ(s.committed("SELECT COUNT(*) FROM delayed_payments"), 1);
   EXPECT_EQ(s.committed("SELECT COUNT(*) FROM delayed_payments WHERE block_tx_index = 1"), 0);
+  EXPECT_EQ(rewards.get_delayed_payments().size(), 1);
 }
 
 TEST(BlockchainSQLite, rewards_reader_beside_read_transaction)
@@ -1724,15 +1746,16 @@ TEST(BlockchainSQLite, ons_in_write_transaction)
 TEST(BlockchainSQLite, reset_keeps_others_tables)
 {
   shared_sqlite s;
-  cryptonote::RewardsDB rewards{network_type::FAKECHAIN, s.sql()};
+  test_rewards rewards{network_type::FAKECHAIN, s.sql()};
   BlockchainDB& base = s.db;
   base.add_max_block_size(123);
-  rewards.update_height(7);
+  while (rewards.height < service_nodes::STATE_SNAPSHOT_INTERVAL)
+    rewards.publish_block();
 
   s.db.reset();
 
   EXPECT_EQ(base.get_max_block_size(), std::numeric_limits<uint64_t>::max());
-  EXPECT_EQ(s.committed("SELECT height FROM batch_db_height"), 7);
+  EXPECT_EQ(s.committed("SELECT MAX(height) FROM rewards_snapshot_heights"), 60);
   EXPECT_EQ(s.committed("SELECT value FROM properties WHERE key = 'rewards_fixup_version'"), 2);
 }
 

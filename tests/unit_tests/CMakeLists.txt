@@ -27,6 +27,7 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 add_executable(unit_tests
+  accrued_history.cpp
   account.cpp
   apply_permutation.cpp
   base58.cpp

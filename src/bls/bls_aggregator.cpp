@@ -431,10 +431,10 @@ bls_aggregator::bls_aggregator(cryptonote::core& _core) : core{_core} {
     omq.add_timer(
             [this] {
                 {
-                    // NOTE: Handle overflow if STORE_RECENT_REWARDS is large or you're on some
-                    // fresh network that has hardly any blocks (e.g. localdev).
+                    // NOTE: Handle overflow if you're on some fresh network that has hardly any
+                    // blocks (e.g. localdev).
                     uint64_t top_height = core.blockchain.get_current_blockchain_height() - 1;
-                    uint64_t cutoff = top_height - core.get_net_config().HISTORY_RECENT_KEEP_WINDOW;
+                    uint64_t cutoff = top_height - cryptonote::REWARDS_HISTORY;
                     if (cutoff < top_height) {
                         std::lock_guard lock{rewards_response_cache_mutex};
                         std::erase_if(rewards_response_cache, [&cutoff](const auto& item) {
@@ -817,12 +817,12 @@ void bls_aggregator::get_rewards(oxenmq::Message& m) const {
         return;
     }
 
-    cryptonote::RewardsDB::wallet_info wallet_info =
-            core.blockchain.rewards_db().get_accrued_rewards(eth_addr, height);
-    if (!wallet_info.found) {
+    auto maybe_wallet_info = core.blockchain.rewards_db().get_accrued_rewards(eth_addr, height);
+    if (!maybe_wallet_info) {
         m.send_reply("410", "Balances for height {} are not available"_format(height));
         return;
     }
+    const auto& wallet_info = *maybe_wallet_info;
 
     // We sign H(H(rewardTag || chainid || contract) || recipientAddress ||
     // recipientAmount),
@@ -849,8 +849,14 @@ void bls_aggregator::rewards_request(
         uint64_t height,
         std::function<void(std::shared_ptr<const bls_rewards_response>)> callback) {
     ZoneScoped;
-    cryptonote::RewardsDB::wallet_info wallet_info =
-            core.blockchain.rewards_db().get_accrued_rewards(addr, height);
+    auto maybe_wallet_info = core.blockchain.rewards_db().get_accrued_rewards(addr, height);
+    if (!maybe_wallet_info)
+        throw oxen::traced<std::invalid_argument>(fmt::format(
+                "Aggregating a rewards request for '{}' at height {} is invalid because "
+                "reward data is not available for that height. Request rejected.",
+                addr,
+                height));
+    const auto& wallet_info = *maybe_wallet_info;
 
     // FIXME: make this async
     oxen::log::trace(
@@ -859,13 +865,6 @@ void bls_aggregator::rewards_request(
             wallet_info.amount,
             addr,
             height);
-
-    if (!wallet_info.found)
-        throw oxen::traced<std::invalid_argument>(fmt::format(
-                "Aggregating a rewards request for '{}' at height {} is invalid because "
-                "reward data is not available for that height. Request rejected.",
-                addr,
-                height));
 
     // NOTE: Validate the arguments
     if (!addr) {

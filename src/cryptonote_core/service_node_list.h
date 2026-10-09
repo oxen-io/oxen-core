@@ -1198,11 +1198,11 @@ class service_node_list {
         // but we can't include rewards_db header here because it includes us,
         // so this overload is necessary.
         //
-        // `rewards_tx` is the `active_tx` for the writes to `rewards_db_ptr` (see RewardsDB).
+        // Changes to `rewards_db_ptr` (made by the HF21 transition and HF22 fixups) are pending in
+        // it until its add_block (see RewardsDB).
         block_add_result update_from_block(
                 const cryptonote::BlockchainDB& db,
                 cryptonote::RewardsDB* rewards_db_ptr,
-                SQLite::Transaction* rewards_tx,
                 cryptonote::network_type nettype,
                 state_set const& state_history,
                 std::unordered_map<crypto::hash, state_t> const& alt_states,

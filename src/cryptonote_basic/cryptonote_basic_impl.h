@@ -86,8 +86,8 @@ struct reward_money {
 
     // Construct a money value from an amount value stored in the database (which will either be a
     // coin value, or an intermediate value, depending on the hard fork of the height the value
-    // comes from).  This is used for fields like `batched_payments_accrued.amount` and
-    // `.lifetime_rewards` that can (before HF22) have subatomic amounts.
+    // comes from).  This is used for the accrued rewards' `amount` and `lifetime_rewards`, which
+    // can (before HF22) have subatomic amounts.
     static constexpr reward_money from_db_amount(int64_t amount, hf hf_version) {
         int_fast16_t subatomic;
         if (hf_version >= hf::hf22_eth_fixup)
@@ -101,8 +101,7 @@ struct reward_money {
 
     // Construct a money value from an atomic SESH amount value stored in the database.  This is for
     // fields that are always stored as atomic (not subatomic) values such as
-    // `batched_payments_accrued.lifetime_locked_stakes` and the amounts in the delayed_payments
-    // table.  This is effectively the same thing as from_coin, but is more descriptive and takes an
+    // the accrued rewards' `lifetime_locked_stakes` and the amounts of the delayed payments.  This is effectively the same thing as from_coin, but is more descriptive and takes an
     // sqlite-compatible signed int64 instead of unsigned.
     static constexpr reward_money from_db_atomic(int64_t amount) {
         return from_coin(static_cast<int64_t>(amount));

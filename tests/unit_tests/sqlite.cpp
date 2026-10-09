@@ -46,8 +46,8 @@ std::optional<int64_t> int_property(session::sqlite::Database& db, std::string_v
 
 }
 
-// A sqlite.db as left by 11.4+ releases: the height in batch_db_info, and the fixup version in
-// PRAGMA user_version.
+// A sqlite.db as left by 11.4+ releases: the live values, with copies at recent and archive heights,
+// the height in batch_db_info, and the fixup version in PRAGMA user_version.
 TEST(SQLITE, LegacyRewardsUpgrade)
 {
   session::sqlite::Database sql{":memory:"};
@@ -63,26 +63,126 @@ CREATE TABLE batched_payments_accrued_recent(
   lifetime_locked_stakes INTEGER NOT NULL DEFAULT 0, lifetime_unlocked_stakes INTEGER NOT NULL DEFAULT 0,
   lifetime_liquidated_stakes INTEGER NOT NULL DEFAULT 0, lifetime_rewards INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY(height, address) CHECK(amount >= 0));
+CREATE TABLE batched_payments_accrued_archive(
+  address BLOB NOT NULL, amount INTEGER NOT NULL DEFAULT 0, payout_offset INTEGER,
+  height INTEGER NOT NULL DEFAULT 0,
+  lifetime_locked_stakes INTEGER NOT NULL DEFAULT 0, lifetime_unlocked_stakes INTEGER NOT NULL DEFAULT 0,
+  lifetime_liquidated_stakes INTEGER NOT NULL DEFAULT 0, lifetime_rewards INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(height, address) CHECK(amount >= 0));
 CREATE TABLE batch_db_info(height INTEGER NOT NULL);
 INSERT INTO batch_db_info(height) VALUES(1234);
 CREATE TRIGGER make_recent AFTER UPDATE ON batch_db_info FOR EACH ROW BEGIN SELECT 1; END;
-INSERT INTO batched_payments_accrued (address, amount) VALUES (x'0123456789', 42);
+INSERT INTO batched_payments_accrued (address, amount, lifetime_rewards)
+  VALUES (x'0123456789012345678901234567890123456789', 42, 42);
+INSERT INTO batched_payments_accrued_recent (address, amount, height)
+  VALUES (x'0123456789012345678901234567890123456789', 40, 1200),
+         (x'0123456789012345678901234567890123456789', 41, 1233);
+INSERT INTO batched_payments_accrued_archive (address, amount, height)
+  VALUES (x'0123456789012345678901234567890123456789', 30, 1000);
 PRAGMA user_version = 1;
 )");
 
   cryptonote::RewardsDB rewardsDB(cryptonote::network_type::FAKECHAIN, sql);
 
   EXPECT_EQ(rewardsDB.height, 1234);
-  EXPECT_FALSE(has_table(sql, "batch_db_info"));
-  ASSERT_TRUE(has_table(sql, "batch_db_height"));
-  EXPECT_EQ(sql.conn().prepared_get<int64_t>("SELECT height FROM batch_db_height WHERE id = 1"), 1234);
+  for (auto old : {"batch_db_info", "batch_db_height", "batched_payments_accrued",
+                   "batched_payments_accrued_recent", "batched_payments_accrued_archive"})
+    EXPECT_FALSE(has_table(sql, old)) << old;
+  EXPECT_EQ(sql.conn().prepared_get<int>(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger'"), 0);
   EXPECT_EQ(int_property(sql, "rewards_fixup_version"), 1);
 
-  // The retention triggers moved to the new table along with the height
-  rewardsDB.update_height(1235);
-  EXPECT_EQ(sql.conn().prepared_get<int>(
-                "SELECT COUNT(*) FROM batched_payments_accrued_recent WHERE height = 1235"),
-            1);
+  // The live values become the snapshot at their height, the archived ones snapshots at theirs,
+  // and the recent ones too, but only at heights the SN list stores its state at.
+  std::vector<int64_t> heights;
+  for (auto h : sql.conn().prepared_results<int64_t>(
+           "SELECT height FROM rewards_snapshot_heights ORDER BY height"))
+    heights.push_back(h);
+  EXPECT_EQ(heights, (std::vector<int64_t>{1000, 1200, 1234}));
+  EXPECT_EQ(sql.conn().prepared_get<int64_t>(
+                "SELECT amount FROM rewards_snapshots WHERE height = 1200"), 40);
+
+  auto rows = rewardsDB.get_accrued_rows();
+  ASSERT_EQ(rows.size(), 1);
+  EXPECT_EQ(rows[0].second.amount, 42);
+  EXPECT_EQ(rows[0].second.lifetime_rewards, 42);
+}
+
+// Snapshots are written at heights divisible by STATE_SNAPSHOT_INTERVAL and at archive heights;
+// writing one keeps the three newest and those at archive heights the SN archive still keeps.
+TEST(SQLITE, RewardsSnapshotRetention)
+{
+  test::RewardsDBTest rewardsDB(cryptonote::network_type::FAKECHAIN, ":memory:");
+  cryptonote::block_payments payments;
+  payments[eth::address{}].amount = cryptonote::reward_money::from_coin(5);
+  rewardsDB.add_sn_rewards(cryptonote::hf::hf21_eth, payments, true);
+  rewardsDB.publish_block();
+  while (rewardsDB.height < 20'130)
+    rewardsDB.publish_block();
+
+  auto conn = rewardsDB.db.conn();
+  std::vector<int64_t> heights;
+  for (auto h : conn.prepared_results<int64_t>(
+           "SELECT height FROM rewards_snapshot_heights ORDER BY height"))
+    heights.push_back(h);
+  EXPECT_EQ(heights, (std::vector<int64_t>{10'000, 20'000, 20'040, 20'100}));
+  // The deleted snapshots' rows go with them
+  EXPECT_EQ(conn.prepared_get<int>("SELECT COUNT(*) FROM rewards_snapshots"), 4);
+
+  // A rewind past the in-memory heights loads a stored snapshot, deleting those above it
+  EXPECT_TRUE(rewardsDB.can_restore(20'040));
+  rewardsDB.blockchain_detached(20'040);
+  EXPECT_EQ(rewardsDB.height, 20'040);
+  ASSERT_EQ(rewardsDB.get_accrued_rows().size(), 1);
+  EXPECT_EQ(conn.prepared_get<int>("SELECT COUNT(*) FROM rewards_snapshot_heights"), 3);
+}
+
+// The in-memory heights answer queries at, and restores to, the most recent heights.
+TEST(SQLITE, RewardsHistory)
+{
+  test::RewardsDBTest rewardsDB(cryptonote::network_type::FAKECHAIN, ":memory:");
+  eth::address a{}, b{}, never{};
+  b.data_[0] = 1;
+  never.data_[0] = 2;
+  for (int i = 1; i <= 10; i++) {
+    cryptonote::block_payments payments;
+    payments[a].amount = cryptonote::reward_money::from_coin(1);
+    if (i == 6)
+      payments[b].amount = cryptonote::reward_money::from_coin(7);
+    rewardsDB.add_sn_rewards(cryptonote::hf::hf21_eth, payments, true);
+    rewardsDB.publish_block();
+  }
+
+  EXPECT_EQ(rewardsDB.get_accrued_rewards(a).amount.to_coin(), 10);
+  ASSERT_TRUE(rewardsDB.get_accrued_rewards(a, 5));
+  EXPECT_EQ(rewardsDB.get_accrued_rewards(a, 5)->amount.to_coin(), 5);
+
+  // At the current height, and at a held one: an address with values; one without, which is an
+  // authoritative zero, with `found` false; and, at a height not held, nothing known at all.
+  for (uint64_t h : {uint64_t{10}, uint64_t{5}}) {
+    auto with = rewardsDB.get_accrued_rewards(a, h);
+    ASSERT_TRUE(with) << h;
+    EXPECT_TRUE(with->found) << h;
+    EXPECT_EQ(with->height, h);
+    EXPECT_EQ(with->amount.to_coin(), h);
+
+    auto without = rewardsDB.get_accrued_rewards(never, h);
+    ASSERT_TRUE(without) << h;
+    EXPECT_FALSE(without->found) << h;
+    EXPECT_EQ(without->amount.to_coin(), 0);
+  }
+  EXPECT_FALSE(rewardsDB.get_accrued_rewards(never).found);
+  EXPECT_FALSE(rewardsDB.get_accrued_rewards(a, 10 - cryptonote::REWARDS_HISTORY));
+  EXPECT_FALSE(rewardsDB.get_accrued_rewards(a, 11));
+  // An address that first got values within the held heights has none before then
+  EXPECT_FALSE(rewardsDB.get_accrued_rewards(b, 5)->found);
+  EXPECT_TRUE(rewardsDB.get_accrued_rewards(b, 6)->found);
+
+  ASSERT_TRUE(rewardsDB.can_restore(5));
+  rewardsDB.blockchain_detached(5);
+  EXPECT_EQ(rewardsDB.get_accrued_rewards(a).amount.to_coin(), 5);
+  EXPECT_FALSE(rewardsDB.get_accrued_rewards(b).found);
+  EXPECT_FALSE(rewardsDB.get_accrued_rewards(a, 6));
 }
 
 TEST(SQLITE, NewRewardsFixupVersion)
@@ -180,21 +280,6 @@ TEST(SQLITE, AddressModulus)
   EXPECT_EQ(wallet_address.address.next_payout_height(100, 100), 190);
 }
 
-TEST(SQLITE, BatchDbHeightSingleton)
-{
-  test::RewardsDBTest rewardsDB(cryptonote::network_type::FAKECHAIN, ":memory:");
-  auto conn = rewardsDB.db.conn();
-  auto row_count = [&] { return conn.prepared_get<int>("SELECT COUNT(*) FROM batch_db_height"); };
-
-  EXPECT_EQ(row_count(), 1);
-  for (int id : {1, 2, 0, -1})
-    EXPECT_THROW(
-        conn.prepared_exec("INSERT INTO batch_db_height (id, height) VALUES (?, 5)", id),
-        std::exception) << "id " << id;
-  EXPECT_THROW(conn.prepared_exec("INSERT INTO batch_db_height (height) VALUES (5)"), std::exception);
-  EXPECT_EQ(row_count(), 1);
-}
-
 TEST(SQLITE, AddSNRewards)
 {
   test::RewardsDBTest rewardsDB(cryptonote::network_type::FAKECHAIN, ":memory:");
@@ -210,6 +295,9 @@ TEST(SQLITE, AddSNRewards)
   t1[wallet_address.address].amount = cryptonote::reward_money::from_intermediate(16'500000001'789/2);
 
   EXPECT_NO_THROW(rewardsDB.add_sn_rewards(cryptonote::hf::hf19_reward_batching, t1, true));
+  // Pending until the block is published
+  EXPECT_EQ(rewardsDB.batching_count(cryptonote::hf::hf19_reward_batching), 0);
+  rewardsDB.publish_block();
   EXPECT_EQ(rewardsDB.batching_count(cryptonote::hf::hf19_reward_batching), 1);
 
   std::vector<cryptonote::batch_sn_payment> p1;
@@ -232,7 +320,8 @@ TEST(SQLITE, AddSNRewards)
   // Pay the amount back out and expect the database to be empty
   std::vector<cryptonote::batch_sn_payment> t3;
   t3.emplace_back(wallet_address.address, expected_amount);
-  EXPECT_NO_THROW(rewardsDB.save_payments(expected_payout, t3));
+  EXPECT_TRUE(rewardsDB.save_payments(expected_payout, t3));
+  rewardsDB.publish_block();
   EXPECT_EQ(rewardsDB.batching_count(cryptonote::hf::hf19_reward_batching), 0);
 }
 

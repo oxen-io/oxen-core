@@ -2448,7 +2448,7 @@ service_node_list::state_t::confirm_result service_node_list::state_t::process_c
         // NOTE: Add the funds to the unlock queue in the DB, can be retrieved by BLS aggregation
         // when fully unlocked..
         sn_list->blockchain.rewards_db().add_delayed_payments(
-                result.exit_stakes, height, block_delay, sn_list->blockchain.rewards_write_tx());
+                result.exit_stakes, height, block_delay);
     }
 
     x25519_map.erase(snpk_to_xpk(node->service_node_pubkey));
@@ -3264,6 +3264,9 @@ void service_node_list::block_add(
     ZoneScoped;
     block_add_result result = {};
 
+    if (auto* sql_db = blockchain.maybe_rewards_db())
+        sql_db->begin_block();
+
     if (block.major_version < hf::hf9_service_nodes) {
         m_state.height = block.get_height();
     } else {
@@ -3853,7 +3856,6 @@ static bool is_expired_node_hf10_onwards(
 static void apply_fixups(
         cryptonote::network_type nettype,
         cryptonote::RewardsDB* sql_db,
-        SQLite::Transaction* rewards_tx,
         service_node_list::state_t& state,
         const cryptonote::block& block) {
     if (block.major_version == cryptonote::hf::hf22_eth_fixup &&
@@ -3916,7 +3918,7 @@ static void apply_fixups(
             // and so get_accrued_rewards's default behaviour of applying the current hf based on
             // the current db height will apply the wrong hf rules for db amount calculations.
             book_keeping[entry.addr].before =
-                    sql_db->get_accrued_rewards(entry.addr, block.major_version, rewards_tx).amount;
+                    sql_db->pending_accrued_rewards(entry.addr, block.major_version).amount;
         }
 
         // Submit and credit the address to fixup
@@ -3930,7 +3932,7 @@ static void apply_fixups(
                 payments.size());
 
         try {
-            sql_db->submit_stakes_metadata(block_add, rewards_tx);
+            sql_db->submit_stakes_metadata(block_add);
             sql_db->add_sn_rewards(block.major_version, payments, false /*rewards_payment*/);
         } catch (const std::exception& e) {
             log::error(logcat, "Failed to submit fixup batch data: {}", e.what());
@@ -3939,7 +3941,7 @@ static void apply_fixups(
 
         for (const auto& entry : fixups)
             book_keeping[entry.addr].after =
-                    sql_db->get_accrued_rewards(entry.addr, block.major_version, rewards_tx).amount;
+                    sql_db->pending_accrued_rewards(entry.addr, block.major_version).amount;
 
         size_t book_index = 0;
         for (const auto& [addr, amounts] : book_keeping)
@@ -3959,7 +3961,6 @@ static void apply_fixups(
 block_add_result service_node_list::state_t::update_from_block(
         cryptonote::BlockchainDB const& db,
         cryptonote::RewardsDB* rewards_db_ptr,
-        SQLite::Transaction* rewards_tx,
         cryptonote::network_type nettype,
         state_set const& state_history,
         std::unordered_map<crypto::hash, state_t> const& alt_states,
@@ -3978,7 +3979,7 @@ block_add_result service_node_list::state_t::update_from_block(
     quorums = {};
     auto hf_version = block.major_version;
 
-    apply_fixups(nettype, rewards_db_ptr, rewards_tx, *this, block);
+    apply_fixups(nettype, rewards_db_ptr, *this, block);
 
     // NOTE: In the update step there are multiple pieces of information we want
     // to extract from the SN list. Instead of the various steps independently
@@ -4731,7 +4732,6 @@ block_add_result service_node_list::process_block(
     result = m_state.update_from_block(
             blockchain.db(),
             blockchain.maybe_rewards_db(),
-            blockchain.rewards_write_tx(),
             blockchain.nettype(),
             m_transient->state_history,
             {},
@@ -4749,22 +4749,21 @@ void service_node_list::blockchain_detached(uint64_t height) {
 
     // NOTE: A SNL detach aims to detach to the requested 'height'. For
     // blockchain validity we currently must lock-step the adding of blocks on
-    // the SNL and SQL because the state of these systems at 'height' is
-    // dependent on the state of both systems at 'height-1', for example:
+    // the SNL and the rewards because the state of these systems at 'height' is
+    // dependent on the state of both systems at 'height-1': the rewards of a block
+    // are computed from the SN list state it produces, and the rewards can only
+    // be given blocks through the SN list's block_add.
     //
-    //  A SNL may insert a 'delayed payment' into the SQL DB when it processes
-    //  a SN exit. If the SQL was not rewound to undo the row, the
-    //  'delayed payment' is duplicated in the table.
-    //
-    // Thus the SNL must detach to exactly the same height as the SQL DB. To do
-    // this we must query the greatest-common backup height shared by both
-    // systems and agree to detach to that height.
-    //
-    // The outcome of this detach will be the greatest-common height between the
-    // 2 which might differ from 'height', but, it will always be equal to or
-    // less than 'height'. If there's no common height to detach to, the system
-    // detaches to height '1' on both systems which invokes a full rescan of the
-    // blockchain.
+    // Thus the SNL must detach to exactly the same height as the rewards. We
+    // take the newest height, no higher than the target, that the SN list can
+    // restore to (its current state, its in-memory history, or a stored full
+    // state with the quorums before it) and that the rewards can restore to
+    // (see RewardsDB::can_restore: their in-memory heights, a stored snapshot, or
+    // anything before HF19).  The rewards keep snapshots at the heights the SN
+    // list stores states at (every STATE_SNAPSHOT_INTERVAL blocks, and at archive
+    // heights), so a common height is normally close to the target; the replay
+    // then carries both forward from it together. If there's no common height to
+    // detach to, both reset, which invokes a full rescan of the blockchain.
     //
     // These 2 systems can go out of sync, though generally only in exceptional
     // cases, for example:
@@ -4782,146 +4781,81 @@ void service_node_list::blockchain_detached(uint64_t height) {
     // If a system goes out of sync during the runtime of the daemon, a restart
     // _should_ rejig the system back into sync.
 
-    const auto& netconf = get_config(blockchain.nettype());
-    uint64_t target_height = height ? height - 1 : 0;
-    uint64_t archive_height = target_height - (target_height % netconf.HISTORY_ARCHIVE_INTERVAL);
+    const uint64_t target_height = height ? height - 1 : 0;
+    auto* rewards = blockchain.maybe_rewards_db();
 
     // NOTE: Early exit if we are already detached to the desired height
-    if (m_state.height == target_height) {
-        if (blockchain.rewards_db().height == target_height)
-            return;
+    if (m_state.height == target_height && (!rewards || rewards->height == target_height))
+        return;
+
+    auto rewards_can_restore = [rewards](uint64_t h) { return !rewards || rewards->can_restore(h); };
+
+    std::string_view detach_label;
+    bool restored = false;
+
+    // NOTE: The current state, if it isn't above the target
+    if (m_state.height <= target_height && rewards_can_restore(m_state.height)) {
+        restored = true;
+        detach_label = " (current state)";
     }
 
-    // NOTE: Checks if the SQL has a backup for the existing height.
-    //
-    // If we are either pre-SQL DB then the SQL DB trivially "has" a backup, because the correct
-    // state is empty.  Otherwise, from HF19 and up, we check that it has actual rows of the given
-    // type at the requested height.
-    const auto sqlite_begins = hard_fork_begins(blockchain.nettype(), hf::hf19_reward_batching)
-                                       .value_or(std::numeric_limits<uint64_t>::max());
-    auto sql_db_has = [this, sqlite_begins](uint64_t height, bool recent) {
-        // NOTE: If we're below HF19 then anything is fine because the correct SQLite DB is
-        // empty:
-        if (height < sqlite_begins)
-            return true;
-
-        cryptonote::RewardsDB& sql_db = blockchain.rewards_db();
-        if (sql_db.height == height)
-            return true;
-
-        // NOTE: Accept if SQL has payment rows for the requested height:
-        return sql_db.batch_payments_accrued_has_any(recent, height);
-    };
-
-    // NOTE: Lookup desired SNL state from recent backups
-    auto history = cryptonote::RewardsDB::PaymentTableType::Nil;
-    {
+    // NOTE: The in-memory history
+    if (!restored) {
         state_set& set = m_transient->state_history;
         for (auto it = set.rbegin(); it != set.rend(); it++) {
-            // NOTE: Find the closest starting point
-            if (it->only_loaded_quorums || it->height > target_height)
+            if (it->only_loaded_quorums || it->height > target_height ||
+                !rewards_can_restore(it->height))
                 continue;
-
-            if (sql_db_has(it->height, true)) {
-                history = cryptonote::RewardsDB::PaymentTableType::Recent;
-                target_height = it->height;
-                break;
-            }
-        }
-    }
-
-    // NOTE: Lookup desired SNL state from the recent states stored in the DB, which the in-memory
-    // history doesn't reach back to when it was loaded from them (see store_state_snapshot).
-    std::optional<state_t> archived;
-    if (history == cryptonote::RewardsDB::PaymentTableType::Nil && states_in_db()) {
-        archived = find_restorable_state(
-                blockchain.db(), this, archive_height + 1, target_height, [&](uint64_t h) {
-                    return sql_db_has(h, true);
-                });
-        if (archived) {
-            history = cryptonote::RewardsDB::PaymentTableType::Recent;
-            target_height = archived->height;
-        }
-    }
-
-    // NOTE: Lookup desired SNL state from archive backups: the newest full archived state at or
-    // below the archive height that the SQL DB also has archived payments for.
-    if (history == cryptonote::RewardsDB::PaymentTableType::Nil) {
-        const auto& db = blockchain.db();
-        for (auto found = db.get_newest_full_service_node_archive(archive_height); found;
-             found = found->first ? db.get_newest_full_service_node_archive(found->first - 1)
-                                  : std::nullopt) {
-            if (!sql_db_has(found->first, false))
-                continue;
-            archived = parse_archived_state(found->second, this, found->first);
-            if (archived) {
-                history = cryptonote::RewardsDB::PaymentTableType::Archive;
-                archive_height = found->first;
-            }
+            auto fwd = std::prev(it.base());
+            m_state = std::move(*fwd);
+            set.erase(std::next(fwd), set.end());
+            m_state.initialize_alt_pk_maps();
+            cleanup_zombies_from_state();
+            restored = true;
+            detach_label = " (from recent history)";
             break;
         }
     }
 
-    // NOTE: Execute detach
-    std::string_view detach_label = {};
-    switch (history) {
-        case cryptonote::RewardsDB::PaymentTableType::Nil: {  // NOTE: Not found
-            m_transient->state_history.clear();
-            reset(true);
-            detach_label = " (via reset)";
-        } break;
-
-        case cryptonote::RewardsDB::PaymentTableType::Archive: {
-            // NOTE: Found in archive history. Wasn't in recent history hence none of the data in
-            // there is relevant so we can clear it out.
-            m_transient->state_history.clear();
-
-            m_state = std::move(*archived);
+    // NOTE: The states stored in the DB: those written every STATE_SNAPSHOT_INTERVAL blocks (see
+    // store_state_snapshot) and the archived ones.
+    if (!restored) {
+        if (auto stored = find_restorable_state(
+                    blockchain.db(), this, 0, target_height, rewards_can_restore)) {
+            // The in-memory history holds nothing from at or after it.
+            m_transient->state_history.erase(
+                    m_transient->state_history.lower_bound(stored->height),
+                    m_transient->state_history.end());
+            m_state = std::move(*stored);
             m_state.initialize_alt_pk_maps();
             cleanup_zombies_from_state();
-            detach_label = " (from archive history)";
-        } break;
-
-        case cryptonote::RewardsDB::PaymentTableType::Recent: {  // NOTE: Found in recent
-                                                                        // history
-            if (archived) {
-                // Found stored in the DB: the in-memory history holds nothing from at or after it.
-                m_transient->state_history.erase(
-                        m_transient->state_history.lower_bound(archived->height),
-                        m_transient->state_history.end());
-                m_state = std::move(*archived);
-                detach_label = " (from recent stored state)";
-            } else {
-                auto it = m_transient->state_history.find(target_height);
-                m_state = std::move(*it);
-                m_transient->state_history.erase(std::next(it), m_transient->state_history.end());
-                detach_label = " (from recent history)";
-            }
-            m_state.initialize_alt_pk_maps();
-            cleanup_zombies_from_state();
-        } break;
+            restored = true;
+            detach_label = " (from stored state)";
+        }
     }
 
-    // NOTE: Archived states above the new height belong to the detached blocks.  (A reset has
-    // already removed all of them.)
-    if (history != cryptonote::RewardsDB::PaymentTableType::Nil) {
+    if (restored) {
+        // NOTE: Archived states above the new height belong to the detached blocks.
         cryptonote::db_wtxn_guard txn_guard{blockchain.db()};
         blockchain.db().delete_service_node_archives(
                 m_state.height + 1, std::numeric_limits<uint64_t>::max());
+    } else {
+        // NOTE: No height that both can restore to: start over.  (This also resets the rewards.)
+        m_transient->state_history.clear();
+        reset(true);
+        detach_label = " (via reset)";
     }
 
     log::debug(
             logcat,
-            "Detach request for SNL @ {}, looking for SNL state @ {} or archive @ {}. SNL detached "
-            "to {}{}",
+            "Detach request for SNL @ {}, looking for a state @ {}. SNL detached to {}{}",
             height,
             target_height,
-            archive_height,
             m_state.height,
             detach_label);
 
-    blockchain.rewards_db().blockchain_detached(
-            history, m_state.height, blockchain.rewards_write_tx());
+    if (rewards)
+        rewards->blockchain_detached(m_state.height, blockchain.rewards_write_tx());
 }
 
 service_nodes::payout service_node_list::state_t::get_next_block_leader() const {
@@ -5511,7 +5445,6 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     alt_state.update_from_block(
             blockchain.db(),
             blockchain.maybe_rewards_db(),
-            blockchain.rewards_write_tx(),
             blockchain.nettype(),
             m_transient->state_history,
             m_transient->alt_state,

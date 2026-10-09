@@ -27,28 +27,19 @@ public:
 
   RewardsDBTest(RewardsDBTest &other)
     : RewardsDBTest(other.nettype, check_if_copy_filename(other.filename)) {
-
-    auto conn = db.conn();
-    SQLite::Transaction transaction {
-      conn.sql,
-      SQLite::TransactionBehavior::IMMEDIATE
-    };
-
-    auto other_conn = other.db.conn();
-    for (const auto& [address, offset, amount]: other_conn.prepared_results<session::sqlite::blob, std::optional<int>, int64_t>(
-                "SELECT address, payout_offset, amount FROM batched_payments_accrued"))
-      conn.prepared_exec(
-          "INSERT INTO batched_payments_accrued (address, payout_offset, amount) VALUES (?, ?, ?)",
-          address, offset, amount);
-
-    transaction.commit();
-
-    update_height(other.height);
+    copy_state_from(other);
   }
+
+  using RewardsDB::publish_block;
+  using RewardsDB::save_payments;
 
   // Helper functions, used in testing to assess the state of the database
   uint64_t batching_count(cryptonote::hf hf) {
-    return db.conn().prepared_get<int64_t>("SELECT count(*) FROM batched_payments_accrued WHERE amount >= {}"_format(hf >= cryptonote::hf::hf22_eth_fixup ? 1 : 1000));
+    const int64_t min = hf >= cryptonote::hf::hf22_eth_fixup ? 1 : 1000;
+    uint64_t count = 0;
+    for (const auto& [addr, row] : get_accrued_rows())
+      count += row.amount >= min;
+    return count;
   }
 };
 
