@@ -2421,6 +2421,7 @@ service_node_list::state_t::confirm_result service_node_list::state_t::process_c
         }
 
         result.exit_stakes[0].liquidation = cryptonote::reward_money::from_coin(slash_amount);
+        result.payout_height = height + std::max<uint64_t>(block_delay, 1);
 
         std::string exit_label = "";
         if (slash_amount)
@@ -2444,11 +2445,6 @@ service_node_list::state_t::confirm_result service_node_list::state_t::process_c
                     node->service_node_pubkey,
                     height,
                     exit_label);
-
-        // NOTE: Add the funds to the unlock queue in the DB, can be retrieved by BLS aggregation
-        // when fully unlocked..
-        sn_list->blockchain.rewards_db().add_delayed_payments(
-                result.exit_stakes, height, block_delay);
     }
 
     x25519_map.erase(snpk_to_xpk(node->service_node_pubkey));
@@ -3265,7 +3261,7 @@ void service_node_list::block_add(
     block_add_result result = {};
 
     if (auto* sql_db = blockchain.maybe_rewards_db())
-        sql_db->begin_block();
+        sql_db->discard_pending();
 
     if (block.major_version < hf::hf9_service_nodes) {
         m_state.height = block.get_height();
@@ -4407,6 +4403,10 @@ block_add_result service_node_list::state_t::update_from_block(
                             conf_result.exit_stakes.begin(),
                             conf_result.exit_stakes.end());
                 }
+
+                if (std::holds_alternative<eth::event::ServiceNodeExit>(event))
+                    for (const auto& stake : conf_result.exit_stakes)
+                        result.exited_stakes.push_back({stake, conf_result.payout_height});
             }
 
             // NOTE: Post-amble, advance iterator
@@ -5452,6 +5452,10 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
             info.txs,
             m_service_node_keys,
             nullptr);
+    // The rewards changes it made (an HF21 transition's or HF22 fixups') belong to a block that
+    // isn't being added.  (If it threw instead, the next block_add discards them.)
+    if (auto* sql_db = blockchain.maybe_rewards_db())
+        sql_db->discard_pending();
     auto alt_it = m_transient->alt_state.find(block_hash);
     if (alt_it != m_transient->alt_state.end())
         alt_it->second = std::move(alt_state);

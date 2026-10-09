@@ -240,12 +240,20 @@ struct eth_stake {
     uint32_t contributor_index;  // Index of the contributor in the event the exit stake is for
 };
 
+// A stake returned by a node's exit, which the rewards pay back to its contributor once the block
+// at `payout_height` is reached.
+struct delayed_stake {
+    eth_stake stake;
+    uint64_t payout_height;
+};
+
 struct block_add_result {
     // List of payable nodes. Populated when the block height is >= HF19, empty
     // otherwise
     std::vector<crypto::public_key> payable_nodes_hf19_onwards;
     std::vector<eth_stake> locked_stakes;
     std::vector<eth_stake> purged_stakes;
+    std::vector<delayed_stake> exited_stakes;
 };
 
 struct service_node_info  // registration information
@@ -1266,6 +1274,8 @@ class service_node_list {
             bool success;
             bool need_swarm_update;
             std::vector<eth_stake> exit_stakes;
+            // For an exit: the block that pays `exit_stakes` back to their contributors.
+            uint64_t payout_height = 0;
         };
 
         // Applies a pulse-quorums-confirmed L2 event to the service node list state.  Returns true

@@ -871,7 +871,7 @@ void RewardsDB::blockchain_detached(uint64_t new_height, SQLite::Transaction* ac
             from);
 }
 
-void RewardsDB::begin_block() {
+void RewardsDB::discard_pending() {
     pending.reset();
 }
 
@@ -1539,6 +1539,7 @@ bool RewardsDB::add_block(
                 submit_stakes_metadata(block_add);
         }
 
+        add_delayed_payments(block_add.exited_stakes, block_height);
         publish_block(rescan, active_tx);
     } catch (std::exception& e) {
         pending.reset();
@@ -1605,34 +1606,30 @@ void RewardsDB::publish_block(
 }
 
 void RewardsDB::add_delayed_payments(
-        std::span<const service_nodes::eth_stake> payments,
-        uint64_t at_height,
-        uint64_t delay_blocks) {
+        std::span<const service_nodes::delayed_stake> stakes, uint64_t at_height) {
     ZoneScoped;
-    log::trace(logcat, "RewardsDB::{} called", __func__);
-    assert(at_height == height + 1);
+    if (stakes.empty())
+        return;
     if (!pending)
         pending.emplace();
 
-    // Each exit stake is identified by where its event is in the chain, which (as the stored
-    // delayed payments' UNIQUE constraint requires) only one payment may come from.
-    auto exists = [this](const service_nodes::eth_stake& p) {
-        auto same = [&p](const delayed_payment& d) {
+    for (const auto& [payment, payout_height] : stakes) {
+        // Each exit stake is identified by where its event is in the chain, which (as the stored
+        // delayed payments' UNIQUE constraint requires) only one payment may come from.
+        auto same = [&p = payment](const delayed_payment& d) {
             return d.block_height == p.block_height && d.block_tx_index == p.tx_index &&
                    d.contributor_index == p.contributor_index;
         };
-        return std::ranges::any_of(delayed, same) || std::ranges::any_of(pending->delayed, same);
-    };
-    if (std::ranges::any_of(payments, exists)) {
-        log::error(
-                logcat,
-                "Error returning stakes: a delayed payment already exists for the exit at block {}",
-                payments.front().block_height);
-        return;
-    }
+        if (std::ranges::any_of(delayed, same) || std::ranges::any_of(pending->delayed, same)) {
+            log::error(
+                    logcat,
+                    "Error returning stakes: a delayed payment already exists for contributor {} of "
+                    "the exit at block {}",
+                    payment.contributor_index,
+                    payment.block_height);
+            continue;
+        }
 
-    uint64_t payout_height = at_height + std::max<uint64_t>(delay_blocks, 1);
-    for (const auto& payment : payments) {
         log::trace(
                 logcat,
                 "Adding delayed payment for SN reward contributor {} with amount {}; height {};"
@@ -1641,6 +1638,7 @@ void RewardsDB::add_delayed_payments(
                 payment.amount,
                 at_height,
                 payout_height);
+        assert(payout_height > at_height);
         pending->delayed.push_back(
                 {.addr = payment.addr,
                  .amount = payment.amount.to_db_atomic(),

@@ -1617,13 +1617,14 @@ struct shared_sqlite
   }
 };
 
-std::vector<service_nodes::eth_stake> test_stakes(uint32_t tx_index, int count)
+std::vector<service_nodes::delayed_stake> test_stakes(uint32_t tx_index, int count, uint64_t payout_height)
 {
-  std::vector<service_nodes::eth_stake> stakes(count);
-  for (auto& s : stakes) {
+  std::vector<service_nodes::delayed_stake> stakes(count);
+  for (auto& [s, payout] : stakes) {
     s.amount = cryptonote::reward_money::from_coin(1000);
     s.block_height = 10;
     s.tx_index = tx_index;
+    payout = payout_height;
   }
   return stakes;
 }
@@ -1633,6 +1634,7 @@ struct test_rewards : cryptonote::RewardsDB
 {
   using RewardsDB::RewardsDB;
   using RewardsDB::publish_block;
+  using RewardsDB::add_delayed_payments;
 };
 
 TEST(BlockchainSQLite, rewards_in_write_transaction)
@@ -1642,7 +1644,7 @@ TEST(BlockchainSQLite, rewards_in_write_transaction)
   const std::string delayed = "SELECT COUNT(*) FROM delayed_payments";
   const std::string snapshots = "SELECT COUNT(*) FROM rewards_snapshot_heights";
   auto add_blocks = [&](SQLite::Transaction* tx) {
-    rewards.add_delayed_payments(test_stakes(0, 1), rewards.height + 1, 100);
+    rewards.add_delayed_payments(test_stakes(0, 1, rewards.height + 101), rewards.height + 1);
     while (rewards.height < service_nodes::STATE_SNAPSHOT_INTERVAL)
       rewards.publish_block(std::nullopt, tx);
   };
@@ -1674,9 +1676,9 @@ TEST(BlockchainSQLite, rewards_failure_leaves_nothing_in_write_transaction)
 
   s.db.block_wtxn_start();
   auto* tx = s.db.active_write_transaction();
-  rewards.add_delayed_payments(test_stakes(0, 1), 1, 10);
+  rewards.add_delayed_payments(test_stakes(0, 1, 11), 1);
   // A duplicate of the first doesn't get added
-  rewards.add_delayed_payments(test_stakes(0, 1), 1, 10);
+  rewards.add_delayed_payments(test_stakes(0, 1, 11), 1);
   rewards.publish_block(std::nullopt, tx);
 
   // A block whose changes are invalid (here, by making an amount negative) changes nothing
@@ -1684,7 +1686,7 @@ TEST(BlockchainSQLite, rewards_failure_leaves_nothing_in_write_transaction)
   auto& p = payments[eth::address{}];
   p.amount = cryptonote::reward_money::from_coin(1);
   p.liquidation = cryptonote::reward_money::from_coin(2);
-  rewards.add_delayed_payments(test_stakes(1, 1), 2, 10);
+  rewards.add_delayed_payments(test_stakes(1, 1, 12), 2);
   rewards.add_sn_rewards(hf::hf21_eth, payments, false);
   EXPECT_THROW(rewards.publish_block(std::nullopt, tx), std::exception);
   EXPECT_EQ(rewards.height, 1);

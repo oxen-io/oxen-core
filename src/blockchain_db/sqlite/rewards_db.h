@@ -121,9 +121,10 @@ class RewardsDB {
     // Changes for the block being added
     // ---------------------------------
     // These accumulate in a pending copy that only add_block publishes, so that nothing changes if
-    // the block fails partway through.  begin_block discards anything left pending by a block that
-    // failed before reaching add_block.
-    void begin_block();
+    // the block fails partway through.  discard_pending discards them: those of a block that failed
+    // before reaching add_block, or of an alt block, whose processing makes them too but which isn't
+    // added.
+    void discard_pending();
 
     // Credits payments to the specified addresses.  If the payments are rewards set `is_rewards`
     // to true to ensure that rewards are tracked separately; set it to `false` for delayed/exit
@@ -138,13 +139,6 @@ class RewardsDB {
     // balances (which the block before it paid out).
     void clear_accrued_rewards();
 
-    // Adds payments to be credited at `at_height + delay_blocks` (or `at_height + 1`, if
-    // `delay_blocks` is 0).  `at_height` is the height of the block being added.
-    void add_delayed_payments(
-            std::span<const service_nodes::eth_stake> payments,
-            uint64_t at_height,
-            uint64_t delay_blocks);
-
     // Applies the subatomic -> atomic value conversion of amount and lifetime_reward values; this
     // must be called once (and only once!) at the HF22 fork height to convert milli-atomic values
     // (for HF21 and earlier blocks) into atomics (expected for HF22+ blocks).
@@ -154,8 +148,8 @@ class RewardsDB {
     // paid out, along with the SN list state that it was processed into, and applies its rewards
     // and payments (and any of the above changes pending from its processing).  This is the
     // primary entry point for the blockchain: each accepted block calls this, after the SN list
-    // has processed it, and writes the block's delayed payments and (if due) a snapshot in
-    // `active_tx`.
+    // has processed it, and writes the block's delayed payments (the stakes that its exits return,
+    // from `block_add`) and (if due) a snapshot in `active_tx`.
     //
     // On failure (returning false), nothing has changed, in memory or in `active_tx`.
     bool add_block(
@@ -284,6 +278,11 @@ class RewardsDB {
     // Subtracts the block's batch payments (checked against the accrued values) from the accrued
     // values, as pending changes.
     bool save_payments(uint64_t block_height, std::span<const batch_sn_payment> paid_amounts);
+
+    // Adds the stakes returned by the exits of the block being added, at `at_height`, as pending
+    // delayed payments.
+    void add_delayed_payments(
+            std::span<const service_nodes::delayed_stake> stakes, uint64_t at_height);
 
   private:
     struct pending_block {

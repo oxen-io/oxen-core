@@ -137,6 +137,37 @@ TEST(SQLITE, RewardsSnapshotRetention)
   EXPECT_EQ(conn.prepared_get<int>("SELECT COUNT(*) FROM rewards_snapshot_heights"), 3);
 }
 
+// Changes made while processing a block that isn't then added (such as an alt block's, which the
+// SN list discards) never take effect, and a block's exits' delayed payments only come in through
+// its add_block.
+TEST(SQLITE, RewardsChangesOnlyThroughAddBlock)
+{
+  test::RewardsDBTest rewardsDB(cryptonote::network_type::FAKECHAIN, ":memory:");
+  cryptonote::block_payments payments;
+  payments[eth::address{}].amount = cryptonote::reward_money::from_coin(5);
+  rewardsDB.add_sn_rewards(cryptonote::hf::hf21_eth, payments, true);
+  rewardsDB.discard_pending();
+  rewardsDB.publish_block();
+  EXPECT_TRUE(rewardsDB.get_accrued_rows().empty());
+
+  cryptonote::block b{};
+  b.major_version = cryptonote::hf::hf7;
+  b.miner_tx.emplace();
+  b.miner_tx->vin.push_back(cryptonote::txin_gen{rewardsDB.height + 1});
+  service_nodes::block_add_result block_add{};
+  auto& exited = block_add.exited_stakes.emplace_back();
+  exited.stake.amount = cryptonote::reward_money::from_coin(1000);
+  exited.stake.block_height = 2;
+  exited.payout_height = rewardsDB.height + 10;
+  service_nodes::service_node_list::state_t sn_state{nullptr};
+  ASSERT_TRUE(rewardsDB.add_block(b, sn_state, block_add));
+  EXPECT_EQ(rewardsDB.height, 2);
+  auto delayed = rewardsDB.get_delayed_payments();
+  ASSERT_EQ(delayed.size(), 1);
+  EXPECT_EQ(delayed.begin()->second.amount.to_coin(), 1000);
+  EXPECT_EQ(rewardsDB.db.conn().prepared_get<int>("SELECT COUNT(*) FROM delayed_payments"), 1);
+}
+
 // The in-memory heights answer queries at, and restores to, the most recent heights.
 TEST(SQLITE, RewardsHistory)
 {

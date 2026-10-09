@@ -1182,7 +1182,7 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
 void oxen_chain_generator::block_end(oxen_blockchain_entry &entry, oxen_create_block_params const &params) const
 {
   entry.service_node_state = params.prev.service_node_state;
-  rewards_db_->begin_block();
+  rewards_db_->discard_pending();
   auto block_add = entry.service_node_state.update_from_block(
           db_,
           rewards_db_.get(),
