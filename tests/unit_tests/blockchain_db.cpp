@@ -40,7 +40,9 @@
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/lmdb/db_lmdb.h"
 #include "blockchain_db/sqlite/blockchain_sqlite.h"
+#include "blockchain_db/sqlite/rewards_db.h"
 #include "checkpoints/checkpoints.h"
+#include "cryptonote_core/oxen_name_system.h"
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_core/uptime_proof.h"
 
@@ -1528,6 +1530,142 @@ TEST(BlockchainSQLite, write_needs_transaction)
       db.add_block({b, blob}, t_sizes[0], t_sizes[0], t_diffs[0], t_coins[0], txs), DB_ERROR);
   EXPECT_EQ(db.height(), 0);
   EXPECT_EQ(db.get_tx_count(), 0);
+}
+
+// The rewards and ONS tables kept in the blockchain database, as core does with this backend.
+struct shared_sqlite
+{
+  temp_data_dir dir;
+  BlockchainSQLite db;
+
+  shared_sqlite() { db.open(dir.path / SQLITE_DB_FILENAME, network_type::FAKECHAIN); }
+
+  session::sqlite::Database& sql() { return *db.sqlite_database(); }
+
+  // Reads on a connection of its own, and so sees only what has been committed.
+  std::optional<int64_t> committed(const std::string& query)
+  {
+    return sql().unique_conn().prepared_maybe_get<int64_t>(query);
+  }
+};
+
+std::vector<service_nodes::eth_stake> test_stakes(uint32_t tx_index, int count)
+{
+  std::vector<service_nodes::eth_stake> stakes(count);
+  for (auto& s : stakes) {
+    s.amount = cryptonote::reward_money::from_coin(1000);
+    s.block_height = 10;
+    s.tx_index = tx_index;
+  }
+  return stakes;
+}
+
+TEST(BlockchainSQLite, rewards_in_write_transaction)
+{
+  shared_sqlite s;
+  cryptonote::RewardsDB rewards{network_type::FAKECHAIN, s.sql()};
+  const std::string delayed = "SELECT COUNT(*) FROM delayed_payments";
+  const std::string height = "SELECT height FROM batch_db_height";
+
+  s.db.block_wtxn_start();
+  auto* tx = s.db.active_write_transaction();
+  ASSERT_NE(tx, nullptr);
+  EXPECT_TRUE(rewards.add_delayed_payments(test_stakes(0, 1), 100, 10, tx));
+  rewards.update_height(5);
+  EXPECT_EQ(s.committed(delayed), 0);
+  EXPECT_EQ(s.committed(height), 0);
+  // A reader on another connection doesn't see them either
+  EXPECT_EQ(rewards.get_delayed_payments().size(), 0);
+  s.db.block_wtxn_abort();
+  EXPECT_EQ(s.committed(delayed), 0);
+  EXPECT_EQ(s.committed(height), 0);
+
+  s.db.block_wtxn_start();
+  tx = s.db.active_write_transaction();
+  EXPECT_TRUE(rewards.add_delayed_payments(test_stakes(0, 1), 100, 10, tx));
+  rewards.update_height(5);
+  s.db.block_wtxn_stop();
+  EXPECT_EQ(s.committed(delayed), 1);
+  EXPECT_EQ(s.committed(height), 5);
+}
+
+TEST(BlockchainSQLite, rewards_failure_leaves_nothing_in_write_transaction)
+{
+  shared_sqlite s;
+  cryptonote::RewardsDB rewards{network_type::FAKECHAIN, s.sql()};
+
+  s.db.block_wtxn_start();
+  auto* tx = s.db.active_write_transaction();
+  EXPECT_TRUE(rewards.add_delayed_payments(test_stakes(0, 1), 100, 10, tx));
+  // The second of these is a duplicate of the first, so fails after the first is written; the
+  // first mustn't then be left for the blockchain's transaction to commit.
+  EXPECT_FALSE(rewards.add_delayed_payments(test_stakes(1, 2), 100, 10, tx));
+  s.db.block_wtxn_stop();
+
+  EXPECT_EQ(s.committed("SELECT COUNT(*) FROM delayed_payments"), 1);
+  EXPECT_EQ(s.committed("SELECT COUNT(*) FROM delayed_payments WHERE block_tx_index = 1"), 0);
+}
+
+TEST(BlockchainSQLite, rewards_reader_beside_read_transaction)
+{
+  shared_sqlite s;
+  cryptonote::RewardsDB rewards{network_type::FAKECHAIN, s.sql()};
+
+  // This thread's shared connection is in a blockchain read transaction, which a reader that
+  // started a transaction of its own on that connection would collide with.
+  ASSERT_TRUE(s.db.block_rtxn_start());
+  EXPECT_NO_THROW(rewards.get_delayed_payments());
+  EXPECT_NO_THROW(rewards.get_accrued_rewards(eth::address{}));
+  s.db.block_rtxn_stop();
+}
+
+TEST(BlockchainSQLite, ons_in_write_transaction)
+{
+  shared_sqlite s;
+  ons::name_system_db ons;
+  ASSERT_TRUE(ons.init(nullptr, network_type::FAKECHAIN, s.sql()));
+  const std::string ons_height = "SELECT value FROM properties WHERE key = 'ons_top_height'";
+
+  block b{};
+  b.major_version = hf::hf7;
+  b.miner_tx.emplace();
+  b.miner_tx->vin.push_back(txin_gen{1});
+
+  s.db.block_wtxn_start();
+  EXPECT_TRUE(ons.add_block(b, {}, s.db.active_write_transaction()));
+  EXPECT_EQ(s.committed(ons_height), std::nullopt);
+  s.db.block_wtxn_abort();
+  EXPECT_EQ(s.committed(ons_height), std::nullopt);
+
+  // In a transaction it doesn't own, ONS saves its height with every block, even one with no ONS
+  // records (which, on its own, it wouldn't commit at all).
+  ons.prune_db(0, crypto::null<crypto::hash>);
+  s.db.block_wtxn_start();
+  EXPECT_TRUE(ons.add_block(b, {}, s.db.active_write_transaction()));
+  s.db.block_wtxn_stop();
+  EXPECT_EQ(s.committed(ons_height), 1);
+
+  // A prune saves the height it goes back to
+  s.db.block_wtxn_start();
+  EXPECT_TRUE(ons.prune_db(0, crypto::null<crypto::hash>, s.db.active_write_transaction()));
+  s.db.block_wtxn_stop();
+  EXPECT_EQ(s.committed(ons_height), 0);
+  ons.close();
+}
+
+TEST(BlockchainSQLite, reset_keeps_others_tables)
+{
+  shared_sqlite s;
+  cryptonote::RewardsDB rewards{network_type::FAKECHAIN, s.sql()};
+  BlockchainDB& base = s.db;
+  base.add_max_block_size(123);
+  rewards.update_height(7);
+
+  s.db.reset();
+
+  EXPECT_EQ(base.get_max_block_size(), std::numeric_limits<uint64_t>::max());
+  EXPECT_EQ(s.committed("SELECT height FROM batch_db_height"), 7);
+  EXPECT_EQ(s.committed("SELECT value FROM properties WHERE key = 'rewards_fixup_version'"), 2);
 }
 
 }  // anonymous namespace
