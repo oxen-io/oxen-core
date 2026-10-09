@@ -2849,7 +2849,8 @@ static bool verify_block_components(
         pulse::timings& timings,
         size_t active_nodes,
         std::shared_ptr<const quorum> pulse_quorum,
-        std::vector<std::shared_ptr<const quorum>>& alt_pulse_quorums) {
+        std::vector<std::shared_ptr<const quorum>>& alt_pulse_quorums,
+        bool check_signatures) {
     ZoneScoped;
     std::string_view block_type = alt_block ? "alt block"sv : "block"sv;
     uint64_t height = block.get_height();
@@ -3017,7 +3018,8 @@ static bool verify_block_components(
                     cryptonote::get_block_hash(block),
                     block.signatures,
                     block,
-                    active_nodes);
+                    active_nodes,
+                    check_signatures);
         }
 
         if (quorum_verified) {
@@ -3073,12 +3075,19 @@ void service_node_list::verify_block(
         const cryptonote::block& block,
         bool alt_block,
         cryptonote::checkpoint_t const* checkpoint,
-        size_t active_node_count) const {
+        size_t active_node_count,
+        bool hash_listed) const {
     ZoneScoped;
     if (block.major_version < hf::hf9_service_nodes)
         return;
 
     std::string_view block_type = alt_block ? "alt block"sv : "block"sv;
+
+    if (hash_listed && block.has_pulse())
+        log::debug(
+                logcat,
+                "Block {} is in the compiled-in block hash list: not checking its pulse signatures",
+                block.get_height());
 
     //
     // NOTE: Verify the checkpoint given on this height that locks in a block in the past.
@@ -3209,7 +3218,8 @@ void service_node_list::verify_block(
                     timings,
                     active_node_count,
                     pulse_quorum,
-                    alt_pulse_quorums);
+                    alt_pulse_quorums,
+                    true /*check_signatures*/);
 
         if (!result)
             result = verify_block_components(
@@ -3221,7 +3231,8 @@ void service_node_list::verify_block(
                     timings,
                     active_node_count,
                     pulse_quorum,
-                    alt_pulse_quorums);
+                    alt_pulse_quorums,
+                    true /*check_signatures*/);
     } else {
         // NOTE: No pulse quorums are generated when the network has insufficient nodes to generate
         // quorums
@@ -3237,7 +3248,8 @@ void service_node_list::verify_block(
                 timings,
                 active_node_count,
                 pulse_quorum,
-                alt_pulse_quorums);
+                alt_pulse_quorums,
+                !hash_listed);
     }
 
     if (!result)
@@ -3250,7 +3262,8 @@ void service_node_list::block_add(
         const cryptonote::block& block,
         const std::vector<cryptonote::transaction>& txs,
         cryptonote::checkpoint_t const* checkpoint,
-        const std::optional<rescan_context>& rescan) {
+        const std::optional<rescan_context>& rescan,
+        bool hash_listed) {
     ZoneScoped;
     block_add_result result = {};
 
@@ -3269,7 +3282,7 @@ void service_node_list::block_add(
         auto active_sn_count = active_service_nodes_count();
         result = process_block(block, txs);
         if (!rescan || !rescan->skip_verify)
-            verify_block(block, false /*alt_block*/, checkpoint, active_sn_count);
+            verify_block(block, false /*alt_block*/, checkpoint, active_sn_count, hash_listed);
         if (block.has_pulse()) {
             // NOTE: Only record participation if its a block we recently received.
             // Otherwise processing blocks in retrospect/re-loading on restart seeds

@@ -573,3 +573,52 @@ TEST(pulse, handshake_bitset_signature_hash)
       pulse::msg_signature_hash(cryptonote::hf::hf22_eth_fixup, top_hash, msg),
       pulse::msg_signature_hash(cryptonote::hf::hf23_larger_pulse, top_hash, msg));
 }
+
+// A block already known to be valid (one in the compiled-in hash list) can have the checks of its
+// pulse signatures themselves skipped, but not those of how many there are and who they're from.
+TEST(service_nodes, pulse_signatures_check_can_be_skipped)
+{
+  constexpr auto hf = cryptonote::hf::hf16_pulse;
+  constexpr size_t active_nodes = 100;
+  const size_t n_validators = service_nodes::PULSE_QUORUM_NUM_VALIDATORS(hf, active_nodes);
+  const size_t n_sigs = service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(hf, n_validators);
+
+  service_nodes::quorum quorum;
+  std::vector<crypto::secret_key> keys(n_validators);
+  quorum.validators.resize(n_validators);
+  for (size_t i = 0; i < n_validators; i++)
+    crypto::generate_keys(quorum.validators[i], keys[i]);
+
+  crypto::hash hash{};
+  hash.data_[0] = 1;
+  cryptonote::block block{};
+  block.major_version = hf;
+  for (size_t i = 0; i < n_sigs; i++) {
+    block.pulse.validator_bitset |= pulse::bitset_t{1} << i;
+    block.signatures.emplace_back(
+        i, crypto::generate_signature(hash, quorum.validators[i], keys[i]));
+  }
+
+  auto verify = [&](bool check_signatures) {
+    return service_nodes::verify_pulse_signatures(
+        quorum, hf, 1000, hash, block.signatures, block, active_nodes, check_signatures);
+  };
+  EXPECT_TRUE(verify(true));
+  EXPECT_TRUE(verify(false));
+
+  // A wrong signature only gets caught when the signatures are checked
+  crypto::hash other = hash;
+  other.data_[0] = 2;
+  block.signatures[3].signature = crypto::generate_signature(other, quorum.validators[3], keys[3]);
+  EXPECT_FALSE(verify(true));
+  EXPECT_TRUE(verify(false));
+
+  // A signature from a validator not participating in the round is wrong either way
+  block.pulse.validator_bitset &= ~(pulse::bitset_t{1} << 3);
+  EXPECT_FALSE(verify(false));
+  block.pulse.validator_bitset |= pulse::bitset_t{1} << 3;
+
+  // So is a missing signature
+  block.signatures.pop_back();
+  EXPECT_FALSE(verify(false));
+}

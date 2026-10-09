@@ -372,7 +372,8 @@ bool verify_pulse_signatures(
         const crypto::hash& hash,
         std::span<const quorum_signature> signatures,
         const cryptonote::block& block,
-        size_t active_nodes) {
+        size_t active_nodes,
+        bool check_signatures) {
 
     const auto n_validators = PULSE_QUORUM_NUM_VALIDATORS(hf_version, active_nodes);
     const auto n_sigs = PULSE_BLOCK_REQUIRED_SIGNATURES(hf_version, n_validators);
@@ -412,7 +413,7 @@ bool verify_pulse_signatures(
         }
     }
 
-    return verify_voter_signatures(quorum, height, hash, signatures);
+    return !check_signatures || verify_voter_signatures(quorum, height, hash, signatures);
 }
 
 bool verify_pulse_quorum_sizes(const quorum& q, cryptonote::hf hf, size_t active_nodes) {

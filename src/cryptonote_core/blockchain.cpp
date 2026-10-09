@@ -5558,10 +5558,19 @@ bool Blockchain::handle_block_to_main_chain(
     uint64_t const chain_height = get_current_blockchain_height();
     uint64_t current_diffic = get_difficulty_for_next_block(pulse_block);
 
+    // A pulse block whose hash is the one in the compiled-in list at its height is known to be
+    // valid, so the SN list needn't check its signatures.  (Without a match it gets fully checked,
+    // as before: it isn't rejected, as a PoW block that doesn't match the list is.)
+    bool hash_listed = false;
+
     if (pulse_block) {
         // NOTE: Pulse blocks don't use PoW. They use Service Node signatures.
         // Delay signature verification until Service Node List adds the block in
         // the block_add hook.
+#if defined(PER_BLOCK_CHECKPOINT)
+        hash_listed =
+                chain_height < m_blocks_hash_check.size() && m_blocks_hash_check[chain_height] == id;
+#endif
     } else  // check proof of work
     {
         auto verify_pow_start = std::chrono::steady_clock::now();
@@ -5854,7 +5863,7 @@ bool Blockchain::handle_block_to_main_chain(
     auto prev_active_sns = service_node_list.active_service_nodes_count();
 
     try {
-        service_node_list.block_add(bl, only_txs, checkpoint);
+        service_node_list.block_add(bl, only_txs, checkpoint, std::nullopt, hash_listed);
     } catch (const std::exception& e) {
         log::info(logcat, fg(fmt::terminal_color::red), "Failed to add block to SNL: {}", e.what());
         bvc.m_verifivation_failed = true;

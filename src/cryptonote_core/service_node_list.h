@@ -580,11 +580,15 @@ class service_node_list {
     service_node_list(const service_node_list&) = delete;
     service_node_list& operator=(const service_node_list&) = delete;
 
+    // `hash_listed` says that the block's hash is the one the compiled-in list of known blocks has
+    // at its height, so that a pulse block's signatures needn't be checked (everything else about
+    // it still is).
     void block_add(
             const cryptonote::block& block,
             const std::vector<cryptonote::transaction>& txs,
             const cryptonote::checkpoint_t* checkpoint,
-            const std::optional<rescan_context>& rescan = std::nullopt);
+            const std::optional<rescan_context>& rescan = std::nullopt,
+            bool hash_listed = false);
     void blockchain_detached(uint64_t height);
     void init();
     void validate_miner_tx(const cryptonote::miner_tx_info& info) const;
@@ -1425,11 +1429,13 @@ class service_node_list {
     // Verify block against Service Node state that has just been called with
     // 'state.update_from_block(block)'.  `active_node_count` is the node count at the time the
     // block was produced (i.e. the count of the previous state, not the just-updated state).
+    // `hash_listed` (see block_add) skips checking the pulse signatures themselves.
     void verify_block(
             const cryptonote::block& block,
             bool alt_block,
             cryptonote::checkpoint_t const* checkpoint,
-            size_t active_node_count) const;
+            size_t active_node_count,
+            bool hash_listed = false) const;
 
     void reset(bool delete_db_entry = false);
     bool load(uint64_t current_height);
