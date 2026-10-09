@@ -1886,6 +1886,9 @@ class BlockchainDB {
 
     virtual void get_output_blacklist(std::vector<uint64_t>& blacklist) const = 0;
     virtual void add_output_blacklist(std::vector<uint64_t> const& blacklist) = 0;
+    /// Stores the service node list's short-term (recent states) or long-term data blob.  Backends
+    /// with sqlite_database() don't keep these (the SN list stores its recent states as archive
+    /// entries there), and throw.
     virtual void set_service_node_data(const std::string& data, bool long_term) = 0;
     virtual bool get_service_node_data(std::string& data, bool long_term) const = 0;
     /// Removes the single stored service node data blob for `long_term`, if present.

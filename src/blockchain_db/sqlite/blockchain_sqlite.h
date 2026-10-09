@@ -236,6 +236,9 @@ class BlockchainSQLite : public BlockchainDB {
             std::vector<uint64_t>& distribution,
             uint64_t& base) const override;
 
+    // There are no service node data blobs here: the SN list keeps its recent states as archive
+    // entries too (every STATE_SNAPSHOT_INTERVAL blocks).  Setting one throws; there's never one
+    // to get or delete.
     void set_service_node_data(const std::string& data, bool long_term) override;
     bool get_service_node_data(std::string& data, bool long_term) const override;
     void delete_service_node_data(bool long_term) override;

@@ -1083,19 +1083,29 @@ TYPED_TEST(BlockchainDBTest, ServiceNodeData)
 {
   this->open_with_blocks();
   auto& db = *this->m_db;
+  // SQLite keeps no data blobs: the SN list stores its recent states as archive entries there.
+  constexpr bool blobs = !std::is_same_v<TypeParam, BlockchainSQLite>;
   std::string data;
   EXPECT_FALSE(db.get_service_node_data(data, false));
   {
     db_wtxn_guard guard{db};
-    db.set_service_node_data("short", false);
-    db.set_service_node_data("long", true);
+    if (blobs) {
+      db.set_service_node_data("short", false);
+      db.set_service_node_data("long", true);
+    } else {
+      EXPECT_THROW(db.set_service_node_data("short", false), DB_ERROR);
+    }
     db.put_service_node_archive(0, "archive 0", true);
     db.put_service_node_archive(1, "archive 1", true);
   }
-  ASSERT_TRUE(db.get_service_node_data(data, false));
-  EXPECT_EQ(data, "short");
-  ASSERT_TRUE(db.get_service_node_data(data, true));
-  EXPECT_EQ(data, "long");
+  if (blobs) {
+    ASSERT_TRUE(db.get_service_node_data(data, false));
+    EXPECT_EQ(data, "short");
+    ASSERT_TRUE(db.get_service_node_data(data, true));
+    EXPECT_EQ(data, "long");
+  } else {
+    EXPECT_FALSE(db.get_service_node_data(data, false));
+  }
   EXPECT_EQ(db.get_service_node_archive_heights(), (std::vector<uint64_t>{0, 1}));
   EXPECT_EQ(db.get_service_node_archive(1), "archive 1");
   EXPECT_EQ(db.get_service_node_archive(5), std::nullopt);
@@ -1349,7 +1359,8 @@ TYPED_TEST(BlockchainDBTest, Reset)
   {
     db_wtxn_guard guard{db};
     db.update_block_checkpoint(make_checkpoint(1, 2));
-    db.set_service_node_data("data", true);
+    if constexpr (!std::is_same_v<TypeParam, BlockchainSQLite>)
+      db.set_service_node_data("data", true);
     db.put_service_node_archive(1, "archive", true);
     db.add_max_block_size(1000);
     db.add_txpool_tx(missing_hash(), "a tx", meta);
@@ -1527,13 +1538,16 @@ TEST(BlockchainSQLite, upgrade_from_v1)
     db.open(path, network_type::FAKECHAIN);
   }
   {
-    // Back to the version 1 sn_states, holding a full (compressed) and a quorums-only (raw) state.
+    // Back to version 1: sn_states holding a full (compressed) and a quorums-only (raw) state,
+    // and the sn_data blobs.
     session::sqlite::Database raw{path};
     raw.conn().sql.exec(R"(
 PRAGMA foreign_keys = OFF;
 DROP INDEX sn_states_full;
 ALTER TABLE sn_states DROP COLUMN quorums_only;
 INSERT INTO sn_states (height, blob) VALUES (10, x'28b52ffd00'), (11, x'0100');
+CREATE TABLE sn_data (long_term INTEGER PRIMARY KEY, blob BLOB NOT NULL) STRICT, WITHOUT ROWID;
+INSERT INTO sn_data VALUES (0, x'00');
 PRAGMA user_version = 1;
 )");
   }
@@ -1544,7 +1558,8 @@ PRAGMA user_version = 1;
   EXPECT_EQ(newest->first, 10);
   EXPECT_EQ(db.get_service_node_archive_heights(), (std::vector<uint64_t>{10, 11}));
   session::sqlite::Database raw{path};
-  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 2);
+  EXPECT_FALSE(raw.conn().table_exists("sn_data"));
+  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 3);
 }
 
 TEST(BlockchainSQLite, own_write_transaction)

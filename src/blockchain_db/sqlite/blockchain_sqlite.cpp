@@ -60,7 +60,7 @@ using tools::span_guts;
 namespace {
 
     // PRAGMA user_version of the current schema.
-    constexpr int SCHEMA_VERSION = 2;
+    constexpr int SCHEMA_VERSION = 3;
 
     // Brings a database at an older schema version up to SCHEMA_VERSION.
     void upgrade_schema(Connection& conn, int version) {
@@ -72,6 +72,12 @@ ALTER TABLE sn_states ADD COLUMN quorums_only INTEGER NOT NULL DEFAULT 0;
 UPDATE sn_states SET quorums_only = 1 WHERE substr(blob, 1, 4) != x'28b52ffd';
 CREATE INDEX sn_states_full ON sn_states(height) WHERE NOT quorums_only;
 )");
+        }
+        if (version < 3) {
+            // The SN list's recent states are now sn_states rows, rather than a blob in sn_data;
+            // without the blob the SN list starts from its newest stored state, and replays the
+            // blocks since.
+            conn.sql.exec("DROP TABLE sn_data");
         }
     }
 
@@ -190,12 +196,6 @@ CREATE TABLE txpool (
     double_spend_seen     INTEGER NOT NULL
 ) STRICT, WITHOUT ROWID;
 
--- The service node list's short-term (0) and long-term (1) state blobs.
-CREATE TABLE sn_data (
-    long_term INTEGER PRIMARY KEY,
-    blob      BLOB    NOT NULL
-) STRICT, WITHOUT ROWID;
-
 -- Service node list states, one per stored height: full states (zstd-compressed), or just the
 -- quorums of that height (raw).
 CREATE TABLE sn_states (
@@ -242,7 +242,6 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
             "checkpoint_signatures",
             "checkpoints",
             "txpool",
-            "sn_data",
             "sn_proofs",
             "alt_blocks"};
 
@@ -2035,41 +2034,21 @@ bool BlockchainSQLite::for_all_txpool_txes(
 // Service nodes
 // ---------------------------------------------------------------------------------------------
 
-void BlockchainSQLite::set_service_node_data(const std::string& data, bool long_term) {
-    log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    in_write_txn([&](Connection& conn) {
-        conn.prepared_exec(
-                "INSERT OR REPLACE INTO sn_data (long_term, blob) VALUES (?, ?)",
-                long_term ? 1 : 0,
-                as_blob(data));
-    });
+void BlockchainSQLite::set_service_node_data(const std::string&, bool) {
+    throw DB_ERROR(
+            "The SQLite blockchain database keeps service node list states as archive entries, "
+            "not data blobs");
 }
 
-bool BlockchainSQLite::get_service_node_data(std::string& data, bool long_term) const {
-    log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    check_open();
-    auto conn = m_sql->conn();
-    for (auto b : conn.prepared_results<blob>(
-                 "SELECT blob FROM sn_data WHERE long_term = ?", long_term ? 1 : 0)) {
-        data.assign(as_view(b));
-        return true;
-    }
+bool BlockchainSQLite::get_service_node_data(std::string&, bool) const {
     return false;
 }
 
-void BlockchainSQLite::delete_service_node_data(bool long_term) {
-    log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    in_write_txn([&](Connection& conn) {
-        conn.prepared_exec("DELETE FROM sn_data WHERE long_term = ?", long_term ? 1 : 0);
-    });
-}
+void BlockchainSQLite::delete_service_node_data(bool) {}
 
 void BlockchainSQLite::clear_service_node_data() {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    in_write_txn([&](Connection& conn) {
-        conn.prepared_exec("DELETE FROM sn_data");
-        conn.prepared_exec("DELETE FROM sn_states");
-    });
+    in_write_txn([&](Connection& conn) { conn.prepared_exec("DELETE FROM sn_states"); });
 }
 
 void BlockchainSQLite::put_service_node_archive(
