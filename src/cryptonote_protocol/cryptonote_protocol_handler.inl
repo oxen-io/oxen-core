@@ -123,15 +123,22 @@ namespace cryptonote
     CHECK_AND_ASSERT_MES_CC( context.m_callback_request_count > 0, false, "false callback fired, but context.m_callback_request_count={}", context.m_callback_request_count.load());
     --context.m_callback_request_count;
 
-    if(context.m_state == cryptonote_connection_context::state_synchronizing)
+    // More than one callback can be queued for a connection: e.g. the standby checker's, plus the one
+    // that the peer's sync data requests when it moves a standby connection to synchronizing.
+    // Only the first of them may request the chain: a second chain request would leave two chain
+    // entries coming, and each of those then requests blocks, putting two block requests in flight.
+    if (context.m_state == cryptonote_connection_context::state_synchronizing && context.request_outstanding())
     {
-      if (!context.m_requested_objects.empty())
-        log::warning(logcat, "{}DUPLICATE REQUEST: callback requesting chain while {} requested objects are still outstanding, {} more callbacks queued",
-            context, context.m_requested_objects.size(), context.m_callback_request_count.load());
+      log::debug(logcat, "{}not requesting the chain, as a request is already outstanding", context);
+    }
+    else if(context.m_state == cryptonote_connection_context::state_synchronizing)
+    {
       NOTIFY_REQUEST_CHAIN::request r{};
       context.m_needed_objects.clear();
       m_core.blockchain.get_short_chain_history(r.block_ids);
       log::info(log::Cat("net.p2p.msg"), "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()={}", r.block_ids.size());
+      context.m_chain_requested = true;
+      context.m_last_request_time = std::chrono::steady_clock::now();
       post_notify<NOTIFY_REQUEST_CHAIN>(r, context);
 
 
@@ -770,6 +777,11 @@ namespace cryptonote
           reg_arg.b = b;
           relay_block(reg_arg, context);
         }
+        else if( bvc.m_marked_as_orphaned && context.request_outstanding() )
+        {
+          // The response to what is outstanding carries the sync with this peer on
+          context.m_state = cryptonote_connection_context::state_synchronizing;
+        }
         else if( bvc.m_marked_as_orphaned )
         {
           context.m_needed_objects.clear();
@@ -777,6 +789,8 @@ namespace cryptonote
           NOTIFY_REQUEST_CHAIN::request r{};
           m_core.blockchain.get_short_chain_history(r.block_ids);
           log::info(log::Cat("net.p2p.msg"), "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()={}", r.block_ids.size());
+          context.m_chain_requested = true;
+          context.m_last_request_time = std::chrono::steady_clock::now();
           post_notify<NOTIFY_REQUEST_CHAIN>(r, context);
           log::debug(logcat, "{}[{}] state: {} in state {}", context, epee::string_tools::to_string_hex(context.m_pruning_seed), "requesting chain", cryptonote::get_protocol_state_string(context.m_state));
         }            
@@ -1694,6 +1708,10 @@ skip:
           log::info(logcat, "{} kicking idle peer, last update {} seconds ago", context, seconds_f{dt}.count());
           log::debug(logcat, "requesting callback");
           context.m_last_request_time.reset();
+          // Give up on the response, so that the callback can request again.  (If it turns up after
+          // all, its objects not being requested gets the peer dropped.)
+          context.m_requested_objects.clear();
+          context.m_chain_requested = false;
           context.m_state = cryptonote_connection_context::state_standby; // we'll go back to adding, then (if we can't), download
           ++context.m_callback_request_count;
           m_p2p->request_callback(context);
@@ -1943,6 +1961,17 @@ skip:
   template<class t_core>
   bool t_cryptonote_protocol_handler<t_core>::request_missing_objects(cryptonote_connection_context& context, bool check_having_blocks, bool force_next_span, std::string_view caller)
   {
+    // The response to an outstanding request calls this again when it arrives.  Requesting now
+    // would leave two requests outstanding, and when the first response arrived, the objects
+    // still outstanding for the second would get the peer dropped as having "returned not all
+    // requested objects".
+    if (context.request_outstanding())
+    {
+      log::warning(logcat, "{}not requesting more objects (from {}): a {} request is still outstanding",
+          context, caller, context.m_chain_requested ? "chain" : "{}-object"_format(context.m_requested_objects.size()));
+      return true;
+    }
+
     // flush stale spans
     std::set<connection_id_t> live_connections;
     m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id)->bool{
@@ -2061,8 +2090,6 @@ skip:
     {
       //we know objects that we need, request this objects
       NOTIFY_REQUEST_GET_BLOCKS::request req;
-      const size_t already_requested = context.m_requested_objects.size();
-      std::string_view request_site;
       bool is_next = false;
       size_t count = 0;
       const size_t count_limit = m_core.get_block_sync_size(m_core.blockchain.get_current_blockchain_height());
@@ -2077,7 +2104,6 @@ skip:
           if (span.second > 0)
           {
             is_next = true;
-            request_site = "forced next span";
             for (const auto &hash: hashes)
             {
               req.blocks.push_back(hash);
@@ -2122,7 +2148,6 @@ skip:
         if (span.second > 0)
         {
           is_next = true;
-          request_site = "scheduled next span";
           for (const auto &hash: hashes)
           {
             req.blocks.push_back(hash);
@@ -2155,7 +2180,6 @@ skip:
             return false;
           }
 
-          request_site = "reserved span";
           for (size_t n = 0; n < span.second; ++n)
           {
             req.blocks.push_back(context.m_needed_objects[n]);
@@ -2164,15 +2188,6 @@ skip:
           }
           context.m_needed_objects = std::vector<crypto::hash>(context.m_needed_objects.begin() + span.second, context.m_needed_objects.end());
         }
-
-        if (already_requested)
-          log::warning(logcat, "{}DUPLICATE REQUEST: sending a request for {} blocks ({} from {}, caller {}) "
-              "while {} requested objects are still outstanding; state {}, force_next_span {}, is_next {}, "
-              "{} callbacks queued, previous request {:.3f}s ago",
-              context, req.blocks.size(), request_site, span.first, caller, already_requested,
-              cryptonote::get_protocol_state_string(context.m_state), force_next_span, is_next,
-              context.m_callback_request_count.load(),
-              context.m_last_request_time ? seconds_f{std::chrono::steady_clock::now() - *context.m_last_request_time}.count() : -1.0);
 
         context.m_last_request_time = std::chrono::steady_clock::now();
         log::info(log::Cat("net.p2p.msg"), "-->>NOTIFY_REQUEST_GET_OBJECTS: blocks.size()={}, requested blocks count={} / {} from {}, first hash {}", req.blocks.size(), count, count_limit, span.first, req.blocks.front());
@@ -2249,6 +2264,7 @@ skip:
 
       context.m_last_request_time = std::chrono::steady_clock::now();
       log::info(log::Cat("net.p2p.msg"), "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()={}, start_from_current_chain {}", r.block_ids.size(), start_from_current_chain);
+      context.m_chain_requested = true;
       post_notify<NOTIFY_REQUEST_CHAIN>(r, context);
       log::debug(logcat, "{}[{}] state: {} in state {}", context, epee::string_tools::to_string_hex(context.m_pruning_seed), "requesting chain", cryptonote::get_protocol_state_string(context.m_state));
     }else
@@ -2342,6 +2358,7 @@ You are now synchronized with the network.
     log::debug(logcat, "{}[{}] state: {} in state {}", context, epee::string_tools::to_string_hex(context.m_pruning_seed), "received chain", cryptonote::get_protocol_state_string(context.m_state));
 
     context.m_last_request_time.reset();
+    context.m_chain_requested = false;
 
     m_sync_download_chain_size += arg.m_block_ids.size() * sizeof(crypto::hash);
 

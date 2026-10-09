@@ -55,6 +55,13 @@ struct cryptonote_connection_context : public epee::net_utils::connection_contex
     state m_state{state_before_handshake};
     std::vector<crypto::hash> m_needed_objects;
     std::unordered_set<crypto::hash> m_requested_objects;
+    // True while a NOTIFY_REQUEST_CHAIN to the peer awaits its response.
+    bool m_chain_requested{false};
+
+    // True if a request to the peer (for the chain, or for blocks or txes) awaits its response,
+    // which is what carries the sync with this peer on: until it arrives, another request would
+    // leave two outstanding.
+    bool request_outstanding() const { return m_chain_requested || !m_requested_objects.empty(); }
     std::map<uint64_t, std::pair<crypto::hash, bool>>
             m_blink_state;  // HEIGHT => {CHECKSUM, NEEDED}
     bool m_need_blink_sync{false};
