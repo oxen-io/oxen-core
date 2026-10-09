@@ -334,7 +334,8 @@ class BaseTestDB : public cryptonote::BlockchainDB {
     virtual void delete_service_node_data(bool long_term) override {}
     virtual void clear_service_node_data() override {}
 
-    virtual void put_service_node_archive(uint64_t height, std::string_view data) override {}
+    virtual void put_service_node_archive(
+            uint64_t height, std::string_view data, bool quorums_only) override {}
     virtual std::optional<std::string> get_service_node_archive(uint64_t height) const override {
         return std::nullopt;
     }

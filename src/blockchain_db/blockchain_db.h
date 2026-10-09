@@ -1894,10 +1894,19 @@ class BlockchainDB {
     virtual void clear_service_node_data() = 0;
 
     /// Stores the serialized service node list state archived at `height`, replacing any existing
-    /// entry at that height.
-    virtual void put_service_node_archive(uint64_t height, std::string_view data) = 0;
+    /// entry at that height.  `quorums_only` says whether it holds only the quorums of that height
+    /// rather than the full state.  Full states are stored zstd-compressed, and quorums-only ones
+    /// raw, which is how get_newest_full_service_node_archive tells them apart in a backend that
+    /// doesn't store the flag.
+    virtual void put_service_node_archive(
+            uint64_t height, std::string_view data, bool quorums_only) = 0;
     /// Retrieves the serialized service node list state archived at exactly `height`, if any.
     virtual std::optional<std::string> get_service_node_archive(uint64_t height) const = 0;
+    /// Retrieves the newest full (not quorums-only) service node list state archived at or below
+    /// `height`, with the height it is at.  The default implementation looks at each archived
+    /// state from `height` down; backends can do better.
+    virtual std::optional<std::pair<uint64_t, std::string>> get_newest_full_service_node_archive(
+            uint64_t height) const;
     /// Returns the heights of all archived service node list states, in ascending order.
     virtual std::vector<uint64_t> get_service_node_archive_heights() const = 0;
     /// Deletes the archived service node list states with heights in [begin, end).

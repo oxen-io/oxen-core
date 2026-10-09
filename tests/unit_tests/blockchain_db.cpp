@@ -1089,8 +1089,8 @@ TYPED_TEST(BlockchainDBTest, ServiceNodeData)
     db_wtxn_guard guard{db};
     db.set_service_node_data("short", false);
     db.set_service_node_data("long", true);
-    db.put_service_node_archive(0, "archive 0");
-    db.put_service_node_archive(1, "archive 1");
+    db.put_service_node_archive(0, "archive 0", true);
+    db.put_service_node_archive(1, "archive 1", true);
   }
   ASSERT_TRUE(db.get_service_node_data(data, false));
   EXPECT_EQ(data, "short");
@@ -1290,8 +1290,8 @@ TYPED_TEST(BlockchainDBTest, ServiceNodeArchiveRanges)
   {
     db_wtxn_guard guard{db};
     for (uint64_t h = 0; h < 10; h++)
-      db.put_service_node_archive(h, "state " + std::to_string(h));
-    db.put_service_node_archive(4, "state 4, again");
+      db.put_service_node_archive(h, "state " + std::to_string(h), true);
+    db.put_service_node_archive(4, "state 4, again", true);
   }
   EXPECT_EQ(db.get_service_node_archive_heights(), (v{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
   EXPECT_EQ(db.get_service_node_archive(4), "state 4, again");
@@ -1315,6 +1315,30 @@ TYPED_TEST(BlockchainDBTest, ServiceNodeArchiveRanges)
   EXPECT_EQ(db.get_service_node_archive(6), "state 6");
 }
 
+TYPED_TEST(BlockchainDBTest, NewestFullServiceNodeArchive)
+{
+  this->open_with_blocks();
+  this->add_synthetic_blocks(std::vector<uint64_t>(10, 1000));
+  auto& db = *this->m_db;
+  // Full states are stored zstd-compressed, which is how a backend that doesn't store the
+  // quorums_only flag (LMDB) tells them apart.
+  auto full = [](uint64_t h) { return std::string{"\x28\xb5\x2f\xfd", 4} + "full " + std::to_string(h); };
+  {
+    db_wtxn_guard guard{db};
+    for (uint64_t h : {2, 6, 10})
+      db.put_service_node_archive(h, full(h), false);
+    for (uint64_t h : {3, 4, 5, 7, 8, 9})
+      db.put_service_node_archive(h, "quorums " + std::to_string(h), true);
+  }
+  using found = std::optional<std::pair<uint64_t, std::string>>;
+  EXPECT_EQ(db.get_newest_full_service_node_archive(1), found{});
+  EXPECT_EQ(db.get_newest_full_service_node_archive(2), (found{{2, full(2)}}));
+  EXPECT_EQ(db.get_newest_full_service_node_archive(5), (found{{2, full(2)}}));
+  EXPECT_EQ(db.get_newest_full_service_node_archive(9), (found{{6, full(6)}}));
+  EXPECT_EQ(db.get_newest_full_service_node_archive(10), (found{{10, full(10)}}));
+  EXPECT_EQ(db.get_newest_full_service_node_archive(1000), (found{{10, full(10)}}));
+}
+
 TYPED_TEST(BlockchainDBTest, Reset)
 {
   this->open_with_blocks();
@@ -1326,7 +1350,7 @@ TYPED_TEST(BlockchainDBTest, Reset)
     db_wtxn_guard guard{db};
     db.update_block_checkpoint(make_checkpoint(1, 2));
     db.set_service_node_data("data", true);
-    db.put_service_node_archive(1, "archive");
+    db.put_service_node_archive(1, "archive", true);
     db.add_max_block_size(1000);
     db.add_txpool_tx(missing_hash(), "a tx", meta);
     db.add_alt_block(get_block_hash(blk0), alt_block_data_t{}, this->m_blocks[0].second, nullptr);
@@ -1492,6 +1516,35 @@ TEST(BlockchainSQLite, newer_schema)
   }
   BlockchainSQLite db;
   EXPECT_THROW(db.open(path, network_type::FAKECHAIN), DB_OPEN_FAILURE);
+}
+
+TEST(BlockchainSQLite, upgrade_from_v1)
+{
+  temp_data_dir dir;
+  const auto path = dir.path / SQLITE_DB_FILENAME;
+  {
+    BlockchainSQLite db;
+    db.open(path, network_type::FAKECHAIN);
+  }
+  {
+    // Back to the version 1 sn_states, holding a full (compressed) and a quorums-only (raw) state.
+    session::sqlite::Database raw{path};
+    raw.conn().sql.exec(R"(
+PRAGMA foreign_keys = OFF;
+DROP INDEX sn_states_full;
+ALTER TABLE sn_states DROP COLUMN quorums_only;
+INSERT INTO sn_states (height, blob) VALUES (10, x'28b52ffd00'), (11, x'0100');
+PRAGMA user_version = 1;
+)");
+  }
+  BlockchainSQLite db;
+  ASSERT_NO_THROW(db.open(path, network_type::FAKECHAIN));
+  auto newest = db.get_newest_full_service_node_archive(100);
+  ASSERT_TRUE(newest);
+  EXPECT_EQ(newest->first, 10);
+  EXPECT_EQ(db.get_service_node_archive_heights(), (std::vector<uint64_t>{10, 11}));
+  session::sqlite::Database raw{path};
+  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 2);
 }
 
 TEST(BlockchainSQLite, own_write_transaction)

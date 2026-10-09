@@ -5849,7 +5849,8 @@ void BlockchainLMDB::clear_service_node_data() {
     delete_service_node_archives(0, std::numeric_limits<uint64_t>::max());
 }
 
-void BlockchainLMDB::put_service_node_archive(uint64_t height, std::string_view data) {
+void BlockchainLMDB::put_service_node_archive(
+        uint64_t height, std::string_view data, bool /*quorums_only*/) {
     log::trace(logcat, "BlockchainLMDB::{}", __func__);
     check_open();
 

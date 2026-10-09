@@ -478,7 +478,10 @@ class BlockchainLMDB : public BlockchainDB {
     void delete_service_node_data(bool long_term) override;
     void clear_service_node_data() override;
 
-    void put_service_node_archive(uint64_t height, std::string_view data) override;
+    // `quorums_only` is not stored (the LMDB format predates it); see
+    // get_newest_full_service_node_archive for how full states are told apart.
+    void put_service_node_archive(
+            uint64_t height, std::string_view data, bool quorums_only) override;
     std::optional<std::string> get_service_node_archive(uint64_t height) const override;
     std::vector<uint64_t> get_service_node_archive_heights() const override;
     void delete_service_node_archives(uint64_t begin, uint64_t end) override;

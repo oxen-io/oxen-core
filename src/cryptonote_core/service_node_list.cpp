@@ -246,6 +246,8 @@ struct service_node_list_transient_storage {
 // blocks just before each one) are only needed for a rollback deeper than the recent history, so
 // they live in the DB, one entry per height, and are only deserialized when one is needed.
 static void archive_state(cryptonote::BlockchainDB& db, service_node_list::state_t& state);
+static std::optional<service_node_list::state_t> parse_archived_state(
+        std::string_view data, service_node_list* snl, uint64_t height);
 static std::optional<service_node_list::state_t> load_archived_state(
         const cryptonote::BlockchainDB& db, service_node_list* snl, uint64_t height);
 
@@ -4805,24 +4807,22 @@ void service_node_list::blockchain_detached(uint64_t height) {
         }
     }
 
-    // NOTE: Lookup desired SNL state from archive backups.  Full states are only archived at
-    // multiples of the archive interval; the entries in between only hold quorums.
+    // NOTE: Lookup desired SNL state from archive backups: the newest full archived state at or
+    // below the archive height that the SQL DB also has archived payments for.
     std::optional<state_t> archived;
     if (history == cryptonote::RewardsDB::PaymentTableType::Nil) {
-        auto heights = blockchain.db().get_service_node_archive_heights();
-        for (auto it = heights.rbegin(); it != heights.rend(); it++) {
-            // NOTE: Find the closest starting point
-            if (*it > archive_height || *it % netconf.HISTORY_ARCHIVE_INTERVAL != 0)
+        const auto& db = blockchain.db();
+        for (auto found = db.get_newest_full_service_node_archive(archive_height); found;
+             found = found->first ? db.get_newest_full_service_node_archive(found->first - 1)
+                                  : std::nullopt) {
+            if (!sql_db_has(found->first, false))
                 continue;
-
-            if (sql_db_has(*it, false)) {
-                archived = load_archived_state(blockchain.db(), this, *it);
-                if (archived && !archived->only_loaded_quorums) {
-                    history = cryptonote::RewardsDB::PaymentTableType::Archive;
-                    archive_height = *it;
-                }
-                break;
+            archived = parse_archived_state(found->second, this, found->first);
+            if (archived) {
+                history = cryptonote::RewardsDB::PaymentTableType::Archive;
+                archive_height = found->first;
             }
+            break;
         }
     }
 
@@ -5649,18 +5649,14 @@ static void archive_state(cryptonote::BlockchainDB& db, service_node_list::state
     db.put_service_node_archive(
             state.height,
             state.only_loaded_quorums ? serialized
-                                      : zstd_compress(serialized, ARCHIVE_STATE_COMPRESS_LEVEL));
+                                      : zstd_compress(serialized, ARCHIVE_STATE_COMPRESS_LEVEL),
+            state.only_loaded_quorums);
 }
 
-static std::optional<service_node_list::state_t> load_archived_state(
-        const cryptonote::BlockchainDB& db, service_node_list* snl, uint64_t height) {
-    auto blob = db.get_service_node_archive(height);
-    if (!blob)
-        return std::nullopt;
-
+static std::optional<service_node_list::state_t> parse_archived_state(
+        std::string_view data, service_node_list* snl, uint64_t height) {
     // A serialized state begins with its (small) version varint, so it can't be mistaken for the
     // start of a zstd frame.
-    std::string_view data{*blob};
     std::optional<std::string> inflated;
     if (data.size() >= 4 && oxenc::load_little_to_host<uint32_t>(data.data()) == ZSTD_MAGICNUMBER) {
         inflated = zstd_decompress(data);
@@ -5684,6 +5680,13 @@ static std::optional<service_node_list::state_t> load_archived_state(
         return std::nullopt;
     }
     return state;
+}
+
+static std::optional<service_node_list::state_t> load_archived_state(
+        const cryptonote::BlockchainDB& db, service_node_list* snl, uint64_t height) {
+    if (auto blob = db.get_service_node_archive(height))
+        return parse_archived_state(*blob, snl, height);
+    return std::nullopt;
 }
 
 bool service_node_list::store(uint64_t state_height) {

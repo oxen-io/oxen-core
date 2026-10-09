@@ -393,6 +393,20 @@ void BlockchainDB::show_stats() {
             tools::friendly_duration(time_commit1));
 }
 
+std::optional<std::pair<uint64_t, std::string>> BlockchainDB::get_newest_full_service_node_archive(
+        uint64_t height) const {
+    // The little-endian zstd frame magic number (ZSTD_MAGICNUMBER), which begins every full
+    // state; a quorums-only state is stored raw, and starts with its small version varint.
+    constexpr std::string_view zstd_magic{"\x28\xb5\x2f\xfd", 4};
+    auto heights = get_service_node_archive_heights();
+    for (auto it = std::upper_bound(heights.begin(), heights.end(), height); it != heights.begin();) {
+        --it;
+        if (auto data = get_service_node_archive(*it); data && data->starts_with(zstd_magic))
+            return std::make_pair(*it, std::move(*data));
+    }
+    return std::nullopt;
+}
+
 void BlockchainDB::fixup(cryptonote::network_type) {
     if (is_read_only()) {
         log::info(logcat, "Database is opened read only - skipping fixup check");

@@ -60,7 +60,20 @@ using tools::span_guts;
 namespace {
 
     // PRAGMA user_version of the current schema.
-    constexpr int SCHEMA_VERSION = 1;
+    constexpr int SCHEMA_VERSION = 2;
+
+    // Brings a database at an older schema version up to SCHEMA_VERSION.
+    void upgrade_schema(Connection& conn, int version) {
+        if (version < 2) {
+            // sn_states gains quorums_only.  The existing rows are archived states, of which the
+            // quorums-only ones are stored raw, and the full ones zstd-compressed.
+            conn.sql.exec(R"(
+ALTER TABLE sn_states ADD COLUMN quorums_only INTEGER NOT NULL DEFAULT 0;
+UPDATE sn_states SET quorums_only = 1 WHERE substr(blob, 1, 4) != x'28b52ffd';
+CREATE INDEX sn_states_full ON sn_states(height) WHERE NOT quorums_only;
+)");
+        }
+    }
 
     // PRAGMA synchronous values
     constexpr int SYNC_OFF = 0;
@@ -183,10 +196,14 @@ CREATE TABLE sn_data (
     blob      BLOB    NOT NULL
 ) STRICT, WITHOUT ROWID;
 
+-- Service node list states, one per stored height: full states (zstd-compressed), or just the
+-- quorums of that height (raw).
 CREATE TABLE sn_states (
-    height INTEGER PRIMARY KEY REFERENCES blocks(height) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
-    blob   BLOB    NOT NULL
+    height       INTEGER PRIMARY KEY REFERENCES blocks(height) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
+    quorums_only INTEGER NOT NULL DEFAULT 0,
+    blob         BLOB    NOT NULL
 ) STRICT;
+CREATE INDEX sn_states_full ON sn_states(height) WHERE NOT quorums_only;
 
 CREATE TABLE sn_proofs (
     pubkey             BLOB    PRIMARY KEY CHECK(length(pubkey) = 32),
@@ -370,6 +387,21 @@ void BlockchainSQLite::open(const fs::path& filename, network_type, const int db
             conn.sql.exec("PRAGMA user_version = {}"_format(SCHEMA_VERSION));
             tx.commit();
             log::info(logcat, "Created blockchain database {}", filename);
+        } else if (version < SCHEMA_VERSION) {
+            if (m_read_only)
+                throw DB_OPEN_FAILURE(
+                        "{} has schema version {} and needs upgrading to {}, which can't be done "
+                        "when opened read-only"_format(filename, version, SCHEMA_VERSION));
+            SQLite::Transaction tx{conn.sql, SQLite::TransactionBehavior::IMMEDIATE};
+            upgrade_schema(conn, version);
+            conn.sql.exec("PRAGMA user_version = {}"_format(SCHEMA_VERSION));
+            tx.commit();
+            log::info(
+                    logcat,
+                    "Upgraded blockchain database {} from schema version {} to {}",
+                    filename,
+                    version,
+                    SCHEMA_VERSION);
         }
     } catch (const DB_OPEN_FAILURE&) {
         m_sql.reset();
@@ -2040,14 +2072,29 @@ void BlockchainSQLite::clear_service_node_data() {
     });
 }
 
-void BlockchainSQLite::put_service_node_archive(uint64_t height, std::string_view data) {
+void BlockchainSQLite::put_service_node_archive(
+        uint64_t height, std::string_view data, bool quorums_only) {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     in_write_txn([&](Connection& conn) {
         conn.prepared_exec(
-                "INSERT OR REPLACE INTO sn_states (height, blob) VALUES (?, ?)",
+                "INSERT OR REPLACE INTO sn_states (height, quorums_only, blob) VALUES (?, ?, ?)",
                 as_i64(height),
+                quorums_only ? 1 : 0,
                 as_blob(data));
     });
+}
+
+std::optional<std::pair<uint64_t, std::string>>
+BlockchainSQLite::get_newest_full_service_node_archive(uint64_t height) const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    for (auto [h, b] : conn.prepared_results<int64_t, blob>(
+                 "SELECT height, blob FROM sn_states WHERE NOT quorums_only AND height <= ?"
+                 " ORDER BY height DESC LIMIT 1",
+                 as_i64(height)))
+        return std::make_pair(as_u64(h), std::string{as_view(b)});
+    return std::nullopt;
 }
 
 std::optional<std::string> BlockchainSQLite::get_service_node_archive(uint64_t height) const {
