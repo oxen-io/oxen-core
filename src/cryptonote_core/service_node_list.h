@@ -73,6 +73,10 @@ class Transaction;
 namespace service_nodes {
 inline constexpr uint64_t INVALID_HEIGHT = static_cast<uint64_t>(-1);
 
+// With the SQLite blockchain database, the SN list state is stored at each height divisible by
+// this, inside that block's transaction, so a restart replays at most this many blocks.
+inline constexpr uint64_t STATE_SNAPSHOT_INTERVAL = 60;
+
 struct rescan_context {
     bool skip_verify;
     uint64_t top_block_height;
@@ -1429,6 +1433,16 @@ class service_node_list {
 
     void reset(bool delete_db_entry = false);
     bool load(uint64_t current_height);
+
+    // True when the SN list's states are rows of the blockchain database (the SQLite backend,
+    // where they're written every STATE_SNAPSHOT_INTERVAL blocks) rather than its short-term blob,
+    // written by store() (LMDB).
+    bool states_in_db() const;
+
+    // Stores m_state, whose height is a multiple of STATE_SNAPSHOT_INTERVAL, along with the
+    // quorums of the heights before it that a restart from it needs, and deletes the stored
+    // states that have dropped out of what is kept.  Only used when states_in_db().
+    void store_state_snapshot();
 
     mutable std::recursive_mutex m_sn_mutex;
     const service_node_keys* m_service_node_keys;
