@@ -125,6 +125,9 @@ namespace cryptonote
 
     if(context.m_state == cryptonote_connection_context::state_synchronizing)
     {
+      if (!context.m_requested_objects.empty())
+        log::warning(logcat, "{}DUPLICATE REQUEST: callback requesting chain while {} requested objects are still outstanding, {} more callbacks queued",
+            context, context.m_requested_objects.size(), context.m_callback_request_count.load());
       NOTIFY_REQUEST_CHAIN::request r{};
       context.m_needed_objects.clear();
       m_core.blockchain.get_short_chain_history(r.block_ids);
@@ -1293,6 +1296,7 @@ namespace cryptonote
   int t_cryptonote_protocol_handler<t_core>::try_add_next_blocks(cryptonote_connection_context& context)
   {
     bool force_next_span = false;
+    std::string_view caller = "try_add_next_blocks, m_sync_lock busy";
 
     {
       // We try to lock the sync lock. If we can, it means no other thread is
@@ -1304,6 +1308,7 @@ namespace cryptonote
         log::debug(logcat, "{}Failed to lock m_sync_lock, going back to download", context);
         goto skip;
       }
+      caller = "try_add_next_blocks, after adding";
       log::debug(logcat, "{} lock m_sync_lock, adding blocks to chain...", context);
       log::debug(logcat, "{}[{}] state: {} in state {}", context, epee::string_tools::to_string_hex(context.m_pruning_seed), "adding blocks", cryptonote::get_protocol_state_string(context.m_state));
 
@@ -1608,7 +1613,7 @@ namespace cryptonote
     }
 
 skip:
-    if (!request_missing_objects(context, true, force_next_span))
+    if (!request_missing_objects(context, true, force_next_span, caller))
     {
       log::error(logcat, "Failed to request missing objects, dropping connection");
       drop_connection(context, false, false);
@@ -1936,7 +1941,7 @@ skip:
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::request_missing_objects(cryptonote_connection_context& context, bool check_having_blocks, bool force_next_span)
+  bool t_cryptonote_protocol_handler<t_core>::request_missing_objects(cryptonote_connection_context& context, bool check_having_blocks, bool force_next_span, std::string_view caller)
   {
     // flush stale spans
     std::set<connection_id_t> live_connections;
@@ -2056,6 +2061,8 @@ skip:
     {
       //we know objects that we need, request this objects
       NOTIFY_REQUEST_GET_BLOCKS::request req;
+      const size_t already_requested = context.m_requested_objects.size();
+      std::string_view request_site;
       bool is_next = false;
       size_t count = 0;
       const size_t count_limit = m_core.get_block_sync_size(m_core.blockchain.get_current_blockchain_height());
@@ -2070,6 +2077,7 @@ skip:
           if (span.second > 0)
           {
             is_next = true;
+            request_site = "forced next span";
             for (const auto &hash: hashes)
             {
               req.blocks.push_back(hash);
@@ -2114,6 +2122,7 @@ skip:
         if (span.second > 0)
         {
           is_next = true;
+          request_site = "scheduled next span";
           for (const auto &hash: hashes)
           {
             req.blocks.push_back(hash);
@@ -2146,6 +2155,7 @@ skip:
             return false;
           }
 
+          request_site = "reserved span";
           for (size_t n = 0; n < span.second; ++n)
           {
             req.blocks.push_back(context.m_needed_objects[n]);
@@ -2154,6 +2164,15 @@ skip:
           }
           context.m_needed_objects = std::vector<crypto::hash>(context.m_needed_objects.begin() + span.second, context.m_needed_objects.end());
         }
+
+        if (already_requested)
+          log::warning(logcat, "{}DUPLICATE REQUEST: sending a request for {} blocks ({} from {}, caller {}) "
+              "while {} requested objects are still outstanding; state {}, force_next_span {}, is_next {}, "
+              "{} callbacks queued, previous request {:.3f}s ago",
+              context, req.blocks.size(), request_site, span.first, caller, already_requested,
+              cryptonote::get_protocol_state_string(context.m_state), force_next_span, is_next,
+              context.m_callback_request_count.load(),
+              context.m_last_request_time ? seconds_f{std::chrono::steady_clock::now() - *context.m_last_request_time}.count() : -1.0);
 
         context.m_last_request_time = std::chrono::steady_clock::now();
         log::info(log::Cat("net.p2p.msg"), "-->>NOTIFY_REQUEST_GET_OBJECTS: blocks.size()={}, requested blocks count={} / {} from {}, first hash {}", req.blocks.size(), count, count_limit, span.first, req.blocks.front());
@@ -2373,7 +2392,7 @@ You are now synchronized with the network.
     }
     context.m_last_response_height -= arg.m_block_ids.size() - n_use_blocks;
 
-    if (!request_missing_objects(context, false))
+    if (!request_missing_objects(context, false, false, "chain entry"))
     {
       log::error(logcat, "Failed to request missing objects, dropping connection");
       drop_connection(context, false, false);

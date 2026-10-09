@@ -203,10 +203,12 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     // bool get_payload_sync_data(HANDSHAKE_DATA::request& hshd, cryptonote_connection_context&
     // context);
     bool should_drop_connection(cryptonote_connection_context& context, uint32_t next_stripe);
+    // `caller` says where the request comes from, for logging.
     bool request_missing_objects(
             cryptonote_connection_context& context,
             bool check_having_blocks,
-            bool force_next_span = false);
+            bool force_next_span,
+            std::string_view caller);
     size_t get_synchronizing_connections_count();
     bool on_connection_synchronized();
     bool should_download_next_span(cryptonote_connection_context& context, bool standby);
