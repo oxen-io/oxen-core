@@ -30,7 +30,6 @@ foreach(NET mainnet devnet testnet)
     # The data is embedded when CMake runs, so a changed file has to make it run again.
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${NET}_blocks.dat")
     file(READ "${NET}_blocks.dat" ${NET}_blocks_data HEX)
-    string(REGEX REPLACE "([0-9a-f][0-9a-f])" "\\\\x\\1" ${NET}_blocks_data "${${NET}_blocks_data}")
 endforeach()
 
 configure_file(blocks.cpp.in blocks.cpp @ONLY)
@@ -38,4 +37,5 @@ oxen_add_library(blocks "${CMAKE_CURRENT_BINARY_DIR}/blocks.cpp")
 target_link_libraries(blocks
     PRIVATE
     $<$<CONFIG:Debug>:cpptrace::cpptrace>
+    oxenc::oxenc
     extra)
