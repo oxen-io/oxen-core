@@ -81,11 +81,6 @@ CREATE INDEX sn_states_full ON sn_states(height) WHERE NOT quorums_only;
         }
     }
 
-    // PRAGMA synchronous values
-    constexpr int SYNC_OFF = 0;
-    constexpr int SYNC_NORMAL = 1;
-    constexpr int SYNC_FULL = 2;
-
     // Upper bound on the values bound into one `IN (...)` list, well below SQLite's limit on the
     // number of bound parameters in one statement.
     constexpr size_t MAX_IN_LIST = 500;
@@ -315,18 +310,10 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
         return false;
     }
 
-    SQLite::Database& with_sync_mode(Connection& conn, int sync) {
-        conn.sql.exec("PRAGMA synchronous = {}"_format(sync));
-        return conn.sql;
-    }
-
 }  // namespace
 
-// PRAGMA synchronous can't be changed inside a transaction, so it is set on the writing connection
-// just before each write transaction begins: that is what lets safesyncmode() take effect on
-// connections that already exist in the pool.
-BlockchainSQLite::write_txn::write_txn(session::sqlite::Database& db, int sync) :
-        conn{db.conn()}, tx{with_sync_mode(conn, sync), SQLite::TransactionBehavior::IMMEDIATE} {}
+BlockchainSQLite::write_txn::write_txn(session::sqlite::Database& db) :
+        conn{db.conn()}, tx{conn.sql, SQLite::TransactionBehavior::IMMEDIATE} {}
 
 BlockchainSQLite::read_txn::read_txn(session::sqlite::Database& db) :
         conn{db.conn()}, tx{conn.sql, SQLite::TransactionBehavior::DEFERRED} {}
@@ -355,10 +342,15 @@ void BlockchainSQLite::open(const fs::path& filename, network_type, const int db
         throw DB_OPEN_FAILURE("Attempted to open db, but it's already open");
 
     m_read_only = db_flags & DBF_RDONLY;
-    m_configured_sync = (db_flags & DBF_FASTEST) ? SYNC_OFF
-                      : (db_flags & DBF_FAST)    ? SYNC_NORMAL
-                      : (db_flags & DBF_SAFE)    ? SYNC_FULL
-                                                 : SYNC_NORMAL;
+    // Every connection uses WAL with synchronous=NORMAL (as session-sqlite sets them up), which a
+    // crash or power loss can't corrupt; FULL would only add an fsync to every commit to keep the
+    // very last one, i.e. at most a block, which a restart fetches again.  So every sync mode is
+    // that.
+    if (db_flags & (DBF_SAFE | DBF_FASTEST))
+        log::info(
+                logcat,
+                "The SQLite blockchain database always uses synchronous=NORMAL; treating the "
+                "requested --db-sync-mode as that");
 
     try {
         if (!m_read_only && filename.has_parent_path())
@@ -411,7 +403,6 @@ void BlockchainSQLite::open(const fs::path& filename, network_type, const int db
     }
 
     m_filename = filename;
-    m_sync = m_configured_sync;
     m_open = true;
 }
 
@@ -442,10 +433,9 @@ void BlockchainSQLite::sync() {
     conn.sql.exec("PRAGMA wal_checkpoint(PASSIVE)");
 }
 
-void BlockchainSQLite::safesyncmode(const bool onoff) {
-    log::info(logcat, "switching safe mode {}", onoff ? "on" : "off");
-    m_sync = onoff ? SYNC_FULL : m_configured_sync;
-}
+// Deliberately nothing: synchronous=NORMAL (see open) is already safe against corruption, and a
+// FULL sync of every commit would only protect the last block, which a restart refetches.
+void BlockchainSQLite::safesyncmode(const bool) {}
 
 void BlockchainSQLite::reset() {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
@@ -523,7 +513,7 @@ void BlockchainSQLite::fixup(network_type nettype) {
 void BlockchainSQLite::begin_write(bool batch) {
     // A read transaction of this thread is on the same connection, and SQLite does not nest them.
     end_read_txn(true);
-    m_write.emplace(*m_sql, m_sync.load());
+    m_write.emplace(*m_sql);
     m_batch_active = batch;
     m_writer = std::this_thread::get_id();
 }
@@ -557,7 +547,7 @@ void BlockchainSQLite::in_write_txn(F&& f) {
         return;
     }
     auto conn = m_sql->unique_conn();
-    SQLite::Transaction tx{with_sync_mode(conn, m_sync.load()), SQLite::TransactionBehavior::IMMEDIATE};
+    SQLite::Transaction tx{conn.sql, SQLite::TransactionBehavior::IMMEDIATE};
     f(conn);
     tx.commit();
 }

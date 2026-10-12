@@ -337,11 +337,6 @@ class BlockchainSQLite : public BlockchainDB {
     fs::path m_filename;
     bool m_read_only = false;
 
-    // `PRAGMA synchronous` value for write transactions: the mode configured at open, or FULL while
-    // safesyncmode(true) is in effect.
-    int m_configured_sync = 1;
-    std::atomic<int> m_sync{1};
-
     std::mutex m_lock;
 
     struct write_txn {
@@ -349,7 +344,7 @@ class BlockchainSQLite : public BlockchainDB {
         session::sqlite::Connection conn;
         SQLite::Transaction tx;
 
-        write_txn(session::sqlite::Database& db, int sync);
+        explicit write_txn(session::sqlite::Database& db);
     };
     // Only touched by the thread in m_writer while that is set; other threads only look at
     // m_writer and m_batch_active.

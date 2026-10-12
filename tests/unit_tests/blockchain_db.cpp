@@ -1629,6 +1629,23 @@ std::vector<service_nodes::delayed_stake> test_stakes(uint32_t tx_index, int cou
   return stakes;
 }
 
+// Whatever sync mode is asked for (or switched to), writes use synchronous=NORMAL, which WAL makes
+// crash-safe.
+TEST(BlockchainSQLite, synchronous_is_always_normal)
+{
+  for (int flags : {DBF_SAFE, DBF_FAST, DBF_FASTEST}) {
+    temp_data_dir dir;
+    BlockchainSQLite db;
+    db.open(dir.path / SQLITE_DB_FILENAME, network_type::FAKECHAIN, flags);
+    db.safesyncmode(true);
+    db.block_wtxn_start();
+    EXPECT_EQ(db.sqlite_database()->conn().prepared_get<int>("PRAGMA synchronous"), 1)
+        << "flags " << flags;
+    db.block_wtxn_abort();
+    db.close();
+  }
+}
+
 // The rewards, with access to the last step of adding a block (which is all these tests need of it)
 struct test_rewards : cryptonote::RewardsDB
 {
