@@ -842,12 +842,12 @@ void RewardsDB::load_stored(Connection& conn, uint64_t new_height) {
     height = new_height;
 }
 
-void RewardsDB::reset_database(SQLite::Transaction* active_tx) {
+void RewardsDB::reset_database(uint64_t height, SQLite::Transaction* active_tx) {
     log::trace(logcat, "RewardsDB::{}", __func__);
 
     auto conn = db.conn();
     auto transaction = own_tx(conn, active_tx);
-    reset_to(conn, 0);
+    reset_to(conn, height);
     if (transaction)
         transaction->commit();
     log::debug(logcat, "Database reset complete");
@@ -1525,6 +1525,17 @@ bool RewardsDB::add_block(
     log::trace(logcat, "RewardsDB::{} called on height: {}", __func__, block_height);
 
     auto hf_version = block.major_version;
+    if (hf_version < hf::hf9_service_nodes) {
+        // Before HF9 the service node list is empty and just follows the chain (whatever height it
+        // was reset or detached to), and so do the rewards, which move in lock-step with it.
+        pending.reset();
+        std::unique_lock lock{mutex};
+        history.reset(block_height, {});
+        delayed.clear();
+        height = block_height;
+        return true;
+    }
+
     if (hf_version >= hf::hf19_reward_batching && block_height == hf19_height()) {
         log::debug(logcat, "Batching of Service Node Rewards Begins");
         auto conn = db.conn();

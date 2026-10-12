@@ -106,8 +106,8 @@ class RewardsDB {
     // the blockchain database's write transaction is.  Given nullptr, such a method makes its own
     // transaction, which the caller must then not have one open on that connection.
 
-    // Deletes everything, leaving the rewards empty at height 0.
-    void reset_database(SQLite::Transaction* active_tx = nullptr);
+    // Deletes everything, leaving the rewards empty at `height`, which must be before HF19.
+    void reset_database(uint64_t height, SQLite::Transaction* active_tx = nullptr);
 
     // Whether the rewards can be restored to `height` by blockchain_detached: a height still in
     // memory, one with a stored snapshot, or any height before HF19 (when there are no rewards).

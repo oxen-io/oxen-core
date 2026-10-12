@@ -7144,6 +7144,7 @@ void service_node_list::reset(bool delete_db_entry) {
     ZoneScoped;
     m_transient = std::make_unique<service_node_list_transient_storage>();
     m_state = state_t{this};
+    m_state.height = hard_fork_begins(blockchain.nettype(), hf::hf9_service_nodes).value_or(1) - 1;
 
     if (blockchain.has_db() && delete_db_entry) {
         cryptonote::db_wtxn_guard txn_guard{blockchain.db()};
@@ -7152,10 +7153,8 @@ void service_node_list::reset(bool delete_db_entry) {
         // NOTE: Rescanning the SNL has side-effects on the SQL DB in particular, if we encounter
         // any ETH exits, a 'delayed_payment' row is added to the DB. If we _don't_ reset the SQL DB
         // then we double up on exit payments to be handed to them.
-        blockchain.rewards_db().reset_database(blockchain.rewards_write_tx());
+        blockchain.rewards_db().reset_database(m_state.height, blockchain.rewards_write_tx());
     }
-
-    m_state.height = hard_fork_begins(blockchain.nettype(), hf::hf9_service_nodes).value_or(1) - 1;
 }
 
 size_t service_node_info::total_num_locked_contributions() const {

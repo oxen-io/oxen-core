@@ -151,7 +151,7 @@ TEST(SQLITE, RewardsChangesOnlyThroughAddBlock)
   EXPECT_TRUE(rewardsDB.get_accrued_rows().empty());
 
   cryptonote::block b{};
-  b.major_version = cryptonote::hf::hf7;
+  b.major_version = cryptonote::hf::hf9_service_nodes;
   b.miner_tx.emplace();
   b.miner_tx->vin.push_back(cryptonote::txin_gen{rewardsDB.height + 1});
   service_nodes::block_add_result block_add{};
@@ -166,6 +166,32 @@ TEST(SQLITE, RewardsChangesOnlyThroughAddBlock)
   ASSERT_EQ(delayed.size(), 1);
   EXPECT_EQ(delayed.begin()->second.amount.to_coin(), 1000);
   EXPECT_EQ(rewardsDB.db.conn().prepared_get<int>("SELECT COUNT(*) FROM delayed_payments"), 1);
+}
+
+// Before HF9 the rewards follow the chain from wherever they were reset to, as the service node
+// list does, and carry on from there at HF9.
+TEST(SQLITE, RewardsFollowChainBeforeHF9)
+{
+  test::RewardsDBTest rewardsDB(cryptonote::network_type::FAKECHAIN, ":memory:");
+  rewardsDB.reset_database(100);
+  EXPECT_EQ(rewardsDB.height, 100);
+
+  service_nodes::service_node_list::state_t sn_state{nullptr};
+  auto add = [&](cryptonote::hf version, uint64_t height) {
+    cryptonote::block b{};
+    b.major_version = version;
+    b.miner_tx.emplace();
+    b.miner_tx->vin.push_back(cryptonote::txin_gen{height});
+    return rewardsDB.add_block(b, sn_state, {});
+  };
+  EXPECT_TRUE(add(cryptonote::hf::hf7, 1));
+  EXPECT_EQ(rewardsDB.height, 1);
+  EXPECT_TRUE(add(cryptonote::hf::hf7, 2));
+  EXPECT_EQ(rewardsDB.height, 2);
+  EXPECT_TRUE(add(cryptonote::hf::hf9_service_nodes, 3));
+  EXPECT_EQ(rewardsDB.height, 3);
+  EXPECT_FALSE(add(cryptonote::hf::hf9_service_nodes, 5));
+  EXPECT_EQ(rewardsDB.height, 3);
 }
 
 // The in-memory heights answer queries at, and restores to, the most recent heights.
