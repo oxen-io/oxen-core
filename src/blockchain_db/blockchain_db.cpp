@@ -59,8 +59,11 @@ const command_line::arg_flag arg_db_salvage = {
 const command_line::arg_descriptor<std::string> arg_db_backend = {
         "db-backend",
         "Blockchain database backend: lmdb or sqlite.  If omitted, the backend of the existing "
-        "database in the data directory is used, or "s +
-                std::string{to_string(FRESH_DB_BACKEND)} + " for a new data directory.",
+        "database in the data directory is used (sqlite, if there are both), or "s +
+                std::string{to_string(FRESH_DB_BACKEND)} +
+                " for a new data directory.  If given, that backend is used (and its database "
+                "created, if there isn't one yet) whatever the data directory holds; the other "
+                "backend's database is left as it is.",
         ""};
 
 std::string_view to_string(db_backend backend) {
@@ -77,18 +80,24 @@ db_backend select_db_backend(const fs::path& folder, std::optional<db_backend> r
     const bool have_sqlite = fs::exists(sqlite_path);
     const bool have_lmdb = fs::exists(lmdb_path);
 
-    if (!requested)
-        return have_sqlite ? db_backend::sqlite : have_lmdb ? db_backend::lmdb : FRESH_DB_BACKEND;
+    const auto backend = requested ? *requested
+                       : have_sqlite ? db_backend::sqlite
+                       : have_lmdb   ? db_backend::lmdb
+                                     : FRESH_DB_BACKEND;
 
-    if (*requested == db_backend::lmdb && have_sqlite && !have_lmdb)
-        throw DB_ERROR{
-                "--{}=lmdb was given, but {} contains a SQLite blockchain database ({}) and no "
-                "LMDB database ({})"_format(arg_db_backend.name, folder, sqlite_path, lmdb_path)};
-    if (*requested == db_backend::sqlite && have_lmdb && !have_sqlite)
-        throw DB_ERROR{
-                "--{}=sqlite was given, but {} contains an LMDB blockchain database ({}) and no "
-                "SQLite database ({})"_format(arg_db_backend.name, folder, lmdb_path, sqlite_path)};
-    return *requested;
+    // The other backend's database is left alone, so that (for instance) a node can resync into
+    // one while keeping the other until that is done.
+    const bool sqlite = backend == db_backend::sqlite;
+    if (sqlite ? have_lmdb : have_sqlite)
+        log::warning(
+                logcat,
+                "Using {} {} blockchain database; the {} database also in {} is not used (and not "
+                "touched)",
+                (sqlite ? have_sqlite : have_lmdb) ? "the existing" : "a new",
+                sqlite ? "SQLite" : "LMDB",
+                sqlite ? "LMDB" : "SQLite",
+                folder);
+    return backend;
 }
 
 db_backend select_db_backend(

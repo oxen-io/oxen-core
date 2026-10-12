@@ -2033,15 +2033,15 @@ class db_wtxn_guard : public db_txn_guard {
  * contains a `SQLITE_DB_FILENAME` file, otherwise lmdb if it contains an `lmdb/data.mdb` file,
  * otherwise (a fresh data directory) FRESH_DB_BACKEND.
  *
- * An explicit choice is used as given, but must not contradict the data directory: it is an error
- * to request a backend when `folder` contains only the other backend's database.
+ * An explicit choice is always used, whatever `folder` contains: its database is created if there
+ * isn't one yet.  Whenever the other backend's database is also in `folder` (including when both
+ * are there without an explicit choice), it is left untouched, and a warning says that it isn't
+ * used.
  *
  * @param folder the data directory
  * @param requested the explicitly requested backend, if any
  *
  * @return the backend to use
- *
- * @throw DB_ERROR if `requested` contradicts the database found in `folder`
  */
 db_backend select_db_backend(const fs::path& folder, std::optional<db_backend> requested);
 
@@ -2049,8 +2049,7 @@ db_backend select_db_backend(const fs::path& folder, std::optional<db_backend> r
  * @brief selects the blockchain database backend for a data directory, taking the explicit choice
  * (if any) from the `--db-backend` option.
  *
- * @throw DB_ERROR if the option value is not a backend name, or contradicts the database found in
- * `folder`
+ * @throw DB_ERROR if the option value is not a backend name
  */
 db_backend select_db_backend(
         const fs::path& folder, const boost::program_options::variables_map& vm);

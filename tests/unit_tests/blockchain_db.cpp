@@ -52,6 +52,8 @@
 #include "logging/oxen_logger.h"
 #include "ringct/rctOps.h"
 
+#include <oxen/log/ring_buffer_sink.hpp>
+
 #include "random_path.h"
 
 using namespace cryptonote;
@@ -1436,6 +1438,31 @@ struct temp_data_dir
   }
 };
 
+// select_db_backend's choice, along with the warning it logged about the other backend's database
+// not being used (empty if none).
+struct backend_selection {
+  db_backend backend;
+  std::string warning;
+};
+
+backend_selection select_logged(const fs::path& dir, std::optional<db_backend> requested)
+{
+  // Added once and kept, as the oxen-logging this may be built against can't remove a sink
+  static const auto sink = [] {
+    auto s = std::make_shared<oxen::log::RingBufferSink>(1);
+    oxen::log::add_sink(s);
+    return s;
+  }();
+  std::vector<std::string> logged;
+  sink->set_log_callback([&logged](const std::string& msg) { logged.push_back(msg); });
+  backend_selection result{select_db_backend(dir, requested), ""};
+  sink->set_log_callback();
+  for (const auto& msg : logged)
+    if (msg.find("is not used (and not touched)") != std::string::npos)
+      result.warning = msg;
+  return result;
+}
+
 TEST(db_backend, detect)
 {
   temp_data_dir dir;
@@ -1446,29 +1473,91 @@ TEST(db_backend, detect)
   EXPECT_EQ(select_db_backend(dir.path, std::nullopt), FRESH_DB_BACKEND);
 
   dir.touch("lmdb/data.mdb");
-  EXPECT_EQ(select_db_backend(dir.path, std::nullopt), db_backend::lmdb);
+  auto lmdb = select_logged(dir.path, std::nullopt);
+  EXPECT_EQ(lmdb.backend, db_backend::lmdb);
+  EXPECT_EQ(lmdb.warning, "");
 
+  // With both, the SQLite one is used, with a warning that the LMDB one isn't
   dir.touch("oxen.db");
-  EXPECT_EQ(select_db_backend(dir.path, std::nullopt), db_backend::sqlite);
+  auto both = select_logged(dir.path, std::nullopt);
+  EXPECT_EQ(both.backend, db_backend::sqlite);
+  EXPECT_NE(both.warning.find("Using the existing SQLite blockchain database; the LMDB database"),
+            std::string::npos) << both.warning;
 }
 
+// An explicit choice is always used, warning whenever the other backend's database is there too.
 TEST(db_backend, explicit_choice)
 {
   temp_data_dir dir;
-  EXPECT_EQ(select_db_backend(dir.path, db_backend::lmdb), db_backend::lmdb);
-  EXPECT_EQ(select_db_backend(dir.path, db_backend::sqlite), db_backend::sqlite);
+  for (auto backend : {db_backend::lmdb, db_backend::sqlite}) {
+    auto sel = select_logged(dir.path, backend);
+    EXPECT_EQ(sel.backend, backend);
+    EXPECT_EQ(sel.warning, "");
+  }
 
   dir.touch("lmdb/data.mdb");
-  EXPECT_EQ(select_db_backend(dir.path, db_backend::lmdb), db_backend::lmdb);
-  EXPECT_THROW(select_db_backend(dir.path, db_backend::sqlite), DB_ERROR);
+  auto lmdb = select_logged(dir.path, db_backend::lmdb);
+  EXPECT_EQ(lmdb.backend, db_backend::lmdb);
+  EXPECT_EQ(lmdb.warning, "");
+  auto new_sqlite = select_logged(dir.path, db_backend::sqlite);
+  EXPECT_EQ(new_sqlite.backend, db_backend::sqlite);
+  EXPECT_NE(new_sqlite.warning.find(
+                "Using a new SQLite blockchain database; the LMDB database also in"),
+            std::string::npos) << new_sqlite.warning;
 
   dir.touch("oxen.db");
-  EXPECT_EQ(select_db_backend(dir.path, db_backend::lmdb), db_backend::lmdb);
-  EXPECT_EQ(select_db_backend(dir.path, db_backend::sqlite), db_backend::sqlite);
+  auto both_lmdb = select_logged(dir.path, db_backend::lmdb);
+  EXPECT_EQ(both_lmdb.backend, db_backend::lmdb);
+  EXPECT_NE(both_lmdb.warning.find(
+                "Using the existing LMDB blockchain database; the SQLite database also in"),
+            std::string::npos) << both_lmdb.warning;
+  auto both_sqlite = select_logged(dir.path, db_backend::sqlite);
+  EXPECT_EQ(both_sqlite.backend, db_backend::sqlite);
+  EXPECT_NE(both_sqlite.warning.find(
+                "Using the existing SQLite blockchain database; the LMDB database also in"),
+            std::string::npos) << both_sqlite.warning;
 
   fs::remove_all(dir.path / "lmdb");
-  EXPECT_THROW(select_db_backend(dir.path, db_backend::lmdb), DB_ERROR);
-  EXPECT_EQ(select_db_backend(dir.path, db_backend::sqlite), db_backend::sqlite);
+  auto new_lmdb = select_logged(dir.path, db_backend::lmdb);
+  EXPECT_EQ(new_lmdb.backend, db_backend::lmdb);
+  EXPECT_NE(new_lmdb.warning.find(
+                "Using a new LMDB blockchain database; the SQLite database also in"),
+            std::string::npos) << new_lmdb.warning;
+  auto sqlite = select_logged(dir.path, db_backend::sqlite);
+  EXPECT_EQ(sqlite.backend, db_backend::sqlite);
+  EXPECT_EQ(sqlite.warning, "");
+}
+
+// Choosing the backend whose database isn't there yet creates it beside the other one's, which is
+// left untouched (e.g. to resync into SQLite while keeping the LMDB database until that's done).
+TEST(db_backend, new_sqlite_beside_lmdb)
+{
+  temp_data_dir dir;
+  dir.touch("lmdb/data.mdb");
+  ASSERT_EQ(select_db_backend(dir.path, db_backend::sqlite), db_backend::sqlite);
+  {
+    auto db = new_db(db_backend::sqlite);
+    db->open(dir.path / SQLITE_DB_FILENAME, network_type::FAKECHAIN);
+    db->close();
+  }
+  EXPECT_TRUE(fs::exists(dir.path / SQLITE_DB_FILENAME));
+  ASSERT_TRUE(fs::exists(dir.path / "lmdb/data.mdb"));
+  EXPECT_EQ(fs::file_size(dir.path / "lmdb/data.mdb"), 0);
+}
+
+TEST(db_backend, new_lmdb_beside_sqlite)
+{
+  temp_data_dir dir;
+  dir.touch("oxen.db");
+  ASSERT_EQ(select_db_backend(dir.path, db_backend::lmdb), db_backend::lmdb);
+  {
+    auto db = new_db(db_backend::lmdb);
+    db->open(dir.path / BlockchainLMDB::DB_NAME, network_type::FAKECHAIN);
+    db->close();
+  }
+  EXPECT_TRUE(fs::exists(dir.path / "lmdb/data.mdb"));
+  ASSERT_TRUE(fs::exists(dir.path / SQLITE_DB_FILENAME));
+  EXPECT_EQ(fs::file_size(dir.path / SQLITE_DB_FILENAME), 0);
 }
 
 TEST(db_backend, option)
@@ -1488,7 +1577,7 @@ TEST(db_backend, option)
 
   EXPECT_EQ(select_db_backend(dir.path, parse({})), db_backend::lmdb);
   EXPECT_EQ(select_db_backend(dir.path, parse({"--db-backend=lmdb"})), db_backend::lmdb);
-  EXPECT_THROW(select_db_backend(dir.path, parse({"--db-backend=sqlite"})), DB_ERROR);
+  EXPECT_EQ(select_db_backend(dir.path, parse({"--db-backend=sqlite"})), db_backend::sqlite);
   EXPECT_THROW(select_db_backend(dir.path, parse({"--db-backend=bdb"})), DB_ERROR);
 }
 
