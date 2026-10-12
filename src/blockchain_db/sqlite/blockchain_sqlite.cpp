@@ -645,7 +645,7 @@ bool BlockchainSQLite::batch_start(uint64_t) {
         throw DB_ERROR("batch transaction attempted, but a write transaction is already open");
     check_open();
     begin_write(true);
-    log::trace(logcat, "batch transaction: begin");
+    log::debug(logcat, "batch transaction: begin");
     return true;
 }
 
@@ -653,14 +653,14 @@ void BlockchainSQLite::batch_stop() {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     require_batch_writer();
     end_write(true);
-    log::trace(logcat, "batch transaction: end");
+    log::debug(logcat, "batch transaction: end");
 }
 
 void BlockchainSQLite::batch_abort() {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     require_batch_writer();
     end_write(false);
-    log::trace(logcat, "batch transaction: aborted");
+    log::debug(logcat, "batch transaction: aborted");
 }
 
 bool BlockchainSQLite::block_rtxn_start() const {
@@ -812,7 +812,7 @@ bool BlockchainSQLite::block_exists(const crypto::hash& h, uint64_t* height) con
     auto found = conn.prepared_maybe_get<int64_t>(
             "SELECT height FROM blocks WHERE hash8 = substr(?1, 1, 8) AND hash = ?1", span_guts(h));
     if (!found) {
-        log::trace(logcat, "Block with hash {} not found in db", h);
+        log::debug(logcat, "Block with hash {} not found in db", h);
         return false;
     }
     if (height)
@@ -1108,7 +1108,7 @@ bool BlockchainSQLite::tx_exists(const crypto::hash& h, uint64_t& tx_id) const {
             "SELECT id FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1", span_guts(h));
     time_tx_exists += std::chrono::steady_clock::now() - started;
     if (!id) {
-        log::info(logcat, "transaction with hash {} not found in db", h);
+        log::debug(logcat, "transaction with hash {} not found in db", h);
         return false;
     }
     tx_id = as_u64(*id);

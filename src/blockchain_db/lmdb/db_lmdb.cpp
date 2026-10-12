@@ -516,7 +516,7 @@ mdb_txn_safe::~mdb_txn_safe() {
             //
             // NOTE: not sure if this is ever reached for a non-batch write
             // transaction, but it's probably not ideal if it did.
-            log::trace(
+            log::debug(
                     logcat, "mdb_txn_safe: m_txn not NULL in destructor - calling mdb_txn_abort()");
         }
         mdb_txn_abort(m_txn);
@@ -940,7 +940,7 @@ void BlockchainLMDB::remove_transaction_data(const crypto::hash& tx_hash, const 
 
     result = mdb_cursor_get(m_cur_tx_outputs, &val_tx_id, NULL, MDB_SET);
     if (result == MDB_NOTFOUND)
-        log::info(logcat, "tx has no outputs to remove: {}", tx_hash);
+        log::debug(logcat, "tx has no outputs to remove: {}", tx_hash);
     else if (result)
         throw1(DB_ERROR(
                 "Failed to locate tx outputs for removal: {}"_format(mdb_strerror(result))));
@@ -1521,7 +1521,7 @@ void BlockchainLMDB::open(
 void BlockchainLMDB::close() {
     log::trace(logcat, "BlockchainLMDB::{}", __func__);
     if (m_batch_active) {
-        log::trace(logcat, "close() first calling batch_abort() due to active batch transaction");
+        log::debug(logcat, "close() first calling batch_abort() due to active batch transaction");
         batch_abort();
     }
     this->sync();
@@ -2048,7 +2048,7 @@ bool BlockchainLMDB::block_exists(const crypto::hash& h, uint64_t* height) const
     MDB_val_set(key, h);
     auto get_result = mdb_cursor_get(m_cur_block_heights, (MDB_val*)&zerokval, &key, MDB_GET_BOTH);
     if (get_result == MDB_NOTFOUND) {
-        log::trace(logcat, "Block with hash {} not found in db", h);
+        log::debug(logcat, "Block with hash {} not found in db", h);
     } else if (get_result)
         throw0(DB_ERROR("DB error attempting to fetch block index from hash{}"_format(
                 mdb_strerror(get_result))));
@@ -2581,7 +2581,7 @@ bool BlockchainLMDB::tx_exists(const crypto::hash& h) const {
     time_tx_exists += std::chrono::steady_clock::now() - time1;
 
     if (!tx_found) {
-        log::info(logcat, "transaction with hash {} not found in db", h);
+        log::debug(logcat, "transaction with hash {} not found in db", h);
         return false;
     }
 
@@ -2607,7 +2607,7 @@ bool BlockchainLMDB::tx_exists(const crypto::hash& h, uint64_t& tx_id) const {
 
     bool ret = false;
     if (get_result == MDB_NOTFOUND) {
-        log::info(logcat, "transaction with hash {} not found in db", h);
+        log::debug(logcat, "transaction with hash {} not found in db", h);
     } else if (get_result)
         throw0(DB_ERROR("DB error attempting to fetch transaction from hash{}"_format(
                 mdb_strerror(get_result))));
@@ -3233,7 +3233,7 @@ bool BlockchainLMDB::batch_start(uint64_t bytes_required) {
         memset(&m_tinfo->m_ti_rflags, 0, sizeof(m_tinfo->m_ti_rflags));
     }
 
-    log::trace(logcat, "batch transaction: begin");
+    log::debug(logcat, "batch transaction: begin");
     return true;
 }
 
@@ -3257,12 +3257,12 @@ void BlockchainLMDB::batch_stop() {
     if (m_writer != boost::this_thread::get_id())
         throw1(DB_ERROR("batch transaction owned by other thread"));
     check_open();
-    log::trace(logcat, "batch transaction: committing...");
+    log::debug(logcat, "batch transaction: committing...");
     auto time1 = std::chrono::steady_clock::now();
     auto on_exit = oxen::defer([&] { cleanup_batch(); });
     m_write_txn->commit();
     time_commit1 += std::chrono::steady_clock::now() - time1;
-    log::trace(logcat, "batch transaction: end");
+    log::debug(logcat, "batch transaction: end");
 }
 
 void BlockchainLMDB::batch_abort() {
@@ -3278,7 +3278,7 @@ void BlockchainLMDB::batch_abort() {
     check_open();
     auto on_exit = oxen::defer([&] { cleanup_batch(); });
     m_write_batch_txn->abort();
-    log::trace(logcat, "batch transaction: aborted");
+    log::debug(logcat, "batch transaction: aborted");
 }
 
 void BlockchainLMDB::set_batch_transactions(bool batch_transactions) {
