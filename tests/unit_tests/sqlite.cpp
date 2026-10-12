@@ -28,8 +28,10 @@
 
 #include <gtest/gtest.h>
 
+#include "blockchain_db/sqlite/light_retention.h"
 #include "blockchain_db/sqlite/rewards_db.h"
 #include "common/guts.h"
+#include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/oxen_name_system.h"
 
 #include "../rewards_db_test.h"
@@ -500,4 +502,27 @@ TEST(SQLITE, CalculateRewards)
   EXPECT_EQ(rewards[a1].amount.to_coin(), 99 + 297); // fee + share
   EXPECT_EQ(rewards[a2].amount.to_coin(), 297);
   EXPECT_EQ(rewards[a3].amount.to_coin(), 306);
+}
+
+TEST(SQLITE, LightRetentionWindow)
+{
+  using cryptonote::light_retention_blocks;
+  using cryptonote::network_type;
+  constexpr auto main = network_type::MAINNET;
+
+  // The staking lock period (30 days of blocks) plus the margin up to the last block before HF15;
+  // one week from HF15 on.
+  constexpr uint64_t early_window = 21'600 + cryptonote::LIGHT_RETENTION_LOCK_MARGIN;
+  EXPECT_EQ(service_nodes::staking_num_lock_blocks(main), 21'600);
+  EXPECT_EQ(cryptonote::LIGHT_RETENTION_BLOCKS, 5'040);
+  EXPECT_EQ(light_retention_blocks(main, 0), early_window);
+  EXPECT_EQ(light_retention_blocks(main, 101'250), early_window);
+  EXPECT_EQ(light_retention_blocks(main, 161'849), early_window);
+  EXPECT_EQ(light_retention_blocks(main, 496'968), early_window);
+  EXPECT_EQ(light_retention_blocks(main, 496'969), 5'040);
+  EXPECT_EQ(light_retention_blocks(main, 2'130'531), 5'040);
+
+  // Testnet's staking lock period is shorter than a week, and it reaches HF15 at height 6.
+  for (uint64_t h : {0, 5, 6, 100'000, 1'000'000})
+    EXPECT_EQ(light_retention_blocks(network_type::TESTNET, h), 5'040);
 }

@@ -32,6 +32,7 @@ oxen_add_library(blockchain_db
   lmdb/db_lmdb.cpp
   sqlite/accrued_history.cpp
   sqlite/blockchain_sqlite.cpp
+  sqlite/light_retention.cpp
   sqlite/rewards_db.cpp
   sqlite/snapshots.cpp
   )
