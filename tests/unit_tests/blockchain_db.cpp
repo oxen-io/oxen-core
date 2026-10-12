@@ -1646,6 +1646,19 @@ TEST(BlockchainSQLite, synchronous_is_always_normal)
   }
 }
 
+// Every connection to the database, pooled or not, gets the backend's settings.
+TEST(BlockchainSQLite, connection_settings)
+{
+  shared_sqlite s;
+  auto check = [](session::sqlite::Connection conn) {
+    EXPECT_EQ(conn.prepared_get<int64_t>("PRAGMA journal_size_limit"), 64 << 20);
+    EXPECT_EQ(conn.prepared_get<int>("PRAGMA temp_store"), 2);  // MEMORY
+  };
+  check(s.sql().conn());
+  check(s.sql().unique_conn());
+  EXPECT_NO_THROW(s.db.optimize());
+}
+
 // The rewards, with access to the last step of adding a block (which is all these tests need of it)
 struct test_rewards : cryptonote::RewardsDB
 {

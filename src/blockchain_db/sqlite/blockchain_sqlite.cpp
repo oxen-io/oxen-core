@@ -359,7 +359,14 @@ void BlockchainSQLite::open(const fs::path& filename, network_type, const int db
         m_sql = std::make_unique<session::sqlite::Database>(
                 filename,
                 session::sqlite::open_readonly{m_read_only},
-                session::sqlite::open_create{!m_read_only});
+                session::sqlite::open_create{!m_read_only},
+                session::sqlite::post_open{[](Connection& c) {
+                    // Truncates the WAL file after a checkpoint resets it, which otherwise stays
+                    // at its high-water mark (197 MB was seen, with ~4 MB in use).
+                    c.sql.exec("PRAGMA journal_size_limit = 67108864");
+                    // Sorts and other transient structures in memory rather than temporary files.
+                    c.sql.exec("PRAGMA temp_store = MEMORY");
+                }});
 
         auto conn = m_sql->conn();
         auto version = conn.sql.execAndGet("PRAGMA user_version").getInt();
@@ -418,9 +425,21 @@ void BlockchainSQLite::close() {
         std::lock_guard lock{m_read_mutex};
         m_reads.clear();
     }
+    optimize();
     sync();
     m_sql.reset();
     m_open = false;
+}
+
+void BlockchainSQLite::optimize() {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    if (m_read_only)
+        return;
+    // SQLite's recommended periodic maintenance (keeping the query planner's statistics current).
+    // Its own connection, so that this never runs inside a transaction of the calling thread.
+    auto conn = m_sql->unique_conn();
+    conn.sql.exec("PRAGMA optimize");
 }
 
 void BlockchainSQLite::sync() {

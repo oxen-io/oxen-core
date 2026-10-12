@@ -2822,6 +2822,10 @@ Use "help <command>" to see a command's documentation.
         snl.store();
         return true;
     });
+    m_db_optimize_interval.do_call([this] {
+        blockchain.db().optimize();
+        return true;
+    });
 
     std::chrono::seconds lifetime{time(nullptr) - get_start_time()};
     if (m_service_node &&
