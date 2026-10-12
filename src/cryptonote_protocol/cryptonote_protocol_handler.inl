@@ -1582,11 +1582,14 @@ namespace cryptonote
             }
             const uint32_t previous_stripe = tools::get_pruning_stripe(previous_height, target_blockchain_height, PRUNING_LOG_STRIPES);
             const uint32_t current_stripe = tools::get_pruning_stripe(current_blockchain_height, target_blockchain_height, PRUNING_LOG_STRIPES);
-            const auto rate = format_sync_rate(sync_rate(current_blockchain_height));
             std::string timing_message;
-            // The span figures only cover adding this span's blocks (not downloading or waiting for
-            // them), so they measure block processing speed, not sync progress.
-            if (logcat->should_log(log::Level::info))
+            // Once synchronized, blocks only arrive a few at a time, which rates mean nothing for.
+            if (!m_synchronized)
+            {
+              const auto rate = format_sync_rate(sync_rate(current_blockchain_height));
+              // The span figures only cover adding this span's blocks (not downloading or waiting
+              // for them), so they measure block processing speed, not sync progress.
+              if (logcat->should_log(log::Level::info))
                 timing_message =
                         " ({} blocks/sec; span: {:.3f} s, {} blocks/s processed), {:.3f} MB queued in {} spans, stripe {} -> {}{}"_format(
                                 rate,
@@ -1600,11 +1603,16 @@ namespace cryptonote
                                         ? ": {}"_format(m_block_queue.get_overview(
                                                   current_blockchain_height))
                                         : "");
-            else
+              else
                 timing_message = " ({} blocks/sec)"_format(rate);
+            }
             log::info(globallogcat, fg(fmt::terminal_color::yellow), "Synced {}/{} {} {}", current_blockchain_height, target_blockchain_height, progress_message, timing_message);
             if (previous_stripe != current_stripe)
               notify_new_stripe(context, current_stripe);
+            // As soon as the target is reached, rather than when the peers next have nothing more
+            // to give us (which can be a block time later).
+            if (current_blockchain_height >= target_blockchain_height)
+              on_connection_synchronized();
           }
         }
       }
@@ -2288,10 +2296,7 @@ skip:
       if (context.m_remote_blockchain_height >= m_core.get_target_blockchain_height())
       {
         if (m_core.blockchain.get_current_blockchain_height() >= m_core.get_target_blockchain_height())
-        {
-          log::info(globallogcat, fg(fmt::terminal_color::green), "SYNCHRONIZED OK");
           on_connection_synchronized();
-        }
       }
       else
       {
@@ -2308,6 +2313,7 @@ skip:
     uint64_t current_blockchain_height = m_core.blockchain.get_current_blockchain_height();
     if(!m_core.blockchain.is_within_compiled_block_hash_area(current_blockchain_height) && m_synchronized.compare_exchange_strong(val_expected, true))
     {
+      log::info(globallogcat, fg(fmt::terminal_color::green), "SYNCHRONIZED OK");
       if ((current_blockchain_height > m_sync_start_height) && (m_sync_spans_downloaded > 0))
       {
         uint64_t synced_blocks = current_blockchain_height - m_sync_start_height;
