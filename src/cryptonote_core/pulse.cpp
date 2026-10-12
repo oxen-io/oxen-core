@@ -1010,13 +1010,11 @@ std::optional<timings> get_round_timings(
     if (!hf16 || blockchain.get_current_blockchain_height() < *hf16)
         return std::nullopt;
 
-    cryptonote::block genesis_block;
-    if (!blockchain.get_block_by_height(*hf16 - 1, genesis_block))
-        return std::nullopt;
-
+    uint64_t const genesis_height = *hf16 - 1;
     auto times = std::make_optional<timings>();
-    uint64_t const delta_height = block_height - genesis_block.get_height();
-    times->genesis_timestamp = clock::from_time_t(genesis_block.timestamp);
+    uint64_t const delta_height = block_height - genesis_height;
+    times->genesis_timestamp =
+            clock::from_time_t(blockchain.db().get_block_timestamp(genesis_height));
 
     times->prev_timestamp = clock::from_time_t(prev_timestamp);
     times->ideal_timestamp = times->genesis_timestamp + conf.TARGET_BLOCK_TIME * delta_height;

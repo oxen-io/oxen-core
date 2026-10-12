@@ -160,11 +160,11 @@ service_node_test_results quorum_cop::check_service_node(
     if (ips[0].first && ips[1].first) {
         // Figure out when we last had a blockchain-level IP change penalty (or when we registered);
         // we only consider IP changes starting two hours after the last IP penalty.
-        std::vector<cryptonote::block> blocks;
-        if (m_core.blockchain.get_blocks(info.last_ip_change_height, 1, blocks)) {
+        if (info.last_ip_change_height < m_core.blockchain.get_current_blockchain_height()) {
             uint64_t find_ips_used_since = std::max(
                     uint64_t(std::time(nullptr)) - std::chrono::seconds{IP_CHANGE_WINDOW}.count(),
-                    uint64_t(blocks[0].timestamp) + std::chrono::seconds{IP_CHANGE_BUFFER}.count());
+                    m_core.blockchain.db().get_block_timestamp(info.last_ip_change_height) +
+                            std::chrono::seconds{IP_CHANGE_BUFFER}.count());
             if (ips[0].second > find_ips_used_since && ips[1].second > find_ips_used_since)
                 result.single_ip = false;
         }
