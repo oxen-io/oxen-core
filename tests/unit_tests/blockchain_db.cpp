@@ -1745,7 +1745,6 @@ TEST(BlockchainSQLite, connection_settings)
   };
   check(s.sql().conn());
   check(s.sql().unique_conn());
-  EXPECT_NO_THROW(s.db.optimize());
 }
 
 // The rewards, with access to the last step of adding a block (which is all these tests need of it)

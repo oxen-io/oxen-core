@@ -60,7 +60,6 @@ class BlockchainSQLite : public BlockchainDB {
     void close() override;
     void sync() override;
     void safesyncmode(const bool onoff) override;
-    void optimize() override;
     void reset() override;
     std::vector<fs::path> get_filenames() const override;
     bool remove_data_file(const fs::path& filename) const override;

@@ -653,13 +653,6 @@ class BlockchainDB {
     virtual void sync() = 0;
 
     /**
-     * @brief routine maintenance of the DB, which the core calls every few hours
-     *
-     * Does nothing unless the backend has something to do.
-     */
-    virtual void optimize() {}
-
-    /**
      * @brief toggle safe syncs for the DB
      *
      * Used to switch DBF_SAFE on or off after starting up with DBF_FAST.

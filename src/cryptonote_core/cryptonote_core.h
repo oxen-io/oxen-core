@@ -909,8 +909,6 @@ class core final {
     /// randomized in 6-7d between calls so that different oxends don't all trigger it at the same
     /// time.
     tools::periodic_task m_sn_archive_state_interval{"sn state storage", 6 * 24h, false, 24h};
-    /// interval for the blockchain database's routine maintenance (see BlockchainDB::optimize)
-    tools::periodic_task m_db_optimize_interval{"database maintenance", 4h, false};
     /// interval for systemd watchdog pings & updating the service Status line
     tools::periodic_task m_systemd_notify_interval{"systemd notifier", 10s};
 

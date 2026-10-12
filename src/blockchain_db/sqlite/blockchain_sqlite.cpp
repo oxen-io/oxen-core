@@ -425,21 +425,9 @@ void BlockchainSQLite::close() {
         std::lock_guard lock{m_read_mutex};
         m_reads.clear();
     }
-    optimize();
     sync();
     m_sql.reset();
     m_open = false;
-}
-
-void BlockchainSQLite::optimize() {
-    log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    check_open();
-    if (m_read_only)
-        return;
-    // SQLite's recommended periodic maintenance (keeping the query planner's statistics current).
-    // Its own connection, so that this never runs inside a transaction of the calling thread.
-    auto conn = m_sql->unique_conn();
-    conn.sql.exec("PRAGMA optimize");
 }
 
 void BlockchainSQLite::sync() {
