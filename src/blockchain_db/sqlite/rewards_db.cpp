@@ -697,7 +697,42 @@ DROP TABLE batch_db_info;
 // divisible by STATE_SNAPSHOT_INTERVAL snapshots there too (the heights that the SN list stores its
 // states at, which makes them heights that both can be restored to).  The ones the retention rules
 // don't keep get deleted when the next snapshot is written.
+// The legacy tables aren't STRICT (and their BLOB-declared address columns have no type affinity),
+// so they can hold values the current tables can't take, such as TEXT addresses, which pre-11.4.0
+// code stored.  This fails, saying which table and column hold what, rather than leaving it to
+// SQLite's generic error from the copy.
+static void check_legacy_types(Connection& conn) {
+    // `types` are the typeof() values that the column may hold
+    auto check = [&conn](std::string_view table, std::string_view column, std::string_view types) {
+        if (auto bad = conn.prepared_maybe_get<std::string, int64_t>(
+                    "SELECT typeof({0}), COUNT(*) FROM {1} WHERE typeof({0}) NOT IN ({2})"
+                    " GROUP BY 1 LIMIT 1"_format(column, table, types)))
+            throw oxen::traced<std::runtime_error>{
+                    "Unable to migrate the legacy rewards table {}: its {} column holds {} {} "
+                    "value(s), where only {} can be migrated"_format(
+                            table, column, std::get<1>(*bad), std::get<0>(*bad), types)};
+    };
+    for (auto table :
+         {"batched_payments_accrued"sv,
+          "batched_payments_accrued_recent"sv,
+          "batched_payments_accrued_archive"sv}) {
+        check(table, "address", "'blob'");
+        check(table, "payout_offset", "'integer', 'null'");
+        for (auto column :
+             {"amount",
+              "lifetime_locked_stakes",
+              "lifetime_unlocked_stakes",
+              "lifetime_liquidated_stakes",
+              "lifetime_rewards"})
+            check(table, column, "'integer'");
+        if (table != "batched_payments_accrued"sv)
+            check(table, "height", "'integer'");
+    }
+    check("delayed_payments", "eth_address", "'blob'");
+}
+
 static void migrate_legacy_tables(Connection& conn) {
+    check_legacy_types(conn);
     const auto h = conn.prepared_get<int64_t>("SELECT height FROM batch_db_height WHERE id = 1");
 
     conn.prepared_exec("INSERT INTO rewards_snapshot_heights (height) VALUES (?)", h);

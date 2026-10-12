@@ -216,6 +216,58 @@ TEST(SQLITE, RewardsHistory)
   EXPECT_FALSE(rewardsDB.get_accrued_rewards(a, 6));
 }
 
+// The legacy tables aren't STRICT, so they can hold values the current tables can't take (such as
+// the TEXT addresses of pre-11.4.0 code, beside BLOB ones, as some testnet databases written by
+// development builds have).  The migration says where, and leaves the legacy tables as they were.
+TEST(SQLITE, LegacyRewardsUnmigratableValue)
+{
+  session::sqlite::Database sql{":memory:"};
+  auto conn = sql.conn();
+  conn.sql.exec(R"(
+CREATE TABLE batched_payments_accrued(
+  address BLOB NOT NULL, amount INTEGER NOT NULL DEFAULT 0, payout_offset INTEGER,
+  lifetime_locked_stakes INTEGER NOT NULL DEFAULT 0, lifetime_unlocked_stakes INTEGER NOT NULL DEFAULT 0,
+  lifetime_liquidated_stakes INTEGER NOT NULL DEFAULT 0, lifetime_rewards INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(address) CHECK(amount >= 0));
+CREATE TABLE batched_payments_accrued_recent(
+  address BLOB NOT NULL, amount INTEGER NOT NULL DEFAULT 0, payout_offset INTEGER,
+  height INTEGER NOT NULL DEFAULT 0,
+  lifetime_locked_stakes INTEGER NOT NULL DEFAULT 0, lifetime_unlocked_stakes INTEGER NOT NULL DEFAULT 0,
+  lifetime_liquidated_stakes INTEGER NOT NULL DEFAULT 0, lifetime_rewards INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(height, address) CHECK(amount >= 0));
+CREATE TABLE batch_db_info(height INTEGER NOT NULL);
+INSERT INTO batch_db_info(height) VALUES(1234);
+INSERT INTO batched_payments_accrued (address, amount)
+  VALUES (x'0123456789012345678901234567890123456789', 42);
+INSERT INTO batched_payments_accrued_recent (address, amount, height)
+  VALUES (x'0123456789012345678901234567890123456789', 41, 1200),
+         ('0x1111111111111111111111111111111111111111', 9, 1200),
+         ('0x2222222222222222222222222222222222222222', 8, 1200);
+PRAGMA user_version = 2;
+)");
+
+  try {
+    cryptonote::RewardsDB rewardsDB(cryptonote::network_type::FAKECHAIN, sql);
+    FAIL() << "migration should have failed";
+  } catch (const std::exception& e) {
+    EXPECT_NE(
+        std::string_view{e.what()}.find(
+            "Unable to migrate the legacy rewards table batched_payments_accrued_recent: its "
+            "address column holds 2 text value(s), where only 'blob' can be migrated"),
+        std::string_view::npos)
+        << e.what();
+  }
+
+  // Everything the attempt did, including creating the tables it was missing, was rolled back
+  for (auto table : {"batched_payments_accrued", "batched_payments_accrued_recent", "batch_db_info"})
+    EXPECT_TRUE(has_table(sql, table)) << table;
+  for (auto table : {"rewards_snapshots", "rewards_snapshot_heights", "batch_db_height",
+                     "batched_payments_accrued_archive", "delayed_payments"})
+    EXPECT_FALSE(has_table(sql, table)) << table;
+  EXPECT_EQ(conn.prepared_get<int>("SELECT COUNT(*) FROM batched_payments_accrued_recent"), 3);
+  EXPECT_EQ(conn.prepared_get<int>("SELECT height FROM batch_db_info"), 1234);
+}
+
 TEST(SQLITE, NewRewardsFixupVersion)
 {
   session::sqlite::Database sql{":memory:"};
