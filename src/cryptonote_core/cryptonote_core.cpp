@@ -291,7 +291,6 @@ core::core() :
                   return blockchain.create_next_miner_block_template(std::forward<Args>(args)...);
               }},
         m_pprotocol(&m_protocol_stub),
-        m_starter_message_showed(false),
         m_target_blockchain_height(0),
         m_last_json_checkpoints_update(0),
         m_nettype(network_type::UNDEFINED),
@@ -2767,34 +2766,6 @@ void core::do_uptime_proof_call() {
 //-----------------------------------------------------------------------------------------------
 bool core::on_idle() {
     ZoneScoped;
-    if (!m_starter_message_showed) {
-        std::string main_message;
-        if (m_offline)
-            main_message =
-                    "The daemon is running offline and will not attempt to sync to the Session "
-                    "network.";
-        else
-            main_message =
-                    "The daemon will start synchronizing with the network. This may take a long "
-                    "time to complete.";
-        log::info(
-                globallogcat,
-                fg(fmt::terminal_color::yellow),
-                R"(
-**********************************************************************
-{}
-
-You can set the level of process detailization through "set_log <level|categories>" command,
-where <level> is between 0 (no details) and 4 (very verbose), or custom category based levels (eg, *:WARNING).
-
-Use the "help" command to see the list of available commands.
-Use "help <command>" to see a command's documentation.
-**********************************************************************
-)",
-                main_message);
-        m_starter_message_showed = true;
-    }
-
     m_txpool_auto_relayer.do_call([this] { return relay_txpool_transactions(); });
     m_service_node_vote_relayer.do_call([this] { return relay_service_node_votes(); });
     m_check_disk_space_interval.do_call([this] { return check_disk_space(); });
