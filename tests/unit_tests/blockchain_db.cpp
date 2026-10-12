@@ -38,6 +38,7 @@
 
 #include "epee/string_tools.h"
 #include "blockchain_db/blockchain_db.h"
+#include "blockchain_db/history.h"
 #include "blockchain_db/lmdb/db_lmdb.h"
 #include "blockchain_db/sqlite/blockchain_sqlite.h"
 #include "blockchain_db/sqlite/rewards_db.h"
@@ -1877,6 +1878,252 @@ TEST(BlockchainSQLite, reset_keeps_others_tables)
   EXPECT_EQ(base.get_max_block_size(), std::numeric_limits<uint64_t>::max());
   EXPECT_EQ(s.committed("SELECT MAX(height) FROM rewards_snapshot_heights"), 60);
   EXPECT_EQ(s.committed("SELECT value FROM properties WHERE key = 'rewards_fixup_version'"), 2);
+}
+
+TEST(history, parse)
+{
+  constexpr auto main = network_type::MAINNET;
+  EXPECT_EQ(parse_history("full", main), 0);
+  EXPECT_EQ(parse_history("720", main), 720);
+  EXPECT_EQ(parse_history("100000", main), 100'000);
+  EXPECT_EQ(parse_history("1d", main), 720);
+  EXPECT_EQ(parse_history("24h", main), 720);
+  EXPECT_EQ(parse_history("3d", main), 2'160);
+  EXPECT_EQ(parse_history("2w", main), 10'080);
+  // Durations convert at the network's target block time (30s on devnet)
+  EXPECT_EQ(parse_history("1d", network_type::DEVNET), 2'880);
+
+  for (auto bad : {"", "719", "12h", "0", "abc", "2x", "2ww", "-5", "1.5d", "w", "Full", "99999999999999999w"})
+    EXPECT_THROW(parse_history(bad, main), std::invalid_argument) << bad;
+}
+
+TEST(history, option)
+{
+  auto parse = [](std::vector<std::string> args) {
+    boost::program_options::options_description desc;
+    BlockchainDB::init_options(desc);
+    boost::program_options::variables_map vm;
+    boost::program_options::store(
+        boost::program_options::command_line_parser(args).options(desc).run(), vm);
+    boost::program_options::notify(vm);
+    return vm;
+  };
+  constexpr auto main = network_type::MAINNET;
+  EXPECT_EQ(requested_history(parse({}), main), std::nullopt);
+  EXPECT_EQ(requested_history(parse({"--history=full"}), main), 0);
+  EXPECT_EQ(requested_history(parse({"--history=2w"}), main), 10'080);
+  EXPECT_THROW(requested_history(parse({"--history=10"}), main), DB_ERROR);
+}
+
+TEST(history, lmdb_keeps_everything)
+{
+  temp_data_dir dir;
+  BlockchainLMDB db;
+  db.open(dir.path, network_type::FAKECHAIN);
+  EXPECT_EQ(db.history(), 0);
+  EXPECT_NO_THROW(db.set_history(0));
+  EXPECT_THROW(db.set_history(720), DB_ERROR);
+  EXPECT_EQ(db.history(), 0);
+}
+
+// The history kept at a height is the larger of the setting and what block processing needs there.
+TEST(history, window)
+{
+  constexpr auto main = network_type::MAINNET;
+  constexpr uint64_t early = 21'600 + HISTORY_LOCK_MARGIN;
+  EXPECT_EQ(history_minimum(main, 0), early);
+  EXPECT_EQ(history_minimum(main, 101'250), early);
+  EXPECT_EQ(history_minimum(main, 496'968), early);
+  EXPECT_EQ(history_minimum(main, 496'969), HISTORY_MIN_BLOCKS);
+  EXPECT_EQ(history_minimum(main, 2'130'531), HISTORY_MIN_BLOCKS);
+  // Testnet's lock period is 48 hours (1,440 blocks), and it reaches HF15 at height 6.
+  EXPECT_EQ(history_minimum(network_type::TESTNET, 5), 1'440 + HISTORY_LOCK_MARGIN);
+  EXPECT_EQ(history_minimum(network_type::TESTNET, 6), HISTORY_MIN_BLOCKS);
+
+  EXPECT_EQ(history_window(main, 0, 100'000), 0);
+  EXPECT_EQ(history_window(main, 720, 100'000), early);
+  EXPECT_EQ(history_window(main, 720, 2'000'000), 720);
+  EXPECT_EQ(history_window(main, 10'080, 2'000'000), 10'080);
+  EXPECT_EQ(history_window(main, 50'000, 100'000), 50'000);
+}
+
+TEST(history, complete_at)
+{
+  EXPECT_EQ(history_complete_at(0, 500, 1'000), std::nullopt);       // keeps everything
+  EXPECT_EQ(history_complete_at(10'080, 0, 1'000), std::nullopt);    // nothing dropped yet
+  EXPECT_EQ(history_complete_at(10'080, 500, 1'000), 10'580);
+  EXPECT_EQ(history_complete_at(10'080, 500, 10'579), 10'580);
+  EXPECT_EQ(history_complete_at(10'080, 500, 10'580), std::nullopt);
+}
+
+class SQLiteHistoryTest : public BlockchainDBTest<BlockchainSQLite>
+{
+protected:
+  // Extends the test chain to `height` blocks, as add_synthetic_blocks does but with miner txs
+  // that can't come out the same as the second test block's (which add_synthetic_blocks' do at
+  // height 111).
+  void extend_to(uint64_t height)
+  {
+    db_wtxn_guard guard{*m_db};
+    for (uint64_t h = m_db->height(); h < height; h++)
+    {
+      block b = m_blocks[1].first;
+      b.prev_id = m_db->top_block_hash();
+      b.timestamp = 1'600'000'000 + 120 * h;
+      b.miner_tx->vin[0] = txin_gen{1'000'000 + h};
+      b.miner_tx->unprunable_size = 0;
+      b.miner_tx->invalidate_hashes();
+      b.invalidate_hashes();
+      m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1] + h, t_coins[1], {});
+    }
+  }
+
+  crypto::hash miner_tx_hash(uint64_t height)
+  {
+    return get_transaction_hash(*m_db->get_block_from_height(height).miner_tx);
+  }
+};
+
+TEST_F(SQLiteHistoryTest, setting)
+{
+  open_with_blocks();
+  auto& db = *m_db;
+  EXPECT_EQ(db.history(), 0);
+  EXPECT_EQ(db.history_start(), 0);
+  EXPECT_NO_THROW(db.set_history(0));
+
+  extend_to(1'000);
+  const auto old_miner_tx = miner_tx_hash(100);
+  const auto kept_miner_tx = miner_tx_hash(500);
+  const uint64_t outputs = db.get_num_outputs(0);
+  const auto block_100 = db.get_block_hash_from_height(100);
+
+  // Full -> 800 blocks: what is older than the last 800 goes straight away.
+  db.set_history(800);
+  EXPECT_EQ(db.history(), 800);
+  EXPECT_EQ(db.history_start(), 200);
+  EXPECT_THROW(db.get_block_from_height(199), BLOCK_DNE);
+  EXPECT_NO_THROW(db.get_block_from_height(200));
+  EXPECT_FALSE(db.tx_exists(old_miner_tx));
+  EXPECT_TRUE(db.tx_exists(kept_miner_tx));
+  // The block index and the outputs stay for every height.
+  EXPECT_EQ(db.get_block_hash_from_height(100), block_100);
+  EXPECT_EQ(db.get_block_timestamp(100), 1'600'000'000 + 120 * 100);
+  EXPECT_EQ(db.get_num_outputs(0), outputs);
+  EXPECT_EQ(db.height(), 1'000);
+
+  // The setting is stored in the database.
+  reopen_db();
+  EXPECT_EQ(m_db->history(), 800);
+  EXPECT_EQ(m_db->history_start(), 200);
+
+  // Keeping more: nothing more is dropped (until the chain grows into it), and nothing comes back.
+  m_db->set_history(2'000);
+  EXPECT_EQ(m_db->history_start(), 200);
+  EXPECT_EQ(history_complete_at(m_db->history(), m_db->history_start(), m_db->height()), 2'200);
+  extend_to(1'100);
+  m_db->trim_history();
+  EXPECT_EQ(m_db->history_start(), 200);
+
+  // Keeping less again
+  m_db->set_history(720);
+  EXPECT_EQ(m_db->history_start(), 380);
+
+  // A limited history can't be made full again, nor go below the minimum.
+  EXPECT_THROW(m_db->set_history(0), DB_ERROR);
+  EXPECT_THROW(m_db->set_history(719), DB_ERROR);
+  EXPECT_EQ(m_db->history(), 720);
+}
+
+// The trim keeps track of how far it has got, so that it only touches what is newly outside the
+// history as the chain grows.
+TEST_F(SQLiteHistoryTest, trim_bookkeeping)
+{
+  open_with_blocks();
+  auto& db = *m_db;
+  extend_to(700);
+  db.set_history(720);
+  EXPECT_EQ(db.history_start(), 0);  // Shorter than the history: nothing to drop yet
+
+  extend_to(721);
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 1);
+  EXPECT_THROW(db.get_block_from_height(0), BLOCK_DNE);
+  EXPECT_NO_THROW(db.get_block_from_height(1));
+
+  extend_to(1'000);
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 280);
+  EXPECT_THROW(db.get_block_from_height(279), BLOCK_DNE);
+  EXPECT_NO_THROW(db.get_block_from_height(280));
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 280);
+  EXPECT_EQ(
+      db.sqlite_database()->conn().prepared_get<int64_t>(
+          "SELECT value FROM properties WHERE key = 'history_start'"),
+      280);
+}
+
+// Besides block bodies and transactions, the SN list states, rewards snapshots and alt blocks below
+// the history go; checkpoints go only from below the immutable one.
+TEST_F(SQLiteHistoryTest, trim_other_tables)
+{
+  open_with_blocks();
+  auto& db = *m_db;
+  extend_to(1'000);
+  RewardsDB rewards{network_type::FAKECHAIN, *db.sqlite_database()};
+  {
+    db_wtxn_guard guard{db};
+    db.put_service_node_archive(100, "old", true);
+    db.put_service_node_archive(900, "new", true);
+  }
+  {
+    auto conn = db.sqlite_database()->unique_conn();
+    conn.sql.exec("INSERT INTO rewards_snapshot_heights (height) VALUES (120), (960)");
+  }
+
+  db.set_history(720);
+  EXPECT_EQ(db.history_start(), 280);
+  EXPECT_FALSE(db.get_service_node_archive(100));
+  EXPECT_TRUE(db.get_service_node_archive(900));
+  auto conn = db.sqlite_database()->conn();
+  EXPECT_EQ(conn.prepared_get<int64_t>("SELECT MIN(height) FROM rewards_snapshot_heights"), 960);
+}
+
+TEST_F(SQLiteHistoryTest, trim_keeps_immutable_checkpoints)
+{
+  open_with_blocks();
+  auto& db = *m_db;
+  extend_to(1'000);
+  auto add_checkpoint = [&](uint64_t height) {
+    checkpoint_t cp{};
+    cp.type = checkpoint_type::service_node;
+    cp.height = height;
+    cp.block_hash = db.get_block_hash_from_height(height);
+    db_wtxn_guard guard{db};
+    db.update_block_checkpoint(cp);
+  };
+  for (uint64_t h : {100, 148, 196})
+    add_checkpoint(h);
+
+  // The window would start at 280, above all of them; but the immutable checkpoint (the older of
+  // the two newest, at 148) and the one after it must stay.
+  db.set_history(720);
+  EXPECT_EQ(db.history_start(), 280);
+  checkpoint_t cp;
+  EXPECT_FALSE(db.get_block_checkpoint(100, cp));
+  EXPECT_TRUE(db.get_block_checkpoint(148, cp));
+  EXPECT_TRUE(db.get_block_checkpoint(196, cp));
+
+  // Once newer checkpoints make a later one immutable, the old ones below the window go.
+  for (uint64_t h : {960, 964})
+    add_checkpoint(h);
+  extend_to(1'001);
+  db.trim_history();
+  EXPECT_FALSE(db.get_block_checkpoint(148, cp));
+  EXPECT_FALSE(db.get_block_checkpoint(196, cp));
+  EXPECT_TRUE(db.get_block_checkpoint(960, cp));
+  EXPECT_TRUE(db.get_block_checkpoint(964, cp));
 }
 
 }  // anonymous namespace

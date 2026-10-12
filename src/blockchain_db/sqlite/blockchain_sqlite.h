@@ -174,6 +174,11 @@ class BlockchainSQLite : public BlockchainDB {
     SQLite::Transaction* active_write_transaction() override;
     session::sqlite::Database* sqlite_database() override { return m_sql.get(); }
 
+    uint64_t history() const override { return m_history; }
+    uint64_t history_start() const override { return m_history_start; }
+    void set_history(uint64_t blocks) override;
+    void trim_history() override;
+
     bool is_read_only() const override;
     uint64_t get_database_size() const override;
     void fixup(network_type nettype) override;
@@ -333,9 +338,24 @@ class BlockchainSQLite : public BlockchainDB {
     std::vector<uint64_t> get_block_weight_column(
             std::string_view column, uint64_t start_height, size_t count) const;
 
+    // Drops everything outside the history below height `to` (see trim_history), in chunks, each
+    // in the calling thread's write transaction if it holds one, otherwise in one of its own.
+    void trim_history_to(uint64_t to);
+
+    // Rewrites the database file without its free pages (VACUUM INTO, then swapped in), if they
+    // make up a substantial part of it.  Only when nothing else is using the database.
+    void compact_if_worthwhile();
+
     std::unique_ptr<session::sqlite::Database> m_sql;
     fs::path m_filename;
+    network_type m_nettype = network_type::UNDEFINED;
+    int m_db_flags = 0;
     bool m_read_only = false;
+
+    // The stored `history` and `history_start` properties (see history() and history_start()).
+    // Only changed by the writer.
+    uint64_t m_history = 0;
+    uint64_t m_history_start = 0;
 
     std::mutex m_lock;
 

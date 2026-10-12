@@ -41,6 +41,7 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "epee/string_tools.h"
+#include "history.h"
 #include "lmdb/db_lmdb.h"
 #include "sqlite/blockchain_sqlite.h"
 #include "ringct/rctOps.h"
@@ -64,6 +65,18 @@ const command_line::arg_descriptor<std::string> arg_db_backend = {
                 " for a new data directory.  If given, that backend is used (and its database "
                 "created, if there isn't one yet) whatever the data directory holds; the other "
                 "backend's database is left as it is.",
+        ""};
+const command_line::arg_descriptor<std::string> arg_history = {
+        "history",
+        "Changes how much block history the blockchain database keeps: 'full', or a number of "
+        "recent blocks given as a count or as a duration such as 2w, 3d or 12h (at least "s +
+                std::to_string(HISTORY_MIN_BLOCKS) +
+                " blocks).  Keeping a limited history needs the sqlite backend.  The setting is "
+                "stored in the database, so this is only needed to change it: if omitted, the "
+                "database keeps what it was set to keep (everything, for a new one).  Keeping "
+                "less drops the older history straight away; keeping more keeps more from now "
+                "on.  A database keeping a limited history can't be made full again (resync, or "
+                "install a full database).",
         ""};
 
 std::string_view to_string(db_backend backend) {
@@ -120,6 +133,25 @@ std::optional<db_backend> requested_db_backend(const boost::program_options::var
     return std::nullopt;
 }
 
+std::optional<uint64_t> requested_history(
+        const boost::program_options::variables_map& vm, network_type nettype) {
+    auto value = command_line::get_arg(vm, arg_history);
+    if (value.empty())
+        return std::nullopt;
+    try {
+        return parse_history(value, nettype);
+    } catch (const std::invalid_argument& e) {
+        throw DB_ERROR{"Invalid --{} value: {}"_format(arg_history.name, e.what())};
+    }
+}
+
+void BlockchainDB::set_history(uint64_t blocks) {
+    if (blocks != 0)
+        throw DB_ERROR{
+                "Keeping a limited history needs the sqlite blockchain database backend "
+                "(--db-backend=sqlite)"};
+}
+
 std::unique_ptr<BlockchainDB> new_db(db_backend backend) {
     switch (backend) {
         case db_backend::lmdb: return std::make_unique<BlockchainLMDB>();
@@ -132,6 +164,7 @@ void BlockchainDB::init_options(boost::program_options::options_description& des
     command_line::add_arg(desc, arg_db_sync_mode);
     command_line::add_arg(desc, arg_db_salvage);
     command_line::add_arg(desc, arg_db_backend);
+    command_line::add_arg(desc, arg_history);
 }
 
 void BlockchainDB::pop_block() {

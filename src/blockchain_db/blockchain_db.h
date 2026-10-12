@@ -121,6 +121,7 @@ typedef std::pair<crypto::hash, uint64_t> tx_out_index;
 extern const command_line::arg_descriptor<std::string> arg_db_sync_mode;
 extern const command_line::arg_flag arg_db_salvage;
 extern const command_line::arg_descriptor<std::string> arg_db_backend;
+extern const command_line::arg_descriptor<std::string> arg_history;
 
 enum class db_backend { lmdb, sqlite };
 
@@ -838,6 +839,41 @@ class BlockchainDB {
      * @return the database, or nullptr if the backend does not use SQLite (or is not open).
      */
     virtual session::sqlite::Database* sqlite_database() { return nullptr; }
+
+    /**
+     * @brief gets how much history the database keeps, as stored in it
+     *
+     * @return 0 if it keeps all of it (a full node), otherwise the number of recent blocks whose
+     * bodies and transactions it keeps (at least that many: see history_window).
+     */
+    virtual uint64_t history() const { return 0; }
+
+    /**
+     * @brief gets the height of the oldest block whose body (and transactions) the database still
+     * has: everything below it has been dropped as outside the history it keeps
+     */
+    virtual uint64_t history_start() const { return 0; }
+
+    /**
+     * @brief changes how much history the database keeps
+     *
+     * Keeping less than before drops what is now outside the history straight away; keeping more
+     * keeps more from now on, but can't bring back what has already been dropped.
+     *
+     * @param blocks 0 to keep everything, otherwise at least HISTORY_MIN_BLOCKS
+     *
+     * @throw DB_ERROR if the backend can't keep a limited history, or when asked to keep
+     * everything again after keeping a limited history.
+     */
+    virtual void set_history(uint64_t blocks);
+
+    /**
+     * @brief drops the block bodies, transactions and other per-height data that have left the
+     * history the database keeps (see history_window), if any have
+     *
+     * Cheap when there is nothing to drop.  Does nothing for a database that keeps everything.
+     */
+    virtual void trim_history() {}
 
     // adds a block with the given metadata to the top of the blockchain, returns the new height
     /**
@@ -2053,6 +2089,15 @@ db_backend select_db_backend(
  * @throw DB_ERROR if the option value is not a backend name
  */
 std::optional<db_backend> requested_db_backend(const boost::program_options::variables_map& vm);
+
+/**
+ * @brief gets the history explicitly requested with the `--history` option, if any (see
+ * parse_history)
+ *
+ * @throw DB_ERROR if the option value is not a valid history
+ */
+std::optional<uint64_t> requested_history(
+        const boost::program_options::variables_map& vm, network_type nettype);
 
 /**
  * @brief constructs an (unopened) database object for the given backend

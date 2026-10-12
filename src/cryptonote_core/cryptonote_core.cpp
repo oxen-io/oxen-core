@@ -45,6 +45,7 @@ extern "C" {
 #include <unordered_set>
 
 #include "blockchain_db/blockchain_db.h"
+#include "blockchain_db/history.h"
 #include "blockchain_db/sqlite/rewards_db.h"
 #include "bls/bls_crypto.h"
 #include "checkpoints/checkpoints.h"
@@ -1059,6 +1060,26 @@ std::unique_ptr<BlockchainDB> core::init_blockchain_db(
     } catch (const DB_ERROR& e) {
         log::error(logcat, "Error opening database: {}", e.what());
         return nullptr;
+    }
+
+    // The history the database keeps is stored in it; the option only changes that.
+    try {
+        if (auto history = requested_history(vm, m_nettype))
+            db->set_history(*history);
+    } catch (const DB_ERROR& e) {
+        log::error(globallogcat, "{}", e.what());
+        return nullptr;
+    }
+    if (auto history = db->history()) {
+        log::info(globallogcat, "The blockchain database keeps the last {} blocks of history", history);
+        if (auto complete = history_complete_at(history, db->history_start(), db->height()))
+            log::warning(
+                    globallogcat,
+                    "The blockchain database's history is incomplete: it keeps blocks from {}, so "
+                    "the last {} blocks of history will only all be there from block {}",
+                    db->history_start(),
+                    history,
+                    *complete);
     }
 
     blockchain.set_user_options(
