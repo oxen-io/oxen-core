@@ -2624,41 +2624,25 @@ void core::do_uptime_proof_call() {
                 return;
             }
 
-            if (sn_info.bls_public_key != m_service_keys.pub_bls) {
-                auto hf = blockchain.get_network_version();
+            // A registration from before BLS keys (as seen while replaying the old chain) has no key
+            // to compare.
+            if (sn_info.bls_public_key && sn_info.bls_public_key != m_service_keys.pub_bls &&
+                blockchain.get_network_version() > hf::hf22_eth_fixup) {
                 auto reg_key = oxenc::to_hex(
                         sn_info.bls_public_key.begin(), sn_info.bls_public_key.begin() + 5);
                 auto our_key = oxenc::to_hex(
                         m_service_keys.pub_bls.begin(), m_service_keys.pub_bls.begin() + 5);
-                if (hf > hf::hf22_eth_fixup) {
-                    log::error(
-                            globallogcat,
-                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                            R"(BLS key mismatch; cannot submit uptime proof!
+                log::error(
+                        globallogcat,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                        R"(BLS key mismatch; cannot submit uptime proof!
 !!! The BLS pubkey loaded from the 'key_bls' file (0x{}...) does not
 !!! match the key used in this node's registration (0x{}...).  If this
 !!! node was transferred from another server please fix the key_bls file and
 !!! restart oxend.)",
-                            our_key,
-                            reg_key);
-                    return;
-                } else {
-                    // This is still bad in HF22, but we want to give early upgraders time to notice
-                    // and either fix it or unlock the node.
-                    log::warning(
-                            globallogcat,
-                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                            R"(BLS key mismatch!
-!!! The BLS pubkey loaded from the 'key_bls' file (0x{}...) does not
-!!! match the key used in this node's registration (0x{}...).  If this
-!!! node was transferred from another server please fix the key_bls file and
-!!! restart oxend.
-!!!
-!!! The Session node network WILL NOT accept such proofs starting in HF23; if
-!!! this key mismatch is not corrected by then the node will be deregistered.)",
-                            our_key,
-                            reg_key);
-                }
+                        our_key,
+                        reg_key);
+                return;
             }
 
             {
