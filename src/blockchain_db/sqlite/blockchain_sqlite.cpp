@@ -525,7 +525,7 @@ void BlockchainSQLite::close() {
     m_open = false;
     if (compacted) {
         fs::rename(*compacted, m_filename);
-        log::warning(
+        log::info(
                 globallogcat,
                 "Compacted the blockchain database to {}",
                 tools::get_human_readable_bytes(fs::file_size(m_filename)));
@@ -2051,7 +2051,7 @@ void BlockchainSQLite::run_history_catch_up(const std::function<bool()>& stop) {
     uint64_t to = history_trim_target();
     if (to <= from)
         return;
-    log::warning(
+    log::info(
             globallogcat,
             "Dropping the history of blocks {} to {} from the blockchain database (in the "
             "background)...",
@@ -2086,7 +2086,7 @@ void BlockchainSQLite::run_history_catch_up(const std::function<bool()>& stop) {
                     m_trim_chunk_limit);
         }
         if (auto now = clock::now(); now - last_progress >= 10s) {
-            log::warning(
+            log::info(
                     globallogcat,
                     "... dropped the history up to block {} ({:.0f}%)",
                     m_history_start - 1,
@@ -2102,7 +2102,7 @@ void BlockchainSQLite::run_history_catch_up(const std::function<bool()>& stop) {
             return;
         }
     }
-    log::warning(
+    log::info(
             globallogcat,
             "Dropped the history of blocks {} to {} in {:.1f}s",
             from,
@@ -2234,7 +2234,7 @@ std::optional<fs::path> BlockchainSQLite::compact_for_close() {
     // partial copy, which the next open removes, so it is tried again at the next shutdown.
     const uint64_t page_size = as_u64(m_sql->conn().prepared_get<int64_t>("PRAGMA page_size"));
     const uint64_t expected = (pages - free) * page_size;
-    log::warning(
+    log::info(
             globallogcat,
             "Compacting the blockchain database from {} to at most {}; this may take a few minutes "
             "(and needs that much free space while it runs)...",
@@ -2263,7 +2263,7 @@ std::optional<fs::path> BlockchainSQLite::compact_for_close() {
                         auto written = "{} of at most {} written"_format(
                                 tools::get_human_readable_bytes(ec ? 0 : size),
                                 tools::get_human_readable_bytes(p.expected));
-                        log::warning(globallogcat, "... compacting: {}", written);
+                        log::info(globallogcat, "... compacting: {}", written);
                         tools::systemd_extend_timeout(
                                 60s, "Compacting the blockchain database: {}"_format(written));
                         p.last = now;
