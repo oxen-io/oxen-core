@@ -126,6 +126,11 @@ bool convert_time_to_round(
 std::optional<timings> get_round_timings(
         const cryptonote::Blockchain& blockchain, uint64_t height, uint64_t prev_timestamp);
 
+// The hash that a pulse message's signature signs, for a round (of hard fork `hf`) building on the
+// block `top_block_hash`.  All of `msg` but its signature must be set.
+crypto::hash msg_signature_hash(
+        cryptonote::hf hf, const crypto::hash& top_block_hash, const message& msg);
+
 }  // namespace pulse
 
 template <>
