@@ -29,6 +29,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include "oxen_tests.h"
+#include "blockchain_db/history.h"
 #include "common/string_util.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -248,6 +249,107 @@ bool oxen_checkpointing_alt_chain_too_old_should_be_dropped::generate(std::vecto
   // possible because this alt-chain starts before the immutable height, it
   // should be deleted and removed.
   fork.create_and_add_next_block({}, nullptr, false, "Can not add block to alt chain because the alt chain starts before the immutable height. Those blocks should be locked into the chain");
+  return true;
+}
+
+// The generator makes the same blocks from the same parent, so a fork starts with a block whose
+// timestamp differs.
+static void add_diverging_block(oxen_chain_generator& gen)
+{
+  auto params = gen.next_block_params();
+  params.timestamp += 1;
+  oxen_blockchain_entry entry;
+  gen.create_block(entry, params, {});
+  gen.add_block(entry);
+}
+
+// NOTE: - On a chain longer than the minimum history (so that, run with --history, the node drops
+// the bodies of its old blocks): a reorg (which from HF9 on can't be deeper than the SN list's
+// recent history), and popping blocks back to a height within the kept history, which restores the
+// SN list and rewards from their stored states and replays from there.  Popping back past a limited
+// history is refused.
+bool oxen_history_window_reorg::generate(std::vector<test_event_entry>& events)
+{
+  auto hard_forks = oxen_generate_hard_fork_table(hf::hf15_ons);
+  oxen_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().version);
+  gen.add_mined_money_unlock_blocks();
+  gen.add_n_blocks(cryptonote::HISTORY_MIN_BLOCKS + 200);
+
+  oxen_chain_generator fork = gen;
+  gen.add_n_blocks(30);
+  add_diverging_block(fork);
+  fork.add_n_blocks(30);
+  const crypto::hash fork_top = cryptonote::get_block_hash(fork.top().block);
+  oxen_register_callback(events, "check_reorged", [fork_top](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_reorged");
+    CHECK_EQ(c.blockchain.get_tail_id().second, fork_top);
+    if (c.blockchain.db().history())
+      CHECK_TEST_CONDITION(c.blockchain.db().history_start() > 0);
+    return true;
+  });
+
+  oxen_register_callback(events, "check_pop_within_history", [](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_pop_within_history");
+    const uint64_t height = c.blockchain.get_current_blockchain_height();
+    c.blockchain.pop_blocks(200);
+    CHECK_EQ(c.blockchain.get_current_blockchain_height(), height - 200);
+    CHECK_EQ(c.service_node_list.height(), height - 201);
+    return true;
+  });
+
+  oxen_register_callback(events, "check_pop_past_history", [](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_pop_past_history");
+    auto& db = c.blockchain.db();
+    if (!db.history())
+      return true;
+    const uint64_t height = c.blockchain.get_current_blockchain_height();
+    c.blockchain.pop_blocks(height - db.history_start() + 1);
+    CHECK_EQ(c.blockchain.get_current_blockchain_height(), height);
+    return true;
+  });
+  return true;
+}
+
+// NOTE: - Before HF9 (where the SN list doesn't limit how deep an alt chain can go), a reorg to a
+// longer fork within the kept history, and then to one from before what a limited history keeps,
+// which only a node keeping all of its history switches to.
+bool oxen_history_window_reorg_before_hf9::generate(std::vector<test_event_entry>& events)
+{
+  std::vector<cryptonote::hard_fork> hard_forks{{hf::hf7, 0, 0}};
+  oxen_chain_generator gen(events, hard_forks);
+  oxen_chain_generator deep_fork = gen;
+  const uint64_t deep_fork_height = gen.height();
+  gen.add_n_blocks(cryptonote::HISTORY_MIN_BLOCKS + 200);
+
+  oxen_chain_generator fork = gen;
+  gen.add_n_blocks(100);
+  add_diverging_block(fork);
+  fork.add_n_blocks(100);
+  const crypto::hash fork_top = cryptonote::get_block_hash(fork.top().block);
+  oxen_register_callback(events, "check_reorged", [fork_top](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_reorged");
+    CHECK_EQ(c.blockchain.get_tail_id().second, fork_top);
+    return true;
+  });
+
+  add_diverging_block(deep_fork);
+  while (deep_fork.height() <= fork.height())
+    deep_fork.create_and_add_next_block();
+  const crypto::hash deep_top = cryptonote::get_block_hash(deep_fork.top().block);
+  oxen_register_callback(events, "check_deep_fork", [fork_top, deep_top, deep_fork_height](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_deep_fork");
+    const bool limited = c.blockchain.db().history();
+    CHECK_TEST_CONDITION(!limited || c.blockchain.db().history_start() > deep_fork_height);
+    const crypto::hash expected_top = limited ? fork_top : deep_top;
+    CHECK_EQ(c.blockchain.get_tail_id().second, expected_top);
+    return true;
+  });
   return true;
 }
 

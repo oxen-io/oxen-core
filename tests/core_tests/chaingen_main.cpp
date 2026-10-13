@@ -60,6 +60,7 @@ int main(int argc, char* argv[])
   command_line::add_arg(desc_options, arg_list_tests);
   command_line::add_arg(desc_options, arg_log_level);
   command_line::add_arg(desc_options, cryptonote::arg_db_backend);
+  command_line::add_arg(desc_options, cryptonote::arg_history);
 
   po::variables_map vm;
   bool r = command_line::handle_error_helper(desc_options, [&]()
@@ -86,9 +87,9 @@ int main(int argc, char* argv[])
 
   const std::string filter = command_line::get_arg(vm, arg_filter);
 
-  if (!command_line::is_arg_defaulted(vm, cryptonote::arg_db_backend))
-    core_test_core_args.push_back(
-        "--" + cryptonote::arg_db_backend.name + "=" + command_line::get_arg(vm, cryptonote::arg_db_backend));
+  for (const auto* arg : {&cryptonote::arg_db_backend, &cryptonote::arg_history})
+    if (!command_line::is_arg_defaulted(vm, *arg))
+      core_test_core_args.push_back("--" + arg->name + "=" + command_line::get_arg(vm, *arg));
 
   size_t tests_count = 0;
   std::vector<std::string> failed_tests;
@@ -101,6 +102,8 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(oxen_checkpointing_alt_chain_more_service_node_checkpoints_less_pow_overtakes);
     GENERATE_AND_PLAY(oxen_checkpointing_alt_chain_receive_checkpoint_votes_should_reorg_back);
     GENERATE_AND_PLAY(oxen_checkpointing_alt_chain_too_old_should_be_dropped);
+    GENERATE_AND_PLAY(oxen_history_window_reorg);
+    GENERATE_AND_PLAY(oxen_history_window_reorg_before_hf9);
     GENERATE_AND_PLAY(oxen_checkpointing_alt_chain_with_increasing_service_node_checkpoints);
     GENERATE_AND_PLAY(oxen_checkpointing_service_node_checkpoint_from_votes);
     GENERATE_AND_PLAY(oxen_checkpointing_service_node_checkpoints_check_reorg_windows);
