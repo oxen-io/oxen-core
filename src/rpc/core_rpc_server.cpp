@@ -56,6 +56,7 @@
 #include "core_rpc_server_binary_commands.h"
 #include "core_rpc_server_command_parser.h"
 #include "core_rpc_server_error_codes.h"
+#include "core_rpc_server_history.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
 #include "crypto/hash.h"
@@ -182,6 +183,35 @@ core_rpc_server::core_rpc_server(
 //------------------------------------------------------------------------------------------------------------------------------
 bool core_rpc_server::check_core_ready() {
     return m_p2p.get_payload_object().is_synchronized();
+}
+
+uint64_t core_rpc_server::history_start() const {
+    return m_core.blockchain.db().history_start();
+}
+
+void core_rpc_server::require_history(uint64_t height) const {
+    if (const auto start = history_start(); before_history(height, start))
+        throw history_not_kept(start);
+}
+
+void core_rpc_server::require_history(const crypto::hash& block_hash) const {
+    if (uint64_t height; history_start() && m_core.blockchain.db().block_exists(block_hash, &height))
+        require_history(height);
+}
+
+void core_rpc_server::require_history(const GET_OUTPUTS_BIN::request& req) const {
+    if (!req.get_txid || !history_start())
+        return;
+    auto& db = m_core.blockchain.db();
+    for (const auto& out : req.outputs) {
+        uint64_t height;
+        try {
+            height = db.get_output_key(out.amount, out.index).height;
+        } catch (const OUTPUT_DNE&) {
+            continue;
+        }
+        require_history(height);
+    }
 }
 
 #define CHECK_CORE_READY()            \
@@ -353,7 +383,22 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
 
     std::vector<Blockchain::BlockData> bs;
 
-    if (!m_core.blockchain.find_blockchain_supplement(
+    // A wallet asking to scan from before the history kept must be told so, rather than get
+    // nothing to scan.  (The blocks are sent from the requested height, or else from the last one
+    // the wallet has in common with us.)
+    if (const auto start = history_start()) {
+        uint64_t first = req.start_height;
+        if (first == 0 && !m_core.blockchain.find_blockchain_supplement(req.block_ids, first))
+            first = start;  // (no block in common, which fails below as on any node)
+        if (before_history(first, start)) {
+            res.status = history_not_kept(start).message;
+            return res;
+        }
+    }
+
+    bool found = false;
+    try {
+        found = m_core.blockchain.find_blockchain_supplement(
                 req.start_height,
                 req.block_ids,
                 bs,
@@ -361,8 +406,14 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
                 res.start_height,
                 req.prune,
                 !req.no_miner_tx,
-                GET_BLOCKS_BIN::MAX_COUNT)) {
-        res.status = "Failed";
+                GET_BLOCKS_BIN::MAX_COUNT);
+    } catch (const BLOCK_DNE&) {
+    }
+    if (!found) {
+        if (const auto start = history_start(); before_history(res.start_height, start))
+            res.status = history_not_kept(start).message;
+        else
+            res.status = "Failed";
         return res;
     }
 
@@ -434,14 +485,25 @@ GET_BLOCKS_BY_HEIGHT_BIN::response core_rpc_server::invoke(
     res.blocks.reserve(req.heights.size());
     for (uint64_t height : req.heights) {
         block blk;
+        std::vector<transaction> txs;
         try {
-            blk = m_core.blockchain.db().get_block_from_height(height);
+            require_history(height);
+            try {
+                blk = m_core.blockchain.db().get_block_from_height(height);
+            } catch (...) {
+                require_history(height);
+                throw;
+            }
+            m_core.blockchain.get_transactions(blk.tx_hashes, txs);
+            if (txs.size() != blk.tx_hashes.size())
+                require_history(height);
+        } catch (const rpc_error& e) {
+            res.status = e.message;
+            return res;
         } catch (...) {
             res.status = "Error retrieving block at height " + std::to_string(height);
             return res;
         }
-        std::vector<transaction> txs;
-        m_core.blockchain.get_transactions(blk.tx_hashes, txs);
         res.blocks.resize(res.blocks.size() + 1);
         res.blocks.back().block = block_to_blob(blk);
         for (auto& tx : txs)
@@ -473,8 +535,14 @@ GET_OUTPUTS_BIN::response core_rpc_server::invoke(
         res.status = "Too many outs requested";
     else if (m_core.blockchain.get_outs(req, res))
         res.status = STATUS_OK;
-    else
+    else {
         res.status = "Failed";
+        try {
+            require_history(req);
+        } catch (const rpc_error& e) {
+            res.status = e.message;
+        }
+    }
 
     return res;
 }
@@ -497,6 +565,7 @@ void core_rpc_server::invoke(GET_OUTPUTS& get_outputs, rpc_context context) {
 
     GET_OUTPUTS_BIN::response res_bin{};
     if (!m_core.blockchain.get_outs(req_bin, res_bin)) {
+        require_history(req_bin);
         get_outputs.response["status"] = STATUS_FAILED;
         return;
     }
@@ -540,7 +609,11 @@ GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::response core_rpc_server::invoke(
 
     bool r = m_core.blockchain.get_tx_outputs_gindexs(req.txid, res.o_indexes);
     if (!r) {
-        res.status = "Failed";
+        // A transaction still known to exist but not found is one from before the history kept
+        if (const auto start = history_start(); start && m_core.blockchain.db().tx_exists(req.txid))
+            res.status = history_not_kept(start).message;
+        else
+            res.status = "Failed";
         return res;
     }
     res.status = STATUS_OK;
@@ -982,6 +1055,13 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context) {
         }
     }
 
+    // A transaction still known to exist but not found is one from before the history kept.  (Only
+    // those without inputs are still known: any other is missed, as an unknown one is.)
+    if (const auto start = history_start())
+        for (const auto& h : missed_txs)
+            if (m_core.blockchain.db().tx_exists(h))
+                throw history_not_kept(start);
+
     uint64_t immutable_height = m_core.blockchain.get_immutable_height();
     auto blink_lock =
             pool.blink_shared_lock(std::defer_lock);  // Defer until/unless we actually need it
@@ -1123,6 +1203,7 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context) {
             if (m_core.blockchain.get_tx_outputs_gindexs(tx_hash, indices))
                 e["output_indices"] = std::move(indices);
             else {
+                require_history(height);
                 get.response["status"] = STATUS_FAILED;
                 return;
             }
@@ -1588,12 +1669,15 @@ void core_rpc_server::invoke(GET_BLOCK_HEADER_BY_HASH& gbh, rpc_context context)
         block blk;
         size_t block_size;
         bool orphan = false;
+        require_history(block_hash);
         bool have_block =
                 m_core.blockchain.get_block_by_hash(block_hash, blk, &block_size, &orphan);
-        if (!have_block)
+        if (!have_block) {
+            require_history(block_hash);
             throw rpc_error{
                     ERROR_INTERNAL,
                     "Internal error: can't get block by hash. Hash = " + hash + '.'};
+        }
         fill_block_header_response(
                 blk,
                 block_size,
@@ -1650,14 +1734,17 @@ void core_rpc_server::invoke(
                 ERROR_TOO_BIG_HEIGHT,
                 "Invalid start/end heights: requested range of {} blocks exceeds limit {}"_format(
                         end_height - start_height + 1, GET_BLOCK_HEADERS_RANGE::MAX_COUNT)};
+    require_history(start_height);
     for (int64_t h = start_height; h <= end_height; ++h) {
         block blk;
         size_t block_size;
         bool have_block = m_core.blockchain.get_block_by_height(h, blk, &block_size);
-        if (!have_block)
+        if (!have_block) {
+            require_history(h);
             throw rpc_error{
                     ERROR_INTERNAL,
                     "Internal error: can't get block by height. Height = {}."_format(h)};
+        }
         fill_block_header_response(
                 blk,
                 block_size,
@@ -1687,12 +1774,15 @@ void core_rpc_server::invoke(GET_BLOCK_HEADER_BY_HEIGHT& gbh, rpc_context contex
                             std::to_string(curr_height - 1)};
         block blk;
         size_t blk_size = 0;
+        require_history(height);
         bool have_block = m_core.blockchain.get_block_by_height(height, blk, &blk_size);
-        if (!have_block)
+        if (!have_block) {
+            require_history(height);
             throw rpc_error{
                     ERROR_INTERNAL,
                     "Internal error: can't get block by height. Height = " +
                             std::to_string(height) + '.'};
+        }
         fill_block_header_response(
                 blk,
                 blk_size,
@@ -1728,10 +1818,13 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
                     ERROR_WRONG_PARAM,
                     "Failed to parse hex representation of block hash. Hex = {}."_format(
                             get_block.request.hash)};
-        if (!m_core.blockchain.get_block_by_hash(block_hash, blk, &block_size, &orphan))
+        require_history(block_hash);
+        if (!m_core.blockchain.get_block_by_hash(block_hash, blk, &block_size, &orphan)) {
+            require_history(block_hash);
             throw rpc_error{
                     ERROR_ID_NOT_FOUND,
                     "Requested block hash: {} not found"_format(get_block.request.hash)};
+        }
     } else {
         auto req_height = get_block.request.height.value();
         if (auto curr_height = m_core.blockchain.get_current_blockchain_height();
@@ -1740,10 +1833,13 @@ void core_rpc_server::invoke(GET_BLOCK& get_block, rpc_context context) {
                     ERROR_TOO_BIG_HEIGHT,
                     "Requested block height: {} greater than current top block height: {}"_format(
                             req_height, curr_height - 1)};
-        if (!m_core.blockchain.get_block_by_height(*get_block.request.height, blk, &block_size))
+        require_history(req_height);
+        if (!m_core.blockchain.get_block_by_height(*get_block.request.height, blk, &block_size)) {
+            require_history(req_height);
             throw rpc_error{
                     ERROR_INTERNAL,
                     "Internal error: can't get block by height. Height = {}."_format(req_height)};
+        }
         block_hash = get_block_hash(blk);
         block_height = get_block.request.height;
     }
@@ -2005,8 +2101,18 @@ void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, rpc_context) {
 
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_COINBASE_TX_SUM& get_coinbase_tx_sum, rpc_context) {
-    if (auto sums = m_core.get_coinbase_tx_sum(
-                get_coinbase_tx_sum.request.height, get_coinbase_tx_sum.request.count)) {
+    const auto height = get_coinbase_tx_sum.request.height;
+    require_history(height);
+    std::optional<std::tuple<int64_t, int64_t, int64_t>> sums;
+    try {
+        sums = m_core.get_coinbase_tx_sum(height, get_coinbase_tx_sum.request.count);
+    } catch (...) {
+        require_history(height);
+        throw;
+    }
+    // Blocks dropped while they were being summed would be missing from the sums
+    require_history(height);
+    if (sums) {
         std::tie(
                 get_coinbase_tx_sum.response["emission_amount"],
                 get_coinbase_tx_sum.response["fee_amount"],
@@ -2053,17 +2159,16 @@ void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_con
                         "Error finding alternate chain attachment point";
                 return;
             }
-            cryptonote::block main_chain_parent_block;
+            crypto::hash main_chain_parent;
             try {
-                main_chain_parent_block = m_core.blockchain.db().get_block_from_height(
+                main_chain_parent = m_core.blockchain.db().get_block_hash_from_height(
                         i.first.height - i.second.size());
             } catch (const std::exception& e) {
                 get_alternate_chains.response["status"] =
                         "Error finding alternate chain attachment point";
                 return;
             }
-            chains.back().main_chain_parent_block =
-                    tools::hex_guts(get_block_hash(main_chain_parent_block));
+            chains.back().main_chain_parent_block = tools::hex_guts(main_chain_parent);
         }
         get_alternate_chains.response["chains"] = chains;
         get_alternate_chains.response["status"] = STATUS_OK;
@@ -2391,6 +2496,7 @@ void core_rpc_server::invoke(GET_QUORUM_STATE& get_quorum_state, rpc_context con
                 "Number of requested quorums greater than the allowed limit: " +
                         std::to_string(GET_QUORUM_STATE::MAX_COUNT) +
                         ", requested: " + std::to_string(count)};
+    require_history(std::min(*start, *end));
 
     bool at_least_one_succeeded = false;
     std::vector<GET_QUORUM_STATE::quorum_for_height> quorums;
@@ -3520,18 +3626,33 @@ void core_rpc_server::invoke(GET_CHECKPOINTS& get_checkpoints, rpc_context conte
     get_checkpoints.response["status"] = STATUS_OK;
     const auto& db = m_core.blockchain.db();
 
+    // Of the checkpoints before the history kept, the node only keeps the few it needs whatever its
+    // history, so a search through them would find just those.  A search back from the top (for
+    // `count` checkpoints) only gets there if it doesn't find enough after.
+    const auto searched_back_complete = [this, count](const std::vector<checkpoint_t>& found) {
+        if (const auto hist = history_start();
+            hist && (found.size() < count ||
+                     (!found.empty() && before_history(found.back().height, hist))))
+            throw history_not_kept(hist);
+    };
     std::vector<checkpoint_t> checkpoints;
     if (!start && !end) {
-        if (checkpoint_t top_checkpoint; db.get_top_checkpoint(top_checkpoint))
+        if (checkpoint_t top_checkpoint; db.get_top_checkpoint(top_checkpoint)) {
             checkpoints = db.get_checkpoints_range(top_checkpoint.height, 0, count);
-    } else if (!start)
+            searched_back_complete(checkpoints);
+        }
+    } else if (!start) {
         checkpoints = db.get_checkpoints_range(*end, 0, count);
-    else if (!end)
+        searched_back_complete(checkpoints);
+    } else if (!end) {
+        require_history(*start);
         checkpoints = db.get_checkpoints_range(*start, UINT64_MAX, count);
-    else
+    } else {
+        require_history(std::min(*start, *end));
         checkpoints = context.admin
                             ? db.get_checkpoints_range(*start, *end)
                             : db.get_checkpoints_range(*start, *end, GET_CHECKPOINTS::MAX_COUNT);
+    }
 
     get_checkpoints.response["checkpoints"] = std::move(checkpoints);
 }
@@ -3551,10 +3672,18 @@ void core_rpc_server::invoke(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_con
         throw rpc_error{
                 ERROR_WRONG_PARAM, "The provided end_height needs to be higher than start_height"};
 
-    if (!db.get_blocks(start_height, end_height - start_height + 1, blocks))
+    require_history(start_height);
+    bool got_blocks = false;
+    try {
+        got_blocks = db.get_blocks(start_height, end_height - start_height + 1, blocks);
+    } catch (const BLOCK_DNE&) {
+    }
+    if (!got_blocks) {
+        require_history(start_height);
         throw rpc_error{
                 ERROR_INTERNAL,
                 "Could not query blocks at requested height {}"_format(start_height)};
+    }
 
     get_sn_state_changes.response["start_height"] = start_height;
     get_sn_state_changes.response["end_height"] = end_height;
@@ -3613,6 +3742,9 @@ void core_rpc_server::invoke(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_con
             }
         }
     }
+
+    // Transactions dropped while they were being counted would be missing from the counts
+    require_history(start_height);
 
     get_sn_state_changes.response["total_deregister"] = total_deregister;
     get_sn_state_changes.response["total_decommission"] = total_decommission;

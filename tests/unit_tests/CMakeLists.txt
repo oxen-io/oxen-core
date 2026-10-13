@@ -70,6 +70,7 @@ add_executable(unit_tests
   peer_history.cpp
   random.cpp
   rolling_median.cpp
+  rpc_history.cpp
   serialization.cpp
   service_nodes.cpp
   service_nodes_swarm.cpp
