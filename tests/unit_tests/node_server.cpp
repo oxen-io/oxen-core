@@ -91,7 +91,6 @@ public:
     bool blink_rollback(uint64_t rollback_height) { return false; }
     bool get_short_chain_history(std::list<crypto::hash>& ids) const { return true; }
     bool is_within_compiled_block_hash_area(uint64_t height) const { return false; }
-    uint32_t get_blockchain_pruning_seed() const { return 0; }
 
     struct fake_db {
         cryptonote::difficulty_type get_block_cumulative_difficulty(uint64_t height) const { return 0; }

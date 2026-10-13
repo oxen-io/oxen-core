@@ -118,7 +118,6 @@ namespace tests
         uint64_t get_immutable_height() const { return 0; }
         uint64_t prevalidate_block_hashes(uint64_t height, const std::list<crypto::hash> &hashes) { return 0; }
         uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash> &hashes) { return 0; }
-        uint32_t get_blockchain_pruning_seed() const { return 0; }
 
         struct fake_db {
             cryptonote::difficulty_type get_block_cumulative_difficulty(uint64_t height) const { return 0; }

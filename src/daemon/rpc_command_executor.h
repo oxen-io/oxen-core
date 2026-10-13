@@ -157,8 +157,7 @@ class rpc_command_executor final {
 
     bool print_sn_state_changes(uint64_t start_height, std::optional<uint64_t> end_height);
 
-    bool print_peer_list(
-            bool white = true, bool gray = true, size_t limit = 0, bool pruned_only = false);
+    bool print_peer_list(bool white = true, bool gray = true, size_t limit = 0);
 
     bool print_peer_list_stats();
 

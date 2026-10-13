@@ -456,7 +456,7 @@ GET_HASHES_BIN::response core_rpc_server::invoke(GET_HASHES_BIN::request&& req, 
 
     res.start_height = req.start_height;
     if (!m_core.blockchain.find_blockchain_supplement(
-                req.block_ids, res.m_block_ids, res.start_height, res.current_height, false)) {
+                req.block_ids, res.m_block_ids, res.start_height, res.current_height)) {
         res.status = "Failed";
         return res;
     }
@@ -1342,14 +1342,11 @@ void core_rpc_server::invoke(SAVE_BC& save_bc, rpc_context) {
 }
 
 static nlohmann::json json_peer_info(const nodetool::peerlist_entry& peer) {
-    nlohmann::json p{
+    return nlohmann::json{
             {"id", peer.id},
             {"host", peer.adr.host_str()},
             {"port", peer.adr.port()},
             {"last_seen", peer.last_seen}};
-    if (peer.pruning_seed)
-        p["pruning_seed"] = peer.pruning_seed;
-    return p;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
@@ -1792,10 +1789,6 @@ static json json_connection_info(const connection_info& ci) {
         info["local_ip"] = true;
     if (uint16_t port; tools::parse_int(ci.port, port) && port > 0)
         info["port"] = port;
-    // Included for completeness, but undocumented as this is not currently actually used or
-    // supported on Oxen:
-    if (ci.pruning_seed)
-        info["pruning_seed"] = ci.pruning_seed;
     return info;
 }
 
@@ -2156,10 +2149,6 @@ void core_rpc_server::invoke(SYNC_INFO& sync, rpc_context) {
     sync.response["height"] = top_height + 1;  // turn top block height into blockchain height
     if (auto target_height = m_core.get_target_blockchain_height(); target_height > top_height + 1)
         sync.response["target_height"] = target_height;
-    // Don't put this into the response until it actually does something on Oxen:
-    if (false)
-        sync.response["next_needed_pruning_seed"] =
-                m_p2p.get_payload_object().get_next_needed_pruning_stripe().second;
 
     auto& peers = sync.response["peers"];
     peers = json{};

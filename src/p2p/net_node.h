@@ -280,12 +280,6 @@ class node_server
         return m_blocked_subnets;
     }
 
-    virtual void add_used_stripe_peer(
-            const typename t_payload_net_handler::connection_context& context);
-    virtual void remove_used_stripe_peer(
-            const typename t_payload_net_handler::connection_context& context);
-    virtual void clear_used_stripe_peers();
-
   private:
     bool islimitup = false;
     bool islimitdown = false;
@@ -530,10 +524,6 @@ class node_server
 
     std::mutex m_host_fails_score_lock;
     std::map<std::string, uint64_t> m_host_fails_score;
-
-    std::mutex m_used_stripe_peers_mutex;
-    std::array<std::list<epee::net_utils::network_address>, 1 << cryptonote::PRUNING_LOG_STRIPES>
-            m_used_stripe_peers;
 
     epee::connection_id_t m_network_id{};
     cryptonote::network_type m_nettype;

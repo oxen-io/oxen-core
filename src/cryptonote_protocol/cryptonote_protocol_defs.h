@@ -81,8 +81,6 @@ struct connection_info {
 
     uint64_t height;
 
-    uint32_t pruning_seed;
-
     uint8_t address_type;
 };
 
@@ -156,7 +154,6 @@ struct CORE_SYNC_DATA {
     uint64_t cumulative_difficulty;
     crypto::hash top_id;
     hf top_version;
-    uint32_t pruning_seed;
     std::vector<uint64_t> blink_blocks;
     std::vector<crypto::hash> blink_hash;
 

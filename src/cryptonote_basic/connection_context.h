@@ -72,7 +72,6 @@ struct cryptonote_connection_context : public epee::net_utils::connection_contex
     epee::copyable_atomic m_callback_request_count{
             0};  // in debug purpose: problem with double callback rise
     crypto::hash m_last_known_hash{};
-    uint32_t m_pruning_seed{0};
     bool m_anchor{false};
     // size_t m_score{0};  TODO: add score calculations
 };

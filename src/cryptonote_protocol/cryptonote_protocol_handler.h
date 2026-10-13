@@ -104,7 +104,6 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     bool no_sync() const { return m_no_sync; }
     void set_no_sync(bool value) { m_no_sync = value; }
     std::string get_peers_overview() const;
-    std::pair<uint32_t, uint32_t> get_next_needed_pruning_stripe() const;
     bool needs_new_sync_connections() const;
 
   private:
@@ -202,7 +201,6 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     //----------------------------------------------------------------------------------
     // bool get_payload_sync_data(HANDSHAKE_DATA::request& hshd, cryptonote_connection_context&
     // context);
-    bool should_drop_connection(cryptonote_connection_context& context, uint32_t next_stripe);
     // `caller` says where the request comes from, for logging.
     bool request_missing_objects(
             cryptonote_connection_context& context,
@@ -218,7 +216,6 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     bool check_standby_peers();
     bool update_sync_search();
     int try_add_next_blocks(cryptonote_connection_context& context);
-    void notify_new_stripe(cryptonote_connection_context& context, uint32_t stripe);
     void skip_unneeded_hashes(cryptonote_connection_context& context, bool check_block_queue) const;
 
     t_core& m_core;

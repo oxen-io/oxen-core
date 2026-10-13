@@ -49,7 +49,6 @@
 #include "common/command_line.h"
 #include "common/file.h"
 #include "common/periodic_task.h"
-#include "common/pruning.h"
 #include "common/string_util.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/connection_context.h"
@@ -616,29 +615,6 @@ bool node_server<t_payload_net_handler>::init(const boost::program_options::vari
     for (const auto& p : m_command_line_peers)
         m_network_zones.at(p.adr.get_zone()).m_peerlist.append_with_peer_white(p);
 
-    // all peers are now setup
-    if constexpr (cryptonote::PRUNING_DEBUG_SPOOF_SEED) {
-        for (auto& zone : m_network_zones) {
-            std::list<peerlist_entry> plw;
-            while (zone.second.m_peerlist.get_white_peers_count()) {
-                plw.push_back(peerlist_entry());
-                zone.second.m_peerlist.get_white_peer_by_index(plw.back(), 0);
-                zone.second.m_peerlist.remove_from_peer_white(plw.back());
-            }
-            for (auto& e : plw)
-                zone.second.m_peerlist.append_with_peer_white(e);
-
-            std::list<peerlist_entry> plg;
-            while (zone.second.m_peerlist.get_gray_peers_count()) {
-                plg.push_back(peerlist_entry());
-                zone.second.m_peerlist.get_gray_peer_by_index(plg.back(), 0);
-                zone.second.m_peerlist.remove_from_peer_gray(plg.back());
-            }
-            for (auto& e : plg)
-                zone.second.m_peerlist.append_with_peer_gray(e);
-        }
-    }
-
     // only in case if we really sure that we have external visible ip
     m_have_address = true;
 
@@ -1043,9 +1019,7 @@ bool node_server<t_payload_net_handler>::do_handshake_with_peer(
                     pi = context.peer_id = rsp.node_data.peer_id;
                     network_zone& zone = m_network_zones.at(context.m_remote_address.get_zone());
                     zone.m_peerlist.set_peer_just_seen(
-                            rsp.node_data.peer_id,
-                            context.m_remote_address,
-                            context.m_pruning_seed);
+                            rsp.node_data.peer_id, context.m_remote_address);
 
                     // move
                     if (rsp.node_data.peer_id == zone.m_config.m_peer_id) {
@@ -1056,11 +1030,7 @@ bool node_server<t_payload_net_handler>::do_handshake_with_peer(
                         hsh_result = false;
                         return;
                     }
-                    log::info(
-                            logcat,
-                            "{}New connection handshaked, pruning seed {}",
-                            context,
-                            epee::string_tools::to_string_hex(context.m_pruning_seed));
+                    log::info(logcat, "{}New connection handshaked", context);
                     log::debug(logcat, "{} COMMAND_HANDSHAKE INVOKED OK", context);
                 } else {
                     log::debug(logcat, "{} COMMAND_HANDSHAKE(AND CLOSE) INVOKED OK", context);
@@ -1123,9 +1093,7 @@ bool node_server<t_payload_net_handler>::do_peer_timed_sync(
                 if (!context.m_is_income)
                     m_network_zones.at(context.m_remote_address.get_zone())
                             .m_peerlist.set_peer_just_seen(
-                                    context.peer_id,
-                                    context.m_remote_address,
-                                    context.m_pruning_seed);
+                                    context.peer_id, context.m_remote_address);
                 if (!m_payload_handler.process_payload_sync_data(
                             std::move(rsp.payload_data), context, false)) {
                     m_network_zones.at(context.m_remote_address.get_zone())
@@ -1303,7 +1271,6 @@ bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_p
     time_t last_seen;
     time(&last_seen);
     pe_local.last_seen = static_cast<int64_t>(last_seen);
-    pe_local.pruning_seed = con->m_pruning_seed;
     zone.m_peerlist.append_with_peer_white(pe_local);
     // update last seen and push it to peerlist manager
 
@@ -1671,8 +1638,9 @@ bool node_server<t_payload_net_handler>::connections_maker() {
 
         size_t conn_count = get_outgoing_connections_count(zone.second);
         while (conn_count < zone.second.m_config.m_net_config.max_out_connection_count) {
+            // While syncing, only white (known good) peers
             const size_t expected_white_connections =
-                    m_payload_handler.get_next_needed_pruning_stripe().second
+                    !m_payload_handler.is_synchronized()
                             ? zone.second.m_config.m_net_config.max_out_connection_count
                             : base_expected_white_connections;
             log::debug(logcat, "Expected white connections {}, connection count {}", expected_white_connections, conn_count);
@@ -1948,12 +1916,6 @@ bool node_server<t_payload_net_handler>::sanitize_peerlist(
             if (ipv4.ip() == 0)
                 ignore = true;
         }
-        if (be.pruning_seed &&
-            (be.pruning_seed < tools::make_pruning_seed(1, cryptonote::PRUNING_LOG_STRIPES) ||
-             be.pruning_seed > tools::make_pruning_seed(
-                                       1ul << cryptonote::PRUNING_LOG_STRIPES,
-                                       cryptonote::PRUNING_LOG_STRIPES)))
-            ignore = true;
         if (ignore) {
             log::debug(logcat, "Ignoring {}", be.adr.str());
             std::swap(local_peerlist[i], local_peerlist[local_peerlist.size() - 1]);
@@ -1962,12 +1924,6 @@ bool node_server<t_payload_net_handler>::sanitize_peerlist(
             continue;
         }
         local_peerlist[i].last_seen = 0;
-
-        if constexpr (cryptonote::PRUNING_DEBUG_SPOOF_SEED)
-            be.pruning_seed = tools::make_pruning_seed(
-                    1 + (be.adr.as<epee::net_utils::ipv4_network_address>().ip()) %
-                                    (1ul << cryptonote::PRUNING_LOG_STRIPES),
-                    cryptonote::PRUNING_LOG_STRIPES);
     }
     return true;
 }
@@ -2442,7 +2398,6 @@ int node_server<t_payload_net_handler>::handle_handshake(
             time(&last_seen);
             pe.last_seen = static_cast<int64_t>(last_seen);
             pe.id = peer_id_l;
-            pe.pruning_seed = context.m_pruning_seed;
             this->m_network_zones.at(context.m_remote_address.get_zone())
                     .m_peerlist.append_with_peer_white(pe);
             log::debug(
@@ -2772,7 +2727,7 @@ bool node_server<t_payload_net_handler>::gray_peerlist_housekeeping() {
                     pe.adr.host_str(),
                     peerid_to_string(pe.id));
         } else {
-            zone.second.m_peerlist.set_peer_just_seen(pe.id, pe.adr, pe.pruning_seed);
+            zone.second.m_peerlist.set_peer_just_seen(pe.id, pe.adr);
             log::debug(
                     logcat,
                     "PEER PROMOTED TO WHITE PEER LIST IP address: {} Peer ID: {}",
@@ -2781,39 +2736,6 @@ bool node_server<t_payload_net_handler>::gray_peerlist_housekeeping() {
         }
     }
     return true;
-}
-
-template <class t_payload_net_handler>
-void node_server<t_payload_net_handler>::add_used_stripe_peer(
-        const typename t_payload_net_handler::connection_context& context) {
-    const uint32_t stripe = tools::get_pruning_stripe(context.m_pruning_seed);
-    if (stripe == 0 || stripe > (1ul << cryptonote::PRUNING_LOG_STRIPES))
-        return;
-    const uint32_t index = stripe - 1;
-    std::lock_guard lock{m_used_stripe_peers_mutex};
-    log::info(logcat, "adding stripe {} peer: {}", stripe, context.m_remote_address.str());
-    std::erase(m_used_stripe_peers[index], context.m_remote_address);
-    m_used_stripe_peers[index].push_back(context.m_remote_address);
-}
-
-template <class t_payload_net_handler>
-void node_server<t_payload_net_handler>::remove_used_stripe_peer(
-        const typename t_payload_net_handler::connection_context& context) {
-    const uint32_t stripe = tools::get_pruning_stripe(context.m_pruning_seed);
-    if (stripe == 0 || stripe > (1ul << cryptonote::PRUNING_LOG_STRIPES))
-        return;
-    const uint32_t index = stripe - 1;
-    std::lock_guard lock{m_used_stripe_peers_mutex};
-    log::info(logcat, "removing stripe {} peer: {}", stripe, context.m_remote_address.str());
-    std::erase(m_used_stripe_peers[index], context.m_remote_address);
-}
-
-template <class t_payload_net_handler>
-void node_server<t_payload_net_handler>::clear_used_stripe_peers() {
-    std::lock_guard lock{m_used_stripe_peers_mutex};
-    log::info(logcat, "clearing used stripe peers");
-    for (auto& e : m_used_stripe_peers)
-        e.clear();
 }
 
 template <typename t_payload_net_handler>

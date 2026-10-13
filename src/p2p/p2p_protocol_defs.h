@@ -48,7 +48,6 @@ struct peerlist_entry {
     epee::net_utils::network_address adr;
     peerid_type id;
     int64_t last_seen;
-    uint32_t pruning_seed;
 
     KV_MAP_SERIALIZABLE
 };

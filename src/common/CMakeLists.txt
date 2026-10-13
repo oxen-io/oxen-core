@@ -41,7 +41,6 @@ oxen_add_library(common
   oxen.cpp
   notify.cpp
   password.cpp
-  pruning.cpp
   random.cpp
   rules.cpp
   scoped_message_writer.cpp

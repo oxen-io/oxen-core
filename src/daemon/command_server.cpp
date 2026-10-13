@@ -50,7 +50,7 @@ void command_server::init_commands(cryptonote::rpc::core_rpc_server* rpc_server)
     m_command_lookup.set_handler(
             "print_pl",
             [this](const auto& x) { return m_parser.print_peer_list(x); },
-            "print_pl [white] [gray] [pruned] [<limit>]",
+            "print_pl [white] [gray] [<limit>]",
             "Print the current peer list.");
     m_command_lookup.set_handler(
             "print_pl_stats",

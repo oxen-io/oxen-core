@@ -507,7 +507,6 @@ class Blockchain {
      * @param hashes the hashes to be returned, return-by-reference
      * @param start_height the start height, return-by-reference
      * @param current_height the current blockchain height, return-by-reference
-     * @param clip_pruned whether to constrain results to unpruned data
      *
      * @return true if a block found in common, else false
      */
@@ -515,8 +514,7 @@ class Blockchain {
             const std::list<crypto::hash>& qblock_ids,
             std::vector<crypto::hash>& hashes,
             uint64_t& start_height,
-            uint64_t& current_height,
-            bool clip_pruned) const;
+            uint64_t& current_height) const;
 
     /**
      * @brief get recent block hashes for a foreign chain
@@ -1093,9 +1091,6 @@ class Blockchain {
         return is_within_compiled_block_hash_area(m_db->height());
     }
     uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash>& hashes);
-    // Blockchain pruning is not supported, so this is always 0; it remains only for the p2p code
-    // that still advertises and checks pruning seeds.
-    uint32_t get_blockchain_pruning_seed() const { return 0; }
 
     uint64_t get_immutable_height() const;
 

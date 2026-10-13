@@ -52,7 +52,6 @@
 #include "common/lock.h"
 #include "common/systemd.h"
 #include "common/median.h"
-#include "common/pruning.h"
 #include "common/random.h"
 #include "common/rules.h"
 #include "common/sha256sum.h"
@@ -3167,18 +3166,11 @@ bool Blockchain::handle_get_blocks(
         }
 
         if (missed_tx_ids.size() != 0) {
-            // do not display an error if the peer asked for an unpruned block which we are not
-            // meant to have
-            if (tools::has_unpruned_block(
-                        block.get_height(),
-                        get_current_blockchain_height(),
-                        get_blockchain_pruning_seed())) {
-                log::error(
-                        logcat,
-                        "Error retrieving blocks, missed {} transactions for block with hash: {}",
-                        missed_tx_ids.size(),
-                        get_block_hash(block));
-            }
+            log::error(
+                    logcat,
+                    "Error retrieving blocks, missed {} transactions for block with hash: {}",
+                    missed_tx_ids.size(),
+                    get_block_hash(block));
 
             rsp.missed_ids.insert(rsp.missed_ids.end(), missed_tx_ids.begin(), missed_tx_ids.end());
             return false;
@@ -3616,8 +3608,7 @@ bool Blockchain::find_blockchain_supplement(
         const std::list<crypto::hash>& qblock_ids,
         std::vector<crypto::hash>& hashes,
         uint64_t& start_height,
-        uint64_t& current_height,
-        bool clip_pruned) const {
+        uint64_t& current_height) const {
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};
 
@@ -3628,14 +3619,7 @@ bool Blockchain::find_blockchain_supplement(
 
     db_rtxn_guard rtxn_guard{*m_db};
     current_height = get_current_blockchain_height();
-    uint64_t stop_height = current_height;
-    if (clip_pruned) {
-        const uint32_t pruning_seed = get_blockchain_pruning_seed();
-        start_height =
-                tools::get_next_unpruned_block_height(start_height, current_height, pruning_seed);
-        stop_height =
-                tools::get_next_pruned_block_height(start_height, current_height, pruning_seed);
-    }
+    const uint64_t stop_height = current_height;
     size_t count = 0;
     hashes.reserve(
             std::min((size_t)(stop_height - start_height), BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT));
@@ -3654,7 +3638,7 @@ bool Blockchain::find_blockchain_supplement(
     std::unique_lock lock{*this};
 
     bool result = find_blockchain_supplement(
-            qblock_ids, resp.m_block_ids, resp.start_height, resp.total_height, true);
+            qblock_ids, resp.m_block_ids, resp.start_height, resp.total_height);
     if (result)
         resp.cumulative_difficulty = m_db->get_block_cumulative_difficulty(resp.total_height - 1);
 

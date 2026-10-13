@@ -54,7 +54,6 @@
 #include "common/guts.h"
 #include "common/median.h"
 #include "common/password.h"
-#include "common/pruning.h"
 #include "common/scoped_message_writer.h"
 #include "common/string_util.h"
 #include "cryptonote_basic/hardfork.h"
@@ -198,11 +197,7 @@ miner tx hash: {})",
         return get_human_time_ago(std::chrono::seconds{now - t}, abbreviate);
     }
 
-    bool print_peer(std::string_view prefix, const json& peer, bool pruned_only) {
-        auto pruning_seed = peer.value<uint64_t>("pruning_seed", 0);
-        if (pruned_only && pruning_seed == 0)
-            return false;
-
+    void print_peer(std::string_view prefix, const json& peer) {
         time_t now = std::time(nullptr);
         time_t last_seen = peer.value<time_t>("last_seen", 0);
 
@@ -212,17 +207,14 @@ miner tx hash: {})",
                 peer["id"].get<uint64_t>(),
                 "{}:{}"_format(peer["host"].get<std::string_view>(), peer["port"].get<uint16_t>()),
                 last_seen == 0 ? "never" : get_human_time_ago(last_seen, now));
-        return true;
     }
 
-    template <typename... Args>
-    void print_peers(std::string_view prefix, const json& peers, size_t& limit, Args&&... args) {
+    void print_peers(std::string_view prefix, const json& peers, size_t& limit) {
         if (limit > 0)
             tools::msg_writer(
                     "{:<10} {:<16}    {:<30} {}", "Type", "Peer id", "Remote address", "Last seen");
-        for (auto it = peers.begin(); it != peers.end() && limit > 0; it++)
-            if (print_peer(prefix, *it, std::forward<Args>(args)...))
-                limit--;
+        for (auto it = peers.begin(); it != peers.end() && limit > 0; it++, limit--)
+            print_peer(prefix, *it);
     }
 
 }  // namespace
@@ -385,7 +377,7 @@ bool rpc_command_executor::print_sn_state_changes(
     return true;
 }
 
-bool rpc_command_executor::print_peer_list(bool white, bool gray, size_t limit, bool pruned_only) {
+bool rpc_command_executor::print_peer_list(bool white, bool gray, size_t limit) {
     auto maybe_pl =
             try_running([this] { return invoke<GET_PEER_LIST>(); }, "Failed to retrieve peer list");
     if (!maybe_pl)
@@ -396,11 +388,11 @@ bool rpc_command_executor::print_peer_list(bool white, bool gray, size_t limit, 
         limit = std::numeric_limits<size_t>::max();
     if (white) {
         tools::success_msg_writer("{} whitelist peers:", pl["white_list"].size());
-        print_peers("white", pl["white_list"], limit, pruned_only);
+        print_peers("white", pl["white_list"], limit);
     }
     if (gray) {
         tools::success_msg_writer("{} graylist peers:", pl["gray_list"].size());
-        print_peers("gray", pl["gray_list"], limit, pruned_only);
+        print_peers("gray", pl["gray_list"], limit);
     }
 
     return true;
@@ -1700,8 +1692,6 @@ bool rpc_command_executor::sync_info() {
     for (const auto& p : peers)
         current_download += p["current_download"].get<uint64_t>();
     msg.append("\nDownloading at {:.1f} kB/s", current_download / 1000.0);
-    if (auto nnps = sync.value("next_needed_pruning_seed", 0))
-        msg.append("\nNext needed pruning seed: {}", nnps);
 
     msg.append("\n{} peers", peers.size());
     for (const auto& [cid, p] : peers.items()) {
