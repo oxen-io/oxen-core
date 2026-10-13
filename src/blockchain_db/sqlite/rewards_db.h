@@ -263,6 +263,12 @@ class RewardsDB {
     uint64_t height = 0;
     const cryptonote::network_type nettype;
 
+    // How much history the blockchain database keeps (see BlockchainDB::history()).  When it is
+    // limited, the snapshots are kept across the whole of it (so that the rewards can be restored
+    // to anywhere in it, as the SN list can) rather than just the newest few, and none are
+    // archived (as the blocks to replay from an archived snapshot aren't kept).
+    uint64_t kept_history = 0;
+
   protected:
     // Makes this a copy of `other`'s in-memory state (as the core tests' chain generator copies
     // its rewards along with its chain).

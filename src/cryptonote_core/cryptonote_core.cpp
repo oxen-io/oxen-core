@@ -628,7 +628,7 @@ bool core::init(
         // (We can't properly pop blocks in such a case because the reboot changed the serialized
         // blockchain format, and even if we could, it's not worth the time because it'll pop all
         // the way back to empty anyway).
-        auto block1_hash = get_block_hash(db->get_block_from_height(1));
+        auto block1_hash = db->get_block_hash_from_height(1);
         const std::vector<std::string_view> STAGENET_OLD_BLOCK1_HASHES = {
                 "13633f8335998fe174f12752ea86d25636c9f777f441e9fa205ae4b8868e1f03"sv,
                 "11597c2be5719701d8d1000cfccf46ef7b52a3d80573300d38aa5bf283b43b6a"sv,
@@ -688,6 +688,7 @@ bool core::init(
         ons_sql = m_ons_sql.get();
     }
     auto rewards_db = std::make_unique<cryptonote::RewardsDB>(m_nettype, *rewards_sql);
+    rewards_db->kept_history = db->history();
 
     // We need this hook to get added before the block hook below, so that it fires first and
     // catches the start of a reorg before the block hook fires for the block in the reorg.

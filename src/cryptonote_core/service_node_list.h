@@ -604,6 +604,11 @@ class service_node_list {
             const std::optional<rescan_context>& rescan = std::nullopt,
             bool hash_listed = false);
     void blockchain_detached(uint64_t height);
+
+    // Whether detaching the chain down to `height` blocks could be followed: the SN list and the
+    // rewards both have a state at or below its new top block to restore and replay from, or can
+    // be rebuilt from scratch (always, when the blockchain database keeps all of its history).
+    bool can_detach_to(uint64_t height) const;
     void init();
     void validate_miner_tx(const cryptonote::miner_tx_info& info) const;
     void alt_block_add(const cryptonote::block_add_info& info);
@@ -1460,6 +1465,17 @@ class service_node_list {
     // where they're written every STATE_SNAPSHOT_INTERVAL blocks) rather than its short-term blob,
     // written by store() (LMDB).
     bool states_in_db() const;
+
+    // How many of the most recent blocks the blockchain database keeps the history of (see
+    // cryptonote::history_window): 0 when it keeps all of it.
+    uint64_t kept_history_window() const;
+
+    // Whether the SN list (and with it the rewards) can start over from scratch, replaying the
+    // blocks from HF9: only if the blockchain database still has them all.
+    bool can_rescan() const;
+
+    // Whether `height` is before HF9, where the SN list holds nothing.
+    bool before_hf9(uint64_t height) const;
 
     // Stores m_state, whose height is a multiple of STATE_SNAPSHOT_INTERVAL, along with the
     // quorums of the heights before it that a restart from it needs, and deletes the stored

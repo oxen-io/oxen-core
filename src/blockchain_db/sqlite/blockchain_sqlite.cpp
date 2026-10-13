@@ -2009,6 +2009,8 @@ void BlockchainSQLite::trim_history_to(uint64_t to) {
     }
     if (large)
         log::warning(globallogcat, "Dropped the history of blocks {} to {}", from, to - 1);
+    else
+        log::debug(logcat, "Dropped the history of blocks {} to {}", from, to - 1);
 }
 
 void BlockchainSQLite::compact_if_worthwhile() {

@@ -48,6 +48,7 @@
 #include <type_traits>
 
 #include "blockchain.h"
+#include "blockchain_db/history.h"
 #include "blockchain_db/sqlite/rewards_db.h"
 #include "bls/bls_crypto.h"
 #include "common/exception.h"
@@ -254,6 +255,10 @@ static std::optional<service_node_list::state_t> find_restorable_state(
         const cryptonote::BlockchainDB& db,
         service_node_list* snl,
         uint64_t min_height,
+        uint64_t height,
+        const std::function<bool(uint64_t)>& usable);
+static bool has_restorable_state(
+        const cryptonote::BlockchainDB& db,
         uint64_t height,
         const std::function<bool(uint64_t)>& usable);
 
@@ -4628,9 +4633,10 @@ block_add_result service_node_list::process_block(
     }
     TracyCZoneEnd(store_state_into_recent);
 
-    // NOTE: Store the state into the archive if necessary
+    // NOTE: Store the state into the archive if necessary (which a node keeping a limited history
+    // doesn't keep: it couldn't replay the blocks from an archived state outside that history)
     const auto& netconf = get_config(blockchain.nettype());
-    {
+    if (!blockchain.db().history()) {
         ZoneScopedN("Store state into archive");
         // NOTE: To verify the validity of the SNL at a given height, you need the previous N blocks
         // worth of quorum data.
@@ -4839,6 +4845,23 @@ void service_node_list::blockchain_detached(uint64_t height) {
         cryptonote::db_wtxn_guard txn_guard{blockchain.db()};
         blockchain.db().delete_service_node_archives(
                 m_state.height + 1, std::numeric_limits<uint64_t>::max());
+    } else if (before_hf9(target_height)) {
+        // Before HF9 there is nothing to restore: the SN list (and the rewards) are just empty at
+        // the target height, with nothing to replay.
+        m_transient->state_history.clear();
+        reset(true);
+        m_state.height = target_height;
+        detach_label = " (before HF9)";
+    } else if (!can_rescan()) {
+        // Starting over would mean replaying blocks from HF9, which aren't kept.  (Blockchain
+        // refuses rewinds that would get here: see can_detach_to.)
+        log::error(
+                globallogcat,
+                "Unable to rewind the service node list to height {}: that is further back than "
+                "the history this node keeps.  Re-bootstrap the node from a snapshot.",
+                target_height);
+        throw oxen::traced<std::runtime_error>{
+                "service node list rewind to {} is beyond the kept history"_format(target_height)};
     } else {
         // NOTE: No height that both can restore to: start over.  (This also resets the rewards.)
         m_transient->state_history.clear();
@@ -4856,6 +4879,33 @@ void service_node_list::blockchain_detached(uint64_t height) {
 
     if (rewards)
         rewards->blockchain_detached(m_state.height, blockchain.rewards_write_tx());
+}
+
+bool service_node_list::before_hf9(uint64_t height) const {
+    auto hf9 = hard_fork_begins(blockchain.nettype(), hf::hf9_service_nodes);
+    return !hf9 || height < *hf9;
+}
+
+bool service_node_list::can_rescan() const {
+    return blockchain.db().history_start() <=
+           hard_fork_begins(blockchain.nettype(), hf::hf9_service_nodes).value_or(1);
+}
+
+bool service_node_list::can_detach_to(uint64_t height) const {
+    const uint64_t target_height = height ? height - 1 : 0;
+    if (can_rescan() || before_hf9(target_height))
+        return true;
+    std::lock_guard lock(m_sn_mutex);
+    auto* rewards = blockchain.maybe_rewards_db();
+    auto usable = [rewards](uint64_t h) { return !rewards || rewards->can_restore(h); };
+
+    // The same places blockchain_detached looks in
+    if (m_state.height <= target_height && usable(m_state.height))
+        return true;
+    for (const auto& state : m_transient->state_history)
+        if (!state.only_loaded_quorums && state.height <= target_height && usable(state.height))
+            return true;
+    return has_restorable_state(blockchain.db(), target_height, usable);
 }
 
 service_nodes::payout service_node_list::state_t::get_next_block_leader() const {
@@ -5707,6 +5757,20 @@ static bool has_predecessor_quorums(const cryptonote::BlockchainDB& db, uint64_t
     return true;
 }
 
+// Whether there is a stored full state at or below `height` that find_restorable_state would
+// restore (without parsing it).
+static bool has_restorable_state(
+        const cryptonote::BlockchainDB& db,
+        uint64_t height,
+        const std::function<bool(uint64_t)>& usable) {
+    for (auto found = db.get_newest_full_service_node_archive(height); found;
+         found = found->first ? db.get_newest_full_service_node_archive(found->first - 1)
+                              : std::nullopt)
+        if (usable(found->first) && has_predecessor_quorums(db, found->first))
+            return true;
+    return false;
+}
+
 // The newest stored full state in [min_height, height] that can be restored (see
 // has_predecessor_quorums), and that `usable` accepts the height of, if any.
 static std::optional<service_node_list::state_t> find_restorable_state(
@@ -5731,6 +5795,13 @@ bool service_node_list::states_in_db() const {
     return blockchain.db().sqlite_database() != nullptr;
 }
 
+uint64_t service_node_list::kept_history_window() const {
+    return cryptonote::history_window(
+            blockchain.nettype(),
+            blockchain.db().history(),
+            blockchain.get_current_blockchain_height());
+}
+
 void service_node_list::store_state_snapshot() {
     ZoneScoped;
     std::lock_guard lock{m_sn_mutex};
@@ -5743,8 +5814,12 @@ void service_node_list::store_state_snapshot() {
     // quorums of the heights before it; and the quorums --store-quorum-history asks for.  (The
     // full state of the snapshot before those is still inside the window, but some of the quorums
     // before it aren't, so it isn't restorable; its own quorums are needed by the one after it.)
+    // A node keeping a limited history keeps every snapshot within that history instead, so that a
+    // rewind to anywhere in it can be restored to, as it has no archive to fall back on.
     constexpr uint64_t keep_window = STATE_SNAPSHOT_INTERVAL + PREDECESSOR_QUORUMS;
-    const uint64_t keep_quorums_window = std::max(keep_window, m_store_quorum_history);
+    const uint64_t history_window = kept_history_window();
+    const uint64_t keep_quorums_window =
+            history_window ? history_window : std::max(keep_window, m_store_quorum_history);
 
     // A rescan doesn't write snapshots that it would delete again before reaching the top of the
     // chain.  (It still deletes what drops out of the window, so nothing gets left behind.)
@@ -5771,7 +5846,7 @@ void service_node_list::store_state_snapshot() {
 
     // The snapshot's full state that is now leaving the window: when its quorums are still to be
     // kept for the quorum history, it becomes just those.
-    if (height >= 3 * STATE_SNAPSHOT_INTERVAL) {
+    if (!history_window && height >= 3 * STATE_SNAPSHOT_INTERVAL) {
         const uint64_t leaving = height - 3 * STATE_SNAPSHOT_INTERVAL;
         const auto& old = m_transient->old_quorum_states;
         auto it = std::lower_bound(

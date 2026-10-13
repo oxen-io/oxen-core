@@ -1788,6 +1788,22 @@ TEST(BlockchainSQLite, rewards_in_write_transaction)
   EXPECT_EQ(rewards.get_delayed_payments().size(), 1);
 }
 
+// With a limited history the rewards keep a snapshot every 60 blocks across the whole of it (so that
+// they can be restored to anywhere in it), rather than just the newest three.
+TEST(BlockchainSQLite, rewards_snapshots_across_kept_history)
+{
+  for (uint64_t kept : {0, 720}) {
+    shared_sqlite s;
+    test_rewards rewards{network_type::FAKECHAIN, s.sql()};
+    rewards.kept_history = kept;
+    while (rewards.height < 1'000)
+      rewards.publish_block();
+    EXPECT_EQ(s.committed("SELECT MAX(height) FROM rewards_snapshot_heights"), 960);
+    EXPECT_EQ(s.committed("SELECT MIN(height) FROM rewards_snapshot_heights"), kept ? 300 : 840);
+    EXPECT_EQ(s.committed("SELECT COUNT(*) FROM rewards_snapshot_heights"), kept ? 12 : 3);
+  }
+}
+
 TEST(BlockchainSQLite, rewards_failure_leaves_nothing_in_write_transaction)
 {
   shared_sqlite s;

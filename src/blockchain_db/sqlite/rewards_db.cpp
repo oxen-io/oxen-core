@@ -28,6 +28,7 @@
 #include "rewards_db.h"
 
 #include <SQLiteCpp/Savepoint.h>
+#include <blockchain_db/history.h>
 #include <common/exception.h>
 #include <common/formattable.h>
 #include <common/guts.h>
@@ -1701,7 +1702,7 @@ bool RewardsDB::wants_snapshot(
         uint64_t h, const std::optional<service_nodes::rescan_context>& rescan) const {
     const auto& netconf = get_config(nettype);
     const bool grid = h % service_nodes::STATE_SNAPSHOT_INTERVAL == 0;
-    const bool archive = h % netconf.HISTORY_ARCHIVE_INTERVAL == 0;
+    const bool archive = !kept_history && h % netconf.HISTORY_ARCHIVE_INTERVAL == 0;
     if (!rescan)
         return grid || archive;
 
@@ -1709,7 +1710,9 @@ bool RewardsDB::wants_snapshot(
     // reaches the top of the chain (as the SN list doesn't write the states it would delete).
     const uint64_t top = rescan->top_block_height > 0 ? rescan->top_block_height - 1 : 0;
     const uint64_t below_top = top > h ? top - h : 0;
-    return (grid && below_top < 3 * service_nodes::STATE_SNAPSHOT_INTERVAL) ||
+    const uint64_t keep_grid = kept_history ? history_window(nettype, kept_history, top + 1)
+                                            : 3 * service_nodes::STATE_SNAPSHOT_INTERVAL;
+    return (grid && below_top < keep_grid) ||
            (archive && h >= service_nodes::oldest_retained_archive(netconf, top));
 }
 
@@ -1730,10 +1733,16 @@ void RewardsDB::write_snapshot(Connection& conn, uint64_t h) {
                 row.lifetime_liquidated_stakes,
                 row.lifetime_rewards);
 
-    // The retention rules (see RewardsDB)
+    // The retention rules (see RewardsDB, and kept_history)
     const auto& netconf = get_config(nettype);
-    if (auto third_newest = conn.prepared_maybe_get<int64_t>(
-                "SELECT height FROM rewards_snapshot_heights ORDER BY height DESC LIMIT 1 OFFSET 2"))
+    if (kept_history) {
+        if (const uint64_t window = history_window(nettype, kept_history, h + 1); h + 1 > window)
+            conn.prepared_exec(
+                    "DELETE FROM rewards_snapshot_heights WHERE height < ?",
+                    as_i64(h + 1 - window));
+    } else if (auto third_newest = conn.prepared_maybe_get<int64_t>(
+                       "SELECT height FROM rewards_snapshot_heights ORDER BY height DESC LIMIT 1 "
+                       "OFFSET 2"))
         conn.prepared_exec(
                 "DELETE FROM rewards_snapshot_heights WHERE height < ?"
                 " AND NOT (height % ? = 0 AND height >= ?)",

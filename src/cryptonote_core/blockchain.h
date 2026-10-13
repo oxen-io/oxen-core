@@ -1702,6 +1702,18 @@ class Blockchain {
             const std::list<block_and_checkpoint>& original_chain, uint64_t rollback_height);
 
     /**
+     * @brief checks that the chain can be rewound to a height, logging an error if not
+     *
+     * A node keeping a limited history can't rewind past it: below it there are no blocks to pop,
+     * and the SN list and rewards have no state to restore and replay from.
+     *
+     * @param height the chain height (i.e. number of blocks) to rewind to
+     *
+     * @return true if the rewind can be done
+     */
+    bool can_rewind_to(uint64_t height) const;
+
+    /**
      * @brief gets recent block weights for median calculation
      *
      * get the block weights of the last <count> blocks, and return by reference <weights>.

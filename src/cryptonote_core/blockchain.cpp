@@ -360,6 +360,19 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
     const uint64_t start_height = std::min(std::min(ons_height, snl_height), end_height);
     const uint64_t total_blocks = end_height - start_height;
 
+    if (total_blocks > 0 && start_height < m_db->history_start()) {
+        log::error(
+                globallogcat,
+                "Unable to bring the oxen subsystems up to date (snl: {}, ons: {}): that needs the "
+                "blocks from height {}, but this node only keeps the history from height {}.  "
+                "Re-bootstrap the node from a snapshot.",
+                snl_height,
+                ons_height,
+                start_height,
+                m_db->history_start());
+        return false;
+    }
+
     if (total_blocks > 0) {
         std::string sql_height =
                 "{}"_format(m_rewards_db ? std::to_string(m_rewards_db->height + 1) : "N/A");
@@ -1106,6 +1119,21 @@ bool Blockchain::deinit() {
 }
 
 //------------------------------------------------------------------
+bool Blockchain::can_rewind_to(uint64_t height) const {
+    if (!m_db->history())
+        return true;
+    if (height >= m_db->history_start() && service_node_list.can_detach_to(height))
+        return true;
+    log::error(
+            globallogcat,
+            "Refusing to rewind the blockchain to height {}: that is further back than the history "
+            "this node keeps (from height {}).  If the network really has reorganized that far, "
+            "re-bootstrap the node from a snapshot.",
+            height,
+            m_db->history_start());
+    return false;
+}
+//------------------------------------------------------------------
 // This function removes blocks from the top of blockchain.
 // It starts a batch and calls private method pop_block_from_db().
 void Blockchain::pop_blocks(uint64_t nblocks) {
@@ -1128,6 +1156,8 @@ void Blockchain::pop_blocks(uint64_t nblocks) {
         const uint64_t blockchain_height = m_db->height();
         if (blockchain_height > 0)
             nblocks = std::min(nblocks, blockchain_height - 1);
+        if (!can_rewind_to(blockchain_height - nblocks))
+            return;
 
         uint64_t constexpr PERCENT_PER_PROGRESS_UPDATE = 10;
         uint64_t const blocks_per_update = (nblocks / PERCENT_PER_PROGRESS_UPDATE);
@@ -1464,6 +1494,8 @@ bool Blockchain::blink_rollback(uint64_t rollback_height) {
     });
 
     log::debug(logcat, "Rolling back to height {}", rollback_height);
+    if (rollback_height < m_db->height() && !can_rewind_to(rollback_height))
+        return false;
     bool ret = rollback_blockchain_switching({}, rollback_height);
     return ret;
 }
@@ -1489,6 +1521,9 @@ bool Blockchain::switch_to_alternative_blockchain(
                 "main chain!");
         return false;
     }
+
+    if (!can_rewind_to(alt_chain.front().height))
+        return false;
 
     // pop blocks from the blockchain until the top block is the parent
     // of the front block of the alt chain.
@@ -2572,6 +2607,19 @@ bool Blockchain::handle_alternative_block(
 
     uint64_t const blk_height = b.get_height();
     uint64_t const chain_height = get_current_blockchain_height();
+
+    // NOTE: A fork from before the history this node keeps could never be switched to
+    if (blk_height < m_db->history_start()) {
+        bvc.m_marked_as_orphaned = true;
+        log::info(
+                logcat,
+                "Ignoring alternative block {} at height {}: it is older than the history this "
+                "node keeps (from height {})",
+                id,
+                blk_height,
+                m_db->history_start());
+        return true;
+    }
 
     // NOTE: Check block parent's existence
     alt_block_data_t prev_data = {};
@@ -6201,6 +6249,16 @@ bool Blockchain::cleanup_handle_incoming_blocks(bool force_sync) {
     ZoneScoped;
     bool success = false;
     log::trace(logcat, "Blockchain::{}", __func__);
+
+    // Drops what the added blocks have pushed out of the history kept (if it is limited), in the
+    // same batch as them.
+    if (m_batch_success) {
+        try {
+            m_db->trim_history();
+        } catch (const std::exception& e) {
+            log::error(logcat, "Failed to drop history that is no longer kept: {}", e.what());
+        }
+    }
 
     try {
         if (m_batch_success)

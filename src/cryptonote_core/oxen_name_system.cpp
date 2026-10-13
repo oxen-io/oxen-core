@@ -1743,14 +1743,12 @@ bool name_system_db::init(
         // settings->[top_hash|top_height] match what we expect. If they match, we
         // don't drop the DB but will load the missing blocks in a later step.
 
-        cryptonote::block ons_blk = {};
-        bool orphan = false;
-        if (blockchain->get_block_by_hash(settings.top_hash, ons_blk, nullptr, &orphan)) {
-            bool ons_height_matches = settings.top_height == ons_blk.get_height();
-            if (ons_height_matches && !orphan) {
-                ons_height = settings.top_height;
-                ons_hash = settings.top_hash;
-            }
+        // (Looked up in the block index, which, unlike the block's body, is kept for every height.)
+        if (uint64_t height;
+            blockchain->db().block_exists(settings.top_hash, &height) &&
+            height == settings.top_height) {
+            ons_height = settings.top_height;
+            ons_hash = settings.top_hash;
         }
 
         if (settings.top_height == ons_height && settings.top_hash == ons_hash) {
