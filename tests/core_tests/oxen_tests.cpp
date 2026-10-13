@@ -4089,6 +4089,18 @@ bool oxen_batch_sn_rewards_reorg_balances::generate(std::vector<test_event_entry
 
   constexpr uint64_t REORG = 3;
   static_assert(REORG < cryptonote::REWARDS_HISTORY);
+  // Alice's accrued rewards are paid out (starting again from nothing) every BATCHING_INTERVAL
+  // blocks, at heights her address gives: the balances compared below only all show the fork's
+  // extra fee if none of the replaced blocks is one of those.
+  const uint64_t payout_offset = alice.get_keys().m_account_address.modulus(conf.BATCHING_INTERVAL);
+  const auto payout_replaced = [&] {
+    for (uint64_t h = gen.height() + 1; h <= gen.height() + REORG; h++)
+      if (h % conf.BATCHING_INTERVAL == payout_offset)
+        return true;
+    return false;
+  };
+  while (payout_replaced())
+    gen.add_n_blocks(1);
   oxen_chain_generator fork = gen;
   gen.add_n_blocks(REORG);
   const uint64_t top = gen.height();
