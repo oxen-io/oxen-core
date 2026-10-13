@@ -595,7 +595,7 @@ void L2Tracker::proxy_request_state(oxenmq::ConnectionID conn, bool purge_state)
             conn,
             purge_state ? "l2_proxy.purge_state" : "l2_proxy.state",
             "{}"_format(L2PurgeState::MAX_VERSION),
-            purge_state ? "L2 state"sv : "L2 purge state"sv,
+            purge_state ? "L2 purge state"sv : "L2 state"sv,
             id,
             [this, purge_state](
                     bool& success,
