@@ -48,6 +48,7 @@ oxen_add_library(common
   sha256sum.cpp
   spawn.cpp
   string_util.cpp
+  systemd.cpp
   threadpool.cpp
   util.cpp
   ${PROJECT_BINARY_DIR}/translations/translation_files.cpp
@@ -77,6 +78,7 @@ target_link_libraries(common
   PRIVATE
     sessiondep::libsodium
     logging
+    systemd
     extra)
 
 if (TRACY_ENABLE)

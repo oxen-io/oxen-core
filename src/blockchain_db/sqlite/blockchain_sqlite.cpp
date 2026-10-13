@@ -40,6 +40,7 @@
 #include "common/format.h"
 #include "common/guts.h"
 #include "common/oxen.h"
+#include "common/systemd.h"
 #include "common/util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/service_node_list.h"
@@ -2228,7 +2229,8 @@ std::optional<fs::path> BlockchainSQLite::compact_for_close() {
     // partly emptied pages.
     //
     // This runs as the node shuts down, which a service manager's stop timeout (90s by default for
-    // systemd) can cut short on a large database; that leaves the database as it was, and the
+    // systemd) can cut short on a large database or a slow disk.  Under systemd it pushes the
+    // timeout back as it goes; otherwise, being cut short leaves the database as it was, and the
     // partial copy, which the next open removes, so it is tried again at the next shutdown.
     const uint64_t page_size = as_u64(m_sql->conn().prepared_get<int64_t>("PRAGMA page_size"));
     const uint64_t expected = (pages - free) * page_size;
@@ -2238,6 +2240,10 @@ std::optional<fs::path> BlockchainSQLite::compact_for_close() {
             "(and needs that much free space while it runs)...",
             tools::get_human_readable_bytes(pages * page_size),
             tools::get_human_readable_bytes(expected));
+    tools::systemd_extend_timeout(
+            60s,
+            "Compacting the blockchain database to at most {}"_format(
+                    tools::get_human_readable_bytes(expected)));
 
     struct progress_state {
         const fs::path& file;
@@ -2254,12 +2260,12 @@ std::optional<fs::path> BlockchainSQLite::compact_for_close() {
                     if (auto now = std::chrono::steady_clock::now(); now - p.last >= 10s) {
                         std::error_code ec;
                         auto size = fs::file_size(p.file, ec);
-                        if (!ec)
-                            log::warning(
-                                    globallogcat,
-                                    "... compacting: {} of at most {} written",
-                                    tools::get_human_readable_bytes(size),
-                                    tools::get_human_readable_bytes(p.expected));
+                        auto written = "{} of at most {} written"_format(
+                                tools::get_human_readable_bytes(ec ? 0 : size),
+                                tools::get_human_readable_bytes(p.expected));
+                        log::warning(globallogcat, "... compacting: {}", written);
+                        tools::systemd_extend_timeout(
+                                60s, "Compacting the blockchain database: {}"_format(written));
                         p.last = now;
                     }
                     return 0;

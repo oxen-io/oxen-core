@@ -55,6 +55,7 @@
 #include "common/i18n.h"
 #include "common/lock.h"
 #include "common/random.h"
+#include "common/systemd.h"
 #include "common/threadpool.h"
 #include "common/tracy_shim.h"
 #include "common/util.h"
@@ -5944,7 +5945,8 @@ bool service_node_list::store(uint64_t state_height) {
     while (!tpool_waiter.wait_for(10s)) {
         log::debug(logcat, "SNL store, waiting on serialization");
         if (state_height)
-            blockchain.extend_watchdog_timeout(state_height);
+            tools::systemd_extend_timeout(
+                    120s, "Storing the service node list state at height {}"_format(state_height));
     }
 
     // NOTE: Store blobs to DB

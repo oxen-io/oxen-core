@@ -50,6 +50,7 @@
 #include "common/exception.h"
 #include "common/guts.h"
 #include "common/lock.h"
+#include "common/systemd.h"
 #include "common/median.h"
 #include "common/pruning.h"
 #include "common/random.h"
@@ -76,12 +77,6 @@
 #include "service_node_list.h"
 #include "service_node_voting.h"
 #include "tx_pool.h"
-
-#ifdef ENABLE_SYSTEMD
-extern "C" {
-#include <systemd/sd-daemon.h>
-}
-#endif
 
 #define FIND_BLOCKCHAIN_SUPPLEMENT_MAX_SIZE (100 * 1024 * 1024)  // 100 MB
 
@@ -152,18 +147,6 @@ Blockchain::~Blockchain() {
         deinit();
     } catch (const std::exception& e) { /* ignore */
     }
-}
-
-void Blockchain::extend_watchdog_timeout(uint64_t height) {
-#ifdef ENABLE_SYSTEMD
-    // Tell systemd that we're doing something so that it should let us continue starting up
-    // (giving us 120s until we have to send the next notification):
-    sd_notify(
-            0,
-            "EXTEND_TIMEOUT_USEC=120000000\nSTATUS=Recanning blockchain; height {}/{}"_format(
-                    height, m_db->height())
-                    .c_str());
-#endif
 }
 
 //------------------------------------------------------------------
@@ -676,7 +659,10 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
                     ons_interval_duration.count(),
                     blocks_per_s,
                     tools::get_human_readable_bytes(bytes_per_s));
-            extend_watchdog_timeout(height);
+            tools::systemd_extend_timeout(
+                    120s,
+                    "Replaying {} blocks into the service node list / rewards / ONS ({:.0f}%)"_format(
+                            total_blocks, 100.0 * (height - start_height) / total_blocks));
             // NOTE: Accumulate stats
             ons_duration += ons_interval_duration;
             snl_duration += snl_interval_duration;
