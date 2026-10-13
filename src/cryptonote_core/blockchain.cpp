@@ -605,8 +605,10 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
             load_context.block_cv.notify_all();  // Notify the loader that we've removed a block
         } else {
             ZoneScopedN("Get block data (serial)");
+            if (load_context.height >= end_height || (abort && *abort))
+                break;
             chunk = get_block_data(load_context.height, end_height);
-            if (load_context.height >= end_height || chunk.blocks.empty() || (abort && *abort))
+            if (chunk.blocks.empty())
                 break;
             load_context.height += block_load_context::CHUNK_SIZE;
         }
