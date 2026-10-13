@@ -1075,9 +1075,10 @@ bool Blockchain::deinit() {
 
     log::trace(logcat, "Stopping blockchain read/write activity");
 
-    // stop async service
+    // stop async service (which isn't running if the start failed before init got to it)
     m_async_work_idle.reset();
-    m_async_thread.join();
+    if (m_async_thread.joinable())
+        m_async_thread.join();
     m_async_service.stop();
 
     // These can keep their tables in the blockchain database, so must be done before it closes.
