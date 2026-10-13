@@ -184,18 +184,15 @@ class BlockchainSQLite : public BlockchainDB {
     void start_history_catch_up() override;
 
     // Drops the history that is no longer kept (when there is more of it than trim_history drops
-    // on the spot, as after the history is first limited or made smaller), in chunks of about a
-    // second each, each in its own write transaction, until it is all gone or `stop` (called
-    // between chunks) returns true.  This is what the background catch-up runs; it can also be
-    // called directly (with the background catch-up turned off).
+    // on the spot, as after the history is first limited or made smaller), in chunks sized to take
+    // about half a second (see CATCH_UP_CHUNK_TIME), each in its own write transaction, until it
+    // is all gone or `stop` (called between chunks) returns true.  This is what the background catch-up runs; it can also be called
+    // directly (with the background catch-up turned off).
     void run_history_catch_up(const std::function<bool()>& stop = {});
 
     // Turns the background catch-up (see run_history_catch_up) on or off; on by default.  Turning
     // it off stops it, if it is running, at the end of its current chunk.
     void set_background_trim(bool enabled);
-
-    // Limits the catch-up's chunks to at most this many blocks (whatever their timing says).
-    void set_history_chunk_limit(uint64_t blocks) { m_trim_chunk_limit = blocks; }
 
     bool is_read_only() const override;
     uint64_t get_database_size() const override;
@@ -389,7 +386,6 @@ class BlockchainSQLite : public BlockchainDB {
     std::mutex m_trim_mutex;
 
     bool m_background_trim = true;
-    uint64_t m_trim_chunk_limit = 100'000;
     std::thread m_catch_up;
     std::atomic<bool> m_catch_up_running{false};
     std::mutex m_catch_up_stop_mutex;

@@ -2260,20 +2260,22 @@ TEST_F(SQLiteHistoryTest, catch_up)
   // instance, the chain can't be rewound into it).
   EXPECT_EQ(db.history_window_start(), 4'280);
 
-  db.set_history_chunk_limit(500);
+  // Chunk sizes go by how long chunks take, but start at 100 blocks and at most double each time
   int chunks = 0;
   db.run_history_catch_up([&] { return ++chunks == 3; });
-  EXPECT_EQ(db.history_start(), 1'500);
+  const uint64_t stopped_at = db.history_start();
+  EXPECT_GE(stopped_at, 100);
+  EXPECT_LE(stopped_at, 700);
   EXPECT_EQ(
       db.sqlite_database()->conn().prepared_get<int64_t>(
           "SELECT value FROM properties WHERE key = 'history_start'"),
-      1'500);
-  EXPECT_THROW(db.get_block_from_height(1'499), BLOCK_DNE);
-  EXPECT_NO_THROW(db.get_block_from_height(1'500));
+      stopped_at);
+  EXPECT_THROW(db.get_block_from_height(stopped_at - 1), BLOCK_DNE);
+  EXPECT_NO_THROW(db.get_block_from_height(stopped_at));
   EXPECT_EQ(db.history_window_start(), 4'280);
 
   reopen_db();
-  EXPECT_EQ(m_db->history_start(), 1'500);
+  EXPECT_EQ(m_db->history_start(), stopped_at);
   sqlite().run_history_catch_up();
   EXPECT_EQ(m_db->history_start(), 4'280);
 }

@@ -2013,6 +2013,18 @@ void BlockchainSQLite::set_history(uint64_t blocks) {
 // were just added.
 constexpr uint64_t INLINE_TRIM_MAX = 2'000;
 
+// The background catch-up drops the history in chunks, each in its own write transaction, sized to
+// take about CATCH_UP_CHUNK_TIME going by how long the last one took: blocks vary a lot in size
+// (the pre-bulletproof ones are about 100 times the size of recent ones).  Blocks being added wait
+// for the write lock while a chunk holds it, for at most the database's 5 s busy timeout, so a
+// chunk must take well under that even when it runs into heavier blocks than the last one had:
+// chunks start small, grow at most twofold at a time, and are capped, so that one never spans a
+// stretch of the chain long enough to change much in weight.
+constexpr std::chrono::milliseconds CATCH_UP_CHUNK_TIME{500};
+constexpr uint64_t CATCH_UP_FIRST_CHUNK = 100;
+constexpr uint64_t CATCH_UP_MIN_CHUNK = 10;
+constexpr uint64_t CATCH_UP_MAX_CHUNK = 10'000;
+
 uint64_t BlockchainSQLite::history_trim_target() const {
     if (!m_history)
         return 0;
@@ -2059,9 +2071,7 @@ void BlockchainSQLite::run_history_catch_up(const std::function<bool()>& stop) {
             to - 1);
     const auto started = clock::now();
     auto last_progress = started;
-    // Blocks vary a lot in size (those from before bulletproofs are ~100 times larger than recent
-    // ones), so the chunk size follows how long the last chunk took.
-    uint64_t chunk = std::min<uint64_t>(1'000, m_trim_chunk_limit);
+    uint64_t chunk = CATCH_UP_FIRST_CHUNK;
     while (true) {
         to = history_trim_target();
         const uint64_t start = m_history_start;
@@ -2077,13 +2087,11 @@ void BlockchainSQLite::run_history_catch_up(const std::function<bool()>& stop) {
             // the busy timeout; the next chunk tries again.
             log::debug(logcat, "History drop chunk at block {} failed: {}", start, e.what());
         }
-        const auto took = clock::now() - chunk_started;
         if (m_history_start > start) {
-            const double factor = std::chrono::duration<double>{1s} / std::max(took, clock::duration{1ms});
+            const auto took = std::max<clock::duration>(clock::now() - chunk_started, 1ms);
+            const double factor = std::chrono::duration<double>{CATCH_UP_CHUNK_TIME} / took;
             chunk = std::clamp<uint64_t>(
-                    static_cast<uint64_t>(chunk * std::clamp(factor, 0.5, 2.0)),
-                    10,
-                    m_trim_chunk_limit);
+                    chunk * std::clamp(factor, 0.5, 2.0), CATCH_UP_MIN_CHUNK, CATCH_UP_MAX_CHUNK);
         }
         if (auto now = clock::now(); now - last_progress >= 10s) {
             log::info(
