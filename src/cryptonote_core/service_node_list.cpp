@@ -259,6 +259,7 @@ static std::optional<service_node_list::state_t> find_restorable_state(
         const std::function<bool(uint64_t)>& usable);
 static bool has_restorable_state(
         const cryptonote::BlockchainDB& db,
+        uint64_t min_height,
         uint64_t height,
         const std::function<bool(uint64_t)>& usable);
 
@@ -4794,7 +4795,10 @@ void service_node_list::blockchain_detached(uint64_t height) {
     if (m_state.height == target_height && (!rewards || rewards->height == target_height))
         return;
 
-    auto rewards_can_restore = [rewards](uint64_t h) { return !rewards || rewards->can_restore(h); };
+    const uint64_t min_height = min_restore_height(false);
+    auto rewards_can_restore = [rewards, min_height](uint64_t h) {
+        return h >= min_height && (!rewards || rewards->can_restore(h));
+    };
 
     std::string_view detach_label;
     bool restored = false;
@@ -4827,7 +4831,11 @@ void service_node_list::blockchain_detached(uint64_t height) {
     // store_state_snapshot) and the archived ones.
     if (!restored) {
         if (auto stored = find_restorable_state(
-                    blockchain.db(), this, 0, target_height, rewards_can_restore)) {
+                    blockchain.db(),
+                    this,
+                    min_restore_height(true),
+                    target_height,
+                    rewards_can_restore)) {
             // The in-memory history holds nothing from at or after it.
             m_transient->state_history.erase(
                     m_transient->state_history.lower_bound(stored->height),
@@ -4887,8 +4895,16 @@ bool service_node_list::before_hf9(uint64_t height) const {
 }
 
 bool service_node_list::can_rescan() const {
-    return blockchain.db().history_start() <=
+    return blockchain.db().history_window_start() <=
            hard_fork_begins(blockchain.nettype(), hf::hf9_service_nodes).value_or(1);
+}
+
+uint64_t service_node_list::min_restore_height(bool stored) const {
+    // By the history setting, not by what has been dropped so far: the blocks (and stored states)
+    // below that may be dropped at any moment.  A stored state also needs the stored quorums of the
+    // heights before it.
+    const uint64_t history_start = blockchain.db().history_window_start();
+    return history_start && stored ? history_start + PREDECESSOR_QUORUMS : history_start;
 }
 
 bool service_node_list::can_detach_to(uint64_t height) const {
@@ -4897,7 +4913,10 @@ bool service_node_list::can_detach_to(uint64_t height) const {
         return true;
     std::lock_guard lock(m_sn_mutex);
     auto* rewards = blockchain.maybe_rewards_db();
-    auto usable = [rewards](uint64_t h) { return !rewards || rewards->can_restore(h); };
+    const uint64_t min_height = min_restore_height(false);
+    auto usable = [rewards, min_height](uint64_t h) {
+        return h >= min_height && (!rewards || rewards->can_restore(h));
+    };
 
     // The same places blockchain_detached looks in
     if (m_state.height <= target_height && usable(m_state.height))
@@ -4905,7 +4924,7 @@ bool service_node_list::can_detach_to(uint64_t height) const {
     for (const auto& state : m_transient->state_history)
         if (!state.only_loaded_quorums && state.height <= target_height && usable(state.height))
             return true;
-    return has_restorable_state(blockchain.db(), target_height, usable);
+    return has_restorable_state(blockchain.db(), min_restore_height(true), target_height, usable);
 }
 
 service_nodes::payout service_node_list::state_t::get_next_block_leader() const {
@@ -5757,13 +5776,15 @@ static bool has_predecessor_quorums(const cryptonote::BlockchainDB& db, uint64_t
     return true;
 }
 
-// Whether there is a stored full state at or below `height` that find_restorable_state would
+// Whether there is a stored full state in [min_height, height] that find_restorable_state would
 // restore (without parsing it).
 static bool has_restorable_state(
         const cryptonote::BlockchainDB& db,
+        uint64_t min_height,
         uint64_t height,
         const std::function<bool(uint64_t)>& usable) {
-    for (auto found = db.get_newest_full_service_node_archive(height); found;
+    for (auto found = db.get_newest_full_service_node_archive(height);
+         found && found->first >= min_height;
          found = found->first ? db.get_newest_full_service_node_archive(found->first - 1)
                               : std::nullopt)
         if (usable(found->first) && has_predecessor_quorums(db, found->first))

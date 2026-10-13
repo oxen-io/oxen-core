@@ -2256,6 +2256,9 @@ TEST_F(SQLiteHistoryTest, catch_up)
   // Too much to drop on the spot after adding blocks, so that leaves it to the catch-up too.
   db.trim_history();
   EXPECT_EQ(db.history_start(), 0);
+  // The new history applies at once, though, even to what hasn't been dropped yet (so that, for
+  // instance, the chain can't be rewound into it).
+  EXPECT_EQ(db.history_window_start(), 4'280);
 
   db.set_history_chunk_limit(500);
   int chunks = 0;
@@ -2267,6 +2270,7 @@ TEST_F(SQLiteHistoryTest, catch_up)
       1'500);
   EXPECT_THROW(db.get_block_from_height(1'499), BLOCK_DNE);
   EXPECT_NO_THROW(db.get_block_from_height(1'500));
+  EXPECT_EQ(db.history_window_start(), 4'280);
 
   reopen_db();
   EXPECT_EQ(m_db->history_start(), 1'500);
@@ -2294,6 +2298,11 @@ TEST_F(SQLiteHistoryTest, background_catch_up_and_compaction)
   }
   db.set_background_trim(true);
   db.set_history(720);
+  // Setting it doesn't start dropping anything: that waits for the start to be done (when core
+  // starts it).
+  std::this_thread::sleep_for(200ms);
+  EXPECT_EQ(db.history_start(), 0);
+  db.start_history_catch_up();
   for (int i = 0; i < 600 && db.history_start() < 4'280; i++)
     std::this_thread::sleep_for(100ms);
   ASSERT_EQ(db.history_start(), 4'280);

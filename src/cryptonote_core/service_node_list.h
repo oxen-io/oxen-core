@@ -1477,6 +1477,11 @@ class service_node_list {
     // Whether `height` is before HF9, where the SN list holds nothing.
     bool before_hf9(uint64_t height) const;
 
+    // The lowest height a detach may restore a state from (and so replay blocks from): the start of
+    // the history kept, or the heights after it whose quorums are all stored too (for a `stored`
+    // state, which needs those).  0 when all of the history is kept.
+    uint64_t min_restore_height(bool stored) const;
+
     // Stores m_state, whose height is a multiple of STATE_SNAPSHOT_INTERVAL, along with the
     // quorums of the heights before it that a restart from it needs, and deletes the stored
     // states that have dropped out of what is kept.  Only used when states_in_db().

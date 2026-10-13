@@ -1122,7 +1122,9 @@ bool Blockchain::deinit() {
 bool Blockchain::can_rewind_to(uint64_t height) const {
     if (!m_db->history())
         return true;
-    if (height >= m_db->history_start() && service_node_list.can_detach_to(height))
+    // (By the setting, not by what has been dropped so far, which may lag behind it.)
+    const uint64_t history_start = m_db->history_window_start();
+    if (height >= history_start && service_node_list.can_detach_to(height))
         return true;
     log::error(
             globallogcat,
@@ -1130,7 +1132,7 @@ bool Blockchain::can_rewind_to(uint64_t height) const {
             "this node keeps (from height {}).  If the network really has reorganized that far, "
             "re-bootstrap the node from a snapshot.",
             height,
-            m_db->history_start());
+            history_start);
     return false;
 }
 //------------------------------------------------------------------
@@ -2609,7 +2611,7 @@ bool Blockchain::handle_alternative_block(
     uint64_t const chain_height = get_current_blockchain_height();
 
     // NOTE: A fork from before the history this node keeps could never be switched to
-    if (blk_height < m_db->history_start()) {
+    if (const uint64_t history_start = m_db->history_window_start(); blk_height < history_start) {
         bvc.m_marked_as_orphaned = true;
         log::info(
                 logcat,
@@ -2617,7 +2619,7 @@ bool Blockchain::handle_alternative_block(
                 "node keeps (from height {})",
                 id,
                 blk_height,
-                m_db->history_start());
+                history_start);
         return true;
     }
 

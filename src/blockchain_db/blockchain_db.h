@@ -855,6 +855,24 @@ class BlockchainDB {
     virtual uint64_t history_start() const { return 0; }
 
     /**
+     * @brief gets the height the history the database keeps starts at, by its setting
+     *
+     * Blocks below this are no longer kept, even when (while the history no longer kept is still
+     * being dropped in the background) they are still there, below history_start(): so nothing
+     * may count on them, such as a rewind of the chain.
+     */
+    virtual uint64_t history_window_start() const { return 0; }
+
+    /**
+     * @brief starts dropping, in the background, the history that is no longer kept, if there is
+     * more of it than is dropped as blocks are added (as when the history is first limited)
+     *
+     * Called once whatever reads the blocks at startup (bringing the subsystems up to date) is
+     * done, as the drop would take those blocks from under it.
+     */
+    virtual void start_history_catch_up() {}
+
+    /**
      * @brief changes how much history the database keeps
      *
      * Keeping less than before drops what is now outside the history straight away; keeping more

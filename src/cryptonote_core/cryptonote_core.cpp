@@ -943,6 +943,10 @@ bool core::init(
     if (!keep_alt_blocks && !blockchain.db().is_read_only())
         blockchain.db().drop_alt_blocks();
 
+    // Only now that the subsystems have been brought up to date (which can read the blocks it
+    // drops) can the history no longer kept be dropped.
+    blockchain.db().start_history_catch_up();
+
     return true;
 }
 
@@ -1073,12 +1077,13 @@ std::unique_ptr<BlockchainDB> core::init_blockchain_db(
     }
     if (auto history = db->history()) {
         log::info(globallogcat, "The blockchain database keeps the last {} blocks of history", history);
-        if (auto complete = history_complete_at(history, db->history_start(), db->height()))
+        if (auto complete =
+                    history_complete_at(history, db->history_window_start(), db->height()))
             log::warning(
                     globallogcat,
                     "The blockchain database's history is incomplete: it keeps blocks from {}, so "
                     "the last {} blocks of history will only all be there from block {}",
-                    db->history_start(),
+                    db->history_window_start(),
                     history,
                     *complete);
     }

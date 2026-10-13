@@ -492,9 +492,6 @@ void BlockchainSQLite::open(const fs::path& filename, network_type nettype, cons
     m_nettype = nettype;
     m_db_flags = db_flags;
     m_open = true;
-
-    // Carries on dropping what an earlier run (or a change of the history) left to drop.
-    start_history_catch_up();
 }
 
 void BlockchainSQLite::close() {
@@ -2004,10 +2001,10 @@ void BlockchainSQLite::set_history(uint64_t blocks) {
             blocks,
             previous ? "the last {} blocks"_format(previous) : "all of it"s);
 
-    // What is no longer kept is dropped in the background, rather than holding up the start: the
-    // node keeps the new history from now on, with the old blocks only lingering (below
-    // history_start, which everything that needs the blocks goes by) until they are dropped.
-    start_history_catch_up();
+    // What is no longer kept is dropped in the background (once started: see
+    // start_history_catch_up), rather than holding up the start: the node keeps the new history
+    // from now on (see history_window_start), with the old blocks only lingering until they are
+    // dropped.
 }
 
 // More history than this to drop is left to the background catch-up rather than dropped on the spot
@@ -2021,6 +2018,12 @@ uint64_t BlockchainSQLite::history_trim_target() const {
     const uint64_t height = this->height();
     const uint64_t window = history_window(m_nettype, m_history, height);
     return height > window ? height - window : 0;
+}
+
+uint64_t BlockchainSQLite::history_window_start() const {
+    if (!m_history)
+        return 0;
+    return std::max<uint64_t>(m_history_start, history_trim_target());
 }
 
 void BlockchainSQLite::trim_history() {

@@ -178,8 +178,10 @@ class BlockchainSQLite : public BlockchainDB {
 
     uint64_t history() const override { return m_history; }
     uint64_t history_start() const override { return m_history_start; }
+    uint64_t history_window_start() const override;
     void set_history(uint64_t blocks) override;
     void trim_history() override;
+    void start_history_catch_up() override;
 
     // Drops the history that is no longer kept (when there is more of it than trim_history drops
     // on the spot, as after the history is first limited or made smaller), in chunks of about a
@@ -363,8 +365,6 @@ class BlockchainSQLite : public BlockchainDB {
     // caller holds m_trim_mutex.
     void trim_history_to(uint64_t to);
 
-    // Starts the background catch-up thread, unless it is off, already running or not needed.
-    void start_history_catch_up();
     // Stops the background catch-up thread at the end of its current chunk, and waits for it.
     void stop_history_catch_up();
 
