@@ -130,6 +130,11 @@ namespace cryptonote
     {
       log::debug(logcat, "{}not requesting the chain, as a request is already outstanding", context);
     }
+    // Its sync data puts a peer we are waiting on back to synchronizing whenever it is ahead of us
+    else if (context.m_state == cryptonote_connection_context::state_synchronizing && wait_for_history(context, get_sync_need()))
+    {
+      log::debug(logcat, "{}not requesting the chain from a peer that no longer keeps the blocks we need", context);
+    }
     else if(context.m_state == cryptonote_connection_context::state_synchronizing)
     {
       NOTIFY_REQUEST_CHAIN::request r{};
@@ -1966,6 +1971,15 @@ skip:
       context.m_state = cryptonote_connection_context::state_synchronizing;
     }
 
+    const auto need = get_sync_need();
+    if (wait_for_history(context, need))
+      return true;
+    // Whether the peer can serve a span starting at `start`: a peer keeps everything from the
+    // oldest block it keeps up, so if it has the first block of the span it has the rest.
+    const auto can_serve_span = [&](uint64_t start) {
+      return !need || peer_can_serve(start, context.m_remote_blockchain_height, context.m_history);
+    };
+
     log::debug(logcat, "{} request_missing_objects: check {}, force_next_span {}, m_needed_objects {} lrh {}, chain {}", context, check_having_blocks, force_next_span, context.m_needed_objects.size(), context.m_last_response_height, m_core.blockchain.get_current_blockchain_height());
     if(context.m_needed_objects.size() || force_next_span)
     {
@@ -1982,6 +1996,8 @@ skip:
           std::vector<crypto::hash> hashes;
           connection_id_t span_connection_id;
           span = m_block_queue.get_next_span_if_scheduled(hashes, span_connection_id);
+          if (span.second > 0 && !can_serve_span(span.first))
+            span = std::make_pair(0, 0);
           if (span.second > 0)
           {
             is_next = true;
@@ -2009,6 +2025,14 @@ skip:
         const uint64_t first_block_height = context.m_last_response_height - context.m_needed_objects.size() + 1;
         span = m_block_queue.reserve_span(first_block_height, context.m_last_response_height, count_limit, context.m_connection_id, context.m_needed_objects);
         log::debug(logcat, "{} span from {}: {}/{}", context, first_block_height, span.first, span.second);
+        // Spans start at or above what the sync needs, which the peer can serve (see above), unless
+        // its chain differs from what we have queued below that.
+        if (span.second > 0 && !can_serve_span(span.first))
+        {
+          log::debug(logcat, "{} peer can't serve the span from {}, releasing it", context, span.first);
+          m_block_queue.remove_span(span.first);
+          span = std::make_pair(0, 0);
+        }
       }
       if (span.second == 0 && !force_next_span)
       {
@@ -2016,6 +2040,8 @@ skip:
         std::vector<crypto::hash> hashes;
         connection_id_t span_connection_id;
         span = m_block_queue.get_next_span_if_scheduled(hashes, span_connection_id);
+        if (span.second > 0 && !can_serve_span(span.first))
+          span = std::make_pair(0, 0);
         if (span.second > 0)
         {
           is_next = true;
@@ -2432,6 +2458,31 @@ You are now synchronized with the network.
     });
     if (n_out_peers >= m_max_out_peers)
       return false;
+    return true;
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  std::optional<sync_need> t_cryptonote_protocol_handler<t_core>::get_sync_need() const
+  {
+    // At the tip, every new block raises the target (from a peer's sync data or the block itself)
+    // a moment before we add it, when peers not yet heard from would look unable to serve it.
+    if (m_synchronized)
+      return std::nullopt;
+    const uint64_t target = m_core.get_target_blockchain_height();
+    const uint64_t height = m_core.blockchain.get_current_blockchain_height();
+    if (target <= height)
+      return std::nullopt;
+    return sync_need{m_block_queue.get_next_needed_height(height), target};
+  }
+  //------------------------------------------------------------------------------------------------------------------------
+  template<class t_core>
+  bool t_cryptonote_protocol_handler<t_core>::wait_for_history(cryptonote_connection_context& context, const std::optional<sync_need>& need)
+  {
+    if (!need || !peer_no_longer_keeps(need->height, context.m_remote_blockchain_height, context.m_history))
+      return false;
+    if (context.m_state != cryptonote_connection_context::state_standby)
+      log::debug(logcat, "{}peer keeps only its last {} blocks, so it can't serve height {}: waiting", context, context.m_history, need->height);
+    context.m_state = cryptonote_connection_context::state_standby;
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------

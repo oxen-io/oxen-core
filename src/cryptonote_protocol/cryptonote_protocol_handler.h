@@ -50,6 +50,7 @@
 #include "cryptonote_protocol_handler_common.h"
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "epee/warnings.h"
+#include "peer_history.h"
 
 PUSH_WARNINGS
 DISABLE_VS_WARNINGS(4355)
@@ -105,8 +106,20 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     void set_no_sync(bool value) { m_no_sync = value; }
     std::string get_peers_overview() const;
     bool needs_new_sync_connections() const;
+    // What we still need from peers while syncing, or nullopt if we aren't syncing (so any peer
+    // will do).  Syncing ends for good when we first reach the network's height: from then on the
+    // target is only briefly ahead of us, as each new block arrives.
+    std::optional<sync_need> get_sync_need() const;
 
   private:
+    // Puts a peer that has had the blocks the sync needs next, but no longer keeps them, in
+    // standby, and returns true if it did: asking it for spans would get nothing, and then we would
+    // ask it for its chain over and over.  The standby checker keeps trying it, and it is of use as
+    // soon as what the sync needs moves up into what it keeps.  (A peer that just hasn't got the
+    // blocks yet is left to go on as usual: to get its chain, then wait for it in the normal state.)
+    bool wait_for_history(
+            cryptonote_connection_context& context, const std::optional<sync_need>& need);
+
     //----------------- commands handlers ----------------------------------------------
     int handle_notify_new_transactions(
             int command,

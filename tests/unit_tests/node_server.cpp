@@ -102,7 +102,8 @@ public:
   bool get_test_drop_download_height() const {return true;}
   bool prepare_handle_incoming_blocks(const std::vector<cryptonote::block_complete_entry>  &blocks_entry, std::vector<cryptonote::block> &blocks) { return true; }
   bool cleanup_handle_incoming_blocks(bool force_sync = false) { return true; }
-  uint64_t get_target_blockchain_height() const { return 1; }
+  uint64_t target_height = 1;
+  uint64_t get_target_blockchain_height() const { return target_height; }
   size_t get_block_sync_size(uint64_t height) const { return cryptonote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT; }
   virtual crypto::hash on_transaction_relayed(const std::string& tx) { return crypto::null<crypto::hash>; }
   cryptonote::network_type get_nettype() const { return cryptonote::network_type::MAINNET; }
@@ -235,6 +236,25 @@ TEST(ban, add)
   ASSERT_TRUE(is_blocked(server,MAKE_IPV4_ADDRESS(1,2,3,4), &t));
   ASSERT_FALSE(is_blocked(server,MAKE_IPV4_ADDRESS(1,2,3,5)));
   ASSERT_TRUE(t >= 4);
+}
+
+TEST(sync_need, only_until_first_synchronized)
+{
+  test_core pr_core;
+  cryptonote::t_cryptonote_protocol_handler<test_core> cprotocol(pr_core);
+  // At the network's height (the test core's chain height is 1)
+  ASSERT_FALSE(cprotocol.get_sync_need());
+
+  pr_core.target_height = 100;
+  auto need = cprotocol.get_sync_need();
+  ASSERT_TRUE(need);
+  EXPECT_EQ(need->height, 1);
+  EXPECT_EQ(need->target, 100);
+
+  // Once synchronized, a target ahead of us is just a new block arriving, not a sync
+  cryptonote::t_cryptonote_protocol_handler<test_core> synced(pr_core, /*offline=*/true);
+  ASSERT_TRUE(synced.is_synchronized());
+  EXPECT_FALSE(synced.get_sync_need());
 }
 
 TEST(ban, limit)

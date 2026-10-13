@@ -50,6 +50,7 @@
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_config.h"
 #include "cryptonote_protocol/levin_notify.h"
+#include "cryptonote_protocol/peer_history.h"
 #include "epee/net/abstract_tcp_server2.h"
 #include "epee/net/enums.h"
 #include "epee/net/levin_protocol_handler.h"
@@ -392,7 +393,28 @@ class node_server
 
     bool make_new_connection_from_anchor_peerlist(
             const std::vector<anchor_peerlist_entry>& anchor_peerlist);
-    bool make_new_connection_from_peerlist(network_zone& zone, bool use_white_list);
+    // The indices, in the white or gray list, of the peers we could connect to: not connected
+    // already, nor recently failed, and, given what a sync needs, only those whose peerlist entry
+    // says they can serve it and that haven't already turned out not to.
+    std::vector<size_t> connectable_peers(
+            network_zone& zone,
+            bool use_white_list,
+            const std::optional<cryptonote::sync_need>& need = std::nullopt);
+    bool make_new_connection_from_peerlist(
+            network_zone& zone,
+            bool use_white_list,
+            const std::optional<cryptonote::sync_need>& need = std::nullopt);
+    struct droppable_peer {
+        epee::connection_id_t connection_id;
+        epee::net_utils::network_address address;
+        uint64_t height;
+        uint64_t history;
+    };
+    // While syncing, records the outgoing peers that can't serve what the sync needs as unhelpful,
+    // and returns whether every outgoing peer can, along with one that can't and could be dropped
+    // to make room for one that can (see connections_maker), if any.
+    std::pair<bool, std::optional<droppable_peer>> check_sync_peers(
+            network_zone& zone, const cryptonote::sync_need& need);
     bool try_to_connect_and_handshake_with_new_peer(
             const epee::net_utils::network_address& na,
             bool just_take_peerlist = false,
@@ -485,6 +507,11 @@ class node_server
 
     t_payload_net_handler& m_payload_handler;
     peerlist_storage m_peerlist_storage;
+    // Only used by connections_maker (so needs no lock).
+    cryptonote::unhelpful_peers m_unhelpful_peers;
+    // Whether connections_maker last found a connected peer that can't serve the sync, for logging
+    // when that starts and stops.
+    bool m_sync_peers_lacking = false;
 
     tools::periodic_task m_peer_handshake_idle_maker_interval{
             "p2p handshake cleanup", cryptonote::p2p::DEFAULT_HANDSHAKE_INTERVAL};

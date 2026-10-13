@@ -3,10 +3,15 @@
 #include <sstream>
 
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
+#include "cryptonote_protocol/peer_history.h"
 #include "epee/serialization/keyvalue_serialization.h"
 #include "epee/storages/portable_storage_template_helper.h"
 #include "p2p/net_peerlist.h"
 #include "p2p/p2p_protocol_defs.h"
+
+using cryptonote::history_covers;
+using cryptonote::peer_can_serve;
+using cryptonote::PEER_HISTORY_MARGIN;
 
 namespace {
 
@@ -48,6 +53,66 @@ struct old_peerlist_entry {
 };
 
 }  // namespace
+
+TEST(peer_history, archive_peers_serve_everything_they_have) {
+    EXPECT_TRUE(peer_can_serve(0, 1'000'000, 0));
+    EXPECT_TRUE(peer_can_serve(999'999, 1'000'000, 0));
+    // ... but not what they haven't got yet
+    EXPECT_FALSE(peer_can_serve(1'000'000, 1'000'000, 0));
+    EXPECT_FALSE(peer_can_serve(2'000'000, 1'000'000, 0));
+}
+
+TEST(peer_history, windowed_peers_serve_their_window_less_the_margin) {
+    constexpr uint64_t top = 1'000'000, history = 20'000;
+    // The oldest block it keeps is at top - history, but within the margin of that doesn't count
+    const uint64_t first = top - history + PEER_HISTORY_MARGIN;
+    EXPECT_TRUE(peer_can_serve(first, top, history));
+    EXPECT_FALSE(peer_can_serve(first - 1, top, history));
+    EXPECT_FALSE(peer_can_serve(top - history, top, history));
+    EXPECT_FALSE(peer_can_serve(0, top, history));
+    EXPECT_TRUE(peer_can_serve(top - 1, top, history));
+    EXPECT_FALSE(peer_can_serve(top, top, history));
+
+    // A window shorter than the margin can't serve anything at all
+    EXPECT_FALSE(peer_can_serve(top - 1, top, PEER_HISTORY_MARGIN));
+    EXPECT_FALSE(peer_can_serve(top - 1, top, 50));
+
+    // Windows near the bottom of the chain don't underflow
+    EXPECT_TRUE(peer_can_serve(0, 500, 600));
+    EXPECT_FALSE(peer_can_serve(0, 600, 600));
+}
+
+TEST(peer_history, peers_that_no_longer_keep_a_block) {
+    using cryptonote::peer_no_longer_keeps;
+    constexpr uint64_t top = 1'000'000, history = 20'000;
+    const uint64_t first = top - history + PEER_HISTORY_MARGIN;
+    // A windowed peer past the block that has dropped it is waited on...
+    EXPECT_TRUE(peer_no_longer_keeps(first - 1, top, history));
+    EXPECT_TRUE(peer_no_longer_keeps(0, top, history));
+    // ... but not one that still keeps it,
+    EXPECT_FALSE(peer_no_longer_keeps(first, top, history));
+    // nor one that hasn't got that far (which we get the chain from as usual),
+    EXPECT_FALSE(peer_no_longer_keeps(top, top, history));
+    EXPECT_FALSE(peer_no_longer_keeps(top + 5, top, history));
+    // nor an archive peer
+    EXPECT_FALSE(peer_no_longer_keeps(0, top, 0));
+}
+
+TEST(peer_history, peerlist_entries_are_selected_by_history_against_the_target) {
+    // A peerlist entry's height is unknown (or long stale), so selection asks only whether the
+    // history it advertises would reach back to what we need from the height we are syncing to.
+    constexpr uint64_t target = 2'000'000;
+    // archive entries always qualify
+    EXPECT_TRUE(history_covers(0, target, 0));
+    EXPECT_TRUE(history_covers(target + 1000, target, 0));
+    // windowed entries covering the need qualify, up to the margin
+    EXPECT_TRUE(history_covers(target - 10'000, target, 20'000));
+    EXPECT_TRUE(history_covers(target - 20'000 + PEER_HISTORY_MARGIN, target, 20'000));
+    // ... and those not covering it don't
+    EXPECT_FALSE(history_covers(target - 20'000 + PEER_HISTORY_MARGIN - 1, target, 20'000));
+    EXPECT_FALSE(history_covers(0, target, 20'000));
+    EXPECT_FALSE(history_covers(1'000'000, target, 720));
+}
 
 TEST(peer_history, missing_field_means_archive) {
     // Sync data from a peer that predates the field reads as an archive peer
@@ -100,6 +165,39 @@ TEST(peer_history, history_is_sent_and_old_peers_accept_it) {
     old_peerlist_entry old_pe{};
     ASSERT_TRUE(epee::serialization::load_t_from_binary(old_pe, blob));
     EXPECT_EQ(old_pe.id, 42);
+}
+
+TEST(peer_history, unhelpful_peers) {
+    cryptonote::unhelpful_peers unhelpful;
+    // a windowed peer at 1,000,000 keeping 20,000 blocks, when we need block 500,000
+    unhelpful.add(addr(1), 1'000'000, 20'000);
+    // a peer behind us
+    unhelpful.add(addr(2), 400'000, 0);
+    EXPECT_TRUE(unhelpful.contains(addr(1)));
+    EXPECT_TRUE(unhelpful.contains(addr(2)));
+    EXPECT_FALSE(unhelpful.contains(addr(3)));
+    EXPECT_EQ(unhelpful.size(), 2);
+
+    // Re-adding updates rather than duplicates
+    unhelpful.add(addr(1), 1'000'000, 20'000);
+    EXPECT_EQ(unhelpful.size(), 2);
+
+    // Nothing is forgotten while what we need is still out of their reach
+    unhelpful.forget_servable(500'000);
+    unhelpful.forget_servable(1'000'000 - 20'000 + PEER_HISTORY_MARGIN - 1);
+    EXPECT_EQ(unhelpful.size(), 2);
+
+    // The windowed one is forgotten once what we need moves up into its window
+    unhelpful.forget_servable(1'000'000 - 20'000 + PEER_HISTORY_MARGIN);
+    EXPECT_FALSE(unhelpful.contains(addr(1)));
+    // but the one that was behind stays, as we only need ever higher blocks
+    EXPECT_TRUE(unhelpful.contains(addr(2)));
+    unhelpful.forget_servable(1'500'000);
+    EXPECT_TRUE(unhelpful.contains(addr(2)));
+
+    // ... until syncing is done
+    unhelpful.clear();
+    EXPECT_TRUE(unhelpful.empty());
 }
 
 TEST(peer_history, gossip_does_not_lose_a_known_history) {
