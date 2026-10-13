@@ -290,6 +290,32 @@ bool oxen_history_window_reorg::generate(std::vector<test_event_entry>& events)
     return true;
   });
 
+  // A peer asking for blocks from before the history kept is told they are missed, alongside the
+  // kept ones it gets.
+  oxen_register_callback(events, "check_serving_outside_history", [](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_serving_outside_history");
+    auto& db = c.blockchain.db();
+    if (!db.history())
+    {
+      CHECK_EQ(db.served_history(), 0);
+      return true;
+    }
+    const uint64_t start = db.history_start();
+    CHECK_TEST_CONDITION(start >= 2);
+    CHECK_EQ(db.served_history(), db.height() - db.history_window_start());
+
+    cryptonote::NOTIFY_REQUEST_GET_BLOCKS::request req;
+    for (uint64_t h = start - 2; h < start + 2; ++h)
+      req.blocks.push_back(db.get_block_hash_from_height(h));
+    cryptonote::NOTIFY_RESPONSE_GET_BLOCKS::request rsp;
+    CHECK_TEST_CONDITION(c.blockchain.handle_get_blocks(req, rsp));
+    CHECK_EQ(rsp.blocks.size(), 2);
+    const std::unordered_set<crypto::hash> missed{rsp.missed_ids.begin(), rsp.missed_ids.end()};
+    CHECK_TEST_CONDITION(missed == std::unordered_set<crypto::hash>(req.blocks.begin(), req.blocks.begin() + 2));
+    return true;
+  });
+
   oxen_register_callback(events, "check_pop_within_history", [](cryptonote::core &c, size_t ev_index)
   {
     DEFINE_TESTS_ERROR_CONTEXT("check_pop_within_history");

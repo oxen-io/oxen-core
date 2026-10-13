@@ -3451,11 +3451,14 @@ bool Blockchain::get_blocks(
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};
 
+    // Blocks older than the history the database keeps are missed like unknown ones: peers can ask
+    // for them (a well-behaved one won't), and must be told we haven't got them.
+    const uint64_t history_start = m_db->history_start();
     blocks.reserve(block_ids.size());
     for (const auto& block_hash : block_ids) {
         try {
             uint64_t height = 0;
-            if (m_db->block_exists(block_hash, &height)) {
+            if (m_db->block_exists(block_hash, &height) && height >= history_start) {
                 blocks.push_back(std::make_pair(m_db->get_block_blob_from_height(height), block()));
                 if (!parse_and_validate_block_from_blob(
                             blocks.back().first, blocks.back().second)) {
@@ -3465,6 +3468,10 @@ bool Blockchain::get_blocks(
                         missed_bs->insert(block_hash);
                 }
             } else if (missed_bs)
+                missed_bs->insert(block_hash);
+        } catch (const BLOCK_DNE&) {
+            // Dropped, as outside the history, since history_start was read
+            if (missed_bs)
                 missed_bs->insert(block_hash);
         } catch (const std::exception& e) {
             return false;
