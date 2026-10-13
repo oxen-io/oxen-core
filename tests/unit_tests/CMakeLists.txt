@@ -67,6 +67,7 @@ add_executable(unit_tests
   output_distribution.cpp
   parse_amount.cpp
   parse_address.cpp
+  peer_history.cpp
   random.cpp
   rolling_median.cpp
   serialization.cpp

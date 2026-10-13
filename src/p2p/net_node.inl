@@ -1019,7 +1019,7 @@ bool node_server<t_payload_net_handler>::do_handshake_with_peer(
                     pi = context.peer_id = rsp.node_data.peer_id;
                     network_zone& zone = m_network_zones.at(context.m_remote_address.get_zone());
                     zone.m_peerlist.set_peer_just_seen(
-                            rsp.node_data.peer_id, context.m_remote_address);
+                            rsp.node_data.peer_id, context.m_remote_address, context.m_history);
 
                     // move
                     if (rsp.node_data.peer_id == zone.m_config.m_peer_id) {
@@ -1093,7 +1093,9 @@ bool node_server<t_payload_net_handler>::do_peer_timed_sync(
                 if (!context.m_is_income)
                     m_network_zones.at(context.m_remote_address.get_zone())
                             .m_peerlist.set_peer_just_seen(
-                                    context.peer_id, context.m_remote_address);
+                                    context.peer_id,
+                                    context.m_remote_address,
+                                    rsp.payload_data.history);
                 if (!m_payload_handler.process_payload_sync_data(
                             std::move(rsp.payload_data), context, false)) {
                     m_network_zones.at(context.m_remote_address.get_zone())
@@ -1271,6 +1273,7 @@ bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_p
     time_t last_seen;
     time(&last_seen);
     pe_local.last_seen = static_cast<int64_t>(last_seen);
+    pe_local.history = con->m_history;
     zone.m_peerlist.append_with_peer_white(pe_local);
     // update last seen and push it to peerlist manager
 
@@ -2284,7 +2287,11 @@ int node_server<t_payload_net_handler>::handle_timed_sync(
 
     if (!context.m_is_income && zone.m_our_address.get_zone() == zone_type)
         rsp.local_peerlist_new.push_back(
-                peerlist_entry{zone.m_our_address, zone.m_config.m_peer_id, std::time(nullptr)});
+                peerlist_entry{
+                        zone.m_our_address,
+                        zone.m_config.m_peer_id,
+                        std::time(nullptr),
+                        rsp.payload_data.history});
 
     log::debug(logcat, "{}COMMAND_TIMED_SYNC", context);
     return 1;
@@ -2398,6 +2405,7 @@ int node_server<t_payload_net_handler>::handle_handshake(
             time(&last_seen);
             pe.last_seen = static_cast<int64_t>(last_seen);
             pe.id = peer_id_l;
+            pe.history = context.m_history;
             this->m_network_zones.at(context.m_remote_address.get_zone())
                     .m_peerlist.append_with_peer_white(pe);
             log::debug(
@@ -2727,7 +2735,7 @@ bool node_server<t_payload_net_handler>::gray_peerlist_housekeeping() {
                     pe.adr.host_str(),
                     peerid_to_string(pe.id));
         } else {
-            zone.second.m_peerlist.set_peer_just_seen(pe.id, pe.adr);
+            zone.second.m_peerlist.set_peer_just_seen(pe.id, pe.adr, pe.history);
             log::debug(
                     logcat,
                     "PEER PROMOTED TO WHITE PEER LIST IP address: {} Peer ID: {}",

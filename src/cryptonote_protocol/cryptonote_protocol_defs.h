@@ -80,6 +80,7 @@ struct connection_info {
     std::string connection_id;
 
     uint64_t height;
+    uint64_t history;
 
     uint8_t address_type;
 };
@@ -156,6 +157,9 @@ struct CORE_SYNC_DATA {
     hf top_version;
     std::vector<uint64_t> blink_blocks;
     std::vector<crypto::hash> blink_hash;
+    // How many of the most recent blocks the node can serve, or 0 if it can serve all of them.
+    // Nodes that predate this send nothing, which reads as 0: they all keep the whole chain.
+    uint64_t history = 0;
 
     KV_MAP_SERIALIZABLE
 };

@@ -1342,11 +1342,14 @@ void core_rpc_server::invoke(SAVE_BC& save_bc, rpc_context) {
 }
 
 static nlohmann::json json_peer_info(const nodetool::peerlist_entry& peer) {
-    return nlohmann::json{
+    nlohmann::json p{
             {"id", peer.id},
             {"host", peer.adr.host_str()},
             {"port", peer.adr.port()},
             {"last_seen", peer.last_seen}};
+    if (peer.history)
+        p["history"] = peer.history;
+    return p;
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
@@ -1789,6 +1792,8 @@ static json json_connection_info(const connection_info& ci) {
         info["local_ip"] = true;
     if (uint16_t port; tools::parse_int(ci.port, port) && port > 0)
         info["port"] = port;
+    if (ci.history)
+        info["history"] = ci.history;
     return info;
 }
 

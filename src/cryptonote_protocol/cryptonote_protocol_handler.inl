@@ -311,6 +311,7 @@ namespace cryptonote
       cnx.connection_id = tools::hex_guts(cntxt.m_connection_id);
 
       cnx.height = cntxt.m_remote_blockchain_height;
+      cnx.history = cntxt.m_history;
       cnx.address_type = (uint8_t)cntxt.m_remote_address.get_type_id();
 
       connections.push_back(cnx);
@@ -324,6 +325,10 @@ namespace cryptonote
   template<class t_core>
   bool t_cryptonote_protocol_handler<t_core>::process_payload_sync_data(CORE_SYNC_DATA&& hshd, cryptonote_connection_context& context, bool is_initial)
   {
+    // Kept up to date even when the rest of the sync data is ignored below: the peer policy and
+    // our peerlist go by it.
+    context.m_history = hshd.history;
+
     if(context.m_state == cryptonote_connection_context::state_before_handshake && !is_initial)
       return true;
 
@@ -503,6 +508,7 @@ namespace cryptonote
     hshd.top_version = get_network_version(m_core.get_nettype(), hshd.current_height);
     hshd.cumulative_difficulty = m_core.blockchain.db().get_block_cumulative_difficulty(hshd.current_height);
     hshd.current_height +=1;
+    hshd.history = m_core.blockchain.db().served_history();
     auto our_blink_hashes = m_core.mempool.get_blink_checksums();
     hshd.blink_blocks.reserve(our_blink_hashes.size());
     hshd.blink_hash.reserve(our_blink_hashes.size());

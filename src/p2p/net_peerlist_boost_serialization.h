@@ -40,7 +40,7 @@
 #include "net/tor_address.h"
 #include "p2p/p2p_protocol_defs.h"
 
-BOOST_CLASS_VERSION(nodetool::peerlist_entry, 4)
+BOOST_CLASS_VERSION(nodetool::peerlist_entry, 5)
 
 namespace boost::serialization {
 template <class T, class Archive>
@@ -214,6 +214,8 @@ inline void serialize(Archive& a, nodetool::peerlist_entry& pl, const ver_type v
         uint16_t rpc_port = 0;
         a & rpc_port;
     }
+    if (version >= 5)
+        a & pl.history;
 }
 
 template <class Archive, class ver_type>

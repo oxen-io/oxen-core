@@ -152,6 +152,15 @@ void BlockchainDB::set_history(uint64_t blocks) {
                 "(--db-backend=sqlite)"};
 }
 
+uint64_t BlockchainDB::served_history() const {
+    if (!history())
+        return 0;
+    const uint64_t h = height();
+    const uint64_t start = history_window_start();
+    // 0 would claim the whole chain, so even a node with nothing to serve claims a block
+    return start < h ? h - start : 1;
+}
+
 std::unique_ptr<BlockchainDB> new_db(db_backend backend) {
     switch (backend) {
         case db_backend::lmdb: return std::make_unique<BlockchainLMDB>();

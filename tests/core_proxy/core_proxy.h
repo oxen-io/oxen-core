@@ -121,6 +121,7 @@ namespace tests
 
         struct fake_db {
             cryptonote::difficulty_type get_block_cumulative_difficulty(uint64_t height) const { return 0; }
+            uint64_t served_history() const { return 0; }
         } db_;
         fake_db& db() { return db_; }
     } blockchain;

@@ -838,6 +838,8 @@ struct GET_BLOCK : PUBLIC {
 /// - `port` -- the port on which the peer is reachable
 /// - `last_seen` -- unix timestamp when this node last connected to the peer.  Will be omitted if
 ///   never connected (e.g. for a peer we received from another node but haven't yet tried).
+/// - `history` -- how many of the most recent blocks the peer last said it keeps; omitted if it
+///   keeps every block (or never said otherwise).
 struct GET_PEER_LIST : LEGACY {
     static constexpr auto names() { return NAMES("get_peer_list"); }
 
@@ -985,6 +987,8 @@ struct GET_TRANSACTION_POOL_STATS : PUBLIC, LEGACY {
 ///   - `current_upload` -- the current upload speed to this peer in bytes per second
 ///   - `connection_id` -- a unique random string identifying this connection
 ///   - `height` -- the height of the peer
+///   - `history` -- how many of the most recent blocks the peer keeps; omitted if it keeps every
+///     block.
 ///   - `host` -- the hostname for this peer; only included if not the same as `ip`
 ///   - `localhost` -- set to true if the peer is a localhost connection; omitted otherwise.
 ///   - `local_ip` -- set to true if the peer is a non-public, local network connection; omitted

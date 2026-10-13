@@ -864,6 +864,18 @@ class BlockchainDB {
     virtual uint64_t history_window_start() const { return 0; }
 
     /**
+     * @brief gets the history to advertise to peers: how many of the most recent blocks the
+     * database can serve them
+     *
+     * This is the blocks from history_window_start() up, which can be more than history() (the
+     * history_window minimum) or fewer (just after the history is raised, until the chain grows
+     * into it), but never shrinks while older blocks are still being dropped.
+     *
+     * @return 0 if it keeps every block, otherwise the number of blocks it can serve (at least 1)
+     */
+    uint64_t served_history() const;
+
+    /**
      * @brief starts dropping, in the background, the history that is no longer kept, if there is
      * more of it than is dropped as blocks are added (as when the history is first limited)
      *
