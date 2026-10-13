@@ -444,6 +444,7 @@ void L2Tracker::proxy_connect_and_subscribe() {
         if (!oxend.connid) {
             log::debug(logcat, "Establishing connection to oxend L2 proxy {}", oxend.id);
             oxend.pending_connect = true;
+            oxend.subscribed = false;
             oxend.connid = omq.connect_remote(
                     oxend.address,
                     [this, &oxend](ConnectionID cid) {
@@ -475,27 +476,44 @@ void L2Tracker::proxy_connect_and_subscribe() {
     }
 }
 
-void L2Tracker::proxy_send_subscribe(const l2_oxend_proxy& oxend) {
+void L2Tracker::proxy_send_subscribe(l2_oxend_proxy& oxend) {
     proxy_request_generic(
             oxend.connid,
             "l2_proxy.subscribe",
             std::nullopt,
             "L2 subscription"sv,
             oxend.id,
-            [this](bool& success,
-                   bool& log_error,
-                   std::vector<std::string>& data,
-                   const oxenmq::ConnectionID& conn,
-                   std::string_view id) {
+            [this, &oxend](
+                    bool& success,
+                    bool& log_error,
+                    std::vector<std::string>& data,
+                    const oxenmq::ConnectionID& conn,
+                    std::string_view id) {
+                // The first reply on a connection is logged as the subscription, whether it is
+                // SUBSCRIBED or RENEWED: the remote keys subscriptions by the connection's pubkey,
+                // so a node restarting within the subscription timeout gets its old one renewed.
+                auto first_on_connection = [&] {
+                    std::unique_lock lock{mutex};
+                    return !std::exchange(oxend.subscribed, true);
+                };
                 if (data.empty()) {
                     success = false;
                     data.push_back("Received empty response");
                 } else if (data[0] == "RENEWED"sv) {
-                    log::debug(logcat, "Renewed L2 proxy subscription with {}", id);
+                    if (first_on_connection()) {
+                        log::info(logcat, "Subscribed to L2 updates from {}", id);
+                        // A renewal doesn't say what state the remote has (as a new subscription
+                        // does), so ask for it now rather than wait for the next notification.
+                        proxy_request_state(conn, false);
+                        proxy_request_state(conn, true);
+                    } else {
+                        log::debug(logcat, "Renewed L2 proxy subscription with {}", id);
+                    }
                 } else if (data[0] == "SUBSCRIBED"sv) {
                     uint64_t state_height, purge_state_height;
                     if (data.size() == 3 && tools::parse_int(data[1], state_height) &&
                         tools::parse_int(data[2], purge_state_height)) {
+                        first_on_connection();
                         log::info(logcat, "Subscribed to L2 updates from {}", id);
                         proxy_request_if_newer(conn, state_height, purge_state_height);
                     } else {
@@ -518,6 +536,7 @@ void L2Tracker::proxy_disconnect(oxenmq::ConnectionID conn, bool clear_only) {
         if (conn == oxend.connid) {
             oxend.connid = oxenmq::ConnectionID{};
             oxend.pending_connect = false;
+            oxend.subscribed = false;
             break;
         }
     }

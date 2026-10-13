@@ -95,6 +95,9 @@ class L2Tracker {
         std::string id;  // Descriptive string identifying this remote for logs
         oxenmq::ConnectionID connid;
         bool pending_connect;
+        // Whether the subscription on the current connection has been logged (and the remote's
+        // state asked for); cleared when the connection goes.  Guarded by `mutex`.
+        bool subscribed = false;
         l2_oxend_proxy(oxenmq::address a, std::string id) :
                 address{std::move(a)}, id{std::move(id)}, connid{}, pending_connect{false} {}
     };
@@ -162,7 +165,7 @@ class L2Tracker {
     static constexpr std::chrono::milliseconds PROXY_RESUB_INTERVAL = 30s;
 
     void proxy_connect_and_subscribe();
-    void proxy_send_subscribe(const l2_oxend_proxy& oxend);
+    void proxy_send_subscribe(l2_oxend_proxy& oxend);
     void proxy_disconnect(oxenmq::ConnectionID conn, bool clear_only = false);
     // Handler for reverse command l2_notify.(purge_)state:
     void l2_notify_state(oxenmq::Message& msg, bool purge);
