@@ -276,7 +276,8 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
         return {reinterpret_cast<const char*>(b.data()), b.size()};
     }
 
-    // The database file and the write-ahead log and shared memory files that SQLite keeps beside it.
+    // The database file and the write-ahead log and shared memory files that SQLite keeps beside
+    // it.
     std::array<fs::path, 3> db_files(const fs::path& db) {
         std::array<fs::path, 3> files{db, db, db};
         files[1] += "-wal";
@@ -285,11 +286,12 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
     }
 
     uint64_t chain_height(Connection& conn) {
-        return as_u64(conn.prepared_get<int64_t>("SELECT COALESCE(MAX(height) + 1, 0) FROM blocks"));
+        return as_u64(
+                conn.prepared_get<int64_t>("SELECT COALESCE(MAX(height) + 1, 0) FROM blocks"));
     }
 
-    // The (stored) types of the transactions without inputs (see is_transfer_type), as a list for an
-    // SQL `IN (...)`.
+    // The (stored) types of the transactions without inputs (see is_transfer_type), as a list for
+    // an SQL `IN (...)`.
     const std::string& zero_input_types() {
         static const std::string list = [] {
             std::string types;
@@ -302,9 +304,9 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
     }
 
     uint64_t get_count_property(Connection& conn, std::string_view key) {
-        return as_u64(conn.prepared_maybe_get<int64_t>(
-                                  "SELECT value FROM properties WHERE key = ?", key)
-                              .value_or(0));
+        return as_u64(
+                conn.prepared_maybe_get<int64_t>("SELECT value FROM properties WHERE key = ?", key)
+                        .value_or(0));
     }
 
     void set_count_property(Connection& conn, std::string_view key, uint64_t value) {
@@ -373,7 +375,8 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
 
     // Converts a block's `blob` column, which is NULL for a block whose body is not kept.
     template <typename T>
-    T convert_stored_block(const std::optional<blob>& data, uint64_t height, size_t* size = nullptr) {
+    T convert_stored_block(
+            const std::optional<blob>& data, uint64_t height, size_t* size = nullptr) {
         if (!data) {
             note_dropped_block_read(height);
             throw BLOCK_DNE("Block at height {} is not stored in the db"_format(height));
@@ -506,7 +509,8 @@ void BlockchainSQLite::open(const fs::path& filename, network_type nettype, cons
         throw;
     } catch (const std::exception& e) {
         m_sql.reset();
-        throw DB_OPEN_FAILURE("Failed to open blockchain database {}: {}"_format(filename, e.what()));
+        throw DB_OPEN_FAILURE(
+                "Failed to open blockchain database {}: {}"_format(filename, e.what()));
     }
 
     m_filename = filename;
@@ -852,7 +856,8 @@ void BlockchainSQLite::add_block(
     uint64_t height = chain_height(conn);
 
     if (conn.prepared_maybe_get<int64_t>(
-                "SELECT height FROM blocks WHERE hash8 = substr(?1, 1, 8) AND hash = ?1", span_guts(blk_hash)))
+                "SELECT height FROM blocks WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
+                span_guts(blk_hash)))
         throw BLOCK_EXISTS("Attempting to add block that's already in the db");
 
     int64_t prev_rct_outputs = 0;
@@ -1037,7 +1042,8 @@ std::vector<uint64_t> BlockchainSQLite::get_block_weight_column(
     return ret;
 }
 
-std::vector<uint64_t> BlockchainSQLite::get_block_weights(uint64_t start_height, size_t count) const {
+std::vector<uint64_t> BlockchainSQLite::get_block_weights(
+        uint64_t start_height, size_t count) const {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     return get_block_weight_column("weight", start_height, count);
 }
@@ -1072,7 +1078,8 @@ crypto::hash BlockchainSQLite::get_block_hash_from_height(const uint64_t& height
     return get_block_column<blob_guts<crypto::hash>>(height, "hash", "hash");
 }
 
-std::vector<block> BlockchainSQLite::get_blocks_range(const uint64_t& h1, const uint64_t& h2) const {
+std::vector<block> BlockchainSQLite::get_blocks_range(
+        const uint64_t& h1, const uint64_t& h2) const {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     check_open();
     std::vector<block> v;
@@ -1151,15 +1158,17 @@ uint64_t BlockchainSQLite::add_transaction_data(
     auto& conn = write_conn();
 
     if (auto id = conn.prepared_maybe_get<int64_t>(
-                "SELECT id FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1", span_guts(tx_hash)))
+                "SELECT id FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
+                span_guts(tx_hash)))
         throw TX_EXISTS(
                 "Attempting to add transaction that's already in the db (tx id {})"_format(*id));
     if (m_history_start && conn.prepared_maybe_get<int64_t>(
                                    "SELECT height FROM trimmed_txes "
                                    "WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
                                    span_guts(tx_hash)))
-        throw TX_EXISTS("Attempting to add transaction that's already in the chain (below the kept "
-                        "history)");
+        throw TX_EXISTS(
+                "Attempting to add transaction that's already in the chain (below the kept "
+                "history)");
 
     const transaction& tx = txp.first;
     const std::string& blob = txp.second;
@@ -1217,9 +1226,10 @@ bool BlockchainSQLite::tx_exists(const crypto::hash& h) const {
     if (!m_history_start)
         return false;
     auto conn = m_sql->conn();
-    return conn.prepared_maybe_get<int64_t>(
-                       "SELECT height FROM trimmed_txes WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
-                       span_guts(h))
+    return conn
+            .prepared_maybe_get<int64_t>(
+                    "SELECT height FROM trimmed_txes WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
+                    span_guts(h))
             .has_value();
 }
 
@@ -1229,7 +1239,8 @@ bool BlockchainSQLite::tx_exists(const crypto::hash& h, uint64_t& tx_id) const {
     auto conn = m_sql->conn();
     auto started = std::chrono::steady_clock::now();
     auto id = conn.prepared_maybe_get<int64_t>(
-            "SELECT id FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1", span_guts(h));
+            "SELECT id FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
+            span_guts(h));
     time_tx_exists += std::chrono::steady_clock::now() - started;
     if (!id) {
         log::debug(logcat, "transaction with hash {} not found in db", h);
@@ -1324,8 +1335,7 @@ bool BlockchainSQLite::get_prunable_tx_hash(
 uint64_t BlockchainSQLite::get_tx_count() const {
     check_open();
     auto conn = m_sql->conn();
-    return as_u64(
-            conn.prepared_get<int64_t>("SELECT COALESCE(MAX(id) + 1, 0) FROM transactions"));
+    return as_u64(conn.prepared_get<int64_t>("SELECT COALESCE(MAX(id) + 1, 0) FROM transactions"));
 }
 
 std::vector<transaction> BlockchainSQLite::get_tx_list(
@@ -1402,8 +1412,7 @@ uint64_t BlockchainSQLite::add_output(
             as_i64(local_index)));
 }
 
-void BlockchainSQLite::add_tx_amount_output_indices(
-        const uint64_t, const std::vector<uint64_t>&) {
+void BlockchainSQLite::add_tx_amount_output_indices(const uint64_t, const std::vector<uint64_t>&) {
     // Nothing to store: each output row already records its transaction and position in it, which
     // is what get_tx_amount_output_indices reads.
 }
@@ -1453,11 +1462,12 @@ output_data_t BlockchainSQLite::get_output_key(
             ret = {pubkey, as_u64(unlock_time), as_u64(height), commitment};
             found = true;
         }
-    } else if (auto row = conn.prepared_maybe_get<blob_guts<crypto::public_key>, int64_t, int64_t>(
-                       "SELECT pubkey, unlock_time, height FROM outputs "
-                       "WHERE amount = ? AND amount_index = ?",
-                       as_i64(amount),
-                       as_i64(index))) {
+    } else if (
+            auto row = conn.prepared_maybe_get<blob_guts<crypto::public_key>, int64_t, int64_t>(
+                    "SELECT pubkey, unlock_time, height FROM outputs "
+                    "WHERE amount = ? AND amount_index = ?",
+                    as_i64(amount),
+                    as_i64(index))) {
         auto& [pubkey, unlock_time, height] = *row;
         ret.pubkey = pubkey;
         ret.unlock_time = as_u64(unlock_time);
@@ -1507,16 +1517,14 @@ void BlockchainSQLite::get_output_key(
                     "WHERE amount = ? AND amount_index IN ({})"_format(
                             placeholders(static_cast<int>(end - start)))};
             session::sqlite::bind_oneshot(
-                    st,
-                    as_i64(amount),
-                    bind_each{indices.begin() + start, indices.begin() + end});
+                    st, as_i64(amount), bind_each{indices.begin() + start, indices.begin() + end});
             while (st.executeStep()) {
-                auto [amount_index, pubkey, unlock_time, height, commitment] = session::sqlite::
-                        get<int64_t,
-                            blob_guts<crypto::public_key>,
-                            int64_t,
-                            int64_t,
-                            blob_guts<rct::key>>(st);
+                auto [amount_index, pubkey, unlock_time, height, commitment] = session::sqlite::get<
+                        int64_t,
+                        blob_guts<crypto::public_key>,
+                        int64_t,
+                        int64_t,
+                        blob_guts<rct::key>>(st);
                 found_amount.emplace(
                         as_u64(amount_index),
                         output_data_t{pubkey, as_u64(unlock_time), as_u64(height), commitment});
@@ -1614,7 +1622,8 @@ void BlockchainSQLite::add_output_blacklist(std::vector<uint64_t> const& blackli
                 conn.sql,
                 "UPDATE outputs SET blacklisted = 1 WHERE amount = 0 AND amount_index IN ({})"_format(
                         placeholders(static_cast<int>(end - start)))};
-        session::sqlite::bind_oneshot(st, bind_each{indices.begin() + start, indices.begin() + end});
+        session::sqlite::bind_oneshot(
+                st, bind_each{indices.begin() + start, indices.begin() + end});
         if (auto updated = st.exec(); static_cast<size_t>(updated) != end - start)
             throw DB_ERROR("Failed to blacklist outputs: {} of {} outputs not found"_format(
                     end - start - updated, end - start));
@@ -1641,8 +1650,8 @@ std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> BlockchainSQLite::g
     if (amounts.empty()) {
         // Visits each distinct amount by seeking to the next one, rather than scanning every
         // output (nearly all of which have amount 0).
-        for (auto amount = conn.prepared_get<std::optional<int64_t>>(
-                     "SELECT MIN(amount) FROM outputs");
+        for (auto amount =
+                     conn.prepared_get<std::optional<int64_t>>("SELECT MIN(amount) FROM outputs");
              amount;
              amount = conn.prepared_get<std::optional<int64_t>>(
                      "SELECT MIN(amount) FROM outputs WHERE amount > ?", *amount)) {
@@ -1760,8 +1769,7 @@ bool BlockchainSQLite::has_key_image(const crypto::key_image& img) const {
     check_open();
     auto conn = m_sql->conn();
     return conn
-            .prepared_maybe_get<int>(
-                    "SELECT 1 FROM key_images WHERE key_image = ?", span_guts(img))
+            .prepared_maybe_get<int>("SELECT 1 FROM key_images WHERE key_image = ?", span_guts(img))
             .has_value();
 }
 
@@ -1946,9 +1954,8 @@ std::vector<checkpoint_t> BlockchainSQLite::get_checkpoints_range(
 
     start = std::clamp(start, as_u64(*bottom), as_u64(*top));
     end = std::clamp(end, as_u64(*bottom), as_u64(*top));
-    const int64_t limit = num_desired_checkpoints == GET_ALL_CHECKPOINTS
-                                ? -1
-                                : as_i64(num_desired_checkpoints);
+    const int64_t limit =
+            num_desired_checkpoints == GET_ALL_CHECKPOINTS ? -1 : as_i64(num_desired_checkpoints);
 
     std::vector<std::tuple<int64_t, blob_guts<crypto::hash>, checkpoint_type>> rows;
     for (auto row : conn.prepared_results<int64_t, blob_guts<crypto::hash>, checkpoint_type>(
@@ -2198,7 +2205,8 @@ void BlockchainSQLite::trim_history_to(uint64_t to) {
     const uint64_t from = m_history_start;
     in_write_txn([&](Connection& conn) {
         conn.prepared_exec(
-                "UPDATE blocks SET blob = NULL WHERE height >= ? AND height < ? AND blob IS NOT NULL",
+                "UPDATE blocks SET blob = NULL"
+                " WHERE height >= ? AND height < ? AND blob IS NOT NULL",
                 as_i64(from),
                 as_i64(to));
         // Copied here rather than by a delete trigger on transactions: popping a block also
@@ -2433,8 +2441,8 @@ bool BlockchainSQLite::get_txpool_tx_blob(const crypto::hash& txid, std::string&
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     check_open();
     auto conn = m_sql->conn();
-    for (auto data : conn.prepared_results<blob>(
-                 "SELECT blob FROM txpool WHERE hash = ?", span_guts(txid))) {
+    for (auto data :
+         conn.prepared_results<blob>("SELECT blob FROM txpool WHERE hash = ?", span_guts(txid))) {
         if (data.empty())
             throw DB_ERROR("Error finding txpool tx blob: tx is present, but data is empty");
         bd.assign(as_view(data));
@@ -2457,11 +2465,10 @@ bool BlockchainSQLite::for_all_txpool_txes(
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     check_open();
     auto conn = m_sql->conn();
-    auto st = conn.prepared_st(
-            "SELECT hash, {}{} FROM txpool{} ORDER BY hash"_format(
-                    TXPOOL_META_COLUMNS,
-                    include_blob ? ", blob" : "",
-                    include_unrelayed_txes ? "" : " WHERE NOT do_not_relay"));
+    auto st = conn.prepared_st("SELECT hash, {}{} FROM txpool{} ORDER BY hash"_format(
+            TXPOOL_META_COLUMNS,
+            include_blob ? ", blob" : "",
+            include_unrelayed_txes ? "" : " WHERE NOT do_not_relay"));
     std::string bd;
     while (st->executeStep()) {
         crypto::hash txid = blob_guts<crypto::hash>{st->getColumn(0)};
@@ -2524,8 +2531,8 @@ std::optional<std::string> BlockchainSQLite::get_service_node_archive(uint64_t h
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     check_open();
     auto conn = m_sql->conn();
-    for (auto b : conn.prepared_results<blob>(
-                 "SELECT blob FROM sn_states WHERE height = ?", as_i64(height)))
+    for (auto b :
+         conn.prepared_results<blob>("SELECT blob FROM sn_states WHERE height = ?", as_i64(height)))
         return std::string{as_view(b)};
     return std::nullopt;
 }
@@ -2596,7 +2603,8 @@ bool BlockchainSQLite::get_service_node_proof(
     check_open();
     auto conn = m_sql->conn();
     auto st = conn.prepared_bind(
-            "SELECT {} FROM sn_proofs WHERE pubkey = ?"_format(SN_PROOF_COLUMNS), span_guts(pubkey));
+            "SELECT {} FROM sn_proofs WHERE pubkey = ?"_format(SN_PROOF_COLUMNS),
+            span_guts(pubkey));
     if (!st->executeStep())
         return false;
     update_proof_info(st, proof);
@@ -2641,8 +2649,8 @@ bool BlockchainSQLite::remove_service_node_proof(const crypto::public_key& pubke
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     bool removed = false;
     in_write_txn([&](Connection& conn) {
-        removed = conn.prepared_exec("DELETE FROM sn_proofs WHERE pubkey = ?", span_guts(pubkey)) >
-                  0;
+        removed =
+                conn.prepared_exec("DELETE FROM sn_proofs WHERE pubkey = ?", span_guts(pubkey)) > 0;
     });
     return removed;
 }
@@ -2751,9 +2759,8 @@ bool BlockchainSQLite::for_all_alt_blocks(
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     check_open();
     auto conn = m_sql->conn();
-    auto st = conn.prepared_st(
-            "SELECT hash, {}{} FROM alt_blocks ORDER BY hash"_format(
-                    ALT_BLOCK_DATA_COLUMNS, include_blob ? ", blob, checkpoint" : ""));
+    auto st = conn.prepared_st("SELECT hash, {}{} FROM alt_blocks ORDER BY hash"_format(
+            ALT_BLOCK_DATA_COLUMNS, include_blob ? ", blob, checkpoint" : ""));
     std::string block, checkpoint;
     while (st->executeStep()) {
         crypto::hash blkid = blob_guts<crypto::hash>{st->getColumn(0)};
@@ -2765,10 +2772,7 @@ bool BlockchainSQLite::for_all_alt_blocks(
             else
                 checkpoint.assign(as_view(session::sqlite::blob{st->getColumn(7)}));
         }
-        if (!f(blkid,
-               data,
-               include_blob ? &block : nullptr,
-               include_blob ? &checkpoint : nullptr))
+        if (!f(blkid, data, include_blob ? &block : nullptr, include_blob ? &checkpoint : nullptr))
             return false;
     }
     return true;

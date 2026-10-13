@@ -195,7 +195,8 @@ void core_rpc_server::require_history(uint64_t height) const {
 }
 
 void core_rpc_server::require_history(const crypto::hash& block_hash) const {
-    if (uint64_t height; history_start() && m_core.blockchain.db().block_exists(block_hash, &height))
+    if (uint64_t height;
+        history_start() && m_core.blockchain.db().block_exists(block_hash, &height))
         require_history(height);
 }
 
@@ -3633,8 +3634,8 @@ void core_rpc_server::invoke(GET_CHECKPOINTS& get_checkpoints, rpc_context conte
     // `count` checkpoints) only gets there if it doesn't find enough after.
     const auto searched_back_complete = [this, count](const std::vector<checkpoint_t>& found) {
         if (const auto hist = history_start();
-            hist && (found.size() < count ||
-                     (!found.empty() && before_history(found.back().height, hist))))
+            hist &&
+            (found.size() < count || (!found.empty() && before_history(found.back().height, hist))))
             throw history_not_kept(hist);
     };
     std::vector<checkpoint_t> checkpoints;

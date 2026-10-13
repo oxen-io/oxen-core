@@ -113,7 +113,8 @@ class accrued_history {
 
     struct slot_values {
         uint64_t height = INVALID_HEIGHT;  // The height these are the values at
-        bool present = false;  // False at heights where the address has no row (e.g. after a removal)
+        bool present =
+                false;  // False at heights where the address has no row (e.g. after a removal)
         // Per slot (rather than per address) because an address's row can be removed and then
         // added again with a different one, as on localdev when the HF21 transition removes the
         // OXEN rows and its block then credits nodes without ETH addresses by their OXEN ones.

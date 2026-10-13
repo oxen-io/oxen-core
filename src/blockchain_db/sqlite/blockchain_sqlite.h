@@ -186,8 +186,8 @@ class BlockchainSQLite : public BlockchainDB {
     // Drops the history that is no longer kept (when there is more of it than trim_history drops
     // on the spot, as after the history is first limited or made smaller), in chunks sized to take
     // about half a second (see CATCH_UP_CHUNK_TIME), each in its own write transaction, until it
-    // is all gone or `stop` (called between chunks) returns true.  This is what the background catch-up runs; it can also be called
-    // directly (with the background catch-up turned off).
+    // is all gone or `stop` (called between chunks) returns true.  This is what the background
+    // catch-up runs; it can also be called directly (with the background catch-up turned off).
     void run_history_catch_up(const std::function<bool()>& stop = {});
 
     // Turns the background catch-up (see run_history_catch_up) on or off; on by default.  Turning

@@ -25,7 +25,7 @@ Cpp11BracedListStyle: true
 KeepEmptyLinesAtTheStartOfBlocks: true
 NamespaceIndentation: Inner
 CompactNamespaces: true
-PenaltyBreakString: 3
+PenaltyBreakString: 1000
 SpaceBeforeParens: ControlStatements
 SpacesInAngles: false
 SpacesInContainerLiterals: false

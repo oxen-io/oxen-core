@@ -98,8 +98,8 @@ using session::sqlite::blob_guts;
 using session::sqlite::Connection;
 using tools::span_guts;
 
-// For a write that belongs in `active_tx` if given one, or else in a transaction of its own: returns
-// that new transaction (for the caller to commit), or nullopt when given one.
+// For a write that belongs in `active_tx` if given one, or else in a transaction of its own:
+// returns that new transaction (for the caller to commit), or nullopt when given one.
 static std::optional<SQLite::Transaction> own_tx(Connection& conn, SQLite::Transaction* active_tx) {
     if (active_tx) {
         assert(!sqlite3_get_autocommit(conn.sql.getHandle()));
@@ -309,9 +309,9 @@ static bool has_column(Connection& conn, std::string_view table, std::string_vie
 }
 
 // Brings the tables of releases before 11.7, which kept the live values in the database (in
-// batched_payments_accrued, with copies of it in batched_payments_accrued_recent at every height and
-// batched_payments_accrued_archive at archive heights), up to the last of their own formats, for
-// migrate_legacy_tables to move into the current ones.
+// batched_payments_accrued, with copies of it in batched_payments_accrued_recent at every height
+// and batched_payments_accrued_archive at archive heights), up to the last of their own formats,
+// for migrate_legacy_tables to move into the current ones.
 static void upgrade_legacy_tables(Connection& conn, const network_type& nettype) {
     bool have_offset = has_column(conn, "batched_payments_accrued", "payout_offset");
 
@@ -322,7 +322,7 @@ static void upgrade_legacy_tables(Connection& conn, const network_type& nettype)
     if (!get_fixup_version(conn))
         set_fixup_version(conn, conn.sql.execAndGet("PRAGMA user_version").getInt());
 
-    // The height used to be in a batch_db_info table, which nothing kept to a single row.  (Dropping
+    // The height used to be in a batch_db_info table, which nothing kept to a single row. (Dropping
     // it drops its triggers too.)
     if (conn.table_exists("batch_db_info")) {
         conn.sql.exec(CREATE_BATCH_DB_HEIGHT);
@@ -694,14 +694,14 @@ DROP TABLE batch_db_info;
 }
 
 // Moves the (upgraded) legacy tables into the current ones: the live values become the snapshot at
-// their height, the archived ones snapshots at their archive heights, and the recent ones at heights
-// divisible by STATE_SNAPSHOT_INTERVAL snapshots there too (the heights that the SN list stores its
-// states at, which makes them heights that both can be restored to).  The ones the retention rules
-// don't keep get deleted when the next snapshot is written.
-// The legacy tables aren't STRICT (and their BLOB-declared address columns have no type affinity),
-// so they can hold values the current tables can't take, such as TEXT addresses, which pre-11.4.0
-// code stored.  This fails, saying which table and column hold what, rather than leaving it to
-// SQLite's generic error from the copy.
+// their height, the archived ones snapshots at their archive heights, and the recent ones at
+// heights divisible by STATE_SNAPSHOT_INTERVAL snapshots there too (the heights that the SN list
+// stores its states at, which makes them heights that both can be restored to).  The ones the
+// retention rules don't keep get deleted when the next snapshot is written. The legacy tables
+// aren't STRICT (and their BLOB-declared address columns have no type affinity), so they can hold
+// values the current tables can't take, such as TEXT addresses, which pre-11.4.0 code stored.  This
+// fails, saying which table and column hold what, rather than leaving it to SQLite's generic error
+// from the copy.
 static void check_legacy_types(Connection& conn) {
     // `types` are the typeof() values that the column may hold
     auto check = [&conn](std::string_view table, std::string_view column, std::string_view types) {
@@ -785,8 +785,7 @@ static bool have_stored_snapshot(Connection& conn, uint64_t height) {
 }
 
 void RewardsDB::load_stored(Connection& conn, uint64_t new_height) {
-    conn.prepared_exec(
-            "DELETE FROM rewards_snapshot_heights WHERE height > ?", as_i64(new_height));
+    conn.prepared_exec("DELETE FROM rewards_snapshot_heights WHERE height > ?", as_i64(new_height));
     conn.prepared_exec("DELETE FROM delayed_payments WHERE height > ?", as_i64(new_height));
 
     accrued_rows rows;
@@ -920,7 +919,8 @@ void RewardsDB::copy_state_from(const RewardsDB& other) {
     pending.reset();
 }
 
-// The row of `addr` at the current height, which (as the values every block builds on) must be known.
+// The row of `addr` at the current height, which (as the values every block builds on) must be
+// known.
 static std::optional<accrued_row> current_row(
         const accrued_history& history, const rewards_address& addr, uint64_t height) {
     auto r = history.lookup(addr, height);
@@ -1046,7 +1046,8 @@ RewardsDB::wallet_info RewardsDB::make_wallet_info(
                 if (d.addr != *eth_addr || d.height > at_height || d.payout_height <= at_height)
                     continue;
                 if (d.amount >= d.liquidation)
-                    info.timelocked_stakes += reward_money::from_db_atomic(d.amount - d.liquidation);
+                    info.timelocked_stakes +=
+                            reward_money::from_db_atomic(d.amount - d.liquidation);
                 else {
                     log::error(
                             logcat,
@@ -1137,7 +1138,8 @@ std::vector<batch_sn_payment> RewardsDB::get_sn_payments(uint64_t block_height) 
     }
 
     const auto offset = static_cast<int32_t>(block_height % conf.BATCHING_INTERVAL);
-    const auto min_amount = static_cast<int64_t>(conf.MIN_BATCH_PAYMENT_AMOUNT * BATCH_REWARD_FACTOR);
+    const auto min_amount =
+            static_cast<int64_t>(conf.MIN_BATCH_PAYMENT_AMOUNT * BATCH_REWARD_FACTOR);
     accrued_rows due;
     {
         std::shared_lock lock{mutex};
@@ -1229,8 +1231,8 @@ RewardsDB::wallet_info RewardsDB::pending_accrued_rewards(
     return make_wallet_info(height, address, pending_lookup(address), hf_version);
 }
 
-std::vector<std::pair<rewards_address, RewardsDB::wallet_info>>
-RewardsDB::get_all_accrued_rewards() const {
+std::vector<std::pair<rewards_address, RewardsDB::wallet_info>> RewardsDB::get_all_accrued_rewards()
+        const {
     ZoneScoped;
     log::trace(logcat, "RewardsDB::{}", __func__);
 
@@ -1434,8 +1436,7 @@ void RewardsDB::submit_stakes_metadata(const service_nodes::block_add_result& bl
         assert(stake.amount.to_coin() > 0);
 
 #ifndef NDEBUG
-        auto wallet_info_before =
-                make_wallet_info(height, stake.addr, pending_lookup(stake.addr));
+        auto wallet_info_before = make_wallet_info(height, stake.addr, pending_lookup(stake.addr));
 #endif
 
         pending_row(stake.addr).lifetime_locked_stakes += stake.amount.to_db_atomic();
@@ -1670,7 +1671,8 @@ void RewardsDB::add_delayed_payments(
         if (std::ranges::any_of(delayed, same) || std::ranges::any_of(pending->delayed, same)) {
             log::error(
                     logcat,
-                    "Error returning stakes: a delayed payment already exists for contributor {} of "
+                    "Error returning stakes: a delayed payment already exists for contributor {} "
+                    "of "
                     "the exit at block {}",
                     payment.contributor_index,
                     payment.block_height);
@@ -1740,9 +1742,10 @@ void RewardsDB::write_snapshot(Connection& conn, uint64_t h) {
             conn.prepared_exec(
                     "DELETE FROM rewards_snapshot_heights WHERE height < ?",
                     as_i64(h + 1 - window));
-    } else if (auto third_newest = conn.prepared_maybe_get<int64_t>(
-                       "SELECT height FROM rewards_snapshot_heights ORDER BY height DESC LIMIT 1 "
-                       "OFFSET 2"))
+    } else if (
+            auto third_newest =
+                    conn.prepared_maybe_get<int64_t>("SELECT height FROM rewards_snapshot_heights"
+                                                     " ORDER BY height DESC LIMIT 1 OFFSET 2"))
         conn.prepared_exec(
                 "DELETE FROM rewards_snapshot_heights WHERE height < ?"
                 " AND NOT (height % ? = 0 AND height >= ?)",
@@ -1974,8 +1977,7 @@ std::optional<uint64_t> RewardsDB::fixup(bool recheck, SQLite::Transaction* acti
                 logcat,
                 "Deleting invalid reward archive at blk {} (checksum failed)",
                 archive_height);
-        conn.prepared_exec(
-                "DELETE FROM rewards_snapshot_heights WHERE height = ?", archive_height);
+        conn.prepared_exec("DELETE FROM rewards_snapshot_heights WHERE height = ?", archive_height);
     }
 
     if (recheck)

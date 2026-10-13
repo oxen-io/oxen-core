@@ -53,8 +53,8 @@ namespace ons {
 namespace log = oxen::log;
 static auto logcat = log::Cat("ons");
 
-// The columns of `ons_mappings.*`, followed (in queries selecting mappings with their owners) by the
-// owner and backup owner addresses.
+// The columns of `ons_mappings.*`, followed (in queries selecting mappings with their owners) by
+// the owner and backup owner addresses.
 enum struct mapping_record_column {
     id,
     type,
@@ -1550,8 +1550,9 @@ CREATE TABLE IF NOT EXISTS ons_owners(
     address BLOB NOT NULL UNIQUE
 ) STRICT;
 
-CREATE TABLE IF NOT EXISTS ons_mappings ()" + mappings_columns +
-                                            ") STRICT;" + std::string{MAPPINGS_INDICES};
+CREATE TABLE IF NOT EXISTS ons_mappings ()" +
+                                            mappings_columns + ") STRICT;" +
+                                            std::string{MAPPINGS_INDICES};
 
         conn.sql.exec(BUILD_TABLE_SQL);
         conn.sql.exec(db::CREATE_PROPERTIES);
@@ -1744,9 +1745,8 @@ bool name_system_db::init(
         // don't drop the DB but will load the missing blocks in a later step.
 
         // (Looked up in the block index, which, unlike the block's body, is kept for every height.)
-        if (uint64_t height;
-            blockchain->db().block_exists(settings.top_hash, &height) &&
-            height == settings.top_height) {
+        if (uint64_t height; blockchain->db().block_exists(settings.top_hash, &height) &&
+                             height == settings.top_height) {
             ons_height = settings.top_height;
             ons_hash = settings.top_hash;
         }

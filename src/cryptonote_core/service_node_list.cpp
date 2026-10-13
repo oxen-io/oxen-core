@@ -7055,8 +7055,8 @@ static try_load_blobs_result try_load_from_db_states(
     auto& db = blockchain.db();
     cryptonote::db_rtxn_guard txn_guard{db};
 
-    auto state = find_restorable_state(
-            db, snl, 0, current_height - 1, [](uint64_t) { return true; });
+    auto state =
+            find_restorable_state(db, snl, 0, current_height - 1, [](uint64_t) { return true; });
     if (!state)
         return result;
     m_state = std::move(*state);

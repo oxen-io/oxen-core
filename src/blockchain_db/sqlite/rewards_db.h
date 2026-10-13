@@ -58,7 +58,7 @@ struct delayed_payment {
     int64_t amount;
     int64_t liquidation;
     uint64_t payout_height;
-    uint64_t height;  // The block that added it
+    uint64_t height;        // The block that added it
     uint32_t block_height;  // The block that the exit event was mined in
     uint32_t block_tx_index;
     uint32_t contributor_index;
@@ -122,8 +122,8 @@ class RewardsDB {
     // ---------------------------------
     // These accumulate in a pending copy that only add_block publishes, so that nothing changes if
     // the block fails partway through.  discard_pending discards them: those of a block that failed
-    // before reaching add_block, or of an alt block, whose processing makes them too but which isn't
-    // added.
+    // before reaching add_block, or of an alt block, whose processing makes them too but which
+    // isn't added.
     void discard_pending();
 
     // Credits payments to the specified addresses.  If the payments are rewards set `is_rewards`

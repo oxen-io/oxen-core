@@ -101,7 +101,8 @@ struct reward_money {
 
     // Construct a money value from an atomic SESH amount value stored in the database.  This is for
     // fields that are always stored as atomic (not subatomic) values such as
-    // the accrued rewards' `lifetime_locked_stakes` and the amounts of the delayed payments.  This is effectively the same thing as from_coin, but is more descriptive and takes an
+    // the accrued rewards' `lifetime_locked_stakes` and the amounts of the delayed payments.  This
+    // is effectively the same thing as from_coin, but is more descriptive and takes an
     // sqlite-compatible signed int64 instead of unsigned.
     static constexpr reward_money from_db_atomic(int64_t amount) {
         return from_coin(static_cast<int64_t>(amount));

@@ -50,12 +50,12 @@
 #include "common/exception.h"
 #include "common/guts.h"
 #include "common/lock.h"
-#include "common/systemd.h"
 #include "common/median.h"
 #include "common/random.h"
 #include "common/rules.h"
 #include "common/sha256sum.h"
 #include "common/string_util.h"
+#include "common/systemd.h"
 #include "common/threadpool.h"
 #include "common/tracy_shim.h"
 #include "common/util.h"
@@ -554,9 +554,9 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
     rescan.skip_verify = true;
 
     // When the rewards tables are in the blockchain database, the writes of the replay go into the
-    // blockchain database's batch transaction, committed every REPLAY_BATCH_BLOCKS blocks rather than
-    // with every block, which considerably reduces disk writes (unless the caller already has a
-    // write transaction open, in which case everything goes into that).  Failing partway through
+    // blockchain database's batch transaction, committed every REPLAY_BATCH_BLOCKS blocks rather
+    // than with every block, which considerably reduces disk writes (unless the caller already has
+    // a write transaction open, in which case everything goes into that).  Failing partway through
     // rolls back everything since the last commit.  (With a database of their own, the rewards
     // write too rarely, only snapshots and delayed payments, for grouping them to matter.)
     constexpr int REPLAY_BATCH_BLOCKS = 100;
@@ -5581,8 +5581,8 @@ bool Blockchain::handle_block_to_main_chain(
         // Delay signature verification until Service Node List adds the block in
         // the block_add hook.
 #if defined(PER_BLOCK_CHECKPOINT)
-        hash_listed =
-                chain_height < m_blocks_hash_check.size() && m_blocks_hash_check[chain_height] == id;
+        hash_listed = chain_height < m_blocks_hash_check.size() &&
+                      m_blocks_hash_check[chain_height] == id;
 #endif
     } else  // check proof of work
     {

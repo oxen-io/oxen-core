@@ -102,7 +102,8 @@ void accrued_history::rewind(uint64_t height) {
         return;
     }
     current = height;
-    std::erase_if(wallets, [height](const auto& item) { return item.second.first_height > height; });
+    std::erase_if(
+            wallets, [height](const auto& item) { return item.second.first_height > height; });
     for (auto& [addr, w] : wallets) {
         for (auto& s : w.ring)
             if (s.height != INVALID_HEIGHT && s.height > height)

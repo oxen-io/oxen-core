@@ -308,8 +308,8 @@ std::optional<uint64_t> checkpoints::immutable_height(uint64_t height) {
             c.signatures.clear();
         // (The range is clamped to the stored checkpoints, so with none above this gives the top
         // one.)
-        if (auto above =
-                    m_db->get_checkpoints_range(height + 1, std::numeric_limits<uint64_t>::max(), 1);
+        if (auto above = m_db->get_checkpoints_range(
+                    height + 1, std::numeric_limits<uint64_t>::max(), 1);
             !above.empty() && above.front().height > height)
             f.next = above.front().height;
         m_finality = std::move(f);
@@ -346,11 +346,10 @@ void checkpoints::cache_added(const checkpoint_t& checkpoint) {
 
 void checkpoints::remove_checkpoint(uint64_t height) {
     m_db->remove_block_checkpoint(height);
-    if (m_finality &&
-        (m_finality->next == height ||
-         std::ranges::any_of(m_finality->newest, [height](const auto& c) {
-             return c.height == height;
-         })))
+    if (m_finality && (m_finality->next == height ||
+                       std::ranges::any_of(m_finality->newest, [height](const auto& c) {
+                           return c.height == height;
+                       })))
         m_finality.reset();
 }
 

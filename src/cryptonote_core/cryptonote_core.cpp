@@ -1076,9 +1076,11 @@ std::unique_ptr<BlockchainDB> core::init_blockchain_db(
         return nullptr;
     }
     if (auto history = db->history()) {
-        log::info(globallogcat, "The blockchain database keeps the last {} blocks of history", history);
-        if (auto complete =
-                    history_complete_at(history, db->history_window_start(), db->height()))
+        log::info(
+                globallogcat,
+                "The blockchain database keeps the last {} blocks of history",
+                history);
+        if (auto complete = history_complete_at(history, db->history_window_start(), db->height()))
             log::warning(
                     globallogcat,
                     "The blockchain database's history is incomplete: it keeps blocks from {}, so "
@@ -2650,8 +2652,8 @@ void core::do_uptime_proof_call() {
                 return;
             }
 
-            // A registration from before BLS keys (as seen while replaying the old chain) has no key
-            // to compare.
+            // A registration from before BLS keys (as seen while replaying the old chain) has no
+            // key to compare.
             if (sn_info.bls_public_key && sn_info.bls_public_key != m_service_keys.pub_bls &&
                 blockchain.get_network_version() > hf::hf22_eth_fixup) {
                 auto reg_key = oxenc::to_hex(

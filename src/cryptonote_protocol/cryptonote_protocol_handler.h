@@ -116,7 +116,8 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     // standby, and returns true if it did: asking it for spans would get nothing, and then we would
     // ask it for its chain over and over.  The standby checker keeps trying it, and it is of use as
     // soon as what the sync needs moves up into what it keeps.  (A peer that just hasn't got the
-    // blocks yet is left to go on as usual: to get its chain, then wait for it in the normal state.)
+    // blocks yet is left to go on as usual: to get its chain, then wait for it in the normal
+    // state.)
     bool wait_for_history(
             cryptonote_connection_context& context, const std::optional<sync_need>& need);
 

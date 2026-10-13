@@ -43,8 +43,8 @@
 #include "epee/string_tools.h"
 #include "history.h"
 #include "lmdb/db_lmdb.h"
-#include "sqlite/blockchain_sqlite.h"
 #include "ringct/rctOps.h"
+#include "sqlite/blockchain_sqlite.h"
 
 namespace cryptonote {
 
@@ -93,7 +93,7 @@ db_backend select_db_backend(const fs::path& folder, std::optional<db_backend> r
     const bool have_sqlite = fs::exists(sqlite_path);
     const bool have_lmdb = fs::exists(lmdb_path);
 
-    const auto backend = requested ? *requested
+    const auto backend = requested   ? *requested
                        : have_sqlite ? db_backend::sqlite
                        : have_lmdb   ? db_backend::lmdb
                                      : FRESH_DB_BACKEND;
@@ -450,7 +450,8 @@ std::optional<std::pair<uint64_t, std::string>> BlockchainDB::get_newest_full_se
     // state; a quorums-only state is stored raw, and starts with its small version varint.
     constexpr std::string_view zstd_magic{"\x28\xb5\x2f\xfd", 4};
     auto heights = get_service_node_archive_heights();
-    for (auto it = std::upper_bound(heights.begin(), heights.end(), height); it != heights.begin();) {
+    for (auto it = std::upper_bound(heights.begin(), heights.end(), height);
+         it != heights.begin();) {
         --it;
         if (auto data = get_service_node_archive(*it); data && data->starts_with(zstd_magic))
             return std::make_pair(*it, std::move(*data));
