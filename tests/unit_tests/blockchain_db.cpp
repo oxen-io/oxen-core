@@ -1977,6 +1977,12 @@ TEST(history, complete_at)
 class SQLiteHistoryTest : public BlockchainDBTest<BlockchainSQLite>
 {
 protected:
+  // The history is dropped by the tests themselves (calling trim_history or run_history_catch_up),
+  // rather than by the background catch-up, unless a test turns that on.
+  SQLiteHistoryTest() { sqlite().set_background_trim(false); }
+
+  BlockchainSQLite& sqlite() { return *static_cast<BlockchainSQLite*>(m_db); }
+
   // Extends the test chain to `height` blocks, as add_synthetic_blocks does but with miner txs
   // that can't come out the same as the second test block's (which add_synthetic_blocks' do at
   // height 111).
@@ -2044,9 +2050,11 @@ TEST_F(SQLiteHistoryTest, setting)
   const uint64_t outputs = db.get_num_outputs(0);
   const auto block_100 = db.get_block_hash_from_height(100);
 
-  // Full -> 800 blocks: what is older than the last 800 goes straight away.
+  // Full -> 800 blocks: setting it only records it; then what is older than the last 800 goes.
   db.set_history(800);
   EXPECT_EQ(db.history(), 800);
+  EXPECT_EQ(db.history_start(), 0);
+  db.trim_history();
   EXPECT_EQ(db.history_start(), 200);
   EXPECT_THROW(db.get_block_from_height(199), BLOCK_DNE);
   EXPECT_NO_THROW(db.get_block_from_height(200));
@@ -2073,6 +2081,7 @@ TEST_F(SQLiteHistoryTest, setting)
 
   // Keeping less again
   m_db->set_history(720);
+  m_db->trim_history();
   EXPECT_EQ(m_db->history_start(), 380);
 
   // A limited history can't be made full again, nor go below the minimum.
@@ -2130,6 +2139,7 @@ TEST_F(SQLiteHistoryTest, trim_keeps_zero_input_tx_hashes)
 
   // The drop when the history is first limited
   db.set_history(720);
+  db.trim_history();
   EXPECT_EQ(db.history_start(), 280);
   auto conn = db.sqlite_database()->conn();
   EXPECT_EQ(conn.prepared_get<int64_t>("SELECT COUNT(*) FROM trimmed_txes"), 2);
@@ -2187,6 +2197,7 @@ TEST_F(SQLiteHistoryTest, trim_other_tables)
   }
 
   db.set_history(720);
+  db.trim_history();
   EXPECT_EQ(db.history_start(), 280);
   EXPECT_FALSE(db.get_service_node_archive(100));
   EXPECT_TRUE(db.get_service_node_archive(900));
@@ -2213,6 +2224,7 @@ TEST_F(SQLiteHistoryTest, trim_keeps_immutable_checkpoints)
   // The window would start at 280, above all of them; but the immutable checkpoint (the older of
   // the two newest, at 148) and the one after it must stay.
   db.set_history(720);
+  db.trim_history();
   EXPECT_EQ(db.history_start(), 280);
   checkpoint_t cp;
   EXPECT_FALSE(db.get_block_checkpoint(100, cp));
@@ -2228,6 +2240,91 @@ TEST_F(SQLiteHistoryTest, trim_keeps_immutable_checkpoints)
   EXPECT_FALSE(db.get_block_checkpoint(196, cp));
   EXPECT_TRUE(db.get_block_checkpoint(960, cp));
   EXPECT_TRUE(db.get_block_checkpoint(964, cp));
+}
+
+// Limiting the history only records it: what is no longer kept is left to the catch-up, which drops
+// it in chunks, each recording how far it has got, and can be stopped between any two (to carry on
+// from there later, as after a restart).
+TEST_F(SQLiteHistoryTest, catch_up)
+{
+  open_with_blocks();
+  auto& db = sqlite();
+  extend_to(5'000);
+  db.set_history(720);
+  EXPECT_EQ(db.history(), 720);
+  EXPECT_EQ(db.history_start(), 0);
+  // Too much to drop on the spot after adding blocks, so that leaves it to the catch-up too.
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 0);
+
+  db.set_history_chunk_limit(500);
+  int chunks = 0;
+  db.run_history_catch_up([&] { return ++chunks == 3; });
+  EXPECT_EQ(db.history_start(), 1'500);
+  EXPECT_EQ(
+      db.sqlite_database()->conn().prepared_get<int64_t>(
+          "SELECT value FROM properties WHERE key = 'history_start'"),
+      1'500);
+  EXPECT_THROW(db.get_block_from_height(1'499), BLOCK_DNE);
+  EXPECT_NO_THROW(db.get_block_from_height(1'500));
+
+  reopen_db();
+  EXPECT_EQ(m_db->history_start(), 1'500);
+  sqlite().run_history_catch_up();
+  EXPECT_EQ(m_db->history_start(), 4'280);
+}
+
+// The background catch-up drops it all by itself; and once it has, a clean close compacts the
+// database (when that frees enough of it).
+TEST_F(SQLiteHistoryTest, background_catch_up_and_compaction)
+{
+  open_with_blocks();
+  auto& db = sqlite();
+  // Blocks with a 4 kB transaction each, so that dropping their history frees most of the file
+  // (rather than leaving it mostly the outputs, which are kept).
+  for (uint64_t h = db.height(); h < 5'000; h++) {
+    transaction tx;
+    tx.version = txversion::v4_tx_types;
+    tx.type = txtype::state_change;
+    tx.extra.assign(4'096, 0);
+    std::memcpy(tx.extra.data(), &h, sizeof(h));
+    tx.rct_signatures.type = rct::RCTType::Null;
+    db_wtxn_guard guard{db};
+    add_block_with({{tx, tx_to_blob(tx)}});
+  }
+  db.set_background_trim(true);
+  db.set_history(720);
+  for (int i = 0; i < 600 && db.history_start() < 4'280; i++)
+    std::this_thread::sleep_for(100ms);
+  ASSERT_EQ(db.history_start(), 4'280);
+
+  const auto path = db_open_path<BlockchainSQLite>(m_prefix);
+  auto free_fraction = [](session::sqlite::Connection conn) {
+    return double(conn.prepared_get<int64_t>("PRAGMA freelist_count")) /
+           conn.prepared_get<int64_t>("PRAGMA page_count");
+  };
+  ASSERT_GT(free_fraction(db.sqlite_database()->conn()), 0.25);
+  m_db->close();
+  EXPECT_FALSE(fs::exists(fs::path{path} += ".compacting"));
+  {
+    session::sqlite::Database raw{path};
+    EXPECT_LT(free_fraction(raw.conn()), 0.25);
+  }
+  m_db->open(path, network_type::FAKECHAIN);
+  EXPECT_EQ(m_db->history_start(), 4'280);
+  EXPECT_EQ(m_db->height(), 5'000);
+}
+
+// A compaction cut short at shutdown leaves its partial copy, which the next open removes.
+TEST_F(SQLiteHistoryTest, removes_unfinished_compaction)
+{
+  open_db();
+  const auto path = db_open_path<BlockchainSQLite>(m_prefix);
+  const auto partial = fs::path{path} += ".compacting";
+  m_db->close();
+  std::ofstream{partial} << "partial copy";
+  m_db->open(path, network_type::FAKECHAIN);
+  EXPECT_FALSE(fs::exists(partial));
 }
 
 }  // anonymous namespace

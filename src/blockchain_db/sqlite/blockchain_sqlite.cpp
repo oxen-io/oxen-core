@@ -425,6 +425,13 @@ void BlockchainSQLite::open(const fs::path& filename, network_type nettype, cons
         if (!m_read_only && filename.has_parent_path())
             fs::create_directories(filename.parent_path());
 
+        // Left behind by a compaction at shutdown that didn't finish (see compact_for_close); the
+        // database itself is as it was before it.
+        if (auto partial = fs::path{filename} += ".compacting"; !m_read_only && fs::exists(partial)) {
+            log::warning(logcat, "Removing {}, left by an unfinished compaction", partial);
+            fs::remove(partial);
+        }
+
         m_sql = std::make_unique<session::sqlite::Database>(
                 filename,
                 session::sqlite::open_readonly{m_read_only},
@@ -485,12 +492,16 @@ void BlockchainSQLite::open(const fs::path& filename, network_type nettype, cons
     m_nettype = nettype;
     m_db_flags = db_flags;
     m_open = true;
+
+    // Carries on dropping what an earlier run (or a change of the history) left to drop.
+    start_history_catch_up();
 }
 
 void BlockchainSQLite::close() {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     if (!m_open)
         return;
+    stop_history_catch_up();
     if (m_write) {
         log::warning(logcat, "Closing the database with a write transaction open; rolling it back");
         end_write(false);
@@ -499,9 +510,28 @@ void BlockchainSQLite::close() {
         std::lock_guard lock{m_read_mutex};
         m_reads.clear();
     }
+    std::optional<fs::path> compacted;
+    try {
+        compacted = compact_for_close();
+    } catch (const std::exception& e) {
+        log::error(logcat, "Failed to compact the blockchain database: {}", e.what());
+        auto partial = m_filename;
+        partial += ".compacting";
+        std::error_code ec;
+        fs::remove(partial, ec);
+    }
     sync();
+    // Closing the last connection checkpoints the WAL and removes it, so the compacted copy then
+    // holds everything the database does.
     m_sql.reset();
     m_open = false;
+    if (compacted) {
+        fs::rename(*compacted, m_filename);
+        log::warning(
+                globallogcat,
+                "Compacted the blockchain database to {}",
+                tools::get_human_readable_bytes(fs::file_size(m_filename)));
+    }
 }
 
 void BlockchainSQLite::sync() {
@@ -523,6 +553,7 @@ void BlockchainSQLite::reset() {
     check_open();
     if (m_writer.load() != std::thread::id{})
         throw DB_ERROR("Cannot reset the database while a write transaction is open");
+    stop_history_catch_up();
     end_read_txn(false);
 
     auto conn = m_sql->conn();
@@ -1973,20 +2004,149 @@ void BlockchainSQLite::set_history(uint64_t blocks) {
             blocks,
             previous ? "the last {} blocks"_format(previous) : "all of it"s);
 
-    if (previous == 0 || blocks < previous) {
-        trim_history();
-        compact_if_worthwhile();
-    }
+    // What is no longer kept is dropped in the background, rather than holding up the start: the
+    // node keeps the new history from now on, with the old blocks only lingering (below
+    // history_start, which everything that needs the blocks goes by) until they are dropped.
+    start_history_catch_up();
+}
+
+// More history than this to drop is left to the background catch-up rather than dropped on the spot
+// (inside the batch of blocks that was just added): normally a trim drops about as many blocks as
+// were just added.
+constexpr uint64_t INLINE_TRIM_MAX = 2'000;
+
+uint64_t BlockchainSQLite::history_trim_target() const {
+    if (!m_history)
+        return 0;
+    const uint64_t height = this->height();
+    const uint64_t window = history_window(m_nettype, m_history, height);
+    return height > window ? height - window : 0;
 }
 
 void BlockchainSQLite::trim_history() {
     if (!m_history || m_read_only)
         return;
     check_open();
-    const uint64_t height = this->height();
-    const uint64_t window = history_window(m_nettype, m_history, height);
-    if (height > window)
-        trim_history_to(height - window);
+    const uint64_t to = history_trim_target();
+    if (to <= m_history_start)
+        return;
+    if (to - m_history_start > INLINE_TRIM_MAX) {
+        start_history_catch_up();
+        return;
+    }
+    // Waiting for the catch-up's chunk would deadlock (it waits for our write transaction to
+    // finish), and it drops this too anyway.
+    std::unique_lock lock{m_trim_mutex, std::try_to_lock};
+    if (lock)
+        trim_history_to(to);
+}
+
+void BlockchainSQLite::run_history_catch_up(const std::function<bool()>& stop) {
+    using clock = std::chrono::steady_clock;
+    const uint64_t from = m_history_start;
+    uint64_t to = history_trim_target();
+    if (to <= from)
+        return;
+    log::warning(
+            globallogcat,
+            "Dropping the history of blocks {} to {} from the blockchain database (in the "
+            "background)...",
+            from,
+            to - 1);
+    const auto started = clock::now();
+    auto last_progress = started;
+    // Blocks vary a lot in size (those from before bulletproofs are ~100 times larger than recent
+    // ones), so the chunk size follows how long the last chunk took.
+    uint64_t chunk = std::min<uint64_t>(1'000, m_trim_chunk_limit);
+    while (true) {
+        to = history_trim_target();
+        const uint64_t start = m_history_start;
+        if (to <= start)
+            break;
+        const uint64_t end = std::min(to, start + chunk);
+        const auto chunk_started = clock::now();
+        try {
+            std::lock_guard lock{m_trim_mutex};
+            trim_history_to(end);
+        } catch (const std::exception& e) {
+            // Most likely the write lock was held by a long batch of added blocks for longer than
+            // the busy timeout; the next chunk tries again.
+            log::debug(logcat, "History drop chunk at block {} failed: {}", start, e.what());
+        }
+        const auto took = clock::now() - chunk_started;
+        if (m_history_start > start) {
+            const double factor = std::chrono::duration<double>{1s} / std::max(took, clock::duration{1ms});
+            chunk = std::clamp<uint64_t>(
+                    static_cast<uint64_t>(chunk * std::clamp(factor, 0.5, 2.0)),
+                    10,
+                    m_trim_chunk_limit);
+        }
+        if (auto now = clock::now(); now - last_progress >= 10s) {
+            log::warning(
+                    globallogcat,
+                    "... dropped the history up to block {} ({:.0f}%)",
+                    m_history_start - 1,
+                    100.0 * (m_history_start - from) / (to - from));
+            last_progress = now;
+        }
+        if (stop && stop()) {
+            log::warning(
+                    globallogcat,
+                    "Stopped dropping history at block {}; the rest is dropped after the next "
+                    "start",
+                    m_history_start);
+            return;
+        }
+    }
+    log::warning(
+            globallogcat,
+            "Dropped the history of blocks {} to {} in {:.1f}s",
+            from,
+            m_history_start - 1,
+            std::chrono::duration<double>{clock::now() - started}.count());
+}
+
+void BlockchainSQLite::set_background_trim(bool enabled) {
+    m_background_trim = enabled;
+    if (!enabled)
+        stop_history_catch_up();
+}
+
+void BlockchainSQLite::start_history_catch_up() {
+    if (!m_background_trim || m_read_only || !m_history || m_catch_up_running)
+        return;
+    if (history_trim_target() <= m_history_start)
+        return;
+    if (m_catch_up.joinable())
+        m_catch_up.join();
+    {
+        std::lock_guard lock{m_catch_up_stop_mutex};
+        m_catch_up_stop = false;
+    }
+    m_catch_up_running = true;
+    m_catch_up = std::thread{[this] {
+        try {
+            // Between chunks it gives way for a moment, so that blocks being added (whose write
+            // transactions wait for each chunk's to finish) get their turn.
+            run_history_catch_up([this] {
+                std::unique_lock lock{m_catch_up_stop_mutex};
+                return m_catch_up_stop_cv.wait_for(lock, 100ms, [this] { return m_catch_up_stop; });
+            });
+        } catch (const std::exception& e) {
+            log::error(logcat, "Dropping the history no longer kept failed: {}", e.what());
+        }
+        m_catch_up_running = false;
+    }};
+}
+
+void BlockchainSQLite::stop_history_catch_up() {
+    {
+        std::lock_guard lock{m_catch_up_stop_mutex};
+        m_catch_up_stop = true;
+    }
+    m_catch_up_stop_cv.notify_all();
+    if (m_catch_up.joinable())
+        m_catch_up.join();
 }
 
 void BlockchainSQLite::trim_history_to(uint64_t to) {
@@ -2006,75 +2166,47 @@ void BlockchainSQLite::trim_history_to(uint64_t to) {
     // The rewards tables are only here once the rewards have been opened on this database.
     const bool rewards = m_sql->conn().table_exists("rewards_snapshot_heights");
 
-    // A large trim (when a database is first made to keep less) goes in chunks, so that no single
-    // transaction (and WAL) has to hold all of it.
-    constexpr uint64_t CHUNK = 10'000;
     const uint64_t from = m_history_start;
-    const bool large = to - from > CHUNK;
-    if (large)
-        log::warning(
-                globallogcat,
-                "Dropping the history of blocks {} to {} from the blockchain database...",
-                from,
-                to - 1);
-    auto last_progress = std::chrono::steady_clock::now();
-    for (uint64_t begin = from; begin < to;) {
-        const uint64_t end = std::min(to, begin + CHUNK);
-        in_write_txn([&](Connection& conn) {
+    in_write_txn([&](Connection& conn) {
+        conn.prepared_exec(
+                "UPDATE blocks SET blob = NULL WHERE height >= ? AND height < ? AND blob IS NOT NULL",
+                as_i64(from),
+                as_i64(to));
+        // Copied here rather than by a delete trigger on transactions: popping a block also
+        // deletes its transactions (through the blocks cascade), and those are leaving the chain,
+        // so that the chain replacing them must be able to include them again.  Only the trim's
+        // deletes are of transactions that stay in the chain.
+        conn.prepared_exec(
+                "INSERT INTO trimmed_txes (hash, height, type)"
+                " SELECT hash, height, type FROM transactions"
+                " WHERE height >= ? AND height < ? AND NOT miner AND type IN ({})"_format(
+                        zero_input_types()),
+                as_i64(from),
+                as_i64(to));
+        conn.prepared_exec(
+                "DELETE FROM transactions WHERE height >= ? AND height < ?",
+                as_i64(from),
+                as_i64(to));
+        conn.prepared_exec("DELETE FROM sn_states WHERE height < ?", as_i64(to));
+        conn.prepared_exec("DELETE FROM alt_blocks WHERE height < ?", as_i64(to));
+        conn.prepared_exec("DELETE FROM checkpoints WHERE height < ?", as_i64(checkpoints_to));
+        if (rewards) {
+            conn.prepared_exec("DELETE FROM rewards_snapshot_heights WHERE height < ?", as_i64(to));
             conn.prepared_exec(
-                    "UPDATE blocks SET blob = NULL WHERE height >= ? AND height < ? AND blob IS NOT "
-                    "NULL",
-                    as_i64(begin),
-                    as_i64(end));
-            // Copied here rather than by a delete trigger on transactions: popping a block also
-            // deletes its transactions (through the blocks cascade), and those are leaving the
-            // chain, so that the chain replacing them must be able to include them again.  Only
-            // the trim's deletes are of transactions that stay in the chain.
-            conn.prepared_exec(
-                    "INSERT INTO trimmed_txes (hash, height, type)"
-                    " SELECT hash, height, type FROM transactions"
-                    " WHERE height >= ? AND height < ? AND NOT miner AND type IN ({})"_format(
-                            zero_input_types()),
-                    as_i64(begin),
-                    as_i64(end));
-            conn.prepared_exec(
-                    "DELETE FROM transactions WHERE height >= ? AND height < ?",
-                    as_i64(begin),
-                    as_i64(end));
-            conn.prepared_exec("DELETE FROM sn_states WHERE height < ?", as_i64(end));
-            conn.prepared_exec("DELETE FROM alt_blocks WHERE height < ?", as_i64(end));
-            conn.prepared_exec(
-                    "DELETE FROM checkpoints WHERE height < ?",
-                    as_i64(std::min(end, checkpoints_to)));
-            if (rewards) {
-                conn.prepared_exec(
-                        "DELETE FROM rewards_snapshot_heights WHERE height < ?", as_i64(end));
-                conn.prepared_exec(
-                        "DELETE FROM delayed_payments"
-                        " WHERE payout_height <= (SELECT MIN(height) FROM rewards_snapshot_heights)");
-            }
-            set_count_property(conn, "history_start", end);
-        });
-        m_history_start = end;
-        begin = end;
-        if (large) {
-            if (auto now = std::chrono::steady_clock::now(); now - last_progress >= 10s) {
-                log::warning(
-                        globallogcat,
-                        "... dropped the history up to block {} ({:.0f}%)",
-                        end - 1,
-                        100.0 * (end - from) / (to - from));
-                last_progress = now;
-            }
+                    "DELETE FROM delayed_payments"
+                    " WHERE payout_height <= (SELECT MIN(height) FROM rewards_snapshot_heights)");
         }
-    }
-    if (large)
-        log::warning(globallogcat, "Dropped the history of blocks {} to {}", from, to - 1);
-    else
-        log::debug(logcat, "Dropped the history of blocks {} to {}", from, to - 1);
+        set_count_property(conn, "history_start", to);
+    });
+    m_history_start = to;
+    log::debug(logcat, "Dropped the history of blocks {} to {}", from, to - 1);
 }
 
-void BlockchainSQLite::compact_if_worthwhile() {
+std::optional<fs::path> BlockchainSQLite::compact_for_close() {
+    // Only once the history that is no longer kept has all been dropped (a node keeping all of it
+    // doesn't free enough to be worth it).
+    if (m_read_only || !m_history || history_trim_target() > m_history_start + INLINE_TRIM_MAX)
+        return std::nullopt;
     uint64_t pages, free;
     {
         auto conn = m_sql->conn();
@@ -2084,19 +2216,23 @@ void BlockchainSQLite::compact_if_worthwhile() {
     // Free pages get reused as the chain grows, so it's only worth rewriting the file when it
     // would shrink by a good part.
     if (free * 4 <= pages)
-        return;
+        return std::nullopt;
 
     auto compacted = m_filename;
     compacted += ".compacting";
     fs::remove(compacted);
     // The pages in use are an upper bound: the copy also packs together what the drop left of
     // partly emptied pages.
+    //
+    // This runs as the node shuts down, which a service manager's stop timeout (90s by default for
+    // systemd) can cut short on a large database; that leaves the database as it was, and the
+    // partial copy, which the next open removes, so it is tried again at the next shutdown.
     const uint64_t page_size = as_u64(m_sql->conn().prepared_get<int64_t>("PRAGMA page_size"));
     const uint64_t expected = (pages - free) * page_size;
     log::warning(
             globallogcat,
-            "Compacting the blockchain database from {} to at most {} (it needs that much free "
-            "space while it runs)...",
+            "Compacting the blockchain database from {} to at most {}; this may take a few minutes "
+            "(and needs that much free space while it runs)...",
             tools::get_human_readable_bytes(pages * page_size),
             tools::get_human_readable_bytes(expected));
 
@@ -2129,19 +2265,7 @@ void BlockchainSQLite::compact_if_worthwhile() {
         conn.prepared_exec("VACUUM INTO ?", compacted.string());
         sqlite3_progress_handler(conn.sql.getHandle(), 0, nullptr, nullptr);
     }
-
-    // The compacted copy replaces the database while it is closed (the close checkpoints and
-    // removes the WAL, so the copy is the whole database).
-    const auto filename = m_filename;
-    const auto nettype = m_nettype;
-    const auto flags = m_db_flags;
-    close();
-    fs::rename(compacted, filename);
-    open(filename, nettype, flags);
-    log::warning(
-            globallogcat,
-            "Compacted the blockchain database to {}",
-            tools::get_human_readable_bytes(fs::file_size(filename)));
+    return compacted;
 }
 
 // ---------------------------------------------------------------------------------------------

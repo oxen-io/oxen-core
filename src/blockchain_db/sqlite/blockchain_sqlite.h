@@ -29,6 +29,8 @@
 
 #include <atomic>
 #include <concepts>
+#include <condition_variable>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -178,6 +180,20 @@ class BlockchainSQLite : public BlockchainDB {
     uint64_t history_start() const override { return m_history_start; }
     void set_history(uint64_t blocks) override;
     void trim_history() override;
+
+    // Drops the history that is no longer kept (when there is more of it than trim_history drops
+    // on the spot, as after the history is first limited or made smaller), in chunks of about a
+    // second each, each in its own write transaction, until it is all gone or `stop` (called
+    // between chunks) returns true.  This is what the background catch-up runs; it can also be
+    // called directly (with the background catch-up turned off).
+    void run_history_catch_up(const std::function<bool()>& stop = {});
+
+    // Turns the background catch-up (see run_history_catch_up) on or off; on by default.  Turning
+    // it off stops it, if it is running, at the end of its current chunk.
+    void set_background_trim(bool enabled);
+
+    // Limits the catch-up's chunks to at most this many blocks (whatever their timing says).
+    void set_history_chunk_limit(uint64_t blocks) { m_trim_chunk_limit = blocks; }
 
     bool is_read_only() const override;
     uint64_t get_database_size() const override;
@@ -338,13 +354,24 @@ class BlockchainSQLite : public BlockchainDB {
     std::vector<uint64_t> get_block_weight_column(
             std::string_view column, uint64_t start_height, size_t count) const;
 
-    // Drops everything outside the history below height `to` (see trim_history), in chunks, each
-    // in the calling thread's write transaction if it holds one, otherwise in one of its own.
+    // The height below which the history is no longer kept, as of the current height (0 if all of
+    // it is kept).
+    uint64_t history_trim_target() const;
+
+    // Drops everything outside the history from history_start up to height `to` (see trim_history),
+    // in the calling thread's write transaction if it holds one, otherwise in one of its own.  The
+    // caller holds m_trim_mutex.
     void trim_history_to(uint64_t to);
 
-    // Rewrites the database file without its free pages (VACUUM INTO, then swapped in), if they
-    // make up a substantial part of it.  Only when nothing else is using the database.
-    void compact_if_worthwhile();
+    // Starts the background catch-up thread, unless it is off, already running or not needed.
+    void start_history_catch_up();
+    // Stops the background catch-up thread at the end of its current chunk, and waits for it.
+    void stop_history_catch_up();
+
+    // Writes a copy of the database without its free pages, to be swapped in when it is closed,
+    // if they make up a substantial part of it and none of the history still has to be dropped.
+    // Returns the copy's path, or nullopt if there's no copy.
+    std::optional<fs::path> compact_for_close();
 
     std::unique_ptr<session::sqlite::Database> m_sql;
     fs::path m_filename;
@@ -353,9 +380,21 @@ class BlockchainSQLite : public BlockchainDB {
     bool m_read_only = false;
 
     // The stored `history` and `history_start` properties (see history() and history_start()).
-    // Only changed by the writer.
-    uint64_t m_history = 0;
-    uint64_t m_history_start = 0;
+    // m_history_start is only changed while holding m_trim_mutex.
+    std::atomic<uint64_t> m_history{0};
+    std::atomic<uint64_t> m_history_start{0};
+
+    // Held by whichever trim is dropping history: the background catch-up (for each chunk) or the
+    // one after added blocks (which, rather than waiting, leaves the drop to the catch-up).
+    std::mutex m_trim_mutex;
+
+    bool m_background_trim = true;
+    uint64_t m_trim_chunk_limit = 100'000;
+    std::thread m_catch_up;
+    std::atomic<bool> m_catch_up_running{false};
+    std::mutex m_catch_up_stop_mutex;
+    std::condition_variable m_catch_up_stop_cv;
+    bool m_catch_up_stop = false;
 
     std::mutex m_lock;
 
