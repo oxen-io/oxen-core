@@ -104,6 +104,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(oxen_checkpointing_alt_chain_too_old_should_be_dropped);
     GENERATE_AND_PLAY(oxen_history_window_reorg);
     GENERATE_AND_PLAY(oxen_history_window_reorg_before_hf9);
+    GENERATE_AND_PLAY(oxen_history_window_reorg_rewards);
     GENERATE_AND_PLAY(oxen_checkpointing_alt_chain_with_increasing_service_node_checkpoints);
     GENERATE_AND_PLAY(oxen_checkpointing_service_node_checkpoint_from_votes);
     GENERATE_AND_PLAY(oxen_checkpointing_service_node_checkpoints_check_reorg_windows);
