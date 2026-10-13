@@ -509,6 +509,12 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 /// - `l2_tracker_height` -- The current L2 height known by this node's L2 tracker.  Omitted if this
 ///   node does not have an L2 tracker.
 /// - `target_height` -- The height of the next block in the chain.
+/// - `history` -- How many of the most recent blocks this node keeps in full (their bodies and
+///   transactions, and the service node state and checkpoints of their heights), as set with
+///   `--history`; 0 if it keeps all of them.
+/// - `history_start` -- The height of the earliest block this node still has in full: requests
+///   that need anything from before it fail with error -18 (not available on this node).  0 if it
+///   keeps all of them.
 /// - `immutable_height` -- The latest height in the blockchain that can not be reorganized (i.e.
 ///   is backed by at least 2 Service Node, or 1 hardcoded checkpoint, 0 if N/A).  Omitted if it
 ///   cannot be determined (typically because the node is still syncing).

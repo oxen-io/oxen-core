@@ -255,6 +255,8 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
     }
     info.response_hex["top_block_hash"] = get_block_hash(top_block);
     info.response["target_height"] = m_core.get_target_blockchain_height();
+    info.response["history"] = db.history();
+    info.response["history_start"] = db.history_start();
 
     info.response["hard_fork"] = m_core.blockchain.get_network_version();
 
