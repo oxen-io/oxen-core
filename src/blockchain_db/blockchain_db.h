@@ -1257,17 +1257,29 @@ class BlockchainDB {
     virtual void pop_block(block& blk, std::vector<transaction>& txs);
 
     /**
-     * @brief check if a transaction with a given hash exists
+     * @brief check if a transaction with a given hash is in the blockchain
      *
-     * The subclass should check if a transaction is stored which has the
-     * given hash and return true if so, false otherwise.
+     * This is what the uniqueness of transaction hashes is checked against, so it includes the
+     * transactions without inputs whose stored data a limited history has dropped (which nothing
+     * else would stop from being included again), even though the transaction itself can no
+     * longer be read.
      *
      * @param h the hash to check against
-     * @param tx_id (optional) returns the tx_id for the tx hash
      *
-     * @return true if the transaction exists, otherwise false
+     * @return true if the transaction is in the blockchain, otherwise false
      */
     virtual bool tx_exists(const crypto::hash& h) const = 0;
+
+    /**
+     * @brief check if a transaction with a given hash is stored, and get its tx_id
+     *
+     * Unlike tx_exists(h), this is false for a transaction whose stored data has been dropped.
+     *
+     * @param h the hash to check against
+     * @param tx_id returns the tx_id for the tx hash
+     *
+     * @return true if the transaction is stored, otherwise false
+     */
     virtual bool tx_exists(const crypto::hash& h, uint64_t& tx_id) const = 0;
 
     // return unlock time of tx with hash <h>

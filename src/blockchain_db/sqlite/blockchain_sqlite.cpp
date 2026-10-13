@@ -63,7 +63,26 @@ using tools::span_guts;
 namespace {
 
     // PRAGMA user_version of the current schema.
-    constexpr int SCHEMA_VERSION = 3;
+    constexpr int SCHEMA_VERSION = 4;
+
+    // The hashes of the transactions without inputs (other than miner txs) whose rows a limited
+    // history has dropped.  Unlike a transaction with inputs, whose spent key images (kept for
+    // every height) would refuse it, nothing else would stop such a transaction from being
+    // included in the chain again, which the chain's unique transaction hashes don't allow; so
+    // tx_exists(hash) finds these too.  The rows are kept for good: the blocks they come from are
+    // below the kept history, where the chain can't be rewound to, so nothing ever removes them.
+    // (Miner txs aren't kept: they are part of their block, and can't be included as a block's
+    // transactions.)
+    constexpr auto TRIMMED_TXES_SCHEMA = R"(
+CREATE TABLE trimmed_txes (
+    hash   BLOB    NOT NULL CHECK(length(hash) = 32),
+    hash8  BLOB    GENERATED ALWAYS AS (substr(hash, 1, 8)) VIRTUAL,
+    height INTEGER NOT NULL,
+    type   INTEGER NOT NULL
+) STRICT;
+CREATE INDEX trimmed_txes_hash8  ON trimmed_txes(hash8);
+CREATE INDEX trimmed_txes_height ON trimmed_txes(height);
+)";
 
     // Brings a database at an older schema version up to SCHEMA_VERSION.
     void upgrade_schema(Connection& conn, int version) {
@@ -82,6 +101,8 @@ CREATE INDEX sn_states_full ON sn_states(height) WHERE NOT quorums_only;
             // blocks since.
             conn.sql.exec("DROP TABLE sn_data");
         }
+        if (version < 4)
+            conn.sql.exec(TRIMMED_TXES_SCHEMA);
     }
 
     // Upper bound on the values bound into one `IN (...)` list, well below SQLite's limit on the
@@ -241,7 +262,8 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
             "checkpoints",
             "txpool",
             "sn_proofs",
-            "alt_blocks"};
+            "alt_blocks",
+            "trimmed_txes"};
 
     // Views a byte string as unsigned chars, so that it binds as a BLOB rather than as TEXT (which
     // a STRICT BLOB column refuses).
@@ -263,6 +285,19 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
 
     uint64_t chain_height(Connection& conn) {
         return as_u64(conn.prepared_get<int64_t>("SELECT COALESCE(MAX(height) + 1, 0) FROM blocks"));
+    }
+
+    // The (stored) types of the transactions without inputs (see is_transfer_type), as a list for an
+    // SQL `IN (...)`.
+    const std::string& zero_input_types() {
+        static const std::string list = [] {
+            std::string types;
+            for (uint16_t t = 0; t < static_cast<uint16_t>(txtype::_count); t++)
+                if (!is_transfer_type(static_cast<txtype>(t)))
+                    types += "{}{}"_format(types.empty() ? "" : ",", t);
+            return types;
+        }();
+        return list;
     }
 
     uint64_t get_count_property(Connection& conn, std::string_view key) {
@@ -416,6 +451,7 @@ void BlockchainSQLite::open(const fs::path& filename, network_type nettype, cons
                         "when opened read-only"_format(filename));
             SQLite::Transaction tx{conn.sql, SQLite::TransactionBehavior::IMMEDIATE};
             conn.sql.exec(SCHEMA);
+            conn.sql.exec(TRIMMED_TXES_SCHEMA);
             conn.sql.exec("PRAGMA user_version = {}"_format(SCHEMA_VERSION));
             tx.commit();
             log::info(logcat, "Created blockchain database {}", filename);
@@ -1072,6 +1108,12 @@ uint64_t BlockchainSQLite::add_transaction_data(
                 "SELECT id FROM transactions WHERE hash8 = substr(?1, 1, 8) AND hash = ?1", span_guts(tx_hash)))
         throw TX_EXISTS(
                 "Attempting to add transaction that's already in the db (tx id {})"_format(*id));
+    if (m_history_start && conn.prepared_maybe_get<int64_t>(
+                                   "SELECT height FROM trimmed_txes "
+                                   "WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
+                                   span_guts(tx_hash)))
+        throw TX_EXISTS("Attempting to add transaction that's already in the chain (below the kept "
+                        "history)");
 
     const transaction& tx = txp.first;
     const std::string& blob = txp.second;
@@ -1124,7 +1166,15 @@ void BlockchainSQLite::remove_transaction_data(const crypto::hash& tx_hash, cons
 
 bool BlockchainSQLite::tx_exists(const crypto::hash& h) const {
     uint64_t tx_id;
-    return tx_exists(h, tx_id);
+    if (tx_exists(h, tx_id))
+        return true;
+    if (!m_history_start)
+        return false;
+    auto conn = m_sql->conn();
+    return conn.prepared_maybe_get<int64_t>(
+                       "SELECT height FROM trimmed_txes WHERE hash8 = substr(?1, 1, 8) AND hash = ?1",
+                       span_guts(h))
+            .has_value();
 }
 
 bool BlockchainSQLite::tx_exists(const crypto::hash& h, uint64_t& tx_id) const {
@@ -1974,6 +2024,17 @@ void BlockchainSQLite::trim_history_to(uint64_t to) {
             conn.prepared_exec(
                     "UPDATE blocks SET blob = NULL WHERE height >= ? AND height < ? AND blob IS NOT "
                     "NULL",
+                    as_i64(begin),
+                    as_i64(end));
+            // Copied here rather than by a delete trigger on transactions: popping a block also
+            // deletes its transactions (through the blocks cascade), and those are leaving the
+            // chain, so that the chain replacing them must be able to include them again.  Only
+            // the trim's deletes are of transactions that stay in the chain.
+            conn.prepared_exec(
+                    "INSERT INTO trimmed_txes (hash, height, type)"
+                    " SELECT hash, height, type FROM transactions"
+                    " WHERE height >= ? AND height < ? AND NOT miner AND type IN ({})"_format(
+                            zero_input_types()),
                     as_i64(begin),
                     as_i64(end));
             conn.prepared_exec(

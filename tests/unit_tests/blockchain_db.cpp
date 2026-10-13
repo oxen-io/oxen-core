@@ -1638,6 +1638,7 @@ ALTER TABLE sn_states DROP COLUMN quorums_only;
 INSERT INTO sn_states (height, blob) VALUES (10, x'28b52ffd00'), (11, x'0100');
 CREATE TABLE sn_data (long_term INTEGER PRIMARY KEY, blob BLOB NOT NULL) STRICT, WITHOUT ROWID;
 INSERT INTO sn_data VALUES (0, x'00');
+DROP TABLE trimmed_txes;
 PRAGMA user_version = 1;
 )");
   }
@@ -1649,7 +1650,8 @@ PRAGMA user_version = 1;
   EXPECT_EQ(db.get_service_node_archive_heights(), (std::vector<uint64_t>{10, 11}));
   session::sqlite::Database raw{path};
   EXPECT_FALSE(raw.conn().table_exists("sn_data"));
-  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 3);
+  EXPECT_TRUE(raw.conn().table_exists("trimmed_txes"));
+  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 4);
 }
 
 TEST(BlockchainSQLite, own_write_transaction)
@@ -1998,6 +2000,34 @@ protected:
   {
     return get_transaction_hash(*m_db->get_block_from_height(height).miner_tx);
   }
+
+  // A transaction without inputs of the given type, made distinct by `n`.  (The database doesn't
+  // validate what it stores, so it needs no more than that.)
+  static std::pair<transaction, std::string> zero_input_tx(txtype type, uint8_t n)
+  {
+    transaction tx;
+    tx.version = txversion::v4_tx_types;
+    tx.type = type;
+    tx.extra = {n};
+    tx.rct_signatures.type = rct::RCTType::Null;
+    return {tx, tx_to_blob(tx)};
+  }
+
+  // Adds a block (with its own miner tx, as extend_to's) containing `txs` at the top of the chain.
+  void add_block_with(const std::vector<std::pair<transaction, std::string>>& txs)
+  {
+    const uint64_t h = m_db->height();
+    block b = m_blocks[1].first;
+    b.prev_id = m_db->top_block_hash();
+    b.timestamp = 1'600'000'000 + 120 * h;
+    b.miner_tx->vin[0] = txin_gen{1'000'000 + h};
+    b.miner_tx->unprunable_size = 0;
+    b.miner_tx->invalidate_hashes();
+    for (const auto& [tx, blob] : txs)
+      b.tx_hashes.push_back(get_transaction_hash(tx));
+    b.invalidate_hashes();
+    m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1] + h, t_coins[1], txs);
+  }
 };
 
 TEST_F(SQLiteHistoryTest, setting)
@@ -2078,6 +2108,64 @@ TEST_F(SQLiteHistoryTest, trim_bookkeeping)
       db.sqlite_database()->conn().prepared_get<int64_t>(
           "SELECT value FROM properties WHERE key = 'history_start'"),
       280);
+}
+
+// The trim keeps the hashes of the transactions without inputs (and only those, not miner txs or
+// transactions with inputs), so that the chain's transaction hashes stay unique: tx_exists still
+// finds them, a block including one again is refused, but the transaction itself can't be read.
+TEST_F(SQLiteHistoryTest, trim_keeps_zero_input_tx_hashes)
+{
+  open_with_blocks();
+  auto& db = *m_db;
+  const auto with_inputs = get_transaction_hash(m_txs[0][0].first);  // in block 0
+  extend_to(100);
+  const auto state_change = zero_input_tx(txtype::state_change, 1);
+  const auto l2_event = zero_input_tx(txtype::ethereum_service_node_exit, 2);
+  {
+    db_wtxn_guard guard{db};
+    add_block_with({state_change, l2_event});
+  }
+  const auto miner = miner_tx_hash(100);
+  extend_to(1'000);
+
+  // The drop when the history is first limited
+  db.set_history(720);
+  EXPECT_EQ(db.history_start(), 280);
+  auto conn = db.sqlite_database()->conn();
+  EXPECT_EQ(conn.prepared_get<int64_t>("SELECT COUNT(*) FROM trimmed_txes"), 2);
+  EXPECT_EQ(conn.prepared_get<int64_t>("SELECT MIN(height) FROM trimmed_txes"), 100);
+  EXPECT_EQ(conn.prepared_get<int64_t>("SELECT MAX(height) FROM trimmed_txes"), 100);
+  EXPECT_FALSE(db.tx_exists(with_inputs));
+  EXPECT_FALSE(db.tx_exists(miner));
+  for (const auto& tx : {state_change, l2_event}) {
+    const auto hash = get_transaction_hash(tx.first);
+    EXPECT_TRUE(db.tx_exists(hash));
+    uint64_t tx_id;
+    EXPECT_FALSE(db.tx_exists(hash, tx_id));
+    std::string blob;
+    EXPECT_FALSE(db.get_tx_blob(hash, blob));
+    EXPECT_THROW(db.get_tx(hash), TX_DNE);
+  }
+
+  // Including one again is refused, as it is on a node that keeps all of its history.
+  {
+    db_wtxn_guard guard{db};
+    EXPECT_THROW(add_block_with({state_change}), TX_EXISTS);
+    guard.abort();
+  }
+  EXPECT_EQ(db.height(), 1'000);
+
+  // The trim as the chain grows keeps them too
+  const auto later = zero_input_tx(txtype::key_image_unlock, 3);
+  {
+    db_wtxn_guard guard{db};
+    add_block_with({later});
+  }
+  extend_to(1'721);
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 1'001);
+  EXPECT_EQ(conn.prepared_get<int64_t>("SELECT COUNT(*) FROM trimmed_txes"), 3);
+  EXPECT_TRUE(db.tx_exists(get_transaction_hash(later.first)));
 }
 
 // Besides block bodies and transactions, the SN list states, rewards snapshots and alt blocks below
