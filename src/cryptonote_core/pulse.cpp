@@ -361,65 +361,76 @@ namespace {
         return result;
     }
 
-    // Generate the hash necessary for signing a message. All fields of the 'msg'
-    // must have been set for the type of the message except the signature for the
-    // hash to be generated correctly.
-    crypto::hash msg_signature_hash(crypto::hash const& top_block_hash, message const& msg) {
-        crypto::hash result = {};
-        switch (msg.type) {
-            case message_type::invalid: assert("Invalid Code Path" == nullptr); break;
+}  // namespace
 
-            case message_type::handshake: {
-                auto buf = tools::memcpy_le(top_block_hash, msg.quorum_position, msg.round);
-                result = blake2b_hash(buf.data(), buf.size());
-            } break;
+crypto::hash msg_signature_hash(
+        cryptonote::hf hf, crypto::hash const& top_block_hash, message const& msg) {
+    crypto::hash result = {};
+    switch (msg.type) {
+        case message_type::invalid: assert("Invalid Code Path" == nullptr); break;
 
-            case message_type::handshake_bitset: {
+        case message_type::handshake: {
+            auto buf = tools::memcpy_le(top_block_hash, msg.quorum_position, msg.round);
+            result = blake2b_hash(buf.data(), buf.size());
+        } break;
+
+        case message_type::handshake_bitset: {
+            // The bitset is signed at the width the network had for it when the round's rules
+            // were set: 16 bits before HF23 (as nodes from before bitset_t was widened sign and
+            // check it), the full bitset_t from HF23 on.
+            const bitset_t bitset = msg.get<message_type::handshake_bitset>();
+            if (hf < cryptonote::hf::hf23_larger_pulse) {
                 auto buf = tools::memcpy_le(
-                        msg.get<message_type::handshake_bitset>(),
+                        static_cast<uint16_t>(bitset),
                         top_block_hash,
                         msg.quorum_position,
                         msg.round);
                 result = blake2b_hash(buf.data(), buf.size());
-            } break;
-
-            case message_type::block_template: {
-                const auto& [blob, state_changes] = msg.get<message_type::block_template>();
-                crypto::hash block_hash = blake2b_hash(blob.data(), blob.size());
-                auto buf = tools::memcpy_le(msg.round, block_hash);
+            } else {
+                auto buf = tools::memcpy_le(bitset, top_block_hash, msg.quorum_position, msg.round);
                 result = blake2b_hash(buf.data(), buf.size());
-                // blobs in state_changes aren't directly signed, but we parse them and only accept
-                // them if they match txes referenced in the signed block.
-            } break;
+            }
+        } break;
 
-            case message_type::random_value_hash: {
-                auto buf = tools::memcpy_le(
-                        top_block_hash,
-                        msg.quorum_position,
-                        msg.round,
-                        msg.get<message_type::random_value_hash>());
-                result = blake2b_hash(buf.data(), buf.size());
-            } break;
+        case message_type::block_template: {
+            const auto& [blob, state_changes] = msg.get<message_type::block_template>();
+            crypto::hash block_hash = blake2b_hash(blob.data(), blob.size());
+            auto buf = tools::memcpy_le(msg.round, block_hash);
+            result = blake2b_hash(buf.data(), buf.size());
+            // blobs in state_changes aren't directly signed, but we parse them and only accept
+            // them if they match txes referenced in the signed block.
+        } break;
 
-            case message_type::random_value: {
-                auto buf = tools::memcpy_le(
-                        top_block_hash,
-                        msg.quorum_position,
-                        msg.round,
-                        msg.get<message_type::random_value>());
-                result = blake2b_hash(buf.data(), buf.size());
-            } break;
+        case message_type::random_value_hash: {
+            auto buf = tools::memcpy_le(
+                    top_block_hash,
+                    msg.quorum_position,
+                    msg.round,
+                    msg.get<message_type::random_value_hash>());
+            result = blake2b_hash(buf.data(), buf.size());
+        } break;
 
-            case message_type::block_signature: {
-                const auto& final_signature = msg.get<message_type::block_signature>();
-                auto buf = tools::memcpy_le(
-                        top_block_hash, msg.quorum_position, msg.round, final_signature);
-                result = blake2b_hash(buf.data(), buf.size());
-            } break;
-        }
+        case message_type::random_value: {
+            auto buf = tools::memcpy_le(
+                    top_block_hash,
+                    msg.quorum_position,
+                    msg.round,
+                    msg.get<message_type::random_value>());
+            result = blake2b_hash(buf.data(), buf.size());
+        } break;
 
-        return result;
+        case message_type::block_signature: {
+            const auto& final_signature = msg.get<message_type::block_signature>();
+            auto buf = tools::memcpy_le(
+                    top_block_hash, msg.quorum_position, msg.round, final_signature);
+            result = blake2b_hash(buf.data(), buf.size());
+        } break;
     }
+
+    return result;
+}
+
+namespace {
 
     // Generate a helper string that describes the origin of the message, i.e.
     // 'Signed Block' at round 2 from
@@ -489,7 +500,10 @@ namespace {
             } break;
         }
 
-        if (crypto::check_signature(msg_signature_hash(top_block_hash, msg), *key, msg.signature))
+        if (crypto::check_signature(
+                    msg_signature_hash(curr_block.hardfork, top_block_hash, msg),
+                    *key,
+                    msg.signature))
             return true;
 
         log::debug(
@@ -525,7 +539,10 @@ namespace {
         }
         auto& key = core.get_service_keys();
         crypto::generate_signature(
-                msg_signature_hash(curr_block.top_hash, msg), key.pub, key.key, msg.signature);
+                msg_signature_hash(curr_block.hardfork, curr_block.top_hash, msg),
+                key.pub,
+                key.key,
+                msg.signature);
         handle_message(msg);  // Add our own. We receive our own msg for the first
                               // time which also triggers us to relay.
     }
@@ -1833,7 +1850,10 @@ namespace {
                 cryptonote::t_serializable_object_to_blob(new_block),
                 std::move(state_change_txes)});
         crypto::generate_signature(
-                msg_signature_hash(curr_block.top_hash, msg), key.pub, key.key, msg.signature);
+                msg_signature_hash(curr_block.hardfork, curr_block.top_hash, msg),
+                key.pub,
+                key.key,
+                msg.signature);
 
         // Send
         log::info(
@@ -2018,7 +2038,10 @@ namespace {
         saw.to_send.reset();  // Send only once
         auto& key = core.get_service_keys();
         crypto::generate_signature(
-                msg_signature_hash(curr_block.top_hash, msg), key.pub, key.key, msg.signature);
+                msg_signature_hash(curr_block.hardfork, curr_block.top_hash, msg),
+                key.pub,
+                key.key,
+                msg.signature);
         handle_message(msg);  // Add our own. We receive our own msg for the
                               // first time which also triggers us to relay.
     }
