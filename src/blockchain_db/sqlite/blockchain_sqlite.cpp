@@ -337,6 +337,25 @@ CREATE INDEX alt_blocks_height ON alt_blocks(height);
         return result;
     }
 
+    // The partial copy a compaction (see compact_for_close) writes, next to the database
+    fs::path partial_compaction(const fs::path& db) {
+        auto partial = db;
+        partial += ".compacting";
+        return partial;
+    }
+
+    // Removes what a compaction that didn't finish leaves: the partial copy, and the journal SQLite
+    // keeps of the copy as it writes it.  Returns whether there was anything to remove.
+    bool remove_partial_compaction(const fs::path& db) {
+        const auto partial = partial_compaction(db);
+        auto journal = partial;
+        journal += "-journal";
+        std::error_code ec;
+        const bool removed_partial = fs::remove(partial, ec);
+        const bool removed_journal = fs::remove(journal, ec);
+        return removed_partial || removed_journal;
+    }
+
     // Block processing never reads a block whose body has been dropped as outside the history (see
     // history_minimum), so one that does is a bug: it is logged every time in a debug build, and
     // the first time otherwise (as an RPC request for an old block can also get here).
@@ -428,10 +447,11 @@ void BlockchainSQLite::open(const fs::path& filename, network_type nettype, cons
 
         // Left behind by a compaction at shutdown that didn't finish (see compact_for_close); the
         // database itself is as it was before it.
-        if (auto partial = fs::path{filename} += ".compacting"; !m_read_only && fs::exists(partial)) {
-            log::warning(logcat, "Removing {}, left by an unfinished compaction", partial);
-            fs::remove(partial);
-        }
+        if (!m_read_only && remove_partial_compaction(filename))
+            log::warning(
+                    logcat,
+                    "Removed {} (and its journal), left by an unfinished compaction",
+                    partial_compaction(filename));
 
         m_sql = std::make_unique<session::sqlite::Database>(
                 filename,
@@ -513,10 +533,7 @@ void BlockchainSQLite::close() {
         compacted = compact_for_close();
     } catch (const std::exception& e) {
         log::error(logcat, "Failed to compact the blockchain database: {}", e.what());
-        auto partial = m_filename;
-        partial += ".compacting";
-        std::error_code ec;
-        fs::remove(partial, ec);
+        remove_partial_compaction(m_filename);
     }
     sync();
     // Closing the last connection checkpoints the WAL and removes it, so the compacted copy then
@@ -2230,9 +2247,8 @@ std::optional<fs::path> BlockchainSQLite::compact_for_close() {
     if (free * 4 <= pages)
         return std::nullopt;
 
-    auto compacted = m_filename;
-    compacted += ".compacting";
-    fs::remove(compacted);
+    const auto compacted = partial_compaction(m_filename);
+    remove_partial_compaction(m_filename);
     // The pages in use are an upper bound: the copy also packs together what the drop left of
     // partly emptied pages.
     //

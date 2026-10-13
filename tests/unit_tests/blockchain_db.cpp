@@ -2326,16 +2326,26 @@ TEST_F(SQLiteHistoryTest, background_catch_up_and_compaction)
   EXPECT_EQ(m_db->height(), 5'000);
 }
 
-// A compaction cut short at shutdown leaves its partial copy, which the next open removes.
+// A compaction cut short at shutdown (as by kill -9, or a service manager's stop timeout) leaves its
+// partial copy and that copy's journal, which the next open removes.
 TEST_F(SQLiteHistoryTest, removes_unfinished_compaction)
 {
   open_db();
   const auto path = db_open_path<BlockchainSQLite>(m_prefix);
   const auto partial = fs::path{path} += ".compacting";
+  const auto journal = fs::path{partial} += "-journal";
   m_db->close();
   std::ofstream{partial} << "partial copy";
+  std::ofstream{journal} << "its journal";
   m_db->open(path, network_type::FAKECHAIN);
   EXPECT_FALSE(fs::exists(partial));
+  EXPECT_FALSE(fs::exists(journal));
+
+  // A journal left on its own (by a version that only removed the copy) goes too
+  m_db->close();
+  std::ofstream{journal} << "its journal";
+  m_db->open(path, network_type::FAKECHAIN);
+  EXPECT_FALSE(fs::exists(journal));
 }
 
 }  // anonymous namespace
