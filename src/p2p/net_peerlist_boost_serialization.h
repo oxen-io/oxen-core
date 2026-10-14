@@ -33,6 +33,7 @@
 #include <common/exception.h>
 #include <common/expect.h>
 
+#include <boost/serialization/optional.hpp>
 #include <cstring>
 
 #include "epee/net/net_utils_base.h"
@@ -40,7 +41,7 @@
 #include "net/tor_address.h"
 #include "p2p/p2p_protocol_defs.h"
 
-BOOST_CLASS_VERSION(nodetool::peerlist_entry, 5)
+BOOST_CLASS_VERSION(nodetool::peerlist_entry, 6)
 
 namespace boost::serialization {
 template <class T, class Archive>
@@ -214,8 +215,18 @@ inline void serialize(Archive& a, nodetool::peerlist_entry& pl, const ver_type v
         uint16_t rpc_port = 0;
         a & rpc_port;
     }
-    if (version >= 5)
+    if (version == 5) {
+        // Version 5 could not tell a peer that never said what it keeps from one keeping every
+        // block: both were 0.
+        uint64_t history = 0;
+        a & history;
+        if (history)
+            pl.history = history;
+        else
+            pl.history.reset();
+    } else if (version >= 6) {
         a & pl.history;
+    }
 }
 
 template <class Archive, class ver_type>

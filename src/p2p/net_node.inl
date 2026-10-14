@@ -1720,7 +1720,7 @@ bool node_server<t_payload_net_handler>::connections_maker() {
                         "height {}, to make room for one that can",
                         peers.droppable->address.str(),
                         peers.droppable->height,
-                        peers.droppable->history,
+                        cryptonote::describe_history(peers.droppable->history),
                         need->height);
                 public_zone.m_net_server.get_config_object().close(
                         peers.droppable->connection_id);

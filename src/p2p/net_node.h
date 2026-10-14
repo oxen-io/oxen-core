@@ -408,7 +408,7 @@ class node_server
         epee::connection_id_t connection_id;
         epee::net_utils::network_address address;
         uint64_t height;
-        uint64_t history;
+        std::optional<uint64_t> history;
     };
     struct sync_peers {
         // Connected peers (past their handshake), and how many of them can serve what the sync

@@ -2491,7 +2491,7 @@ You are now synchronized with the network.
     if (!need || !peer_no_longer_keeps(need->height, context.m_remote_blockchain_height, context.m_history))
       return false;
     if (context.m_state != cryptonote_connection_context::state_standby)
-      log::debug(logcat, "{}peer keeps only its last {} blocks, so it can't serve height {}: waiting", context, context.m_history, need->height);
+      log::debug(logcat, "{}peer keeps only its last {} blocks, so it can't serve height {}: waiting", context, *context.m_history, need->height);
     context.m_state = cryptonote_connection_context::state_standby;
     return true;
   }
