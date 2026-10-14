@@ -232,10 +232,9 @@ static const command_line::arg_flag arg_keep_alt_blocks{
 static const command_line::arg_descriptor<uint64_t> arg_store_quorum_history = {
         "store-quorum-history",
         "Store the service node quorum history for the last N blocks to allow historic quorum "
-        "lookups "
-        "(e.g. by a block explorer).  Specify the number of blocks of history to store, or 1 to "
-        "store "
-        "the entire history.  Requires considerably more memory and block chain storage.",
+        "lookups (e.g. by a block explorer).  Specify the number of blocks of history to store, "
+        "or 1 to store the entire history.  Takes a few kB of blockchain database storage per "
+        "block; the history is kept from when this is first set (or from a rescan).",
         0};
 static const command_line::arg_flag arg_disable_ip_check = {
         "disable-ip-check", "Disable the periodic Service Node IP check"};
