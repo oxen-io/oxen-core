@@ -4,3 +4,4 @@ debian/oxen.conf /etc/oxen
 debian/oxen.conf /usr/share/oxend
 debian/ufw/oxend /etc/ufw/applications.d
 debian/oxend-download-lmdb /usr/bin
+debian/oxend-download-sqlite /usr/bin
