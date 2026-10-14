@@ -1,0 +1,78 @@
+#!/bin/bash
+
+set -e
+
+if [ "$UID" != 0 ]; then
+    echo "Error: must run this script as root (e.g. with sudo)" >&2
+    exit 1
+fi
+
+if [ "$#" != 1 ] || [[ "$1" == -* ]]; then
+    echo "Error: usage: $0 https://url/for/mainnet/oxen.db"
+    exit 1
+fi
+
+if ! [ -e /var/lib/oxen ]; then
+    echo "/var/lib/oxen does not exist; did you properly install the oxend package?"
+    exit 1
+fi
+
+node_active=
+ss_active=
+if systemctl -q is-active oxen-node.service; then node_active=y; fi
+if systemctl -q is-active oxen-storage-server.service; then ss_active=y; fi
+
+url="$1"
+db=/var/lib/oxen/oxen.db
+echo "Ready to download blockchain data from $url"
+if [ -e "$db" ]; then
+    echo -e "\nWill overwrite existing blockchain database:\n"
+    ls -l --si "$db"
+    echo ""
+fi
+if [ -e /var/lib/oxen/lmdb/data.mdb ]; then
+    echo -e "\nNote: /var/lib/oxen/lmdb/data.mdb (the old LMDB blockchain database) will not be used once"
+    echo -e "oxen.db is in place, and can be deleted to free up its disk space.\n"
+fi
+if [ -n "$node_active" ]; then
+    echo -n "oxen-node.service"
+    if [ -n "$ss_active" ]; then echo -n " and oxen-storage-server.service"; fi
+    echo " will be stopped, then restarted when the download is complete"
+else
+    echo "oxen-node.service is not currently running and will be left stopped.  (Do not attempt to start it or the storage server until the download is complete!)"
+fi
+
+echo
+
+read -p "Press enter to continue, Ctrl-C to abort"
+
+if [ -n "$node_active" ]; then
+    if [ -n "$ss_active" ]; then
+        systemctl stop oxen-node.service oxen-storage-server.service
+    else
+        systemctl stop oxen-node.service
+    fi
+fi
+
+# Downloaded beside the database and moved into place only once complete, so that a failed or
+# interrupted download doesn't leave a broken oxen.db for oxend to find.
+rm -f "$db.download"
+curl -f "$url" -o "$db.download"
+# The old database's write-ahead log and shared memory (and any unfinished compaction) belong to the
+# old database and must not be applied to the new one.
+rm -f "$db" "$db-wal" "$db-shm" "$db.compacting" "$db.compacting-journal"
+mv "$db.download" "$db"
+chown _loki:_loki "$db"
+
+echo "Downloaded blockchain database:"
+ls -l --si "$db"
+
+if [ -n "$node_active" ]; then
+    if [ -n "$ss_active" ]; then
+        echo "Starting oxen-node.service, oxen-storage-server.service"
+        systemctl start oxen-node.service oxen-storage-server.service
+    else
+        echo "Starting oxen-node.service"
+        systemctl start oxen-node.service
+    fi
+fi
