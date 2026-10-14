@@ -33,7 +33,6 @@
 #include <common/exception.h>
 #include <common/expect.h>
 
-#include <boost/serialization/optional.hpp>
 #include <cstring>
 
 #include "epee/net/net_utils_base.h"
@@ -225,7 +224,17 @@ inline void serialize(Archive& a, nodetool::peerlist_entry& pl, const ver_type v
         else
             pl.history.reset();
     } else if (version >= 6) {
-        a & pl.history;
+        // As a flag and a value, rather than through boost/serialization/optional.hpp, which only
+        // handles std::optional in newer Boost versions than some builds have.
+        bool has_history = pl.history.has_value();
+        a & has_history;
+        if (has_history) {
+            uint64_t history = pl.history.value_or(0);
+            a & history;
+            pl.history = history;
+        } else {
+            pl.history.reset();
+        }
     }
 }
 
