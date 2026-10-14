@@ -2547,6 +2547,22 @@ std::vector<uint64_t> BlockchainSQLite::get_service_node_archive_heights() const
     return heights;
 }
 
+std::optional<std::pair<uint64_t, uint64_t>> BlockchainSQLite::get_service_node_archive_range()
+        const {
+    log::trace(logcat, "BlockchainSQLite::{}", __func__);
+    check_open();
+    auto conn = m_sql->conn();
+    // Two one-row lookups at the ends of the height index, rather than MIN/MAX over the rows: the
+    // table can hold a quorums-only state for every block.
+    auto lowest = conn.prepared_maybe_get<int64_t>(
+            "SELECT height FROM sn_states ORDER BY height LIMIT 1");
+    if (!lowest)
+        return std::nullopt;
+    auto highest =
+            conn.prepared_get<int64_t>("SELECT height FROM sn_states ORDER BY height DESC LIMIT 1");
+    return std::make_pair(as_u64(*lowest), as_u64(highest));
+}
+
 void BlockchainSQLite::delete_service_node_archives(uint64_t begin, uint64_t end) {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     in_write_txn([&](Connection& conn) {

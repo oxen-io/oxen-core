@@ -3088,9 +3088,10 @@ void service_node_list::verify_block(
                     offset_testing_quorum_height(quorum_type::checkpointing, checkpoint->height),
                     checkpoint->height);
 
-            auto archive_heights = blockchain.db().get_service_node_archive_heights();
-            uint64_t min_archive = archive_heights.empty() ? 0 : archive_heights.front();
-            uint64_t max_archive = archive_heights.empty() ? 0 : archive_heights.back();
+            const auto archive_range =
+                    blockchain.db().get_service_node_archive_range().value_or(std::pair{0, 0});
+            uint64_t min_archive = archive_range.first;
+            uint64_t max_archive = archive_range.second;
 
             uint64_t min_history = m_transient->state_history.size()
                                          ? m_transient->state_history.begin()->height
@@ -7101,23 +7102,20 @@ bool service_node_list::load(const uint64_t current_height) {
 
     cleanup_zombies_from_state();
 
-    const auto archive_heights = db.get_service_node_archive_heights();
-    const auto& netconf = get_config(blockchain.nettype());
+    // Only the ends of the archive are reported: with a quorum history stored there is an archived
+    // state for every block, and anything that visits them all takes a long time.
+    const auto archive_range = db.get_service_node_archive_range();
     log::info(
             globallogcat,
-            "{} nodes, {} recent states [blks {}-{}] loaded ({}), {} archived [blks {}-{}] (w/ {} "
-            "quorums) @ height: {}",
+            "{} nodes, {} recent states [blks {}-{}] loaded ({}), archived states [blks {}-{}] @ "
+            "height: {}",
             m_state.service_nodes_infos.size(),
             m_transient->state_history.size(),
             load_result.recent_min_height,
             load_result.recent_max_height,
             tools::get_human_readable_bytes(load_result.bytes_loaded),
-            archive_heights.size(),
-            archive_heights.empty() ? 0 : archive_heights.front(),
-            archive_heights.empty() ? 0 : archive_heights.back(),
-            std::ranges::count_if(
-                    archive_heights,
-                    [&](uint64_t h) { return h % netconf.HISTORY_ARCHIVE_INTERVAL != 0; }),
+            archive_range ? archive_range->first : 0,
+            archive_range ? archive_range->second : 0,
             m_state.height);
     return true;
 }
