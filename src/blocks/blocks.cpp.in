@@ -1,11 +1,28 @@
 #include "blocks/blocks.h"
 
+#include <oxenc/hex.h>
+
+#include <string>
 #include <string_view>
 
 namespace blocks {
 
-template<> std::string_view checkpoint_data<cryptonote::network_type::MAINNET>() { return "@mainnet_blocks_data@"sv; }
-template<> std::string_view checkpoint_data<cryptonote::network_type::DEVNET>() { return "@devnet_blocks_data@"sv; }
-template<> std::string_view checkpoint_data<cryptonote::network_type::TESTNET>() { return "@testnet_blocks_data@"sv; }
+using namespace std::literals;
+
+// The data is embedded as hex, half the source size of escaping each byte.  It's decoded at run
+// time because a constexpr decode (oxenc's _hex literal) of the mainnet list exceeds compilers'
+// constexpr loop limits.
+template<> std::string_view checkpoint_data<cryptonote::network_type::MAINNET>() {
+    static const std::string data = oxenc::from_hex("@mainnet_blocks_data@"sv);
+    return data;
+}
+template<> std::string_view checkpoint_data<cryptonote::network_type::DEVNET>() {
+    static const std::string data = oxenc::from_hex("@devnet_blocks_data@"sv);
+    return data;
+}
+template<> std::string_view checkpoint_data<cryptonote::network_type::TESTNET>() {
+    static const std::string data = oxenc::from_hex("@testnet_blocks_data@"sv);
+    return data;
+}
 
 }

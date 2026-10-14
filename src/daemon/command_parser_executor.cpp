@@ -124,15 +124,12 @@ bool command_parser_executor::print_sn_state_changes(const std::vector<std::stri
 bool command_parser_executor::print_peer_list(const std::vector<std::string>& args) {
     bool white = false;
     bool gray = false;
-    bool pruned = false;
     size_t limit = 0;
     for (const auto& arg : args) {
         if (arg == "white")
             white = true;
         else if (arg == "gray")
             gray = true;
-        else if (arg == "pruned")
-            pruned = true;
         else if (tools::parse_int(arg, limit))
             /*limit already set*/;
         else {
@@ -143,7 +140,7 @@ bool command_parser_executor::print_peer_list(const std::vector<std::string>& ar
 
     if (!white && !gray)
         white = gray = true;
-    return m_executor.print_peer_list(white, gray, limit, pruned);
+    return m_executor.print_peer_list(white, gray, limit);
 }
 
 bool command_parser_executor::print_peer_list_stats(const std::vector<std::string>& args) {
@@ -750,35 +747,6 @@ bool command_parser_executor::pop_blocks(const std::vector<std::string>& args) {
 
 bool command_parser_executor::version(const std::vector<std::string>& args) {
     return m_executor.version();
-}
-
-bool command_parser_executor::prune_blockchain(const std::vector<std::string>& args) {
-    if (args.size() > 1)
-        return false;
-
-    if (args.empty() || args[0] != "confirm") {
-        std::cout << "Warning: pruning from within oxend will not shrink the database file size."
-                  << std::endl;
-        std::cout << "Instead, parts of the file will be marked as free, so the file will not grow"
-                  << std::endl;
-        std::cout << "until that newly free space is used up. If you want a smaller file size now,"
-                  << std::endl;
-        std::cout << "exit oxend and run oxen-blockchain-prune (you will temporarily need more"
-                  << std::endl;
-        std::cout << "disk space for the database conversion though). If you are OK with the "
-                     "database"
-                  << std::endl;
-        std::cout << "file keeping the same size, re-run this command with the \"confirm\" "
-                     "parameter."
-                  << std::endl;
-        return true;
-    }
-
-    return m_executor.prune_blockchain();
-}
-
-bool command_parser_executor::check_blockchain_pruning(const std::vector<std::string>& args) {
-    return m_executor.check_blockchain_pruning();
 }
 
 bool command_parser_executor::flush_cache(const std::vector<std::string>& args) {

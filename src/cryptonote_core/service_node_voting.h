@@ -129,15 +129,25 @@ bool verify_vote_signature(
         const quorum_vote_t& vote,
         cryptonote::vote_verification_context& vvc,
         const service_nodes::quorum& quorum);
-bool verify_quorum_signatures(
-        service_nodes::quorum const& quorum,
-        service_nodes::quorum_type type,
+bool verify_checkpoint_signatures(
+        const service_nodes::quorum& quorum,
         cryptonote::hf hf_version,
         uint64_t height,
         crypto::hash const& hash,
-        std::vector<quorum_signature> const& signatures,
-        const cryptonote::block* block = nullptr);
-bool verify_pulse_quorum_sizes(service_nodes::quorum const& quorum);
+        std::span<const quorum_signature> signatures);
+// Checks a pulse block's signatures: their number, the validators they come from, and, unless
+// `check_signatures` is false (for a block already known to be valid), the signatures themselves.
+bool verify_pulse_signatures(
+        service_nodes::quorum const& quorum,
+        cryptonote::hf hf_version,
+        uint64_t height,
+        crypto::hash const& hash,
+        std::span<const quorum_signature> signatures,
+        const cryptonote::block& block,
+        size_t active_nodes,
+        bool check_signatures = true);
+bool verify_pulse_quorum_sizes(
+        const service_nodes::quorum& quorum, cryptonote::hf hf, size_t active_nodes);
 crypto::signature make_signature_from_vote(
         quorum_vote_t const& vote, const service_node_keys& keys);
 crypto::signature make_signature_from_tx_state_change(
