@@ -61,13 +61,27 @@
 namespace cryptonote {
 class Blockchain;
 class BlockchainDB;
-class BlockchainSQLite;
+class RewardsDB;
 struct checkpoint_t;
 struct wallet_info;
 };  // namespace cryptonote
 
+namespace SQLite {
+class Transaction;
+}
+
 namespace service_nodes {
 inline constexpr uint64_t INVALID_HEIGHT = static_cast<uint64_t>(-1);
+
+// With the SQLite blockchain database, the SN list state is stored at each height divisible by
+// this, inside that block's transaction, so a restart replays at most this many blocks.
+inline constexpr uint64_t STATE_SNAPSHOT_INTERVAL = 60;
+
+// The lowest archive height (a multiple of HISTORY_ARCHIVE_INTERVAL) whose full state the archive
+// still retains once the chain reaches `height`.  The rewards keep their snapshots at archive
+// heights for exactly as long, which makes each of those archived states a height that both can be
+// restored to.
+uint64_t oldest_retained_archive(const cryptonote::network_config& netconf, uint64_t height);
 
 struct rescan_context {
     bool skip_verify;
@@ -226,12 +240,20 @@ struct eth_stake {
     uint32_t contributor_index;  // Index of the contributor in the event the exit stake is for
 };
 
+// A stake returned by a node's exit, which the rewards pay back to its contributor once the block
+// at `payout_height` is reached.
+struct delayed_stake {
+    eth_stake stake;
+    uint64_t payout_height;
+};
+
 struct block_add_result {
     // List of payable nodes. Populated when the block height is >= HF19, empty
     // otherwise
     std::vector<crypto::public_key> payable_nodes_hf19_onwards;
     std::vector<eth_stake> locked_stakes;
     std::vector<eth_stake> purged_stakes;
+    std::vector<delayed_stake> exited_stakes;
 };
 
 struct service_node_info  // registration information
@@ -572,12 +594,21 @@ class service_node_list {
     service_node_list(const service_node_list&) = delete;
     service_node_list& operator=(const service_node_list&) = delete;
 
+    // `hash_listed` says that the block's hash is the one the compiled-in list of known blocks has
+    // at its height, so that a pulse block's signatures needn't be checked (everything else about
+    // it still is).
     void block_add(
             const cryptonote::block& block,
             const std::vector<cryptonote::transaction>& txs,
             const cryptonote::checkpoint_t* checkpoint,
-            const std::optional<rescan_context>& rescan = std::nullopt);
+            const std::optional<rescan_context>& rescan = std::nullopt,
+            bool hash_listed = false);
     void blockchain_detached(uint64_t height);
+
+    // Whether detaching the chain down to `height` blocks could be followed: the SN list and the
+    // rewards both have a state at or below its new top block to restore and replay from, or can
+    // be rebuilt from scratch (always, when the blockchain database keeps all of its history).
+    bool can_detach_to(uint64_t height) const;
     void init();
     void validate_miner_tx(const cryptonote::miner_tx_info& info) const;
     void alt_block_add(const cryptonote::block_add_info& info);
@@ -1177,11 +1208,14 @@ class service_node_list {
                 uint64_t block_height) const;
 
         // oxen_chain_generator in core_tests does not have a Blockchain,
-        // but we can't include db_sqlite header here because it includes us,
+        // but we can't include rewards_db header here because it includes us,
         // so this overload is necessary.
+        //
+        // Changes to `rewards_db_ptr` (made by the HF21 transition and HF22 fixups) are pending in
+        // it until its add_block (see RewardsDB).
         block_add_result update_from_block(
                 const cryptonote::BlockchainDB& db,
-                cryptonote::BlockchainSQLite* sqlite_db_ptr,
+                cryptonote::RewardsDB* rewards_db_ptr,
                 cryptonote::network_type nettype,
                 state_set const& state_history,
                 std::unordered_map<crypto::hash, state_t> const& alt_states,
@@ -1245,6 +1279,8 @@ class service_node_list {
             bool success;
             bool need_swarm_update;
             std::vector<eth_stake> exit_stakes;
+            // For an exit: the block that pays `exit_stakes` back to their contributors.
+            uint64_t payout_height = 0;
         };
 
         // Applies a pulse-quorums-confirmed L2 event to the service node list state.  Returns true
@@ -1414,14 +1450,42 @@ class service_node_list {
     // Verify block against Service Node state that has just been called with
     // 'state.update_from_block(block)'.  `active_node_count` is the node count at the time the
     // block was produced (i.e. the count of the previous state, not the just-updated state).
+    // `hash_listed` (see block_add) skips checking the pulse signatures themselves.
     void verify_block(
             const cryptonote::block& block,
             bool alt_block,
             cryptonote::checkpoint_t const* checkpoint,
-            size_t active_node_count) const;
+            size_t active_node_count,
+            bool hash_listed = false) const;
 
     void reset(bool delete_db_entry = false);
     bool load(uint64_t current_height);
+
+    // True when the SN list's states are rows of the blockchain database (the SQLite backend,
+    // where they're written every STATE_SNAPSHOT_INTERVAL blocks) rather than its short-term blob,
+    // written by store() (LMDB).
+    bool states_in_db() const;
+
+    // How many of the most recent blocks the blockchain database keeps the history of (see
+    // cryptonote::history_window): 0 when it keeps all of it.
+    uint64_t kept_history_window() const;
+
+    // Whether the SN list (and with it the rewards) can start over from scratch, replaying the
+    // blocks from HF9: only if the blockchain database still has them all.
+    bool can_rescan() const;
+
+    // Whether `height` is before HF9, where the SN list holds nothing.
+    bool before_hf9(uint64_t height) const;
+
+    // The lowest height a detach may restore a state from (and so replay blocks from): the start of
+    // the history kept, or the heights after it whose quorums are all stored too (for a `stored`
+    // state, which needs those).  0 when all of the history is kept.
+    uint64_t min_restore_height(bool stored) const;
+
+    // Stores m_state, whose height is a multiple of STATE_SNAPSHOT_INTERVAL, along with the
+    // quorums of the heights before it that a restart from it needs, and deletes the stored
+    // states that have dropped out of what is kept.  Only used when states_in_db().
+    void store_state_snapshot();
 
     mutable std::recursive_mutex m_sn_mutex;
     const service_node_keys* m_service_node_keys;

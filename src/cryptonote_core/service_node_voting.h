@@ -135,6 +135,8 @@ bool verify_checkpoint_signatures(
         uint64_t height,
         crypto::hash const& hash,
         std::span<const quorum_signature> signatures);
+// Checks a pulse block's signatures: their number, the validators they come from, and, unless
+// `check_signatures` is false (for a block already known to be valid), the signatures themselves.
 bool verify_pulse_signatures(
         service_nodes::quorum const& quorum,
         cryptonote::hf hf_version,
@@ -142,7 +144,8 @@ bool verify_pulse_signatures(
         crypto::hash const& hash,
         std::span<const quorum_signature> signatures,
         const cryptonote::block& block,
-        size_t active_nodes);
+        size_t active_nodes,
+        bool check_signatures = true);
 bool verify_pulse_quorum_sizes(
         const service_nodes::quorum& quorum, cryptonote::hf hf, size_t active_nodes);
 crypto::signature make_signature_from_vote(

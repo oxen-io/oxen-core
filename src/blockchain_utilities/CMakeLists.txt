@@ -83,25 +83,6 @@ if(BUILD_BLOCKCHAIN_UTILS)
       )
     target_link_libraries(blockchain_stats PRIVATE blockchain_tools_common_libs date::date)
 
-# TODO(oxen): Blockchain pruning not supported in Oxen yet
-# oxen_add_executable(blockchain_prune_known_spent_data "oxen-blockchain-prune-known-spent-data"
-#   blockchain_prune_known_spent_data.cpp
-#   )
-# 
-# target_link_libraries(blockchain_prune_known_spent_data
-#   PRIVATE
-#     blockchain_tools_common_libs
-#     p2p)
-# 
-# oxen_add_executable(blockchain_prune "oxen-blockchain-prune"
-#   blockchain_prune.cpp
-#   )
-# 
-# target_link_libraries(blockchain_prune
-#   PRIVATE
-#     blockchain_tools_common_libs
-#     p2p)
-
 endif()
 
 if(BUILD_BLS_TOOL)

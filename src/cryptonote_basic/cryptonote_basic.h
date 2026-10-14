@@ -180,10 +180,7 @@ class transaction_prefix {
     txversion version;
     txtype type;
 
-    bool is_transfer() const {
-        return type == txtype::standard || type == txtype::stake ||
-               type == txtype::oxen_name_system;
-    }
+    bool is_transfer() const { return is_transfer_type(type); }
 
     // True if this is a miner tx: that it, has a single input of type txin_gen.
     bool is_miner_tx() const { return vin.size() == 1 && std::holds_alternative<txin_gen>(vin[0]); }

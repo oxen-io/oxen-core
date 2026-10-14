@@ -51,7 +51,7 @@ message(STATUS "CMake version ${CMAKE_VERSION}")
 set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15 CACHE STRING "macOS deployment target (Apple clang only)")
 
 project(oxen
-    VERSION 11.6.1
+    VERSION 11.7.0
     LANGUAGES CXX C)
 set(OXEN_RELEASE_CODENAME "Landing")
 # Version update notes:
@@ -388,25 +388,6 @@ if(SANITIZE)
   endif()
 endif()
 
-# Set default blockchain storage location:
-# memory was the default in Cryptonote before Monero implemented LMDB, it still works but is unnecessary.
-# set(DATABASE memory)
-set(DATABASE lmdb)
-
-if (DEFINED ENV{DATABASE})
-  set(DATABASE $ENV{DATABASE})
-  message(STATUS "DATABASE set: ${DATABASE}")
-else()
-  message(STATUS "Could not find DATABASE in env (not required unless you want to change database type from default: ${DATABASE})")
-endif()
-
-if (DATABASE STREQUAL "lmdb")
-  message(STATUS "Using LMDB as default DB type")
-  set(BLOCKCHAIN_DB "lmdb")
-else()
-  message(FATAL_ERROR "Invalid database type: ${DATABASE}")
-endif()
-
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads)
 
@@ -423,10 +404,10 @@ add_library(systemd INTERFACE)  # Will do nothing unless we find and enable syst
 
 session_dep(libsodium 1.0.17)
 session_dep(libzstd 1.5.0)
-# 3.36 is required by session-sqlite for in-memory databases (which need the memdb VFS).  Anything
-# older falls back to a static sqlite3mc, which is a regular sqlite3 with encryption bolted on that
-# we simply don't use.
-session_dep(sqlite3 3.36.0)
+# 3.37 is required for the STRICT tables of the SQLite blockchain database (and 3.36 by
+# session-sqlite for in-memory databases, which need the memdb VFS).  Anything older falls back to a
+# static sqlite3mc, which is a regular sqlite3 with encryption bolted on that we simply don't use.
+session_dep(sqlite3 3.37.0)
 session_dep(gmp 6)
 
 option(WITH_SYSTEMD "Attempts to link against and enable systemd daemon notification support" ON)

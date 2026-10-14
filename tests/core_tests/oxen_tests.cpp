@@ -29,6 +29,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include "oxen_tests.h"
+#include "blockchain_db/history.h"
 #include "common/string_util.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -248,6 +249,218 @@ bool oxen_checkpointing_alt_chain_too_old_should_be_dropped::generate(std::vecto
   // possible because this alt-chain starts before the immutable height, it
   // should be deleted and removed.
   fork.create_and_add_next_block({}, nullptr, false, "Can not add block to alt chain because the alt chain starts before the immutable height. Those blocks should be locked into the chain");
+  return true;
+}
+
+static consteval size_t pulse_min_sns() { return 12; }
+
+// The generator makes the same blocks from the same parent, so a fork starts with a block whose
+// timestamp differs.
+static void add_diverging_block(oxen_chain_generator& gen)
+{
+  auto params = gen.next_block_params();
+  params.timestamp += 1;
+  oxen_blockchain_entry entry;
+  gen.create_block(entry, params, {});
+  gen.add_block(entry);
+}
+
+// NOTE: - On a chain longer than the minimum history (so that, run with --history, the node drops
+// the bodies of its old blocks): a reorg (which from HF9 on can't be deeper than the SN list's
+// recent history), and popping blocks back to a height within the kept history, which restores the
+// SN list and rewards from their stored states and replays from there.  Popping back past a limited
+// history is refused.
+bool oxen_history_window_reorg::generate(std::vector<test_event_entry>& events)
+{
+  auto hard_forks = oxen_generate_hard_fork_table(hf::hf15_ons);
+  oxen_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().version);
+  gen.add_mined_money_unlock_blocks();
+  gen.add_n_blocks(cryptonote::HISTORY_MIN_BLOCKS + 200);
+
+  oxen_chain_generator fork = gen;
+  gen.add_n_blocks(30);
+  add_diverging_block(fork);
+  fork.add_n_blocks(30);
+  const crypto::hash fork_top = cryptonote::get_block_hash(fork.top().block);
+  oxen_register_callback(events, "check_reorged", [fork_top](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_reorged");
+    CHECK_EQ(c.blockchain.get_tail_id().second, fork_top);
+    if (c.blockchain.db().history())
+      CHECK_TEST_CONDITION(c.blockchain.db().history_start() > 0);
+    return true;
+  });
+
+  // A peer asking for blocks from before the history kept is told they are missed, alongside the
+  // kept ones it gets.
+  oxen_register_callback(events, "check_serving_outside_history", [](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_serving_outside_history");
+    auto& db = c.blockchain.db();
+    if (!db.history())
+    {
+      CHECK_EQ(db.served_history(), 0);
+      return true;
+    }
+    const uint64_t start = db.history_start();
+    CHECK_TEST_CONDITION(start >= 2);
+    CHECK_EQ(db.served_history(), db.height() - db.history_window_start());
+
+    cryptonote::NOTIFY_REQUEST_GET_BLOCKS::request req;
+    for (uint64_t h = start - 2; h < start + 2; ++h)
+      req.blocks.push_back(db.get_block_hash_from_height(h));
+    cryptonote::NOTIFY_RESPONSE_GET_BLOCKS::request rsp;
+    CHECK_TEST_CONDITION(c.blockchain.handle_get_blocks(req, rsp));
+    CHECK_EQ(rsp.blocks.size(), 2);
+    const std::unordered_set<crypto::hash> missed{rsp.missed_ids.begin(), rsp.missed_ids.end()};
+    CHECK_TEST_CONDITION(missed == std::unordered_set<crypto::hash>(req.blocks.begin(), req.blocks.begin() + 2));
+    return true;
+  });
+
+  oxen_register_callback(events, "check_pop_within_history", [](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_pop_within_history");
+    const uint64_t height = c.blockchain.get_current_blockchain_height();
+    c.blockchain.pop_blocks(200);
+    CHECK_EQ(c.blockchain.get_current_blockchain_height(), height - 200);
+    CHECK_EQ(c.service_node_list.height(), height - 201);
+    return true;
+  });
+
+  oxen_register_callback(events, "check_pop_past_history", [](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_pop_past_history");
+    auto& db = c.blockchain.db();
+    if (!db.history())
+      return true;
+    const uint64_t height = c.blockchain.get_current_blockchain_height();
+    c.blockchain.pop_blocks(height - db.history_start() + 1);
+    CHECK_EQ(c.blockchain.get_current_blockchain_height(), height);
+    return true;
+  });
+  return true;
+}
+
+// NOTE: - Before HF9 (where the SN list doesn't limit how deep an alt chain can go), a reorg to a
+// longer fork within the kept history, and then to one from before what a limited history keeps,
+// which only a node keeping all of its history switches to.
+bool oxen_history_window_reorg_before_hf9::generate(std::vector<test_event_entry>& events)
+{
+  std::vector<cryptonote::hard_fork> hard_forks{{hf::hf7, 0, 0}};
+  oxen_chain_generator gen(events, hard_forks);
+  oxen_chain_generator deep_fork = gen;
+  const uint64_t deep_fork_height = gen.height();
+  gen.add_n_blocks(cryptonote::HISTORY_MIN_BLOCKS + 200);
+
+  oxen_chain_generator fork = gen;
+  gen.add_n_blocks(100);
+  add_diverging_block(fork);
+  fork.add_n_blocks(100);
+  const crypto::hash fork_top = cryptonote::get_block_hash(fork.top().block);
+  oxen_register_callback(events, "check_reorged", [fork_top](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_reorged");
+    CHECK_EQ(c.blockchain.get_tail_id().second, fork_top);
+    return true;
+  });
+
+  add_diverging_block(deep_fork);
+  while (deep_fork.height() <= fork.height())
+    deep_fork.create_and_add_next_block();
+  const crypto::hash deep_top = cryptonote::get_block_hash(deep_fork.top().block);
+  oxen_register_callback(events, "check_deep_fork", [fork_top, deep_top, deep_fork_height](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_deep_fork");
+    const bool limited = c.blockchain.db().history();
+    CHECK_TEST_CONDITION(!limited || c.blockchain.db().history_start() > deep_fork_height);
+    const crypto::hash expected_top = limited ? fork_top : deep_top;
+    CHECK_EQ(c.blockchain.get_tail_id().second, expected_top);
+    return true;
+  });
+  return true;
+}
+
+// NOTE: - With service node rewards batched (from HF19), on a chain longer than the minimum history
+// (so that, run with --history, the node drops the bodies of its old blocks), a reorg to a fork with
+// different rewards (an extra fee): afterwards, the service node list and every address's accrued
+// rewards are those of the fork, as the chain generator (which follows the fork) has them.
+bool oxen_history_window_reorg_rewards::generate(std::vector<test_event_entry>& events)
+{
+  auto hard_forks = oxen_generate_hard_fork_table();
+  oxen_chain_generator gen(events, hard_forks);
+  const auto miner = gen.first_miner();
+  const auto alice = gen.add_account();
+  const auto min_service_nodes = pulse_min_sns();
+
+  gen.add_blocks_until_version(cryptonote::hf::hf19_reward_batching);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    const auto tx = gen.create_and_add_tx(miner, alice.get_keys().m_account_address, MK_COINS(101));
+    gen.create_and_add_next_block({tx});
+  }
+  gen.add_transfer_unlock_blocks();
+  std::vector<cryptonote::transaction> registration_txs(min_service_nodes);
+  for (auto i = 0u; i < min_service_nodes; ++i)
+    registration_txs[i] = gen.create_and_add_registration_tx(alice);
+  gen.create_and_add_next_block({registration_txs});
+  gen.add_n_blocks(cryptonote::HISTORY_MIN_BLOCKS + 200);
+
+  oxen_chain_generator fork = gen;
+  gen.add_n_blocks(30);
+  add_diverging_block(fork);
+  const auto tx = fork.create_and_add_tx(miner, alice.get_keys().m_account_address, MK_COINS(1));
+  fork.create_and_add_next_block({tx});
+  fork.add_n_blocks(30);
+
+  // Service nodes by pubkey, with the parts of their state that their rewards and the chain decide
+  using sn_summary = std::tuple<uint64_t, uint64_t, uint64_t, uint32_t, uint64_t>;
+  const auto summarize = [](const service_nodes::service_node_info& info) {
+    return sn_summary{
+        info.registration_height,
+        info.active_since_height,
+        info.last_reward_block_height,
+        info.last_reward_transaction_index,
+        info.total_contributed};
+  };
+  std::map<crypto::public_key, sn_summary> expected_sns;
+  for (const auto& [pubkey, info] : std::prev(fork.state_history_.end())->service_nodes_infos)
+    expected_sns.emplace(pubkey, summarize(*info));
+  // Accrued rewards by address (as bytes), as (amount, lifetime rewards)
+  using accrued_t = std::map<std::string, std::pair<cryptonote::reward_money, cryptonote::reward_money>>;
+  const auto accrued = [](const cryptonote::RewardsDB& rewards) {
+    accrued_t result;
+    for (const auto& [address, info] : rewards.get_all_accrued_rewards())
+      result.emplace(
+          std::visit([](const auto& a) { return std::string{tools::view_guts(a)}; }, address),
+          std::make_pair(info.amount, info.lifetime_rewards));
+    return result;
+  };
+  const accrued_t expected_accrued = accrued(*fork.rewards_db_);
+  const bool rewards_differ = expected_accrued != accrued(*gen.rewards_db_);
+  const crypto::hash fork_top = cryptonote::get_block_hash(fork.top().block);
+
+  oxen_register_callback(events, "check_fork_state", [=](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_fork_state");
+    // (Or the reorg would leave the rewards the same, and they wouldn't show it was followed)
+    CHECK_TEST_CONDITION(rewards_differ);
+    CHECK_EQ(c.blockchain.get_tail_id().second, fork_top);
+    if (c.blockchain.db().history())
+      CHECK_TEST_CONDITION(c.blockchain.db().history_start() > 0);
+
+    std::map<crypto::public_key, sn_summary> sns;
+    for (const auto& sn : c.service_node_list.get_service_node_list_state())
+      sns.emplace(sn.pubkey, summarize(*sn.info));
+    CHECK_EQ(sns.size(), expected_sns.size());
+    CHECK_TEST_CONDITION(sns == expected_sns);
+
+    const auto got = accrued(c.blockchain.rewards_db());
+    CHECK_TEST_CONDITION(!got.empty());
+    CHECK_TEST_CONDITION(got == expected_accrued);
+    return true;
+  });
   return true;
 }
 
@@ -3231,8 +3444,6 @@ bool oxen_service_nodes_insufficient_operator_contribution_HF19::generate(std::v
   return true;
 }
 
-static consteval size_t pulse_min_sns() { return 12; }
-
 static oxen_chain_generator setup_pulse_tests(std::vector<test_event_entry> &events)
 {
   auto hard_forks = oxen_generate_hard_fork_table();
@@ -3809,11 +4020,11 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
     DEFINE_TESTS_ERROR_CONTEXT("trigger_blockchain_detach");
     cryptonote::Blockchain& blockchain = c.blockchain;
     uint64_t curr_height = blockchain.get_current_blockchain_height();
-    auto& sqliteDB = blockchain.sqlite_db();
-    CHECK_EQ(sqliteDB.height, curr_height - 1);
+    auto& rewardsDB = blockchain.rewards_db();
+    CHECK_EQ(rewardsDB.height, curr_height - 1);
     std::optional<std::vector<cryptonote::batch_sn_payment>> records;
     // curr_height = the block that would contain the batched service node payment
-    records = sqliteDB.get_sn_payments(curr_height);
+    records = rewardsDB.get_sn_payments(curr_height);
     CHECK_EQ(records.has_value(), true);
     CHECK_EQ((*records).size(), 1);
     // Check that the database has a full batch amount that includes the soon to be popped block 
@@ -3821,10 +4032,10 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
 
     // NOTE: Reorg to remove one block
     blockchain.pop_blocks(1);
-    CHECK_EQ(sqliteDB.height, blockchain.get_current_blockchain_height() - 1);
-    CHECK_EQ(sqliteDB.height, curr_height - 2);
+    CHECK_EQ(rewardsDB.height, blockchain.get_current_blockchain_height() - 1);
+    CHECK_EQ(rewardsDB.height, curr_height - 2);
 
-    records = sqliteDB.get_sn_payments(curr_height);
+    records = rewardsDB.get_sn_payments(curr_height);
     CHECK_EQ(records.has_value(), true);
     if (batched_rewards_earned != MK_COINS(1) * 16.5)
     {
@@ -3840,10 +4051,10 @@ bool oxen_batch_sn_rewards_pop_blocks::generate(std::vector<test_event_entry> &e
 
     // Pop the rest of the blocks and check that it goes to zero
     blockchain.pop_blocks(more_blocks - 1);
-    CHECK_EQ(sqliteDB.height, blockchain.get_current_blockchain_height() - 1);
-    CHECK_EQ(sqliteDB.height, curr_height - more_blocks - 1);
+    CHECK_EQ(rewardsDB.height, blockchain.get_current_blockchain_height() - 1);
+    CHECK_EQ(rewardsDB.height, curr_height - more_blocks - 1);
 
-    records = sqliteDB.get_sn_payments(curr_height + 1);
+    records = rewardsDB.get_sn_payments(curr_height + 1);
     CHECK_EQ((*records).size(), 0);
 
     return true;
@@ -3906,22 +4117,110 @@ bool oxen_batch_sn_rewards_pop_blocks_after_big_cycle::generate(std::vector<test
     DEFINE_TESTS_ERROR_CONTEXT("pop_3_cycles");
     cryptonote::Blockchain& blockchain = c.blockchain;
     uint64_t curr_height = blockchain.get_current_blockchain_height();
-    auto& sqliteDB = blockchain.sqlite_db();
-    CHECK_EQ(sqliteDB.height, curr_height - 1);
+    auto& rewardsDB = blockchain.rewards_db();
+    CHECK_EQ(rewardsDB.height, curr_height - 1);
 
     blockchain.pop_blocks(conf.BATCHING_INTERVAL * 3 + 1);
 
 
-    CHECK_EQ(sqliteDB.height + 1, blockchain.get_current_blockchain_height());
-    CHECK_EQ(sqliteDB.height + 1, curr_height - conf.BATCHING_INTERVAL * 3 - 1);
+    CHECK_EQ(rewardsDB.height + 1, blockchain.get_current_blockchain_height());
+    CHECK_EQ(rewardsDB.height + 1, curr_height - conf.BATCHING_INTERVAL * 3 - 1);
 
     curr_height = blockchain.get_current_blockchain_height();
 
-    auto records = sqliteDB.get_sn_payments(curr_height);
+    auto records = rewardsDB.get_sn_payments(curr_height);
     CHECK_EQ(records.size(), 1);
     CHECK_EQ(records[0].amount, cryptonote::reward_money::from_coin(amount));
     CHECK_EQ(tools::view_guts(records[0].address), tools::view_guts(alice.get_keys().m_account_address));
 
+    return true;
+  });
+
+  return true;
+}
+
+// A reorg replaces the last few blocks with ones that accrue different rewards (a transaction's fee
+// goes to the producer of the block it is in, whose operator, as of all the nodes, is alice); the
+// balances held for those heights must then be the replacement chain's, not the abandoned one's.
+bool oxen_batch_sn_rewards_reorg_balances::generate(std::vector<test_event_entry> &events)
+{
+  constexpr auto& conf = cryptonote::get_config(cryptonote::network_type::FAKECHAIN);
+  auto hard_forks = oxen_generate_hard_fork_table();
+  oxen_chain_generator gen(events, hard_forks);
+  const auto miner = gen.first_miner();
+  const auto alice = gen.add_account();
+  const auto bob = gen.add_account();
+  auto min_service_nodes = pulse_min_sns();
+
+  gen.add_blocks_until_version(cryptonote::hf::hf19_reward_batching);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    const auto tx0 = gen.create_and_add_tx(miner, alice.get_keys().m_account_address, MK_COINS(101));
+    gen.create_and_add_next_block({tx0});
+  }
+  gen.add_transfer_unlock_blocks();
+
+  std::vector<cryptonote::transaction> registration_txs(min_service_nodes);
+  for (auto i = 0u; i < min_service_nodes; ++i) {
+    registration_txs[i] = gen.create_and_add_registration_tx(alice);
+    gen.process_registration_tx(registration_txs[i], 12+i, hard_forks.back().version);
+  }
+  gen.create_and_add_next_block({registration_txs});
+  gen.add_n_blocks(conf.SERVICE_NODE_PAYABLE_AFTER_BLOCKS + 5);
+
+  constexpr uint64_t REORG = 3;
+  static_assert(REORG < cryptonote::REWARDS_HISTORY);
+  // Alice's accrued rewards are paid out (starting again from nothing) every BATCHING_INTERVAL
+  // blocks, at heights her address gives: the balances compared below only all show the fork's
+  // extra fee if none of the replaced blocks is one of those.
+  const uint64_t payout_offset = alice.get_keys().m_account_address.modulus(conf.BATCHING_INTERVAL);
+  const auto payout_replaced = [&] {
+    for (uint64_t h = gen.height() + 1; h <= gen.height() + REORG; h++)
+      if (h % conf.BATCHING_INTERVAL == payout_offset)
+        return true;
+    return false;
+  };
+  while (payout_replaced())
+    gen.add_n_blocks(1);
+  oxen_chain_generator fork = gen;
+  gen.add_n_blocks(REORG);
+  const uint64_t top = gen.height();
+  const auto& alice_addr = alice.get_keys().m_account_address;
+
+  auto abandoned = std::make_shared<std::vector<cryptonote::reward_money>>();
+  oxen_register_callback(events, "record_and_pop", [=](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("record_and_pop");
+    auto& rewards = c.blockchain.rewards_db();
+    CHECK_EQ(rewards.height, top);
+    for (uint64_t h = top - REORG + 1; h <= top; h++) {
+      auto info = rewards.get_accrued_rewards(alice_addr, h);
+      CHECK_TEST_CONDITION(info && info->found);
+      abandoned->push_back(info->amount);
+    }
+    c.blockchain.pop_blocks(REORG);
+    CHECK_EQ(rewards.height, top - REORG);
+    CHECK_TEST_CONDITION(!rewards.get_accrued_rewards(alice_addr, top));
+    return true;
+  });
+
+  auto tx = fork.create_and_add_tx(miner, bob.get_keys().m_account_address, MK_COINS(1));
+  fork.create_and_add_next_block({tx});
+  fork.add_n_blocks(REORG - 1);
+
+  oxen_register_callback(events, "check_replaced_balances", [=](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_replaced_balances");
+    auto& rewards = c.blockchain.rewards_db();
+    CHECK_EQ(rewards.height, top);
+    CHECK_EQ(abandoned->size(), REORG);
+    for (uint64_t i = 0; i < REORG; i++) {
+      auto info = rewards.get_accrued_rewards(alice_addr, top - REORG + 1 + i);
+      CHECK_TEST_CONDITION(info && info->found);
+      CHECK_TEST_CONDITION(info->amount > (*abandoned)[i]);
+    }
     return true;
   });
 

@@ -15,4 +15,15 @@ constexpr uint64_t as_u64(int64_t v) {
     return static_cast<uint64_t>(v);
 }
 
+// A generic key/value table, for the things (the rewards and ONS tables) that keep values in it and
+// can be either in the SQLite blockchain database or in a database of their own.  The DDL is
+// identical to the blockchain database's properties table, so that in that database this is that
+// same table.
+inline constexpr const char* CREATE_PROPERTIES = R"(
+CREATE TABLE IF NOT EXISTS properties (
+    key   TEXT PRIMARY KEY,
+    value ANY NOT NULL
+) STRICT, WITHOUT ROWID;
+)";
+
 }  // namespace db

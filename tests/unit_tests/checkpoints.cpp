@@ -387,3 +387,92 @@ TEST(checkpoints_blockchain_detached, detach_to_1)
   checkpoint_t top_checkpoint;
   ASSERT_FALSE(test_db->get_top_checkpoint(top_checkpoint));
 }
+
+namespace {
+checkpoint_t sn_checkpoint(uint64_t height)
+{
+  checkpoint_t c = {};
+  c.type = checkpoint_type::service_node;
+  c.height = height;
+  return c;
+}
+
+// What the DB itself says (which checkpoints::immutable_height caches)
+std::optional<uint64_t> db_immutable_height(const BlockchainDB& db, uint64_t height)
+{
+  checkpoint_t c;
+  if (db.get_immutable_checkpoint(&c, height))
+    return c.height;
+  return std::nullopt;
+}
+}
+
+// The cached immutable height follows checkpoints being added (above and below the heights asked
+// about), reached, and removed by detaches.
+TEST(checkpoints_immutable_height, follows_adds_and_detaches)
+{
+  auto test_db = std::make_unique<TestDB>();
+  checkpoints cp = {}; cp.init(network_type::FAKECHAIN, test_db.get());
+  auto check = [&](uint64_t h) {
+    EXPECT_EQ(cp.immutable_height(h), db_immutable_height(*test_db, h)) << "height " << h;
+  };
+
+  // (TestDB's top checkpoint is the last one added, so these are added in height order.)
+  check(100);
+  ASSERT_TRUE(cp.update_checkpoint(sn_checkpoint(40)));
+  check(100);
+  EXPECT_EQ(cp.immutable_height(101), std::nullopt);  // one service node checkpoint isn't final
+  ASSERT_TRUE(cp.update_checkpoint(sn_checkpoint(44)));
+  check(101);
+  EXPECT_EQ(cp.immutable_height(101), 40);
+
+  // A hardcoded checkpoint (immutable itself) at or below the height asked about
+  ASSERT_TRUE(cp.add_checkpoint(48, std::string(64, '0')));
+  check(101);
+  EXPECT_EQ(cp.immutable_height(101), 48);
+
+  // Above the height asked about, until the chain reaches it
+  ASSERT_TRUE(cp.update_checkpoint(sn_checkpoint(120)));
+  for (uint64_t h : {102, 119, 120, 125})
+    check(h);
+  ASSERT_TRUE(cp.update_checkpoint(sn_checkpoint(124)));
+  check(125);
+  EXPECT_EQ(cp.immutable_height(125), 120);
+
+  // A detach removes the checkpoints at and above where it goes to
+  cp.blockchain_detached(124);
+  check(125);
+  EXPECT_EQ(cp.immutable_height(125), 48);
+  ASSERT_TRUE(cp.update_checkpoint(sn_checkpoint(128)));
+  check(130);
+  EXPECT_EQ(cp.immutable_height(130), 120);
+  cp.blockchain_detached(121);
+  check(122);
+  EXPECT_EQ(cp.immutable_height(122), 48);
+
+  for (uint64_t h = 0; h < 140; h++)
+    check(h);
+}
+
+// block_add (which asks for the immutable height of every block, and culls the checkpoints below
+// it) agrees with the DB as the chain grows, with a checkpoint every CHECKPOINT_INTERVAL blocks.
+TEST(checkpoints_immutable_height, follows_block_adds)
+{
+  auto test_db = std::make_unique<TestDB>();
+  checkpoints cp = {}; cp.init(network_type::FAKECHAIN, test_db.get());
+
+  for (uint64_t h = 100; h < 400; h++) {
+    block b = {};
+    b.major_version = hf::hf12_checkpointing;
+    b.miner_tx.emplace();
+    b.miner_tx->vin.push_back(txin_gen{h});
+    std::vector<transaction> txs;
+    std::optional<checkpoint_t> checkpoint;
+    if (h % service_nodes::CHECKPOINT_INTERVAL == 0)
+      checkpoint = sn_checkpoint(h);
+    cp.block_add({b, txs, checkpoint ? &*checkpoint : nullptr});
+    EXPECT_EQ(cp.immutable_height(h + 1), db_immutable_height(*test_db, h + 1)) << "height " << h;
+    if (h == 300)
+      cp.blockchain_detached(281);
+  }
+}
