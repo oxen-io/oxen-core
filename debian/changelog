@@ -1,3 +1,119 @@
+oxen (11.7.0~rc1-1~deb14) forky; urgency=medium
+
+  [ Jason Rhinelander ]
+  * Fix uninitialized value warnings
+  * Use larger (25 node) pulse quorums starting at HF23
+  * HF23: Disallow SN deregs that skip decomm
+  * formatting
+  * Fix BLS pubkey validation in uptime proof checks
+  * Detect and log an error/warning for a bls key mismatch
+  * Add arbitrum txids and description to HF22 fixups
+  * GPG key updates
+  * Update repo keys for CI
+  * Avoid cloning 900MB of uWebSockets crap
+  * Fix l2 oxend proxy when parent chain is stalled
+  * Bump boost to 1.69+, drop Boost::system
+  * Drop boost system usage to fix boost 1.89+ compilation
+  * ci-upload: upload .ddeb debug packages and .buildinfo files
+  * Drop the mobile wallet_api builds
+  * Update SQLiteCpp to 3.3.3
+  * Update libuv to v1.53.0
+  * Use fmt::gmtime for the sesh transition CSV filenames
+  * Use session-deps for dependency handling
+  * CI: drop snapshot debs, update distros
+  * CI: convert .drone.jsonnet to Woodpecker Starlark
+  * CI: build ARM on the 8GB Pis at -j3
+  * CI: move from oxen.rocks to session.codes
+  * Docs: use deb.session.foundation and registry.session.codes
+  * Use session-sqlite's SQLiteCpp
+  * Replace epee::span with std::span
+  * Pass a validator count, not an active node count, for pulse signatures
+  * Port BlockchainSQLite to session-sqlite
+  * Port ONS to session-sqlite
+  * Store SN state archives per height instead of in memory
+  * Share SN infos between loaded recent states; keep lookup maps current-only
+  * Sign pulse handshake bitsets at their pre-HF23 width before HF23
+  * Rename BlockchainSQLite to RewardsDB
+  * Remove the dead blockchain pruning and hard fork table code
+  * Add --db-backend and select the blockchain backend from the data dir
+  * Require SQLite 3.37 and add BlockchainDB::active_write_transaction()
+  * Add the SQLite blockchain backend (chain core)
+  * Construct the SQLite backend from new_db and test both backends
+  * Remove the unused DATABASE/BLOCKCHAIN_DB CMake settings
+  * Clear the SQLite backend's write transaction before announcing no writer
+  * Store checkpoints in the SQLite blockchain backend
+  * Store the max block size in the SQLite backend's properties
+  * Store the txpool in the SQLite blockchain backend
+  * Store service node data, archive and proofs in the SQLite backend
+  * Store alt blocks in the SQLite blockchain backend
+  * Use the SQLite backend for new data directories
+  * Add the output histogram and distribution to the SQLite backend
+  * Let core_tests choose the blockchain backend
+  * Test the rest of the SQLite backend more fully
+  * Tidy up the SQLite blockchain backend
+  * Index block and tx hashes by an 8-byte prefix in the SQLite backend
+  * Report the real sync rate in the "Synced N/M" progress line
+  * Have rewards and ONS use a Database given to them
+  * Keep rewards and ONS in oxen.db, inside the blockchain's transactions
+  * Test rewards and ONS inside the SQLite blockchain's transactions
+  * Log block/chain requests made while one is still outstanding
+  * Never have two requests outstanding to one sync peer
+  * 11.7.0 version bump
+  * Flag quorums-only SN states, and query the newest full one
+  * Store the SN list's recent states every 60 blocks in oxen.db
+  * Regenerate mainnet block hash list
+  * Drop the SN list data blobs from the SQLite backend
+  * Re-embed the block hash lists when they change
+  * Embed the block hash lists as hex, not escaped bytes
+  * Don't check the pulse signatures of hash-listed blocks
+  * Expose the SN archive's retention rule
+  * Keep the rewards in memory, with snapshots in the database
+  * Keep alt blocks from changing the rewards
+  * Cache the immutable checkpoint height
+  * Always use synchronous=NORMAL in the SQLite backend
+  * Apply known-good settings to the SQLite blockchain database
+  * Add the scripts that regenerate the block hash list
+  * Report reaching the sync target as soon as it happens
+  * Say what a legacy rewards table holds that can't be migrated
+  * Don't warn of a BLS key mismatch with a pre-BLS registration
+  * Always honour an explicit --db-backend
+  * Put routine blockchain database logs at debug
+  * Print the start-up banner before the network starts
+  * Don't run PRAGMA optimize
+  * Let the rewards follow the chain before HF9
+  * Read block timestamps from the index rather than the block body
+  * Add the light node retention window
+  * Let the blockchain database keep a limited history
+  * Keep a limited history trimmed, and the subsystems within it
+  * Test reorgs and rewinds on a node keeping a limited history
+  * Keep the hashes of dropped transactions that have no inputs
+  * Drop the history no longer kept in the background
+  * Apply a new history at once, and drop the old one only after startup
+  * Extend systemd's timeout through long startup and shutdown work
+  * Log the routine history drop and compaction progress at info
+  * Log an L2 proxy subscription that comes back as a renewal
+  * Label L2 proxy state and purge state requests the right way round
+  * Remove the blockchain pruning stripe machinery
+  * Advertise to peers how much block history a node keeps
+  * Tell peers the blocks we no longer keep are missed
+  * Sync from the peers that keep the blocks the sync needs
+  * Keep the history catch-up's chunks short
+  * Refuse RPC requests for block history a node no longer keeps
+  * Show in get_info how much block history a node keeps
+  * Don't read past the chain when bringing small replays up to date
+  * Shut down cleanly after a start refused before the blockchain is up
+  * Keep alice's payouts out of the replaced blocks in a rewards reorg test
+  * Test a rewards-changing reorg on a node keeping a limited history
+  * Remove an unfinished compaction's journal along with its partial copy
+  * formatting
+  * Build with Woodpecker via .woodpecker/override-deb.star
+  * Rediff patches
+
+  [ Audric Ackermann ]
+  * Put the web3 environment marker back on its own requirement
+
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 13 Oct 2026 21:47:06 -0300
+
 oxen (11.6.1-1~deb14+1) forky; urgency=medium
 
   * Update apt repo signing key to deb.session.foundation.gpg
