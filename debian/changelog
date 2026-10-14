@@ -1,3 +1,9 @@
+oxen (11.7.0~rc1-2~deb12) bookworm; urgency=medium
+
+  * Add oxend-download-sqlite for installing an oxen.db snapshot
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 14 Oct 2026 00:09:20 -0300
+
 oxen (11.7.0~rc1-1~deb12) bookworm; urgency=medium
 
   [ Jason Rhinelander ]
