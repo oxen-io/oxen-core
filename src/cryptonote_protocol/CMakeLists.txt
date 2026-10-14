@@ -29,6 +29,7 @@
 oxen_add_library(cryptonote_protocol
   levin_notify.cpp
   block_queue.cpp
+  peer_history.cpp
   cryptonote_protocol_handler.inl
   cryptonote_protocol_defs.cpp
   quorumnet.cpp
@@ -39,6 +40,6 @@ target_link_libraries(cryptonote_protocol
   PUBLIC
     p2p
   PRIVATE
-    SQLiteCpp
+    sqlitedb
     logging
     extra)

@@ -39,6 +39,7 @@
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_config.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
+#include "epee/byte_span.h"
 #include "net/dandelionpp.h"
 #include "p2p/net_node.h"
 

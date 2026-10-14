@@ -160,11 +160,11 @@ service_node_test_results quorum_cop::check_service_node(
     if (ips[0].first && ips[1].first) {
         // Figure out when we last had a blockchain-level IP change penalty (or when we registered);
         // we only consider IP changes starting two hours after the last IP penalty.
-        std::vector<cryptonote::block> blocks;
-        if (m_core.blockchain.get_blocks(info.last_ip_change_height, 1, blocks)) {
+        if (info.last_ip_change_height < m_core.blockchain.get_current_blockchain_height()) {
             uint64_t find_ips_used_since = std::max(
                     uint64_t(std::time(nullptr)) - std::chrono::seconds{IP_CHANGE_WINDOW}.count(),
-                    uint64_t(blocks[0].timestamp) + std::chrono::seconds{IP_CHANGE_BUFFER}.count());
+                    m_core.blockchain.db().get_block_timestamp(info.last_ip_change_height) +
+                            std::chrono::seconds{IP_CHANGE_BUFFER}.count());
             if (ips[0].second > find_ips_used_since && ips[1].second > find_ips_used_since)
                 result.single_ip = false;
         }
@@ -510,7 +510,7 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                         log::debug(
                                                 logcat,
                                                 "Service node {} has stopped passing required "
-                                                "checks, but does not ahve sufficient earned "
+                                                "checks, but does not have sufficient earned "
                                                 "credit ({} blocks, {} required) to decommission; "
                                                 "voting to deregister",
                                                 quorum->workers[node_index],
@@ -730,8 +730,9 @@ static bool handle_obligations_vote(
                 quorum.workers[vote.state_change.worker_index];
         auto service_node_infos =
                 core.service_node_list.get_service_node_list_state({service_node_pubkey});
-        if (!service_node_infos.size() || !service_node_infos[0].info->can_transition_to_state(
-                                                  net, vote.block_height, vote.state_change.state))
+        if (!service_node_infos.size() ||
+            !service_node_infos[0].info->can_transition_to_state(
+                    core.get_nettype(), net, vote.block_height, vote.state_change.state))
             // NOTE: Vote is valid but is invalidated because we cannot apply the change to a
             // service node or it is not on the network anymore
             //       So don't bother generating a state change tx.
