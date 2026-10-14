@@ -41,13 +41,13 @@ oxen_add_library(common
   oxen.cpp
   notify.cpp
   password.cpp
-  pruning.cpp
   random.cpp
   rules.cpp
   scoped_message_writer.cpp
   sha256sum.cpp
   spawn.cpp
   string_util.cpp
+  systemd.cpp
   threadpool.cpp
   util.cpp
   ${PROJECT_BINARY_DIR}/translations/translation_files.cpp
@@ -75,8 +75,9 @@ target_link_libraries(common
     nlohmann_json::nlohmann_json
     Boost::program_options
   PRIVATE
-    sodium
+    sessiondep::libsodium
     logging
+    systemd
     extra)
 
 if (TRACY_ENABLE)

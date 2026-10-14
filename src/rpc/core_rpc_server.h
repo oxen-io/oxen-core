@@ -176,7 +176,6 @@ class core_rpc_server {
     void invoke(LOKINET_PING& lokinet_ping, rpc_context context);
     void invoke(STORAGE_SERVER_PING& storage_server_ping, rpc_context context);
     void invoke(SESSION_ROUTER_PING& ping, rpc_context context);
-    void invoke(PRUNE_BLOCKCHAIN& prune_blockchain, rpc_context context);
     void invoke(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_context context);
     void invoke(GET_L2_TRACKER_STATE& req, rpc_context context);
     void invoke(TEST_TRIGGER_P2P_RESYNC& test_trigger_p2p_resync, rpc_context context);
@@ -240,6 +239,23 @@ class core_rpc_server {
 
   private:
     bool check_core_ready();
+
+    // The earliest height whose block body and transactions (and the service node state and
+    // checkpoints of that height) this node still has: 0 unless it keeps a limited history.
+    uint64_t history_start() const;
+
+    // Throws history_not_kept (see core_rpc_server_history.h) if `height` is from before the
+    // history this node keeps.  Called before reading anything of that height, and again if
+    // reading it fails: the history can be dropped (in the background) in between.
+    void require_history(uint64_t height) const;
+
+    // The same for a block given by its hash (if it is in the main chain, whose block hashes and
+    // heights are all kept).
+    void require_history(const crypto::hash& block_hash) const;
+
+    // The same for the outputs asked for, when their txids are too: outputs are all kept, but the
+    // txid of one is only known while its transaction is.
+    void require_history(const GET_OUTPUTS_BIN::request& req) const;
 
     void fill_sn_response_entry(
             nlohmann::json& entry,

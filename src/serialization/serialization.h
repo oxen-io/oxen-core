@@ -166,7 +166,7 @@
 
 #include "base.h"
 #include "common/exception.h"
-#include "epee/span.h"  // for detecting epee-wrapped byte spannable objects
+#include "epee/byte_span.h"  // for detecting epee-wrapped byte spannable objects
 
 namespace serialization {
 

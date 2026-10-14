@@ -95,11 +95,20 @@ struct network_config final {
     // too slow or too fast the pulse quorum block construction gets accelerated or delayed by up to
     // this amount to get back to the TARGET_BLOCK_TIME average.
     const std::chrono::seconds PULSE_MAX_START_ADJUSTMENT;
-    // How many active service nodes we require to make pulse work.  This must be >=
-    // PULSE_QUORUM_SIZE.  The network will stall (and require manual mining to resume) if this
-    // threshold is reached.  This is intentionally designed to trigger (and stall the network) if
-    // active nodes numbers drop to absurdly low levels.
-    const size_t PULSE_MIN_SERVICE_NODES;
+    // How many active service nodes we require for pulse to be allowed for network block
+    // production.  This value can be set to raise the minimum size above the minimum quorum size so
+    // that the network deliberately stalls if the number of active nodes drops below the configured
+    // size.
+    //
+    // Note that if this is set to 0 or some value below the minimum quorum size then only the min
+    // quorum size will apply (12 before HF23, 8 from HF23 onwards; see service_node_rules.h).  To
+    // properly obtain the effective minimum, you should call service_nodes::PULSE_MIN_ACTIVE_NODES
+    // with the current hardfork and this value.
+    //
+    // The network will stall (and require manual mining to resume) if this threshold is reached.
+    // This is intentionally designed to trigger (and stall the network) if active nodes numbers
+    // drop to absurdly low levels.
+    const size_t PULSE_NETWORK_MINIMUM;
 
     constexpr std::chrono::seconds PULSE_MIN_TARGET_BLOCK_TIME() const {
         return TARGET_BLOCK_TIME - PULSE_MAX_START_ADJUSTMENT;

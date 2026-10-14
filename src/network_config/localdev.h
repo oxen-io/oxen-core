@@ -50,7 +50,7 @@ inline constexpr network_config config{
         .PULSE_STAGE_TIMEOUT = 3s,
         .PULSE_ROUND_TIMEOUT = 4s,
         .PULSE_MAX_START_ADJUSTMENT = 4s,
-        .PULSE_MIN_SERVICE_NODES = testnet::config.PULSE_MIN_SERVICE_NODES,
+        .PULSE_NETWORK_MINIMUM = testnet::config.PULSE_NETWORK_MINIMUM,
         .BATCHING_INTERVAL = testnet::config.BATCHING_INTERVAL,
         .MIN_BATCH_PAYMENT_AMOUNT = mainnet::config.MIN_BATCH_PAYMENT_AMOUNT,
         .LIMIT_BATCH_OUTPUTS = mainnet::config.LIMIT_BATCH_OUTPUTS,

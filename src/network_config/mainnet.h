@@ -70,7 +70,7 @@ inline constexpr network_config config{
         .PULSE_STAGE_TIMEOUT = 10s,
         .PULSE_ROUND_TIMEOUT = 1min,
         .PULSE_MAX_START_ADJUSTMENT = 30s,
-        .PULSE_MIN_SERVICE_NODES = 50,
+        .PULSE_NETWORK_MINIMUM = 50,
         .BATCHING_INTERVAL = 2520,
         .MIN_BATCH_PAYMENT_AMOUNT = 1'000'000'000,  // 1 OXEN (in atomic units)
         .LIMIT_BATCH_OUTPUTS = 15,

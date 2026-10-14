@@ -118,10 +118,10 @@ namespace tests
         uint64_t get_immutable_height() const { return 0; }
         uint64_t prevalidate_block_hashes(uint64_t height, const std::list<crypto::hash> &hashes) { return 0; }
         uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash> &hashes) { return 0; }
-        uint32_t get_blockchain_pruning_seed() const { return 0; }
 
         struct fake_db {
             cryptonote::difficulty_type get_block_cumulative_difficulty(uint64_t height) const { return 0; }
+            uint64_t served_history() const { return 0; }
         } db_;
         fake_db& db() { return db_; }
     } blockchain;
@@ -129,7 +129,6 @@ namespace tests
     bool add_service_node_vote(const service_nodes::quorum_vote_t& vote, cryptonote::vote_verification_context &vvc) { return false; }
     void set_service_node_votes_relayed(const std::vector<service_nodes::quorum_vote_t> &votes) {}
     bool pad_transactions() const { return false; }
-    bool prune_blockchain(uint32_t pruning_seed) const { return true; }
 
     bool handle_incoming_blinks(const std::vector<cryptonote::serializable_blink_metadata> &blinks, std::vector<crypto::hash> *bad_blinks = nullptr, std::vector<crypto::hash> *missing_txs = nullptr) { return true; }
 

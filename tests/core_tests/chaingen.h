@@ -63,7 +63,7 @@
 
 #include "blockchain_db/testdb.h"
 
-#include "../blockchain_sqlite_test.h"
+#include "../rewards_db_test.h"
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "tests.core"
@@ -979,6 +979,10 @@ struct get_test_options {
   };
 };
 //--------------------------------------------------------------------------
+// Command line arguments given to each core that test events are replayed through (such as the
+// --db-backend given to core_tests itself).
+inline std::vector<std::string> core_test_core_args;
+
 template<class t_test_class>
 inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cryptonote::core *core, t_test_class &validator)
 {
@@ -988,7 +992,8 @@ inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cry
   boost::program_options::variables_map vm;
   bool r = command_line::handle_error_helper(desc, [&]()
   {
-    boost::program_options::store(boost::program_options::basic_parsed_options<char>(&desc), vm);
+    boost::program_options::store(
+        boost::program_options::command_line_parser(core_test_core_args).options(desc).run(), vm);
     boost::program_options::notify(vm);
     return true;
   });
@@ -1475,8 +1480,10 @@ struct oxen_chain_generator
   mutable std::unordered_map<crypto::public_key, crypto::secret_key> service_node_keys_;
   service_nodes::service_node_list::state_set                        state_history_;
   uint64_t                                                           last_cull_height_ = 0;
+  // Declared before ons_db_ so that it outlives it
+  std::shared_ptr<session::sqlite::Database>                         ons_sql_ = std::make_shared<session::sqlite::Database>(":memory:");
   std::shared_ptr<ons::name_system_db>                               ons_db_ = std::make_shared<ons::name_system_db>();
-  std::unique_ptr<test::BlockchainSQLiteTest>                        sqlite_db_;
+  std::unique_ptr<test::RewardsDBTest>                               rewards_db_;
   oxen_chain_generator_db                                            db_;
   cryptonote::hf                                                     hf_version_ = cryptonote::hf::hf7;
   std::vector<test_event_entry>&                                     events_;
@@ -1485,8 +1492,8 @@ struct oxen_chain_generator
 
   oxen_chain_generator(std::vector<test_event_entry>& events, const std::vector<cryptonote::hard_fork>& hard_forks, std::string_view first_miner_seed = "");
   oxen_chain_generator(const oxen_chain_generator &other)
-    :tx_table_(other.tx_table_), service_node_keys_(other.service_node_keys_), state_history_(other.state_history_), last_cull_height_(other.last_cull_height_), sqlite_db_(std::make_unique<test::BlockchainSQLiteTest>(*other.sqlite_db_)),
-  ons_db_(other.ons_db_ ), db_(other.db_), hf_version_(other.hf_version_), events_(other.events_), hard_forks_(other.hard_forks_), first_miner_(other.first_miner_) {};
+    :tx_table_(other.tx_table_), service_node_keys_(other.service_node_keys_), state_history_(other.state_history_), last_cull_height_(other.last_cull_height_), rewards_db_(std::make_unique<test::RewardsDBTest>(*other.rewards_db_)),
+  ons_sql_(other.ons_sql_), ons_db_(other.ons_db_ ), db_(other.db_), hf_version_(other.hf_version_), events_(other.events_), hard_forks_(other.hard_forks_), first_miner_(other.first_miner_) {};
 
   uint64_t                                             height()       const { return db_.blocks.back().block.get_height(); }
   uint64_t                                             chain_height() const { return height() + 1; }
