@@ -2476,11 +2476,13 @@ You are now synchronized with the network.
     const uint64_t height = m_core.blockchain.get_current_blockchain_height();
     if (target <= height)
       return std::nullopt;
-    // Downloading runs ahead of adding blocks, often all the way to the target: then nothing more
-    // is needed from any peer (and no peer could serve the target height, its own), until a new
-    // target comes along.
+    // Downloading runs ahead of adding blocks, often all the way to the target, and then what is
+    // "needed" next is whatever block the target just moved on to: the newest block, which only
+    // the peers that have announced it yet appear able to serve.  Within the margin of the target
+    // no peer's history can be what stops it serving, only its height lagging the tip by a block
+    // or two, so there is no sync need the peer policy should act on.
     const uint64_t need = m_block_queue.get_next_needed_height(height);
-    if (need >= target)
+    if (need + PEER_HISTORY_MARGIN >= target)
       return std::nullopt;
     return sync_need{need, target};
   }
