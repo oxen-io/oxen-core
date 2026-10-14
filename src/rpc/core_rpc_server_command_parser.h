@@ -52,7 +52,6 @@ void parse_request(ONS_OWNERS_TO_NAMES& ons_owners_to_names, rpc_input in);
 void parse_request(ONS_RESOLVE& ons, rpc_input in);
 void parse_request(OUT_PEERS& out_peers, rpc_input in);
 void parse_request(POP_BLOCKS& pop_blocks, rpc_input in);
-void parse_request(PRUNE_BLOCKCHAIN& prune_blockchain, rpc_input in);
 void parse_request(REPORT_PEER_STATUS& report_peer_status, rpc_input in);
 void parse_request(SESSION_ROUTER_PING& ping, rpc_input in);
 void parse_request(SET_BANS& set_bans, rpc_input in);

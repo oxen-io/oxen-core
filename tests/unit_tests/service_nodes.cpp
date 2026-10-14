@@ -35,7 +35,10 @@
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/verification_context.h"
 #include "cryptonote_config.h"
+#include "cryptonote_core/pulse.h"
 #include "oxen_economy.h"
+
+#include <sodium/crypto_generichash.h>
 
 TEST(service_nodes, staking_requirement)
 {
@@ -524,4 +527,98 @@ TEST(service_nodes, mainnet_unlock_dereg_periods)
   constexpr auto& conf = get_config(cryptonote::network_type::MAINNET);
   static_assert(conf.BLOCKS_IN(conf.UNLOCK_DURATION) == 15 * 720);
   static_assert(conf.BLOCKS_IN(conf.DEREGISTRATION_LOCK_DURATION) == 30 * 720);
+}
+
+// A handshake bitset's signature must sign the same bytes on every node of a round.  Nodes from
+// before pulse::bitset_t was widened to 32 bits (such as 11.6.1) sign the bitset as 16 little-endian
+// bits, followed by the top block hash, the 16-bit quorum position and the round; so for rounds
+// before HF23 that is what has to be signed and checked, and only from HF23 on the 32-bit bitset.
+// The expected hashes are built here byte by byte, rather than with the code under test.
+TEST(pulse, handshake_bitset_signature_hash)
+{
+  crypto::hash top_hash;
+  for (size_t i = 0; i < top_hash.size(); i++)
+    top_hash.data()[i] = static_cast<unsigned char>(i * 7 + 1);
+  pulse::message msg{};
+  msg.type = pulse::message_type::handshake_bitset;
+  msg.quorum_position = 0x0305;
+  msg.round = 2;
+  msg.payload = pulse::bitset_t{0x07fb};
+
+  auto blake2b = [](const std::vector<unsigned char>& bytes) {
+    crypto::hash h;
+    crypto_generichash(h.data(), h.size(), bytes.data(), bytes.size(), nullptr, 0);
+    return h;
+  };
+  auto expected = [&](size_t bitset_width) {
+    std::vector<unsigned char> bytes;
+    for (size_t i = 0; i < bitset_width; i++)
+      bytes.push_back((0x07fb >> (8 * i)) & 0xff);
+    bytes.insert(bytes.end(), top_hash.data(), top_hash.data() + top_hash.size());
+    bytes.push_back(0x05);
+    bytes.push_back(0x03);
+    bytes.push_back(2);
+    return blake2b(bytes);
+  };
+
+  EXPECT_EQ(pulse::msg_signature_hash(cryptonote::hf::hf21_eth, top_hash, msg), expected(2));
+  EXPECT_EQ(pulse::msg_signature_hash(cryptonote::hf::hf22_eth_fixup, top_hash, msg), expected(2));
+  EXPECT_EQ(pulse::msg_signature_hash(cryptonote::hf::hf23_larger_pulse, top_hash, msg), expected(4));
+  EXPECT_NE(expected(2), expected(4));
+
+  // Other messages are signed the same whatever the hard fork.
+  msg.type = pulse::message_type::handshake;
+  msg.payload = std::monostate{};
+  EXPECT_EQ(
+      pulse::msg_signature_hash(cryptonote::hf::hf22_eth_fixup, top_hash, msg),
+      pulse::msg_signature_hash(cryptonote::hf::hf23_larger_pulse, top_hash, msg));
+}
+
+// A block already known to be valid (one in the compiled-in hash list) can have the checks of its
+// pulse signatures themselves skipped, but not those of how many there are and who they're from.
+TEST(service_nodes, pulse_signatures_check_can_be_skipped)
+{
+  constexpr auto hf = cryptonote::hf::hf16_pulse;
+  constexpr size_t active_nodes = 100;
+  const size_t n_validators = service_nodes::PULSE_QUORUM_NUM_VALIDATORS(hf, active_nodes);
+  const size_t n_sigs = service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(hf, n_validators);
+
+  service_nodes::quorum quorum;
+  std::vector<crypto::secret_key> keys(n_validators);
+  quorum.validators.resize(n_validators);
+  for (size_t i = 0; i < n_validators; i++)
+    crypto::generate_keys(quorum.validators[i], keys[i]);
+
+  crypto::hash hash{};
+  hash.data_[0] = 1;
+  cryptonote::block block{};
+  block.major_version = hf;
+  for (size_t i = 0; i < n_sigs; i++) {
+    block.pulse.validator_bitset |= pulse::bitset_t{1} << i;
+    block.signatures.emplace_back(
+        i, crypto::generate_signature(hash, quorum.validators[i], keys[i]));
+  }
+
+  auto verify = [&](bool check_signatures) {
+    return service_nodes::verify_pulse_signatures(
+        quorum, hf, 1000, hash, block.signatures, block, active_nodes, check_signatures);
+  };
+  EXPECT_TRUE(verify(true));
+  EXPECT_TRUE(verify(false));
+
+  // A wrong signature only gets caught when the signatures are checked
+  crypto::hash other = hash;
+  other.data_[0] = 2;
+  block.signatures[3].signature = crypto::generate_signature(other, quorum.validators[3], keys[3]);
+  EXPECT_FALSE(verify(true));
+  EXPECT_TRUE(verify(false));
+
+  // A signature from a validator not participating in the round is wrong either way
+  block.pulse.validator_bitset &= ~(pulse::bitset_t{1} << 3);
+  EXPECT_FALSE(verify(false));
+  block.pulse.validator_bitset |= pulse::bitset_t{1} << 3;
+
+  // So is a missing signature
+  block.signatures.pop_back();
+  EXPECT_FALSE(verify(false));
 }

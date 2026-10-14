@@ -34,7 +34,6 @@
 #include <vector>
 
 #include "epee/net/net_utils_base.h"
-#include "epee/span.h"
 
 namespace net::dandelionpp {
 

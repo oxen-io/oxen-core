@@ -546,7 +546,7 @@ void L2Tracker::update_logs_internal() {
                     //
                     if (!logs) {
                         log::warning(logcat, "Failed to retrieve L2 logs for {}-{}", from, to);
-                        // End without calling update_purge_list, and with changes=false, because
+                        // End without calling update_purge_list, and with complete=false, because
                         // this update isn't complete and so we don't want to consider purging, or
                         // broadcast to nodes we proxy to, until we complete a full update.
                         return update_done(false);
@@ -819,8 +819,11 @@ void L2Tracker::update_purge_list(bool curr_height_fallback) {
     }
 }
 
-void L2Tracker::update_done(bool changes) {
-    log::debug(logcat, "L2 update complete{}", changes ? "" : ", but L2 height is unchanged.");
+void L2Tracker::update_done(bool complete) {
+    log::debug(
+            logcat,
+            "L2 update {}",
+            complete ? "complete" : "finished without successful completion");
     uint64_t l2_height, purge_height;
     {
         std::unique_lock lock{mutex};
@@ -828,7 +831,7 @@ void L2Tracker::update_done(bool changes) {
         purge_height = purge_state.latest_height;
         update_in_progress = false;
     }
-    if (changes && l2_proxy)
+    if (complete && l2_proxy)
         l2_proxy->notify(l2_height, purge_height);
 }
 

@@ -68,7 +68,6 @@ using io_service = io_context;
 #include "pulse.h"
 #include "rpc/core_rpc_server_binary_commands.h"
 
-struct sqlite3;
 namespace service_nodes {
 class service_node_list;
 };
@@ -86,7 +85,7 @@ struct block_and_checkpoint {
 class tx_memory_pool;
 struct tx_pool_options;
 struct test_options;
-class BlockchainSQLite;
+class RewardsDB;
 
 /** Declares ways in which the BlockchainDB backend should be told to sync
  *
@@ -141,22 +140,14 @@ class Blockchain {
     ~Blockchain();
 
     /**
-     * @brief Extend system watchdog timeout (for long rescans)
-     *
-     * If we're using a watchdog to monitor the process, this will tell the system
-     * watchdog (currently only systemd supported) to give us more time for startup
-     */
-    void extend_watchdog_timeout(uint64_t height = 0);
-
-    /**
      * @brief Initialize the Blockchain state.
      *
      * @param db a pointer to the backing store to use for the blockchain.
      * @param nettype network type
-     * @param ons_db a raw, unmanaged pointer to the ONS sqlite3 database.  NOTE: the Blockchain
-     * object takes over ownership of this pointer, if not nullptr.  Should not be nullptr when
-     * operating as a regular oxen node.
-     * @param sqlite_db a raw, unmanaged pointer to the BlockchainSQLite object.  NOTE: the
+     * @param ons_sql the database in which to keep the ONS tables (which may be the blockchain
+     * database itself).  Not owned: it must remain alive until deinit() (or destruction).  Should
+     * be given when operating as a regular oxen node.
+     * @param rewards_db a raw, unmanaged pointer to the RewardsDB object.  NOTE: the
      * Blockchain object takes over ownership of this pointer, if not nullptr.  Should not be
      * nullptr when operating as a regular oxen node.
      * @param l2_tracker a pointer to the L2Tracker instance; this pointer is *not* managed by the
@@ -173,8 +164,8 @@ class Blockchain {
     bool init(
             std::unique_ptr<BlockchainDB> db,
             const network_type nettype,
-            sqlite3* ons_db = nullptr,
-            cryptonote::BlockchainSQLite* sqlite_db = nullptr,
+            session::sqlite::Database* ons_sql = nullptr,
+            cryptonote::RewardsDB* rewards_db = nullptr,
             eth::L2Tracker* l2_tracker = nullptr,
             const cryptonote::test_options* test_options = nullptr,
             difficulty_type fixed_difficulty = 0,
@@ -185,9 +176,14 @@ class Blockchain {
     bool init(
             std::unique_ptr<BlockchainDB> db,
             const cryptonote::test_options& test_options,
-            cryptonote::BlockchainSQLite* sqlite_db = nullptr) {
+            cryptonote::RewardsDB* rewards_db = nullptr) {
         return init(
-                std::move(db), network_type::FAKECHAIN, nullptr, sqlite_db, nullptr, &test_options);
+                std::move(db),
+                network_type::FAKECHAIN,
+                nullptr,
+                rewards_db,
+                nullptr,
+                &test_options);
     }
 
     /**
@@ -462,7 +458,7 @@ class Blockchain {
             block& b,
             const service_nodes::payout& block_producer,
             uint8_t round,
-            uint16_t validator_bitset,
+            pulse::bitset_t validator_bitset,
             uint64_t& height,
             std::vector<std::string>* state_change_txes = nullptr);
 
@@ -511,7 +507,6 @@ class Blockchain {
      * @param hashes the hashes to be returned, return-by-reference
      * @param start_height the start height, return-by-reference
      * @param current_height the current blockchain height, return-by-reference
-     * @param clip_pruned whether to constrain results to unpruned data
      *
      * @return true if a block found in common, else false
      */
@@ -519,8 +514,7 @@ class Blockchain {
             const std::list<crypto::hash>& qblock_ids,
             std::vector<crypto::hash>& hashes,
             uint64_t& start_height,
-            uint64_t& current_height,
-            bool clip_pruned) const;
+            uint64_t& current_height) const;
 
     /**
      * @brief get recent block hashes for a foreign chain
@@ -1097,10 +1091,6 @@ class Blockchain {
         return is_within_compiled_block_hash_area(m_db->height());
     }
     uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash>& hashes);
-    uint32_t get_blockchain_pruning_seed() const { return m_db->get_blockchain_pruning_seed(); }
-    bool prune_blockchain(uint32_t pruning_seed = 0);
-    bool update_blockchain_pruning();
-    bool check_blockchain_pruning();
 
     uint64_t get_immutable_height() const;
 
@@ -1175,10 +1165,19 @@ class Blockchain {
 
     const ons::name_system_db& name_system_db() const { return m_ons_db; }
 
-    cryptonote::BlockchainSQLite& sqlite_db() { return *m_sqlite_db; }
+    cryptonote::RewardsDB& rewards_db() { return *m_rewards_db; }
 
-    /// SQLite DB can be nullptr in some unit tests
-    cryptonote::BlockchainSQLite* maybe_sqlite_db() { return m_sqlite_db.get(); }
+    /// The rewards DB can be nullptr in some unit tests
+    cryptonote::RewardsDB* maybe_rewards_db() { return m_rewards_db.get(); }
+
+    /// The transaction to give, as their `active_tx`, to the RewardsDB writes made while adding or
+    /// removing blocks: the blockchain database's write transaction of this thread, when the
+    /// rewards tables are in the blockchain database; otherwise nullptr.  Only for the thread
+    /// holding the blockchain lock.
+    SQLite::Transaction* rewards_write_tx();
+
+    /// As rewards_write_tx(), for the ONS tables (which a replay doesn't group).
+    SQLite::Transaction* ons_write_tx();
 
     /// NOTE: unchecked access; should only be called in service node more where this is guaranteed
     /// to be set.
@@ -1319,7 +1318,11 @@ class Blockchain {
     std::unique_ptr<BlockchainDB> m_db;
 
     ons::name_system_db m_ons_db;
-    std::unique_ptr<cryptonote::BlockchainSQLite> m_sqlite_db;
+    std::unique_ptr<cryptonote::RewardsDB> m_rewards_db;
+
+    // The blockchain database's write transaction of this thread, if `db` is the blockchain
+    // database; otherwise nullptr.
+    SQLite::Transaction* chain_write_tx_for(const session::sqlite::Database* db);
 
     mutable std::recursive_mutex m_blockchain_lock;  // TODO: add here reader/writer lock
 
@@ -1684,6 +1687,18 @@ class Blockchain {
      */
     bool rollback_blockchain_switching(
             const std::list<block_and_checkpoint>& original_chain, uint64_t rollback_height);
+
+    /**
+     * @brief checks that the chain can be rewound to a height, logging an error if not
+     *
+     * A node keeping a limited history can't rewind past it: below it there are no blocks to pop,
+     * and the SN list and rewards have no state to restore and replay from.
+     *
+     * @param height the chain height (i.e. number of blocks) to rewind to
+     *
+     * @return true if the rewind can be done
+     */
+    bool can_rewind_to(uint64_t height) const;
 
     /**
      * @brief gets recent block weights for median calculation

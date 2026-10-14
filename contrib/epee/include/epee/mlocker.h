@@ -30,7 +30,7 @@
 
 #include <map>
 #include <mutex>
-#include "span.h"
+#include "byte_span.h"
 
 namespace epee
 {

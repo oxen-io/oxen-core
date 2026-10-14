@@ -64,6 +64,7 @@ int main(int argc, char* argv[]) {
     const command_line::arg_flag arg_blocks_dat = {"blocksdat", "Output in blocks.dat format"};
 
     command_line::add_arg(desc_cmd_sett, cryptonote::arg_data_dir);
+    command_line::add_arg(desc_cmd_sett, cryptonote::arg_db_backend);
     command_line::add_arg(desc_cmd_sett, arg_output_file);
     command_line::add_network_args(desc_cmd_sett);
     command_line::add_arg(desc_cmd_sett, arg_log_level);
@@ -112,28 +113,19 @@ int main(int argc, char* argv[]) {
     log::warning(logcat, "Initializing source blockchain (BlockchainDB)");
     blockchain_objects_t blockchain_objects = {};
     Blockchain* core_storage = &blockchain_objects.m_blockchain;
-    auto db = new_db();
-    if (!db) {
-        log::error(logcat, "Failed to initialize a database");
-        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
-    }
-    log::warning(logcat, "database: LMDB");
-
-    auto filename = config_folder / db->get_db_name();
-
-    log::warning(logcat, "Loading blockchain from folder {} ...", filename);
+    std::unique_ptr<BlockchainDB> db;
     try {
+        auto backend = select_db_backend(config_folder, vm);
+        log::warning(logcat, "database: {}", to_string(backend));
+        db = new_db(backend);
+        auto filename = config_folder / db->get_db_name();
+        log::warning(logcat, "Loading blockchain from {} ...", filename);
         db->open(filename, core_storage->nettype(), DBF_RDONLY);
     } catch (const std::exception& e) {
         log::warning(logcat, "Error opening database: {}", e.what());
         return 1;
     }
     r = core_storage->init(std::move(db), nettype);
-
-    if (core_storage->get_blockchain_pruning_seed() && !opt_blocks_dat) {
-        log::warning(logcat, "Blockchain is pruned, cannot export");
-        return 1;
-    }
 
     CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
     log::warning(logcat, "Source blockchain storage initialized OK");

@@ -2,6 +2,8 @@
 
 #include <oxenmq/oxenmq.h>
 
+#include <chrono>
+
 #include "crypto/crypto.h"
 #include "l2_tracker.h"
 #include "l2_tracker/events.h"
@@ -124,7 +126,9 @@ class L2Proxy {
 
     static constexpr std::chrono::milliseconds SUBSCRIBE_TIMEOUT = 2min + 5s;
 
-    uint64_t last_notify_height = 0, last_notify_purge_height = 0;
+    std::pair<uint64_t, std::chrono::steady_clock::time_point> last_notify_height{
+            0, std::chrono::steady_clock::time_point{}};
+    uint64_t last_notify_purge_height = 0;
 
     // Called by the proxy's endpoints when a proxying node attempts to subscribe or obtain L2
     // state.  If the connection is allowed, return true; otherwise replies with ["FORBIDDEN"] and
