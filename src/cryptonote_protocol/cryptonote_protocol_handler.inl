@@ -2476,7 +2476,13 @@ You are now synchronized with the network.
     const uint64_t height = m_core.blockchain.get_current_blockchain_height();
     if (target <= height)
       return std::nullopt;
-    return sync_need{m_block_queue.get_next_needed_height(height), target};
+    // Downloading runs ahead of adding blocks, often all the way to the target: then nothing more
+    // is needed from any peer (and no peer could serve the target height, its own), until a new
+    // target comes along.
+    const uint64_t need = m_block_queue.get_next_needed_height(height);
+    if (need >= target)
+      return std::nullopt;
+    return sync_need{need, target};
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>

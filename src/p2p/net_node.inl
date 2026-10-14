@@ -1623,38 +1623,37 @@ bool node_server<t_payload_net_handler>::connect_to_seed() {
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 auto node_server<t_payload_net_handler>::check_sync_peers(
-        network_zone& zone, const cryptonote::sync_need& need)
-        -> std::pair<bool, std::optional<droppable_peer>> {
+        network_zone& zone, const cryptonote::sync_need& need) -> sync_peers {
     m_unhelpful_peers.forget_servable(need.height);
 
-    bool all_useful = true;
-    std::optional<droppable_peer> droppable;
+    sync_peers peers;
     zone.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context&
                                                                          cntxt) {
         if (cntxt.m_state == cryptonote::cryptonote_connection_context::state_before_handshake)
             return true;
-        // Incoming peers (often syncing nodes behind us) are neither ours to replace nor any
-        // reason to replace others.
-        if (cntxt.m_is_income || cryptonote::peer_can_serve(
-                                         need.height,
-                                         cntxt.m_remote_blockchain_height,
-                                         cntxt.m_history))
+        ++peers.total;
+        if (cryptonote::peer_can_serve(
+                    need.height, cntxt.m_remote_blockchain_height, cntxt.m_history)) {
+            ++peers.able;
             return true;
-        all_useful = false;
+        }
+        // Incoming peers (often syncing nodes behind us) aren't ours to replace.
+        if (cntxt.m_is_income)
+            return true;
         m_unhelpful_peers.add(
                 cntxt.m_remote_address, cntxt.m_remote_blockchain_height, cntxt.m_history);
         // Never an anchor (which guards against being surrounded by bad peers), nor a peer we
         // insist on, nor one still sending us blocks we asked for.
-        if (!droppable && !cntxt.m_anchor && cntxt.m_requested_objects.empty() &&
+        if (!peers.droppable && !cntxt.m_anchor && cntxt.m_requested_objects.empty() &&
             !is_priority_node(cntxt.m_remote_address))
-            droppable = droppable_peer{
+            peers.droppable = droppable_peer{
                     cntxt.m_connection_id,
                     cntxt.m_remote_address,
                     cntxt.m_remote_blockchain_height,
                     cntxt.m_history};
         return true;
     });
-    return {all_useful, droppable};
+    return peers;
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
@@ -1679,56 +1678,60 @@ bool node_server<t_payload_net_handler>::connections_maker() {
     if (!connect_to_peerlist(m_priority_peers))
         return false;
 
-    // While syncing, new connections go only to peers whose peerlist entries say they can serve
-    // what the sync needs (and that haven't turned out not to), white before gray, for as long as
-    // there are any; only when there are none are connections made as usual, if only to learn of
-    // more peers.  When a connected peer can't serve the sync, one such peer is dropped at the
-    // outgoing connection limit to make room, but only while there is a peer to replace it with.
-    // (Only the public zone syncs the chain.)
+    // While syncing, at least half the outgoing connections' worth of peers should be able to serve
+    // what the sync needs; no more than that, so that syncing nodes don't all crowd onto the peers
+    // that keep the whole chain and leave the rest of the network to itself.  Until there are
+    // that many, new connections go only to peers whose peerlist entries say they can serve the
+    // sync (and that haven't turned out not to), white before gray, for as long as there are any
+    // (only when there are none are connections made as usual, if only to learn of more peers),
+    // and at the outgoing connection limit a peer that can't serve the sync is dropped to make
+    // room, but only while there is a peer to replace it with.  (Only the public zone syncs the
+    // chain.)
     auto& public_zone = m_network_zones.at(zone_type::public_);
     const auto need = m_payload_handler.get_sync_need();
-    bool all_useful = true;
-    // Whether there are peers left to connect to that can serve the sync: as long as there are,
-    // nothing else is connected to.
-    bool servable_left = false;
+    // Whether more peers able to serve the sync are wanted and there are some left to connect to:
+    // while so, nothing else is connected to.
+    bool want_servable = false;
     if (need) {
-        std::optional<droppable_peer> droppable;
-        std::tie(all_useful, droppable) = check_sync_peers(public_zone, *need);
-        const size_t max_out = public_zone.m_config.m_net_config.max_out_connection_count;
-        for (bool white : {true, false})
-            while (get_outgoing_connections_count(public_zone) < max_out &&
-                   make_new_connection_from_peerlist(public_zone, white, need))
-                ;
-        servable_left = !connectable_peers(public_zone, true, need).empty() ||
-                        !connectable_peers(public_zone, false, need).empty();
-        if (droppable && servable_left && get_outgoing_connections_count(public_zone) >= max_out) {
+        const auto peers = check_sync_peers(public_zone, *need);
+        if (const auto counts = std::make_pair(peers.able, peers.total);
+            counts != m_sync_peers_logged) {
             log::info(
-                    logcat,
-                    "Dropping peer {} (height {}, history {}), which can't serve the sync from "
-                    "height {}, to make room for one that can",
-                    droppable->address.str(),
-                    droppable->height,
-                    droppable->history,
+                    globallogcat,
+                    "Using {}/{} peers able to serve the sync from height {}",
+                    peers.able,
+                    peers.total,
                     need->height);
-            public_zone.m_net_server.get_config_object().close(droppable->connection_id);
+            m_sync_peers_logged = counts;
+        }
+        const size_t max_out = public_zone.m_config.m_net_config.max_out_connection_count;
+        if (peers.able < (max_out + 1) / 2) {
+            for (bool white : {true, false})
+                while (get_outgoing_connections_count(public_zone) < max_out &&
+                       make_new_connection_from_peerlist(public_zone, white, need))
+                    ;
+            want_servable = !connectable_peers(public_zone, true, need).empty() ||
+                            !connectable_peers(public_zone, false, need).empty();
+            if (peers.droppable && want_servable &&
+                get_outgoing_connections_count(public_zone) >= max_out) {
+                log::info(
+                        logcat,
+                        "Dropping peer {} (height {}, history {}), which can't serve the sync from "
+                        "height {}, to make room for one that can",
+                        peers.droppable->address.str(),
+                        peers.droppable->height,
+                        peers.droppable->history,
+                        need->height);
+                public_zone.m_net_server.get_config_object().close(
+                        peers.droppable->connection_id);
+            }
         }
     } else {
         m_unhelpful_peers.clear();
     }
-    if (all_useful == m_sync_peers_lacking) {
-        if (!all_useful)
-            log::info(
-                    globallogcat,
-                    "Not every peer can serve the sync from height {}: replacing them with peers "
-                    "that can",
-                    need->height);
-        else
-            log::info(globallogcat, "Every peer can serve the sync again");
-        m_sync_peers_lacking = !all_useful;
-    }
 
     for (auto& zone : m_network_zones) {
-        if (servable_left && &zone.second == &public_zone)
+        if (want_servable && &zone.second == &public_zone)
             continue;
         size_t base_expected_white_connections =
                 (zone.second.m_config.m_net_config.max_out_connection_count *
@@ -1744,10 +1747,8 @@ bool node_server<t_payload_net_handler>::connections_maker() {
                             : base_expected_white_connections;
             log::debug(logcat, "Expected white connections {}, connection count {}", expected_white_connections, conn_count);
             if (conn_count < expected_white_connections) {
-                // start from anchor list (except while syncing, as anchors don't say what history
-                // they keep; they are left for later)
-                while (!(need && zone.first == zone_type::public_) &&
-                       get_outgoing_connections_count(zone.second) <
+                // start from anchor list
+                while (get_outgoing_connections_count(zone.second) <
                                cryptonote::p2p::DEFAULT_ANCHOR_CONNECTIONS_COUNT &&
                        make_expected_connections_count(
                                zone.second,

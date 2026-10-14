@@ -410,11 +410,17 @@ class node_server
         uint64_t height;
         uint64_t history;
     };
-    // While syncing, records the outgoing peers that can't serve what the sync needs as unhelpful,
-    // and returns whether every outgoing peer can, along with one that can't and could be dropped
-    // to make room for one that can (see connections_maker), if any.
-    std::pair<bool, std::optional<droppable_peer>> check_sync_peers(
-            network_zone& zone, const cryptonote::sync_need& need);
+    struct sync_peers {
+        // Connected peers (past their handshake), and how many of them can serve what the sync
+        // needs
+        size_t total = 0, able = 0;
+        // An outgoing peer that can't, and could be dropped to make room for one that can (see
+        // connections_maker), if any
+        std::optional<droppable_peer> droppable;
+    };
+    // While syncing, counts the connected peers that can serve what the sync needs, recording the
+    // outgoing ones that can't as unhelpful.
+    sync_peers check_sync_peers(network_zone& zone, const cryptonote::sync_need& need);
     bool try_to_connect_and_handshake_with_new_peer(
             const epee::net_utils::network_address& na,
             bool just_take_peerlist = false,
@@ -509,9 +515,9 @@ class node_server
     peerlist_storage m_peerlist_storage;
     // Only used by connections_maker (so needs no lock).
     cryptonote::unhelpful_peers m_unhelpful_peers;
-    // Whether connections_maker last found a connected peer that can't serve the sync, for logging
-    // when that starts and stops.
-    bool m_sync_peers_lacking = false;
+    // The (able, total) peer counts connections_maker last logged while syncing, so that it logs
+    // them only when they change.
+    std::optional<std::pair<size_t, size_t>> m_sync_peers_logged;
 
     tools::periodic_task m_peer_handshake_idle_maker_interval{
             "p2p handshake cleanup", cryptonote::p2p::DEFAULT_HANDSHAKE_INTERVAL};
