@@ -34,7 +34,6 @@
 #include <iostream>
 #include <sstream>
 #include <algorithm>
-#include <array>
 #include <random>
 #include <sstream>
 #include <fstream>
@@ -44,6 +43,7 @@
 #include "common/varint.h"
 #include "common/median.h"
 #include "cryptonote_core/service_node_list.h"
+#include "cryptonote_core/service_node_rules.h"
 #include "epee/console_handler.h"
 #include "common/rules.h"
 
@@ -61,14 +61,12 @@
 #include "chaingen.h"
 #include "device/device.hpp"
 #include "crypto/crypto.h"
-#include "fmt/color.h"
 
 extern "C"
 {
 #include <sodium.h>
 }
 
-#include <sqlite3.h>
 void oxen_register_callback(std::vector<test_event_entry> &events,
                             std::string const &callback_name,
                             oxen_callback callback)
@@ -172,9 +170,9 @@ std::vector<cryptonote::block> oxen_chain_generator_db::get_blocks_range(const u
 oxen_chain_generator::oxen_chain_generator(std::vector<test_event_entry>& events, const std::vector<cryptonote::hard_fork>& hard_forks, std::string_view first_miner_seed)
 : events_(events)
 , hard_forks_(hard_forks)
-, sqlite_db_(std::make_unique<test::BlockchainSQLiteTest>(cryptonote::network_type::FAKECHAIN, ":memory:"))
+, rewards_db_(std::make_unique<test::RewardsDBTest>(cryptonote::network_type::FAKECHAIN, ":memory:"))
 {
-  bool init = ons_db_->init(nullptr, cryptonote::network_type::FAKECHAIN, ons::init_oxen_name_system("", false /*read_only*/));
+  bool init = ons_db_->init(nullptr, cryptonote::network_type::FAKECHAIN, *ons_sql_);
   assert(init);
 
   if (first_miner_seed == "") {
@@ -1000,21 +998,23 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
   std::vector<service_nodes::pubkey_and_sninfo> active_snode_list =
       params.prev.service_node_state.active_service_nodes_infos();
 
-  bool pulse_block_is_possible = blk.major_version >= hf::hf16_pulse && active_snode_list.size() >= get_config(cryptonote::network_type::FAKECHAIN).PULSE_MIN_SERVICE_NODES;
+  bool pulse_block_is_possible = blk.major_version >= hf::hf16_pulse && active_snode_list.size() >=
+      service_nodes::PULSE_MIN_ACTIVE_NODES(blk.major_version, get_config(cryptonote::network_type::FAKECHAIN).PULSE_NETWORK_MINIMUM);
   bool make_pulse_block        = (params.type == oxen_create_block_type::automatic && pulse_block_is_possible) || params.type == oxen_create_block_type::pulse;
 
   if (make_pulse_block)
   {
     // NOTE: Set up Pulse Header
-    blk.pulse.validator_bitset = service_nodes::pulse_validator_bit_mask(); // NOTE: Everyone participates
+    auto num_validators = service_nodes::PULSE_QUORUM_NUM_VALIDATORS(params.hf_version, active_snode_list.size());
+    blk.pulse.validator_bitset = service_nodes::pulse_validator_bit_mask(num_validators); // NOTE: Everyone participates
     blk.pulse.round = params.pulse_round;
     for (size_t i = 0; i < sizeof(blk.pulse.random_value.data); i++)
       blk.pulse.random_value.data[i] = static_cast<char>(tools::uniform_distribution_portable(tools::rng, 256));
 
     // NOTE: Get Pulse Quorum necessary for this block
-    std::vector<crypto::hash> entropy = service_nodes::get_pulse_entropy_for_next_block(db_, params.prev.block, blk.pulse.round);
+    std::vector<crypto::hash> entropy = service_nodes::get_pulse_entropy_for_next_block(db_, params.hf_version, params.prev.block, blk.pulse.round, active_snode_list.size());
     pulse_quorum = service_nodes::generate_pulse_quorum(cryptonote::network_type::FAKECHAIN, params.block_leader.key, blk.major_version, active_snode_list, entropy, blk.pulse.round, height);
-    assert(pulse_quorum.validators.size() == service_nodes::PULSE_QUORUM_NUM_VALIDATORS);
+    assert(pulse_quorum.validators.size() == num_validators);
     assert(pulse_quorum.workers.size() == 1);
 
     service_nodes::payout block_producer = {};
@@ -1072,7 +1072,7 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
   size_t target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
   std::vector<cryptonote::batch_sn_payment> sn_rwds;
   if (hf_version_ < hf::hf21_eth)
-    sn_rwds = sqlite_db_->get_sn_payments(height);
+    sn_rwds = rewards_db_->get_sn_payments(height);
   if (hf_version_ < hf::hf19_reward_batching)
     CHECK_AND_ASSERT_MES(sn_rwds.empty(), false, "batch payments should be empty before hf19");
   uint64_t block_rewards = 0;
@@ -1161,8 +1161,10 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
     crypto::hash block_hash = cryptonote::get_block_hash(blk);
     assert(blk.signatures.empty());
 
+    auto validators = service_nodes::PULSE_QUORUM_NUM_VALIDATORS(params.hf_version, active_snode_list.size());
+    auto reqd_sigs = service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES(params.hf_version, validators);
     // NOTE: Fill Pulse Signature Data
-    for (size_t i = 0; i < service_nodes::PULSE_BLOCK_REQUIRED_SIGNATURES; i++)
+    for (size_t i = 0; i < reqd_sigs; i++)
     {
       service_nodes::service_node_keys validator_keys = get_cached_keys(pulse_quorum.validators[i]);
       assert(validator_keys.pub == pulse_quorum.validators[i]);
@@ -1180,18 +1182,18 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
 void oxen_chain_generator::block_end(oxen_blockchain_entry &entry, oxen_create_block_params const &params) const
 {
   entry.service_node_state = params.prev.service_node_state;
+  rewards_db_->discard_pending();
   auto block_add = entry.service_node_state.update_from_block(
           db_,
-          sqlite_db_.get(),
+          rewards_db_.get(),
           cryptonote::network_type::FAKECHAIN,
           state_history_,
-          {} /*state_archive*/,
           {} /*alt_states*/,
           entry.block,
           entry.txs,
           nullptr,
           nullptr);
-  sqlite_db_->add_block(entry.block, entry.service_node_state, block_add);
+  rewards_db_->add_block(entry.block, entry.service_node_state, block_add);
 }
 
 bool oxen_chain_generator::process_registration_tx(cryptonote::transaction& tx, uint64_t block_height, hf hf_version)

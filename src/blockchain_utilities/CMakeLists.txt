@@ -36,7 +36,7 @@ if(BUILD_BLOCKCHAIN_UTILS)
         cryptonote_core
         blockchain_db
         version
-        SQLiteCpp
+        sqlitedb
         logging
         extra)
 
@@ -83,25 +83,6 @@ if(BUILD_BLOCKCHAIN_UTILS)
       )
     target_link_libraries(blockchain_stats PRIVATE blockchain_tools_common_libs date::date)
 
-# TODO(oxen): Blockchain pruning not supported in Oxen yet
-# oxen_add_executable(blockchain_prune_known_spent_data "oxen-blockchain-prune-known-spent-data"
-#   blockchain_prune_known_spent_data.cpp
-#   )
-# 
-# target_link_libraries(blockchain_prune_known_spent_data
-#   PRIVATE
-#     blockchain_tools_common_libs
-#     p2p)
-# 
-# oxen_add_executable(blockchain_prune "oxen-blockchain-prune"
-#   blockchain_prune.cpp
-#   )
-# 
-# target_link_libraries(blockchain_prune
-#   PRIVATE
-#     blockchain_tools_common_libs
-#     p2p)
-
 endif()
 
 if(BUILD_BLS_TOOL)
@@ -109,15 +90,11 @@ if(BUILD_BLS_TOOL)
     target_link_libraries(bls_tool PRIVATE bls_crypto)
 endif()
 
-if (TARGET sodium_vendor OR NOT SODIUM_VERSION VERSION_LESS 1.0.17)
-    oxen_add_executable(sn_key_tool "oxen-sn-keys" sn_key_tool.cpp)
-    target_link_libraries(sn_key_tool PRIVATE
-        common
-        sodium
-        oxenmq::oxenmq
-        oxen::logging
-        oxenc::oxenc
-        bls_crypto)
-else()
-    message(STATUS "Not building oxen-sn-keys tool (requires libsodium >= 1.0.17)")
-endif()
+oxen_add_executable(sn_key_tool "oxen-sn-keys" sn_key_tool.cpp)
+target_link_libraries(sn_key_tool PRIVATE
+    common
+    sessiondep::libsodium
+    oxenmq::oxenmq
+    oxen::logging
+    oxenc::oxenc
+    bls_crypto)

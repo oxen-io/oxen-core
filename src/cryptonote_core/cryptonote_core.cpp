@@ -33,7 +33,6 @@
 #include <fmt/std.h>
 #include <oxenmq/fmt.h>
 #include <sodium.h>
-#include <sqlite3.h>
 
 #ifdef ENABLE_SYSTEMD
 extern "C" {
@@ -46,7 +45,8 @@ extern "C" {
 #include <unordered_set>
 
 #include "blockchain_db/blockchain_db.h"
-#include "blockchain_db/sqlite/db_sqlite.h"
+#include "blockchain_db/history.h"
+#include "blockchain_db/sqlite/rewards_db.h"
 #include "bls/bls_crypto.h"
 #include "checkpoints/checkpoints.h"
 #include "common/command_line.h"
@@ -220,7 +220,6 @@ static const command_line::arg_descriptor<std::string> arg_block_notify = {
         "block-notify",
         "Run a program for each new block, '%s' will be replaced by the block hash",
         ""};
-static const command_line::arg_flag arg_prune_blockchain = {"prune-blockchain", "Prune blockchain"};
 static const command_line::arg_descriptor<std::string> arg_reorg_notify = {
         "reorg-notify",
         "Run a program for each reorg, '%s' will be replaced by the split height, "
@@ -293,7 +292,6 @@ core::core() :
                   return blockchain.create_next_miner_block_template(std::forward<Args>(args)...);
               }},
         m_pprotocol(&m_protocol_stub),
-        m_starter_message_showed(false),
         m_target_blockchain_height(0),
         m_last_json_checkpoints_update(0),
         m_nettype(network_type::UNDEFINED),
@@ -306,6 +304,7 @@ core::core() :
 #pragma GCC diagnostic pop
     m_checkpoints_updating.clear();
 }
+core::~core() = default;
 void core::set_cryptonote_protocol(i_cryptonote_protocol* pprotocol) {
     if (pprotocol)
         m_pprotocol = pprotocol;
@@ -371,9 +370,6 @@ void core::init_options(boost::program_options::options_description& desc) {
 
     command_line::add_arg(desc, arg_pad_transactions);
     command_line::add_arg(desc, arg_block_notify);
-#if 0  // TODO(oxen): Pruning not supported because of Service Node List
-    command_line::add_arg(desc, arg_prune_blockchain);
-#endif
     command_line::add_arg(desc, arg_reorg_notify);
     command_line::add_arg(desc, arg_keep_alt_blocks);
 
@@ -590,7 +586,6 @@ bool core::init(
     CHECK_AND_ASSERT_MES(r, false, "Failed to apply command line options.");
 
     size_t max_txpool_weight = command_line::get_arg(vm, arg_max_txpool_weight);
-    bool const prune_blockchain = false; /* command_line::get_arg(vm, arg_prune_blockchain); */
     bool keep_alt_blocks = command_line::get_arg(vm, arg_keep_alt_blocks);
 
     r = init_service_keys();
@@ -608,16 +603,22 @@ bool core::init(
     if (!db)
         return false;
 
+    // With the SQLite backend the rewards and ONS tables are kept in the blockchain database
+    // itself; otherwise they get databases of their own (which a fakechain reset deletes, as it
+    // does the blockchain database).
+    const bool separate_sql = !db->sqlite_database();
+
     auto ons_db_file_path = folder / "ons.db";
     if (fs::exists(folder / "lns.db"))
         ons_db_file_path = folder / "lns.db";
 
-    if (m_nettype == network_type::FAKECHAIN && !command_line::get_arg(vm, arg_keep_fakechain))
+    if (separate_sql && m_nettype == network_type::FAKECHAIN &&
+        !command_line::get_arg(vm, arg_keep_fakechain))
         fs::remove(ons_db_file_path);
 
-    auto sqlite_db_file_path = folder / "sqlite.db";
+    auto rewards_db_file_path = folder / "sqlite.db";
     if (m_nettype == network_type::FAKECHAIN) {
-        sqlite_db_file_path = ":memory:";
+        rewards_db_file_path = ":memory:";
     }
 
     if ((m_nettype == network_type::STAGENET || m_nettype == network_type::DEVNET) &&
@@ -627,7 +628,7 @@ bool core::init(
         // (We can't properly pop blocks in such a case because the reboot changed the serialized
         // blockchain format, and even if we could, it's not worth the time because it'll pop all
         // the way back to empty anyway).
-        auto block1_hash = get_block_hash(db->get_block_from_height(1));
+        auto block1_hash = db->get_block_hash_from_height(1);
         const std::vector<std::string_view> STAGENET_OLD_BLOCK1_HASHES = {
                 "13633f8335998fe174f12752ea86d25636c9f777f441e9fa205ae4b8868e1f03"sv,
                 "11597c2be5719701d8d1000cfccf46ef7b52a3d80573300d38aa5bf283b43b6a"sv,
@@ -651,10 +652,12 @@ bool core::init(
             log::warning(globallogcat, "Removing blockchain database");
             db->remove_data_file(folder / db->get_db_name());
             db.reset();
-            log::warning(globallogcat, "Removing sqlite.db");
-            fs::remove(sqlite_db_file_path);
-            log::warning(globallogcat, "Removing ons.db");
-            fs::remove(ons_db_file_path);
+            if (separate_sql) {
+                log::warning(globallogcat, "Removing sqlite.db");
+                fs::remove(rewards_db_file_path);
+                log::warning(globallogcat, "Removing ons.db");
+                fs::remove(ons_db_file_path);
+            }
 
             db = init_blockchain_db(folder, vm);
             if (!db)
@@ -662,7 +665,30 @@ bool core::init(
         }
     }
 
-    auto sqliteDB = std::make_unique<cryptonote::BlockchainSQLite>(m_nettype, sqlite_db_file_path);
+    session::sqlite::Database* rewards_sql = db->sqlite_database();
+    session::sqlite::Database* ons_sql = rewards_sql;
+    if (separate_sql) {
+        try {
+            m_rewards_sql = std::make_unique<session::sqlite::Database>(rewards_db_file_path);
+        } catch (const std::exception& e) {
+            log::error(
+                    logcat, "Failed to open rewards db at {}: {}", rewards_db_file_path, e.what());
+            return false;
+        }
+        try {
+            m_ons_sql = std::make_unique<session::sqlite::Database>(
+                    ons_db_file_path,
+                    session::sqlite::open_readonly{db->is_read_only()},
+                    session::sqlite::open_create{!db->is_read_only()});
+        } catch (const std::exception& e) {
+            log::error(logcat, "Failed to open ONS db at {}: {}", ons_db_file_path, e.what());
+            return false;
+        }
+        rewards_sql = m_rewards_sql.get();
+        ons_sql = m_ons_sql.get();
+    }
+    auto rewards_db = std::make_unique<cryptonote::RewardsDB>(m_nettype, *rewards_sql);
+    rewards_db->kept_history = db->history();
 
     // We need this hook to get added before the block hook below, so that it fires first and
     // catches the start of a reorg before the block hook fires for the block in the reorg.
@@ -723,10 +749,6 @@ bool core::init(
 
     // Checkpoints
     m_checkpoints_path = m_config_folder / JSON_HASH_FILE_NAME;
-
-    sqlite3* ons_db = ons::init_oxen_name_system(ons_db_file_path, db->is_read_only());
-    if (!ons_db)
-        return false;
 
     init_oxenmq(vm);
     m_bls_aggregator = std::make_unique<eth::bls_aggregator>(*this);
@@ -882,8 +904,8 @@ bool core::init(
     r = blockchain.init(
             std::move(db),
             m_nettype,
-            ons_db,
-            sqliteDB.release(),
+            ons_sql,
+            rewards_db.release(),
             m_l2_tracker.get(),
             (m_nettype == network_type::FAKECHAIN && !test_options) ? &regtest_test_options
                                                                     : test_options,
@@ -921,19 +943,9 @@ bool core::init(
     if (!keep_alt_blocks && !blockchain.db().is_read_only())
         blockchain.db().drop_alt_blocks();
 
-    if (prune_blockchain) {
-        // display a message if the blockchain is not pruned yet
-        if (!blockchain.get_blockchain_pruning_seed()) {
-            log::info(globallogcat, "Pruning blockchain...");
-            CHECK_AND_ASSERT_MES(
-                    blockchain.prune_blockchain(), false, "Failed to prune blockchain");
-        } else {
-            CHECK_AND_ASSERT_MES(
-                    blockchain.update_blockchain_pruning(),
-                    false,
-                    "Failed to update blockchain pruning");
-        }
-    }
+    // Only now that the subsystems have been brought up to date (which can read the blocks it
+    // drops) can the history no longer kept be dropped.
+    blockchain.db().start_history_catch_up();
 
     return true;
 }
@@ -953,16 +965,26 @@ std::unique_ptr<BlockchainDB> core::init_blockchain_db(
         return nullptr;
     }
 
-    auto db = new_db();
-    if (!db) {
-        log::error(logcat, "Failed to initialize a database");
+    const bool reset_fakechain =
+            m_nettype == network_type::FAKECHAIN && !command_line::get_arg(vm, arg_keep_fakechain);
+
+    std::unique_ptr<BlockchainDB> db;
+    db_backend backend;
+    try {
+        // A fakechain database that is about to be wiped can't be switched away from by accident,
+        // so an explicit choice there doesn't have to agree with what the directory holds.
+        auto requested = requested_db_backend(vm);
+        backend = reset_fakechain && requested ? *requested : select_db_backend(folder, requested);
+        db = new_db(backend);
+    } catch (const DB_ERROR& e) {
+        log::error(logcat, "Unable to set up the blockchain database: {}", e.what());
         return nullptr;
     }
 
     folder /= db->get_db_name();
-    log::info(globallogcat, "Loading blockchain from folder {} ...", folder);
+    log::info(globallogcat, "Loading {} blockchain from {} ...", to_string(backend), folder);
 
-    if (m_nettype == network_type::FAKECHAIN && !command_line::get_arg(vm, arg_keep_fakechain)) {
+    if (reset_fakechain) {
         // reset the db by removing the database file before opening it
         if (!db->remove_data_file(folder)) {
             log::error(logcat, "Failed to remove data file in {}", folder);
@@ -1043,6 +1065,29 @@ std::unique_ptr<BlockchainDB> core::init_blockchain_db(
     } catch (const DB_ERROR& e) {
         log::error(logcat, "Error opening database: {}", e.what());
         return nullptr;
+    }
+
+    // The history the database keeps is stored in it; the option only changes that.
+    try {
+        if (auto history = requested_history(vm, m_nettype))
+            db->set_history(*history);
+    } catch (const DB_ERROR& e) {
+        log::error(globallogcat, "{}", e.what());
+        return nullptr;
+    }
+    if (auto history = db->history()) {
+        log::info(
+                globallogcat,
+                "The blockchain database keeps the last {} blocks of history",
+                history);
+        if (auto complete = history_complete_at(history, db->history_window_start(), db->height()))
+            log::warning(
+                    globallogcat,
+                    "The blockchain database's history is incomplete: it keeps blocks from {}, so "
+                    "the last {} blocks of history will only all be there from block {}",
+                    db->history_window_start(),
+                    history,
+                    *complete);
     }
 
     blockchain.set_user_options(
@@ -2607,41 +2652,25 @@ void core::do_uptime_proof_call() {
                 return;
             }
 
-            if (sn_info.bls_public_key != m_service_keys.pub_bls) {
-                auto hf = blockchain.get_network_version();
+            // A registration from before BLS keys (as seen while replaying the old chain) has no
+            // key to compare.
+            if (sn_info.bls_public_key && sn_info.bls_public_key != m_service_keys.pub_bls &&
+                blockchain.get_network_version() > hf::hf22_eth_fixup) {
                 auto reg_key = oxenc::to_hex(
                         sn_info.bls_public_key.begin(), sn_info.bls_public_key.begin() + 5);
                 auto our_key = oxenc::to_hex(
                         m_service_keys.pub_bls.begin(), m_service_keys.pub_bls.begin() + 5);
-                if (hf > hf::hf22_eth_fixup) {
-                    log::error(
-                            globallogcat,
-                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                            R"(BLS key mismatch; cannot submit uptime proof!
+                log::error(
+                        globallogcat,
+                        fg(fmt::terminal_color::red) | fmt::emphasis::bold,
+                        R"(BLS key mismatch; cannot submit uptime proof!
 !!! The BLS pubkey loaded from the 'key_bls' file (0x{}...) does not
 !!! match the key used in this node's registration (0x{}...).  If this
 !!! node was transferred from another server please fix the key_bls file and
 !!! restart oxend.)",
-                            our_key,
-                            reg_key);
-                    return;
-                } else {
-                    // This is still bad in HF22, but we want to give early upgraders time to notice
-                    // and either fix it or unlock the node.
-                    log::warning(
-                            globallogcat,
-                            fg(fmt::terminal_color::red) | fmt::emphasis::bold,
-                            R"(BLS key mismatch!
-!!! The BLS pubkey loaded from the 'key_bls' file (0x{}...) does not
-!!! match the key used in this node's registration (0x{}...).  If this
-!!! node was transferred from another server please fix the key_bls file and
-!!! restart oxend.
-!!!
-!!! The Session node network WILL NOT accept such proofs starting in HF23; if
-!!! this key mismatch is not corrected by then the node will be deregistered.)",
-                            our_key,
-                            reg_key);
-                }
+                        our_key,
+                        reg_key);
+                return;
             }
 
             {
@@ -2766,34 +2795,6 @@ void core::do_uptime_proof_call() {
 //-----------------------------------------------------------------------------------------------
 bool core::on_idle() {
     ZoneScoped;
-    if (!m_starter_message_showed) {
-        std::string main_message;
-        if (m_offline)
-            main_message =
-                    "The daemon is running offline and will not attempt to sync to the Session "
-                    "network.";
-        else
-            main_message =
-                    "The daemon will start synchronizing with the network. This may take a long "
-                    "time to complete.";
-        log::info(
-                globallogcat,
-                fg(fmt::terminal_color::yellow),
-                R"(
-**********************************************************************
-{}
-
-You can set the level of process detailization through "set_log <level|categories>" command,
-where <level> is between 0 (no details) and 4 (very verbose), or custom category based levels (eg, *:WARNING).
-
-Use the "help" command to see the list of available commands.
-Use "help <command>" to see a command's documentation.
-**********************************************************************
-)",
-                main_message);
-        m_starter_message_showed = true;
-    }
-
     m_txpool_auto_relayer.do_call([this] { return relay_txpool_transactions(); });
     m_service_node_vote_relayer.do_call([this] { return relay_service_node_votes(); });
     m_check_disk_space_interval.do_call([this] { return check_disk_space(); });
@@ -2814,8 +2815,6 @@ Use "help <command>" to see a command's documentation.
         do_uptime_proof_call();
     }
 
-    m_blockchain_pruning_interval.do_call(
-            [this] { return blockchain.update_blockchain_pruning(); });
     miner.on_idle();
     mempool.on_idle();
 

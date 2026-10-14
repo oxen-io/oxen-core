@@ -35,7 +35,6 @@
 #include "epee/net/enums.h"
 #include "epee/net/net_utils_base.h"
 #include "epee/shared_sv.h"
-#include "epee/span.h"
 
 namespace boost::asio {
 using io_service = io_context;
