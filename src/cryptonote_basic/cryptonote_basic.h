@@ -195,6 +195,11 @@ class transaction_prefix {
 
     template <class Archive>
     void serialize_object(Archive& ar) {
+        // Fields this version doesn't serialize (such as the type of a pre-v4 tx) would otherwise
+        // keep whatever a previous deserialization into the same object left there.
+        if constexpr (Archive::is_deserializer)
+            set_null();
+
         field_varint(ar, "version", version, [](auto& version) {
             return version >= txversion::v1 && version < txversion::_count;
         });
@@ -282,10 +287,11 @@ class transaction final : public transaction_prefix {
     void serialize_object(Archive& ar) {
         constexpr bool Binary = serialization::is_binary<Archive>;
 
-        if (Archive::is_deserializer) {
-            set_hash_valid(false);
-            set_blob_size_valid(false);
-        }
+        // A tx without inputs serializes no rct data at all, so reusing an object that last held
+        // a transfer would leave that transfer's rct signatures behind; the v1 signature parsing
+        // below also consults `pruned`.
+        if constexpr (Archive::is_deserializer)
+            set_null();
 
         unsigned int start_pos = 0;
         if constexpr (Binary)
@@ -357,6 +363,9 @@ class transaction final : public transaction_prefix {
 
     template <class Archive>
     void serialize_base(Archive& ar) {
+        if constexpr (Archive::is_deserializer)
+            set_null();
+
         auto o = ar.begin_object();
         static_cast<transaction_prefix&>(*this).serialize_object(ar);
 
