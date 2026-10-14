@@ -87,7 +87,7 @@ namespace cryptonote
   template<class t_core>
   bool t_cryptonote_protocol_handler<t_core>::init(const boost::program_options::variables_map& vm)
   {
-    m_sync_timer = std::chrono::steady_clock::now();
+    m_sync_start_time = std::chrono::steady_clock::now();
     m_last_add_end_time = std::chrono::steady_clock::now();
     m_sync_spans_downloaded = 0;
     m_sync_old_spans_downloaded = 0;
@@ -453,26 +453,30 @@ namespace cryptonote
       else
         log::debug(globallogcat, "{}", sync_msg);
 
-      m_period_start_time = m_sync_start_time = std::chrono::steady_clock::now();
-      m_sync_start_height = curr_height;
+      // A sync starts with the first target, or when a node that had caught up with its target is
+      // given a higher one.  A higher target while still syncing (the chain grows throughout a
+      // long sync) only extends the sync: what was measured from its start keeps being, or the
+      // "Synced N blocks in T" summary and the time estimates would cover only the stretch since
+      // the last time a peer's sync data happened to be first with a new tip.
+      if (m_core.get_target_blockchain_height() == 0 || (is_synchronized() && curr_height >= target))
       {
-        std::lock_guard lock{m_sync_rate_mutex};
-        m_sync_rate_samples.clear();
-      }
-
-      if (hshd.current_height >= curr_height + 5) // don't switch to unsafe mode just for a few blocks
-      {
-        m_core.safesyncmode(false);
-      }
-      if (m_core.get_target_blockchain_height() == 0) // only when sync starts
-      {
-        m_sync_timer = std::chrono::steady_clock::now();
-        m_last_add_end_time = std::chrono::steady_clock::now();
+        const auto now = std::chrono::steady_clock::now();
+        m_sync_start_time = m_period_start_time = m_last_add_end_time = now;
+        m_sync_start_height = curr_height;
+        {
+          std::lock_guard lock{m_sync_rate_mutex};
+          m_sync_rate_samples.clear();
+        }
         m_sync_spans_downloaded = 0;
         m_sync_old_spans_downloaded = 0;
         m_sync_bad_spans_downloaded = 0;
         m_sync_download_chain_size = 0;
         m_sync_download_objects_size = 0;
+      }
+
+      if (hshd.current_height >= curr_height + 5) // don't switch to unsafe mode just for a few blocks
+      {
+        m_core.safesyncmode(false);
       }
       m_core.set_target_blockchain_height((hshd.current_height));
     }
@@ -2196,7 +2200,7 @@ You are now synchronized with the network.
 **********************************************************************)");
       if (logcat->should_log(log::Level::info))
       {
-        const std::chrono::duration<double> sync_time{std::chrono::steady_clock::now() - m_sync_timer};
+        const std::chrono::duration<double> sync_time{std::chrono::steady_clock::now() - m_sync_start_time};
         log::info(logcat, fg(fmt::terminal_color::yellow), "Sync time: {:.1f} min, {:.1f} + {:.1f} MB downloaded, {:.2f}% old spans, {:.2f}% bad spans",
             sync_time.count()/60.0,
             m_sync_download_objects_size / 1000.0 / 1000.0,
