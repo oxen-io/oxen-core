@@ -504,17 +504,6 @@ class Daemon(object):
         }
         return self.rpc.send_json_rpc_request(get_txpool_backlog)
 
-    def prune_blockchain(self, check = False):
-        prune_blockchain = {
-            'method': 'prune_blockchain',
-            'params': {
-                'check': check,
-            },
-            'jsonrpc': '2.0', 
-            'id': '0'
-        }
-        return self.rpc.send_json_rpc_request(prune_blockchain)
-
     def flush_cache(self, bad_txs = False):
         flush_cache = {
             'method': 'flush_cache',

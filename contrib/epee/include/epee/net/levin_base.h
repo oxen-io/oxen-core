@@ -30,11 +30,11 @@
 #define _LEVIN_BASE_H_
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 
 #include "net_utils_base.h"
-#include "../span.h"
 
 #define LEVIN_SIGNATURE  0x0101010101012101LL  //Bender's nightmare
 
@@ -86,8 +86,8 @@ namespace levin
   template<class t_connection_context = net_utils::connection_context_base>
   struct levin_commands_handler
   {
-    virtual int invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, t_connection_context& context)=0;
-    virtual int notify(int command, const epee::span<const uint8_t> in_buff, t_connection_context& context)=0;
+    virtual int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, t_connection_context& context)=0;
+    virtual int notify(int command, const std::span<const uint8_t> in_buff, t_connection_context& context)=0;
     virtual void callback(t_connection_context& context){};
 
     virtual void on_connection_new(t_connection_context& context){};
@@ -128,7 +128,7 @@ namespace levin
   bucket_head2 make_header(uint32_t command, uint64_t msg_size, uint32_t flags, bool expect_response) noexcept;
 
   //! \return A levin notification message.
-  std::string make_notify(int command, epee::span<const std::uint8_t> payload);
+  std::string make_notify(int command, std::span<const std::uint8_t> payload);
 
   /*! Generate a dummy levin message.
 
@@ -144,7 +144,7 @@ namespace levin
    \return `nullptr` if `noise.size()` is less than the levin header size.
       Otherwise, a levin notification message OR 2+ levin fragment messages.
       Each message is `noise.size()` in length. */
-  std::string make_fragmented_notify(const std::string_view noise, int command, epee::span<const std::uint8_t> payload);
+  std::string make_fragmented_notify(const std::string_view noise, int command, std::span<const std::uint8_t> payload);
 }
 }
 

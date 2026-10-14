@@ -105,15 +105,11 @@ class block_queue {
     uint64_t get_max_block_height() const;
     void print() const;
     std::string get_overview(uint64_t blockchain_height) const;
-    bool has_unpruned_height(
-            uint64_t block_height, uint64_t blockchain_height, uint32_t pruning_seed) const;
     std::pair<uint64_t, uint64_t> reserve_span(
             uint64_t first_block_height,
             uint64_t last_block_height,
             uint64_t max_blocks,
             const connection_id_t& connection_id,
-            uint32_t pruning_seed,
-            uint64_t blockchain_height,
             const std::vector<crypto::hash>& block_hashes);
     uint64_t get_next_needed_height(uint64_t blockchain_height) const;
     std::pair<uint64_t, uint64_t> get_next_span_if_scheduled(

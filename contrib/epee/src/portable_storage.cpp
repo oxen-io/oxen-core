@@ -114,7 +114,7 @@ namespace epee {
       CATCH_ENTRY("portable_storage::store_to_binary", false)
     }
 
-    bool portable_storage::load_from_binary(const epee::span<const uint8_t> source)
+    bool portable_storage::load_from_binary(const std::span<const uint8_t> source)
     {
       m_root.m_entries.clear();
       if(source.size() < sizeof(storage_block_header))

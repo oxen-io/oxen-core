@@ -509,6 +509,12 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 /// - `l2_tracker_height` -- The current L2 height known by this node's L2 tracker.  Omitted if this
 ///   node does not have an L2 tracker.
 /// - `target_height` -- The height of the next block in the chain.
+/// - `history` -- How many of the most recent blocks this node keeps in full (their bodies and
+///   transactions, and the service node state and checkpoints of their heights), as set with
+///   `--history`; 0 if it keeps all of them.
+/// - `history_start` -- The height of the earliest block this node still has in full: requests
+///   that need anything from before it fail with error -18 (not available on this node).  0 if it
+///   keeps all of them.
 /// - `immutable_height` -- The latest height in the blockchain that can not be reorganized (i.e.
 ///   is backed by at least 2 Service Node, or 1 hardcoded checkpoint, 0 if N/A).  Omitted if it
 ///   cannot be determined (typically because the node is still syncing).
@@ -838,6 +844,8 @@ struct GET_BLOCK : PUBLIC {
 /// - `port` -- the port on which the peer is reachable
 /// - `last_seen` -- unix timestamp when this node last connected to the peer.  Will be omitted if
 ///   never connected (e.g. for a peer we received from another node but haven't yet tried).
+/// - `history` -- how many of the most recent blocks the peer last said it keeps; omitted if it
+///   keeps every block (or never said otherwise).
 struct GET_PEER_LIST : LEGACY {
     static constexpr auto names() { return NAMES("get_peer_list"); }
 
@@ -985,6 +993,8 @@ struct GET_TRANSACTION_POOL_STATS : PUBLIC, LEGACY {
 ///   - `current_upload` -- the current upload speed to this peer in bytes per second
 ///   - `connection_id` -- a unique random string identifying this connection
 ///   - `height` -- the height of the peer
+///   - `history` -- how many of the most recent blocks the peer keeps; omitted if it keeps every
+///     block.
 ///   - `host` -- the hostname for this peer; only included if not the same as `ip`
 ///   - `localhost` -- set to true if the peer is a localhost connection; omitted otherwise.
 ///   - `local_ip` -- set to true if the peer is a non-public, local network connection; omitted
@@ -1011,7 +1021,6 @@ struct GET_TRANSACTION_POOL_STATS : PUBLIC, LEGACY {
 ///       "localhost": false,
 ///       "peer_id": "fedcba9876543210",
 ///       "port": "51890",
-///       "pruning_seed": 0,
 ///       "recv_count": 20628,
 ///       "recv_idle_time": 0,
 ///       "rpc_port": 0,
@@ -1037,7 +1046,6 @@ struct GET_TRANSACTION_POOL_STATS : PUBLIC, LEGACY {
 ///       "localhost": false,
 ///       "peer_id": "ffddbb9977553311",
 ///       "port": "22022",
-///       "pruning_seed": 0,
 ///       "recv_count": 95687,
 ///       "recv_idle_time": 0,
 ///       "rpc_port": 0,
@@ -1688,31 +1696,6 @@ struct POP_BLOCKS : LEGACY {
 
     struct request_parameters {
         uint64_t nblocks;
-    } request;
-};
-
-/// RPC: daemon/prune_blockchain
-///
-/// Pruning is the process of removing non-critical blockchain information from local storage.
-/// Full nodes keep an entire copy of everything that is stored on the blockchain, including data
-/// that is not very useful anymore. Pruned nodes remove much of this less relevant information
-/// to have a lighter footprint. Of course, running a full node is always better; however, pruned
-/// nodes have most of the important information and can still support the network.
-///
-/// Inputs:
-///
-/// - `check` -- Instead of running check if the blockchain has already been pruned.
-///
-/// Outputs:
-///
-/// - `status` -- General RPC status string. `"OK"` means everything looks good.
-/// - `pruned` -- Bool returning whether the blockchain was pruned or not.
-/// - `pruning_seed` -- The seed that determined how the blockchain was to be pruned.
-struct PRUNE_BLOCKCHAIN : RPC_COMMAND {
-    static constexpr auto names() { return NAMES("prune_blockchain"); }
-
-    struct request_parameters {
-        bool check;
     } request;
 };
 
@@ -3083,7 +3066,6 @@ using core_rpc_types = tools::type_list<
         ONS_INFO,
         OUT_PEERS,
         POP_BLOCKS,
-        PRUNE_BLOCKCHAIN,
         REPORT_PEER_STATUS,
         SAVE_BC,
         SESSION_ROUTER_PING,

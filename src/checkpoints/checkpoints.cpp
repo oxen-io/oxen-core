@@ -33,6 +33,8 @@
 
 #include <fmt/std.h>
 
+#include <algorithm>
+#include <limits>
 #include <vector>
 
 #include "blockchain_db/blockchain_db.h"
@@ -155,6 +157,7 @@ bool checkpoints::update_checkpoint(checkpoint_t const& checkpoint) {
     try {
         batch_started = m_db->batch_start();
         m_db->update_block_checkpoint(checkpoint);
+        cache_added(checkpoint);
     } catch (const std::exception& e) {
         log::error(
                 logcat,
@@ -162,6 +165,7 @@ bool checkpoints::update_checkpoint(checkpoint_t const& checkpoint) {
                 checkpoint.block_hash,
                 checkpoint.height,
                 e.what());
+        m_finality.reset();
         result = false;
     }
 
@@ -176,12 +180,7 @@ void checkpoints::block_add(const block_add_info& info) {
         info.block.major_version < hf::hf12_checkpointing)
         return;
 
-    uint64_t end_cull_height = 0;
-    {
-        checkpoint_t immutable_checkpoint;
-        if (m_db->get_immutable_checkpoint(&immutable_checkpoint, height + 1))
-            end_cull_height = immutable_checkpoint.height;
-    }
+    uint64_t end_cull_height = immutable_height(height + 1).value_or(0);
     uint64_t start_cull_height =
             (end_cull_height < service_nodes::CHECKPOINT_STORE_PERSISTENTLY_INTERVAL)
                     ? 0
@@ -200,7 +199,7 @@ void checkpoints::block_add(const block_add_info& info) {
             continue;
 
         try {
-            m_db->remove_block_checkpoint(m_last_cull_height);
+            remove_checkpoint(m_last_cull_height);
         } catch (const std::exception& e) {
             log::error(
                     logcat,
@@ -217,6 +216,7 @@ void checkpoints::block_add(const block_add_info& info) {
 //---------------------------------------------------------------------------
 void checkpoints::blockchain_detached(uint64_t height) {
     m_last_cull_height = std::min(m_last_cull_height, height);
+    m_finality.reset();
 
     checkpoint_t top_checkpoint;
     auto guard = db_wtxn_guard{*m_db};
@@ -226,7 +226,7 @@ void checkpoints::blockchain_detached(uint64_t height) {
              delete_height >= height && delete_height >= service_nodes::CHECKPOINT_INTERVAL;
              delete_height -= service_nodes::CHECKPOINT_INTERVAL) {
             try {
-                m_db->remove_block_checkpoint(delete_height);
+                remove_checkpoint(delete_height);
             } catch (const std::exception& e) {
                 log::error(
                         logcat,
@@ -298,6 +298,61 @@ bool checkpoints::is_alternative_block_allowed(
     return result;
 }
 //---------------------------------------------------------------------------
+std::optional<uint64_t> checkpoints::immutable_height(uint64_t height) {
+    if (!m_finality || height < m_finality->height ||
+        (m_finality->next && height >= *m_finality->next)) {
+        finality_cache f{.height = height};
+        f.newest = m_db->get_checkpoints_range(
+                height, 0, service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY);
+        for (auto& c : f.newest)
+            c.signatures.clear();
+        // (The range is clamped to the stored checkpoints, so with none above this gives the top
+        // one.)
+        if (auto above = m_db->get_checkpoints_range(
+                    height + 1, std::numeric_limits<uint64_t>::max(), 1);
+            !above.empty() && above.front().height > height)
+            f.next = above.front().height;
+        m_finality = std::move(f);
+    }
+    if (const auto* found = find_immutable_checkpoint(m_finality->newest))
+        return found->height;
+    return std::nullopt;
+}
+
+void checkpoints::cache_added(const checkpoint_t& checkpoint) {
+    if (!m_finality)
+        return;
+    auto& f = *m_finality;
+    // Below the lowest checkpoint the DB gives that one (as get_checkpoints_range clamps the range
+    // to the stored checkpoints), which a new checkpoint below it would take over from.
+    if (std::ranges::any_of(f.newest, [&f](const auto& c) { return c.height > f.height; })) {
+        m_finality.reset();
+        return;
+    }
+    if (checkpoint.height > f.height) {
+        if (!f.next || checkpoint.height < *f.next)
+            f.next = checkpoint.height;
+        return;
+    }
+    std::erase_if(f.newest, [&](const auto& c) { return c.height == checkpoint.height; });
+    auto& added = f.newest.emplace_back(checkpoint);
+    added.signatures.clear();
+    std::sort(f.newest.begin(), f.newest.end(), [](const auto& a, const auto& b) {
+        return a.height > b.height;
+    });
+    if (f.newest.size() > service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY)
+        f.newest.resize(service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY);
+}
+
+void checkpoints::remove_checkpoint(uint64_t height) {
+    m_db->remove_block_checkpoint(height);
+    if (m_finality && (m_finality->next == height ||
+                       std::ranges::any_of(m_finality->newest, [height](const auto& c) {
+                           return c.height == height;
+                       })))
+        m_finality.reset();
+}
+
 uint64_t checkpoints::get_max_height() const {
     uint64_t result = 0;
     checkpoint_t top_checkpoint;

@@ -405,6 +405,26 @@ bool daemon::run(bool interactive) {
             rpc_commands->start_handling([this] { stop(); });
         }
 
+        // Before the network starts, so that it comes before anything about syncing
+        log::info(
+                globallogcat,
+                fg(fmt::terminal_color::yellow),
+                R"(
+**********************************************************************
+{}
+
+You can set the level of process detailization through "set_log <level|categories>" command,
+where <level> is between 0 (no details) and 4 (very verbose), or custom category based levels (eg, *:WARNING).
+
+Use the "help" command to see the list of available commands.
+Use "help <command>" to see a command's documentation.
+**********************************************************************
+)",
+                core->offline() ? "The daemon is running offline and will not attempt to sync to "
+                                  "the Session network."
+                                : "The daemon will start synchronizing with the network. This may "
+                                  "take a long time to complete.");
+
         log::info(
                 globallogcat,
                 fg(fmt::terminal_color::green) | fmt::emphasis::bold,

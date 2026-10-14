@@ -122,6 +122,8 @@ class core final {
      */
     core();
 
+    ~core();
+
     // Non-copyable:
     core(const core&) = delete;
     core& operator=(const core&) = delete;
@@ -838,6 +840,14 @@ class core final {
     std::array<uint16_t, 3> lokinet_version;
     std::array<uint16_t, 3> srouter_version;
 
+  private:
+    // The databases holding the rewards (sqlite.db) and ONS (ons.db) tables when the blockchain is
+    // not stored in SQLite (when it is, they are kept in the blockchain database).  Declared
+    // before `blockchain` because they must outlive it.
+    std::unique_ptr<session::sqlite::Database> m_rewards_sql;
+    std::unique_ptr<session::sqlite::Database> m_ons_sql;
+
+  public:
     tx_memory_pool mempool;  //!< transaction pool instance
     Blockchain blockchain;   //!< Blockchain instance
 
@@ -889,8 +899,6 @@ class core final {
     /// interval for checking our own uptime proof; starts low, but will be set to
     /// get_net_config().UPTIME_PROOF_CHECK_INTERVAL after the first proof goes out.
     tools::periodic_task m_check_uptime_proof_interval{"uptime proof", 30s};
-    /// interval for incremental blockchain pruning
-    tools::periodic_task m_blockchain_pruning_interval{"pruning interval", 5h};
     /// interval for when we re-relay service node votes
     tools::periodic_task m_service_node_vote_relayer{"vote relay", 2min, false};
     /// interval for when we drop expired uptime proofs
@@ -903,9 +911,6 @@ class core final {
     tools::periodic_task m_sn_archive_state_interval{"sn state storage", 6 * 24h, false, 24h};
     /// interval for systemd watchdog pings & updating the service Status line
     tools::periodic_task m_systemd_notify_interval{"systemd notifier", 10s};
-
-    /// has the "daemon will sync now" message been shown?
-    std::atomic<bool> m_starter_message_showed;
 
     uint64_t m_target_blockchain_height;  //!< blockchain height target
 

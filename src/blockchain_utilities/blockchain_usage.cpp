@@ -144,11 +144,8 @@ int main(int argc, char* argv[]) {
     const std::string input = command_line::get_arg(vm, arg_input);
     blockchain_objects_t blockchain_objects = {};
     Blockchain* core_storage = &blockchain_objects.m_blockchain;
-    auto db = new_db();
-    if (!db) {
-        log::error(logcat, "Failed to initialize a database");
-        throw oxen::traced<std::runtime_error>("Failed to initialize a database");
-    }
+    // The input is the path of an LMDB environment directory itself, not a data directory.
+    auto db = new_db(db_backend::lmdb);
     log::warning(logcat, "database: LMDB");
 
     const fs::path filename = tools::utf8_path(input);
