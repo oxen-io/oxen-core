@@ -57,18 +57,18 @@ target_link_libraries(cryptonote_core
     ringct
     device
     checkpoints
-    SQLite::SQLite3
+    sessiondep::sqlite3
     bls_aggregator
     l2_tracker
     sesh_transition_data
     ethyl
     network_config
   PRIVATE
-    SQLiteCpp
+    sqlitedb
     systemd
     logging
     extra
-    zstd::zstd)
+    sessiondep::libzstd)
 
 if (PER_BLOCK_CHECKPOINT)
   target_compile_definitions(cryptonote_core PUBLIC PER_BLOCK_CHECKPOINT)

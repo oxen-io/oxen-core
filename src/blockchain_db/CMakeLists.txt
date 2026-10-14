@@ -29,8 +29,11 @@
 
 oxen_add_library(blockchain_db
   blockchain_db.cpp
+  history.cpp
   lmdb/db_lmdb.cpp
-  sqlite/db_sqlite.cpp
+  sqlite/accrued_history.cpp
+  sqlite/blockchain_sqlite.cpp
+  sqlite/rewards_db.cpp
   sqlite/snapshots.cpp
   )
 
@@ -46,8 +49,3 @@ target_link_libraries(blockchain_db
     logging
     ethyl
     extra)
-
-target_compile_definitions(blockchain_db PRIVATE
-    "DEFAULT_DB_TYPE=\"${BLOCKCHAIN_DB}\""
-    "BLOCKCHAIN_DB=${BLOCKCHAIN_DB}"
-    )

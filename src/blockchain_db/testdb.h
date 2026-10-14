@@ -188,7 +188,7 @@ class BaseTestDB : public cryptonote::BlockchainDB {
             const std::vector<uint64_t>& offsets,
             std::vector<cryptonote::tx_out_index>& indices) const override {}
     virtual void get_output_key(
-            const epee::span<const uint64_t>& amounts,
+            std::span<const uint64_t> amounts,
             const std::vector<uint64_t>& offsets,
             std::vector<cryptonote::output_data_t>& outputs,
             bool allow_partial = false) const override {}
@@ -306,12 +306,6 @@ class BaseTestDB : public cryptonote::BlockchainDB {
         return b;
     }
 
-    virtual uint32_t get_blockchain_pruning_seed() const override { return 0; }
-    virtual bool prune_blockchain(uint32_t pruning_seed = 0) override { return true; }
-    virtual bool update_pruning() override { return true; }
-    virtual bool check_pruning() override { return true; }
-    virtual void prune_outputs(uint64_t amount) override {}
-
     virtual uint64_t get_max_block_size() override { return 100000000; }
     virtual void add_max_block_size(uint64_t sz) override {}
 
@@ -337,7 +331,16 @@ class BaseTestDB : public cryptonote::BlockchainDB {
     virtual bool get_service_node_data(std::string& data, bool long_term) const override {
         return false;
     }
+    virtual void delete_service_node_data(bool long_term) override {}
     virtual void clear_service_node_data() override {}
+
+    virtual void put_service_node_archive(
+            uint64_t height, std::string_view data, bool quorums_only) override {}
+    virtual std::optional<std::string> get_service_node_archive(uint64_t height) const override {
+        return std::nullopt;
+    }
+    virtual std::vector<uint64_t> get_service_node_archive_heights() const override { return {}; }
+    virtual void delete_service_node_archives(uint64_t begin, uint64_t end) override {}
 
     bool get_service_node_proof(
             const crypto::public_key& pubkey, service_nodes::proof_info& proof) const override {

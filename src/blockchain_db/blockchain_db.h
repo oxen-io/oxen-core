@@ -33,7 +33,11 @@
 
 #include <boost/program_options.hpp>
 #include <exception>
+#include <optional>
+#include <span>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "common/command_line.h"
 #include "common/fs.h"
@@ -101,6 +105,13 @@ namespace service_nodes {
 struct proof_info;
 }
 
+namespace SQLite {
+class Transaction;
+}
+namespace session::sqlite {
+class Database;
+}
+
 namespace cryptonote {
 struct checkpoint_t;
 
@@ -109,6 +120,18 @@ typedef std::pair<crypto::hash, uint64_t> tx_out_index;
 
 extern const command_line::arg_descriptor<std::string> arg_db_sync_mode;
 extern const command_line::arg_flag arg_db_salvage;
+extern const command_line::arg_descriptor<std::string> arg_db_backend;
+extern const command_line::arg_descriptor<std::string> arg_history;
+
+enum class db_backend { lmdb, sqlite };
+
+std::string_view to_string(db_backend backend);
+
+/// The backend used for a data directory that does not yet contain a blockchain database.
+inline constexpr db_backend FRESH_DB_BACKEND = db_backend::sqlite;
+
+/// The SQLite backend's database file, directly inside the data directory.
+inline constexpr std::string_view SQLITE_DB_FILENAME = "oxen.db";
 
 #pragma pack(push, 1)
 
@@ -675,14 +698,15 @@ class BlockchainDB {
      */
     virtual bool remove_data_file(const fs::path& folder) const = 0;
 
-    // return the name of the folder the db's file(s) should reside in
     /**
-     * @brief gets the name of the folder the BlockchainDB's file(s) should be in
+     * @brief gets the name of the BlockchainDB's location inside the data directory
      *
-     * The subclass implementation should return the name of the folder in which
-     * it stores files, or an empty string if there is none.
+     * The subclass implementation should return the name of the folder in which it stores files
+     * (e.g. "lmdb"), or of its database file if it uses a single file (e.g. "oxen.db"), or an
+     * empty string if there is none.  This is the path that gets passed to `open()`, relative to
+     * the data directory.
      *
-     * @return the name of the folder with the BlockchainDB's files, if any.
+     * @return the name of the BlockchainDB's folder or file, if any.
      */
     virtual std::string get_db_name() const = 0;
 
@@ -790,6 +814,96 @@ class BlockchainDB {
     virtual bool block_rtxn_start() const = 0;
     virtual void block_rtxn_stop() const = 0;
     virtual void block_rtxn_abort() const = 0;
+
+    /**
+     * @brief gets the SQLite transaction of the write (block or batch) transaction that the
+     * calling thread has open, if any
+     *
+     * A backend that stores the blockchain in a SQLite database returns its open write transaction
+     * so that other writes to that database made on the same thread (to the rewards and ONS
+     * tables, which are kept in it) can run inside it rather than trying to open a second, nested
+     * transaction.  The transaction is on the calling thread's shared connection to the database,
+     * i.e. the one that sqlite_database()->conn() returns.
+     *
+     * @return the open write transaction, or nullptr if the calling thread has none or the backend
+     * does not use SQLite.
+     */
+    virtual SQLite::Transaction* active_write_transaction() { return nullptr; }
+
+    /**
+     * @brief gets the SQLite database the blockchain is stored in, if the backend uses one
+     *
+     * Only valid while the database is open.  Other things (the rewards and ONS tables) can be
+     * kept in it too.
+     *
+     * @return the database, or nullptr if the backend does not use SQLite (or is not open).
+     */
+    virtual session::sqlite::Database* sqlite_database() { return nullptr; }
+
+    /**
+     * @brief gets how much history the database keeps, as stored in it
+     *
+     * @return 0 if it keeps all of it (a full node), otherwise the number of recent blocks whose
+     * bodies and transactions it keeps (at least that many: see history_window).
+     */
+    virtual uint64_t history() const { return 0; }
+
+    /**
+     * @brief gets the height of the oldest block whose body (and transactions) the database still
+     * has: everything below it has been dropped as outside the history it keeps
+     */
+    virtual uint64_t history_start() const { return 0; }
+
+    /**
+     * @brief gets the height the history the database keeps starts at, by its setting
+     *
+     * Blocks below this are no longer kept, even when (while the history no longer kept is still
+     * being dropped in the background) they are still there, below history_start(): so nothing
+     * may count on them, such as a rewind of the chain.
+     */
+    virtual uint64_t history_window_start() const { return 0; }
+
+    /**
+     * @brief gets the history to advertise to peers: how many of the most recent blocks the
+     * database can serve them
+     *
+     * This is the blocks from history_window_start() up, which can be more than history() (the
+     * history_window minimum) or fewer (just after the history is raised, until the chain grows
+     * into it), but never shrinks while older blocks are still being dropped.
+     *
+     * @return 0 if it keeps every block, otherwise the number of blocks it can serve (at least 1)
+     */
+    uint64_t served_history() const;
+
+    /**
+     * @brief starts dropping, in the background, the history that is no longer kept, if there is
+     * more of it than is dropped as blocks are added (as when the history is first limited)
+     *
+     * Called once whatever reads the blocks at startup (bringing the subsystems up to date) is
+     * done, as the drop would take those blocks from under it.
+     */
+    virtual void start_history_catch_up() {}
+
+    /**
+     * @brief changes how much history the database keeps
+     *
+     * Keeping less than before drops what is now outside the history straight away; keeping more
+     * keeps more from now on, but can't bring back what has already been dropped.
+     *
+     * @param blocks 0 to keep everything, otherwise at least HISTORY_MIN_BLOCKS
+     *
+     * @throw DB_ERROR if the backend can't keep a limited history, or when asked to keep
+     * everything again after keeping a limited history.
+     */
+    virtual void set_history(uint64_t blocks);
+
+    /**
+     * @brief drops the block bodies, transactions and other per-height data that have left the
+     * history the database keeps (see history_window), if any have
+     *
+     * Cheap when there is nothing to drop.  Does nothing for a database that keeps everything.
+     */
+    virtual void trim_history() {}
 
     // adds a block with the given metadata to the top of the blockchain, returns the new height
     /**
@@ -1173,17 +1287,29 @@ class BlockchainDB {
     virtual void pop_block(block& blk, std::vector<transaction>& txs);
 
     /**
-     * @brief check if a transaction with a given hash exists
+     * @brief check if a transaction with a given hash is in the blockchain
      *
-     * The subclass should check if a transaction is stored which has the
-     * given hash and return true if so, false otherwise.
+     * This is what the uniqueness of transaction hashes is checked against, so it includes the
+     * transactions without inputs whose stored data a limited history has dropped (which nothing
+     * else would stop from being included again), even though the transaction itself can no
+     * longer be read.
      *
      * @param h the hash to check against
-     * @param tx_id (optional) returns the tx_id for the tx hash
      *
-     * @return true if the transaction exists, otherwise false
+     * @return true if the transaction is in the blockchain, otherwise false
      */
     virtual bool tx_exists(const crypto::hash& h) const = 0;
+
+    /**
+     * @brief check if a transaction with a given hash is stored, and get its tx_id
+     *
+     * Unlike tx_exists(h), this is false for a transaction whose stored data has been dropped.
+     *
+     * @param h the hash to check against
+     * @param tx_id returns the tx_id for the tx hash
+     *
+     * @return true if the transaction is stored, otherwise false
+     */
     virtual bool tx_exists(const crypto::hash& h, uint64_t& tx_id) const = 0;
 
     // return unlock time of tx with hash <h>
@@ -1494,7 +1620,7 @@ class BlockchainDB {
      * @param outputs return-by-reference a list of outputs' metadata
      */
     virtual void get_output_key(
-            const epee::span<const uint64_t>& amounts,
+            std::span<const uint64_t> amounts,
             const std::vector<uint64_t>& offsets,
             std::vector<output_data_t>& outputs,
             bool allow_partial = false) const = 0;
@@ -1593,38 +1719,6 @@ class BlockchainDB {
      * @return the blob for that transaction
      */
     virtual std::string get_txpool_tx_blob(const crypto::hash& txid) const = 0;
-
-    /**
-     * @brief prune output data for the given amount
-     *
-     * @param amount the amount for which to prune data
-     */
-    virtual void prune_outputs(uint64_t amount) = 0;
-
-    /**
-     * @brief get the blockchain pruning seed
-     * @return the blockchain pruning seed
-     */
-    virtual uint32_t get_blockchain_pruning_seed() const = 0;
-
-    /**
-     * @brief prunes the blockchain
-     * @param pruning_seed the seed to use, 0 for default (highly recommended)
-     * @return success iff true
-     */
-    virtual bool prune_blockchain(uint32_t pruning_seed = 0) = 0;
-
-    /**
-     * @brief prunes recent blockchain changes as needed, iff pruning is enabled
-     * @return success iff true
-     */
-    virtual bool update_pruning() = 0;
-
-    /**
-     * @brief checks pruning was done correctly, iff enabled
-     * @return success iff true
-     */
-    virtual bool check_pruning() = 0;
 
     /**
      * @brief get the max block size
@@ -1870,9 +1964,34 @@ class BlockchainDB {
 
     virtual void get_output_blacklist(std::vector<uint64_t>& blacklist) const = 0;
     virtual void add_output_blacklist(std::vector<uint64_t> const& blacklist) = 0;
+    /// Stores the service node list's short-term (recent states) or long-term data blob.  Backends
+    /// with sqlite_database() don't keep these (the SN list stores its recent states as archive
+    /// entries there), and throw.
     virtual void set_service_node_data(const std::string& data, bool long_term) = 0;
     virtual bool get_service_node_data(std::string& data, bool long_term) const = 0;
+    /// Removes the single stored service node data blob for `long_term`, if present.
+    virtual void delete_service_node_data(bool long_term) = 0;
+    /// Removes all stored service node data blobs and all archived service node list states.
     virtual void clear_service_node_data() = 0;
+
+    /// Stores the serialized service node list state archived at `height`, replacing any existing
+    /// entry at that height.  `quorums_only` says whether it holds only the quorums of that height
+    /// rather than the full state.  Full states are stored zstd-compressed, and quorums-only ones
+    /// raw, which is how get_newest_full_service_node_archive tells them apart in a backend that
+    /// doesn't store the flag.
+    virtual void put_service_node_archive(
+            uint64_t height, std::string_view data, bool quorums_only) = 0;
+    /// Retrieves the serialized service node list state archived at exactly `height`, if any.
+    virtual std::optional<std::string> get_service_node_archive(uint64_t height) const = 0;
+    /// Retrieves the newest full (not quorums-only) service node list state archived at or below
+    /// `height`, with the height it is at.  The default implementation looks at each archived
+    /// state from `height` down; backends can do better.
+    virtual std::optional<std::pair<uint64_t, std::string>> get_newest_full_service_node_archive(
+            uint64_t height) const;
+    /// Returns the heights of all archived service node list states, in ascending order.
+    virtual std::vector<uint64_t> get_service_node_archive_heights() const = 0;
+    /// Deletes the archived service node list states with heights in [begin, end).
+    virtual void delete_service_node_archives(uint64_t begin, uint64_t end) = 0;
 
     /// Updates the given proof data with the latest stored info for the given service node. Returns
     /// true if found (and fields updated), false otherwise.
@@ -1978,7 +2097,54 @@ class db_wtxn_guard : public db_txn_guard {
     explicit db_wtxn_guard(BlockchainDB& db) : db_txn_guard{db, false} {}
 };
 
-std::unique_ptr<BlockchainDB> new_db();
+/**
+ * @brief selects the blockchain database backend for a data directory
+ *
+ * Without an explicit choice this is the backend of the database already in `folder`: sqlite if it
+ * contains a `SQLITE_DB_FILENAME` file, otherwise lmdb if it contains an `lmdb/data.mdb` file,
+ * otherwise (a fresh data directory) FRESH_DB_BACKEND.
+ *
+ * An explicit choice is always used, whatever `folder` contains: its database is created if there
+ * isn't one yet.  Whenever the other backend's database is also in `folder` (including when both
+ * are there without an explicit choice), it is left untouched, and a warning says that it isn't
+ * used.
+ *
+ * @param folder the data directory
+ * @param requested the explicitly requested backend, if any
+ *
+ * @return the backend to use
+ */
+db_backend select_db_backend(const fs::path& folder, std::optional<db_backend> requested);
+
+/**
+ * @brief selects the blockchain database backend for a data directory, taking the explicit choice
+ * (if any) from the `--db-backend` option.
+ *
+ * @throw DB_ERROR if the option value is not a backend name
+ */
+db_backend select_db_backend(
+        const fs::path& folder, const boost::program_options::variables_map& vm);
+
+/**
+ * @brief gets the backend explicitly requested with the `--db-backend` option, if any
+ *
+ * @throw DB_ERROR if the option value is not a backend name
+ */
+std::optional<db_backend> requested_db_backend(const boost::program_options::variables_map& vm);
+
+/**
+ * @brief gets the history explicitly requested with the `--history` option, if any (see
+ * parse_history)
+ *
+ * @throw DB_ERROR if the option value is not a valid history
+ */
+std::optional<uint64_t> requested_history(
+        const boost::program_options::variables_map& vm, network_type nettype);
+
+/**
+ * @brief constructs an (unopened) database object for the given backend
+ */
+std::unique_ptr<BlockchainDB> new_db(db_backend backend);
 
 }  // namespace cryptonote
 

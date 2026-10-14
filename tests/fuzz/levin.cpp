@@ -64,7 +64,7 @@ namespace
     {
     }
 
-    virtual int invoke(int command, const epee::span<const uint8_t> in_buff, std::string& buff_out, test_levin_connection_context& context)
+    virtual int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, test_levin_connection_context& context)
     {
       m_invoke_counter.inc();
       std::unique_lock lock{m_mutex};
@@ -74,7 +74,7 @@ namespace
       return m_return_code;
     }
 
-    virtual int notify(int command, const epee::span<const uint8_t> in_buff, test_levin_connection_context& context)
+    virtual int notify(int command, const std::span<const uint8_t> in_buff, test_levin_connection_context& context)
     {
       m_notify_counter.inc();
       std::unique_lock lock{m_mutex};

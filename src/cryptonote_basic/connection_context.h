@@ -55,17 +55,25 @@ struct cryptonote_connection_context : public epee::net_utils::connection_contex
     state m_state{state_before_handshake};
     std::vector<crypto::hash> m_needed_objects;
     std::unordered_set<crypto::hash> m_requested_objects;
+    // True while a NOTIFY_REQUEST_CHAIN to the peer awaits its response.
+    bool m_chain_requested{false};
+
+    // True if a request to the peer (for the chain, or for blocks or txes) awaits its response,
+    // which is what carries the sync with this peer on: until it arrives, another request would
+    // leave two outstanding.
+    bool request_outstanding() const { return m_chain_requested || !m_requested_objects.empty(); }
     std::map<uint64_t, std::pair<crypto::hash, bool>>
             m_blink_state;  // HEIGHT => {CHECKSUM, NEEDED}
     bool m_need_blink_sync{false};
     uint32_t m_drop_count{0};  // How many times we've wanted to drop
     uint64_t m_remote_blockchain_height{0};
+    // The peer's advertised history (see CORE_SYNC_DATA::history): 0 if it has every block.
+    uint64_t m_history{0};
     uint64_t m_last_response_height{0};
     std::optional<std::chrono::steady_clock::time_point> m_last_request_time;
     epee::copyable_atomic m_callback_request_count{
             0};  // in debug purpose: problem with double callback rise
     crypto::hash m_last_known_hash{};
-    uint32_t m_pruning_seed{0};
     bool m_anchor{false};
     // size_t m_score{0};  TODO: add score calculations
 };

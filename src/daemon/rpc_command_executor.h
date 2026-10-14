@@ -157,8 +157,7 @@ class rpc_command_executor final {
 
     bool print_sn_state_changes(uint64_t start_height, std::optional<uint64_t> end_height);
 
-    bool print_peer_list(
-            bool white = true, bool gray = true, size_t limit = 0, bool pruned_only = false);
+    bool print_peer_list(bool white = true, bool gray = true, size_t limit = 0);
 
     bool print_peer_list_stats();
 
@@ -248,10 +247,6 @@ class rpc_command_executor final {
     bool prepare_eth_registration(const eth::address& operator_address, std::string_view url);
 
     bool print_sn(const std::vector<std::string>& args, bool self = false);
-
-    bool prune_blockchain();
-
-    bool check_blockchain_pruning();
 
     bool print_net_stats();
 

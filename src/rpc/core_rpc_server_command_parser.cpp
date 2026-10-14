@@ -324,10 +324,6 @@ void parse_request(STORAGE_SERVER_PING& storage_server_ping, rpc_input in) {
             required{storage_server_ping.request.version});
 }
 
-void parse_request(PRUNE_BLOCKCHAIN& prune_blockchain, rpc_input in) {
-    get_values(in, "check", prune_blockchain.request.check);
-}
-
 void parse_request(GET_SN_STATE_CHANGES& get_sn_state_changes, rpc_input in) {
     get_values(
             in,

@@ -116,7 +116,7 @@ public:
   virtual cryptonote::tx_out_index get_output_tx_and_index_from_global(const uint64_t& index) const override { return cryptonote::tx_out_index(); }
   virtual cryptonote::tx_out_index get_output_tx_and_index(const uint64_t& amount, const uint64_t& index) const override { return cryptonote::tx_out_index(); }
   virtual void get_output_tx_and_index(const uint64_t& amount, const std::vector<uint64_t> &offsets, std::vector<cryptonote::tx_out_index> &indices) const override {}
-  virtual void get_output_key(const epee::span<const uint64_t> &amounts, const std::vector<uint64_t> &offsets, std::vector<cryptonote::output_data_t> &outputs, bool allow_partial) const override {}
+  virtual void get_output_key(std::span<const uint64_t> amounts, const std::vector<uint64_t> &offsets, std::vector<cryptonote::output_data_t> &outputs, bool allow_partial) const override {}
   virtual bool can_thread_bulk_indices() const override { return false; }
   virtual std::vector<std::vector<uint64_t>> get_tx_amount_output_indices(const uint64_t tx_index, size_t n_txes) const override { return std::vector<std::vector<uint64_t>>(); }
   virtual bool has_key_image(const crypto::key_image& img) const override { return false; }
@@ -128,11 +128,6 @@ public:
   virtual bool get_txpool_tx_meta(const crypto::hash& txid, cryptonote::txpool_tx_meta_t &meta) const override { return false; }
   virtual bool get_txpool_tx_blob(const crypto::hash& txid, std::string &bd) const override { return false; }
   virtual std::string get_txpool_tx_blob(const crypto::hash& txid) const override { return ""; }
-  virtual void prune_outputs(uint64_t amount) override {}
-  virtual uint32_t get_blockchain_pruning_seed() const override { return 0; }
-  virtual bool prune_blockchain(uint32_t pruning_seed = 0) override { return true; }
-  virtual bool update_pruning() override { return true; }
-  virtual bool check_pruning() override { return true; }
   virtual bool for_all_txpool_txes(std::function<bool(const crypto::hash&, const cryptonote::txpool_tx_meta_t&, const std::string*)>, bool include_blob, bool include_unrelayed_txes) const override { return false; }
   virtual bool for_all_key_images(std::function<bool(const crypto::key_image&)>) const { return true; }
   virtual bool for_blocks_range(const uint64_t&, const uint64_t&, std::function<bool(uint64_t, const crypto::hash&, const cryptonote::block&)>) const override { return true; }

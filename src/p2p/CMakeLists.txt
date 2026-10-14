@@ -41,6 +41,6 @@ target_link_libraries(p2p
     version
     net
     Boost::serialization
-    SQLiteCpp
+    sqlitedb
     logging
     extra)
