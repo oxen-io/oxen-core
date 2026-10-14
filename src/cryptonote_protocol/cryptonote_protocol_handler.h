@@ -37,6 +37,8 @@
 #include <boost/circular_buffer.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <chrono>
+#include <deque>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -48,6 +50,7 @@
 #include "cryptonote_protocol_handler_common.h"
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "epee/warnings.h"
+#include "peer_history.h"
 
 PUSH_WARNINGS
 DISABLE_VS_WARNINGS(4355)
@@ -102,10 +105,22 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     bool no_sync() const { return m_no_sync; }
     void set_no_sync(bool value) { m_no_sync = value; }
     std::string get_peers_overview() const;
-    std::pair<uint32_t, uint32_t> get_next_needed_pruning_stripe() const;
     bool needs_new_sync_connections() const;
+    // What we still need from peers while syncing, or nullopt if we aren't syncing (so any peer
+    // will do).  Syncing ends for good when we first reach the network's height: from then on the
+    // target is only briefly ahead of us, as each new block arrives.
+    std::optional<sync_need> get_sync_need() const;
 
   private:
+    // Puts a peer that has had the blocks the sync needs next, but no longer keeps them, in
+    // standby, and returns true if it did: asking it for spans would get nothing, and then we would
+    // ask it for its chain over and over.  The standby checker keeps trying it, and it is of use as
+    // soon as what the sync needs moves up into what it keeps.  (A peer that just hasn't got the
+    // blocks yet is left to go on as usual: to get its chain, then wait for it in the normal
+    // state.)
+    bool wait_for_history(
+            cryptonote_connection_context& context, const std::optional<sync_need>& need);
+
     //----------------- commands handlers ----------------------------------------------
     int handle_notify_new_transactions(
             int command,
@@ -200,11 +215,12 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     //----------------------------------------------------------------------------------
     // bool get_payload_sync_data(HANDSHAKE_DATA::request& hshd, cryptonote_connection_context&
     // context);
-    bool should_drop_connection(cryptonote_connection_context& context, uint32_t next_stripe);
+    // `caller` says where the request comes from, for logging.
     bool request_missing_objects(
             cryptonote_connection_context& context,
             bool check_having_blocks,
-            bool force_next_span = false);
+            bool force_next_span,
+            std::string_view caller);
     size_t get_synchronizing_connections_count();
     bool on_connection_synchronized();
     bool should_download_next_span(cryptonote_connection_context& context, bool standby);
@@ -214,7 +230,6 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     bool check_standby_peers();
     bool update_sync_search();
     int try_add_next_blocks(cryptonote_connection_context& context);
-    void notify_new_stripe(cryptonote_connection_context& context, uint32_t stripe);
     void skip_unneeded_hashes(cryptonote_connection_context& context, bool check_block_queue) const;
 
     t_core& m_core;
@@ -246,6 +261,15 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
             uint64_t current_blockchain_height, uint64_t target_blockchain_height);
     std::string get_periodic_sync_estimate(
             uint64_t current_blockchain_height, uint64_t target_blockchain_height);
+
+    // Blocks per second synced since the sync started.
+    double average_sync_rate(uint64_t current_blockchain_height) const;
+    // Records the current height and returns the blocks per second synced over (roughly) the last
+    // minute, falling back to average_sync_rate until there is enough history for that.
+    double sync_rate(uint64_t current_blockchain_height);
+    // (time, height) samples for sync_rate; reset whenever a sync (re)starts.
+    std::deque<std::pair<std::chrono::steady_clock::time_point, uint64_t>> m_sync_rate_samples;
+    std::mutex m_sync_rate_mutex;
 
     std::mutex m_buffer_mutex;
     boost::circular_buffer<size_t> m_avg_buffer = boost::circular_buffer<size_t>(10);

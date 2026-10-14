@@ -34,7 +34,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "common/pruning.h"
 #include "epee/string_tools.h"
 
 namespace cryptonote {
@@ -213,20 +212,16 @@ std::pair<uint64_t, uint64_t> block_queue::reserve_span(
         uint64_t last_block_height,
         uint64_t max_blocks,
         const connection_id_t& connection_id,
-        uint32_t pruning_seed,
-        uint64_t blockchain_height,
         const std::vector<crypto::hash>& block_hashes) {
     std::unique_lock lock{mutex};
 
     log::debug(
             logcat,
-            "reserve_span: first_block_height {}, last_block_height {}, max {}, seed {}, "
-            "blockchain_height {}, block hashes size {}",
+            "reserve_span: first_block_height {}, last_block_height {}, max {}, block hashes size "
+            "{}",
             first_block_height,
             last_block_height,
             max_blocks,
-            epee::string_tools::to_string_hex(pruning_seed),
-            blockchain_height,
             block_hashes.size());
     if (last_block_height < first_block_height || max_blocks == 0) {
         log::debug(
@@ -254,48 +249,15 @@ std::pair<uint64_t, uint64_t> block_queue::reserve_span(
         ++i;
         ++span_start_height;
     }
-
-    // if the peer's pruned for the starting block and its unpruned stripe comes next, start
-    // downloading from there
-    const uint32_t next_unpruned_height = tools::get_next_unpruned_block_height(
-            span_start_height, blockchain_height, pruning_seed);
-    log::debug(
-            logcat,
-            "reserve_span: next_unpruned_height {} from {} and seed {}, limit {}",
-            next_unpruned_height,
-            span_start_height,
-            epee::string_tools::to_string_hex(pruning_seed),
-            span_start_height);
-    if (next_unpruned_height > span_start_height &&
-        next_unpruned_height < span_start_height + PRUNING_STRIPE_SIZE) {
-        log::debug(
-                logcat,
-                "We can download from next span: ideal height {}, next unpruned height {}(+{}), "
-                "current seed {}",
-                span_start_height,
-                next_unpruned_height,
-                next_unpruned_height - span_start_height,
-                pruning_seed);
-        span_start_height = next_unpruned_height;
-    }
     log::debug(logcat, "span_start_height: {}", span_start_height);
-    const uint64_t block_hashes_start_height = last_block_height - block_hashes.size() + 1;
-    if (span_start_height >= block_hashes.size() + block_hashes_start_height) {
+    if (i == block_hashes.end()) {
         log::debug(logcat, "Out of hashes, cannot reserve");
         return std::make_pair(0, 0);
     }
 
-    i = block_hashes.begin() + span_start_height - block_hashes_start_height;
-    while (i != block_hashes.end() && requested_internal(*i)) {
-        ++i;
-        ++span_start_height;
-    }
-
     uint64_t span_length = 0;
     std::vector<crypto::hash> hashes;
-    while (i != block_hashes.end() && span_length < max_blocks &&
-           tools::has_unpruned_block(
-                   span_start_height + span_length, blockchain_height, pruning_seed)) {
+    while (i != block_hashes.end() && span_length < max_blocks) {
         hashes.push_back(*i);
         ++i;
         ++span_length;

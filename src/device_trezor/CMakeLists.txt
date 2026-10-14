@@ -55,7 +55,7 @@ if(DEVICE_TREZOR_READY)
             ringct_basic
             cryptonote_core
             common
-            sodium
+            sessiondep::libsodium
             libusb
             protobuf
             cpr::cpr
