@@ -909,8 +909,10 @@ class service_node_list {
     }
 
     void set_my_service_node_keys(const service_node_keys* keys);
-    void set_quorum_history_storage(
-            uint64_t hist_size);  // 0 = none (default), 1 = unlimited, N = # of blocks
+    // Sets how many blocks of quorum history to keep stored, for historic get_quorum lookups: 0 =
+    // none beyond what consensus needs (default), 1 = unlimited, N = the last N blocks.  The
+    // quorums are rows of the blockchain database, read when looked up.
+    void set_quorum_history_storage(uint64_t hist_size);
     bool store(uint64_t state_height = 0);
 
     uptime_proof::Proof generate_uptime_proof(

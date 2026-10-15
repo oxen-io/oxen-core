@@ -484,6 +484,7 @@ class BlockchainLMDB : public BlockchainDB {
             uint64_t height, std::string_view data, bool quorums_only) override;
     std::optional<std::string> get_service_node_archive(uint64_t height) const override;
     std::vector<uint64_t> get_service_node_archive_heights() const override;
+    std::optional<std::pair<uint64_t, uint64_t>> get_service_node_archive_range() const override;
     void delete_service_node_archives(uint64_t begin, uint64_t end) override;
 
     bool get_service_node_proof(
