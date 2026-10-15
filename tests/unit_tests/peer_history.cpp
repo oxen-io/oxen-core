@@ -115,7 +115,8 @@ TEST(peer_history, peerlist_entries_are_selected_by_history_against_the_target) 
 }
 
 TEST(peer_history, missing_field_means_archive) {
-    // Sync data from a peer that predates the field reads as an archive peer
+    // Sync data from a peer that predates the field reads as a peer of unknown history, which is
+    // treated as an archive peer
     old_core_sync_data old{};
     old.current_height = 1234;
     old.top_version = cryptonote::hf::hf21_eth;
@@ -124,16 +125,22 @@ TEST(peer_history, missing_field_means_archive) {
     sync.history = 99;
     ASSERT_TRUE(epee::serialization::load_t_from_binary(sync, blob));
     EXPECT_EQ(sync.current_height, 1234);
-    EXPECT_EQ(sync.history, 0);
+    EXPECT_EQ(sync.history, std::nullopt);
+    EXPECT_TRUE(history_covers(0, 1'000'000, sync.history));
+    EXPECT_TRUE(peer_can_serve(0, 1'000'000, sync.history));
+    EXPECT_FALSE(cryptonote::peer_no_longer_keeps(0, 1'000'000, sync.history));
+    EXPECT_EQ(cryptonote::describe_history(sync.history), "???");
+    EXPECT_EQ(cryptonote::describe_history(0), "archive");
+    EXPECT_EQ(cryptonote::describe_history(720), "720 blocks");
 
-    // and its peerlist entries are entries for archive peers
+    // and so do its peerlist entries
     old_peerlist_entry old_pe{addr(0x01020304), 42, 1000};
     blob = epee::serialization::store_t_to_binary(old_pe);
     nodetool::peerlist_entry pe{};
     pe.history = 99;
     ASSERT_TRUE(epee::serialization::load_t_from_binary(pe, blob));
     EXPECT_EQ(pe.id, 42);
-    EXPECT_EQ(pe.history, 0);
+    EXPECT_EQ(pe.history, std::nullopt);
 }
 
 TEST(peer_history, history_is_sent_and_old_peers_accept_it) {
@@ -151,8 +158,15 @@ TEST(peer_history, history_is_sent_and_old_peers_accept_it) {
     ASSERT_TRUE(epee::serialization::load_t_from_binary(old, blob));
     EXPECT_EQ(old.current_height, 1234);
 
-    // An archive node's sync data has no history in it at all: just what old peers send
+    // An archive node says so (a 0), so that it can be told from a node that never said
     sync.history = 0;
+    blob = epee::serialization::store_t_to_binary(sync);
+    ASSERT_TRUE(epee::serialization::load_t_from_binary(sync2, blob));
+    EXPECT_EQ(sync2.history, 0);
+    ASSERT_TRUE(epee::serialization::load_t_from_binary(old, blob));
+    EXPECT_EQ(old.current_height, 1234);
+    // while an unknown history is left out, as the nodes that never say leave it
+    sync.history = std::nullopt;
     EXPECT_EQ(
             epee::serialization::store_t_to_binary(sync),
             epee::serialization::store_t_to_binary(old));
@@ -208,7 +222,7 @@ TEST(peer_history, gossip_does_not_lose_a_known_history) {
     // Learned from gossip with a history
     plm.append_with_peer_gray({a, 7, 100, 720});
     // then gossiped again by a peer that predates the field
-    plm.append_with_peer_gray({a, 7, 200, 0});
+    plm.append_with_peer_gray({a, 7, 200, std::nullopt});
     nodetool::peerlist_entry pe;
     ASSERT_TRUE(plm.get_gray_peer_by_index(pe, 0));
     EXPECT_EQ(pe.history, 720);
@@ -223,15 +237,20 @@ TEST(peer_history, gossip_does_not_lose_a_known_history) {
     EXPECT_EQ(pe.history, 1440);
     EXPECT_GT(pe.last_seen, 200);
 
-    // ... while a 0 relayed for it doesn't
+    // ... as does a history relayed for it, archive included,
     plm.append_with_peer_white({a, 7, 300, 0});
     ASSERT_TRUE(plm.get_white_peer_by_index(pe, 0));
-    EXPECT_EQ(pe.history, 1440);
+    EXPECT_EQ(pe.history, 0);
+    // but not an entry relayed without one
+    plm.append_with_peer_white({a, 7, 300, std::nullopt});
+    ASSERT_TRUE(plm.get_white_peer_by_index(pe, 0));
+    EXPECT_EQ(pe.history, 0);
 }
 
 TEST(peer_history, stored_in_the_peerlist_file) {
     nodetool::peerlist_types types{};
     types.white.push_back({addr(1000, 10), 44, 55, 20'160});
+    types.white.push_back({addr(1001, 11), 45, 56, std::nullopt});
     types.gray.push_back({addr(2000, 20), 84, 45, 0});
     types.gray.push_back({addr(3000, 30), 85, 46, 720});
 
@@ -243,8 +262,9 @@ TEST(peer_history, stored_in_the_peerlist_file) {
     auto read = nodetool::peerlist_storage::open(in, true);
     ASSERT_TRUE(read);
     auto public_ = read->take_zone(epee::net_utils::zone::public_);
-    ASSERT_EQ(public_.white.size(), 1);
+    ASSERT_EQ(public_.white.size(), 2);
     EXPECT_EQ(public_.white[0].history, 20'160);
+    EXPECT_EQ(public_.white[1].history, std::nullopt);
     ASSERT_EQ(public_.gray.size(), 2);
     EXPECT_EQ(public_.gray[0].history, 0);
     EXPECT_EQ(public_.gray[1].history, 720);

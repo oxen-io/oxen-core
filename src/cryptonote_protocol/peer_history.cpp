@@ -3,7 +3,9 @@
 namespace cryptonote {
 
 void unhelpful_peers::add(
-        const epee::net_utils::network_address& addr, uint64_t height, uint64_t history) {
+        const epee::net_utils::network_address& addr,
+        uint64_t height,
+        std::optional<uint64_t> history) {
     m_peers.insert_or_assign(addr, std::make_pair(height, history));
 }
 

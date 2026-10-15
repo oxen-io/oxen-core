@@ -49,9 +49,10 @@ struct peerlist_entry {
     peerid_type id;
     int64_t last_seen;
     // The peer's history, as in cryptonote::CORE_SYNC_DATA: 0 if it keeps every block, otherwise
-    // how many of the most recent blocks it keeps.  A length, unlike an earliest height, stays
-    // true of the peer as its chain grows, so a stale entry still says what the peer can serve.
-    uint64_t history = 0;
+    // how many of the most recent blocks it keeps; nullopt if it (or whoever relayed the entry)
+    // never said.  A length, unlike an earliest height, stays true of the peer as its chain
+    // grows, so a stale entry still says what the peer can serve.
+    std::optional<uint64_t> history;
 
     KV_MAP_SERIALIZABLE
 };

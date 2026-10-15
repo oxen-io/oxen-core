@@ -37,6 +37,7 @@
 #include "common/guts.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
+#include "cryptonote_basic/cryptonote_format_utils.h"
 #include "ringct/rctSigs.h"
 #include "serialization/binary_archive.h"
 #include "serialization/json_archive.h"
@@ -596,6 +597,93 @@ TEST(serialization, serializes_ringct)
   ASSERT_EQ(clsag.c1, clsag1.c1);
   // I is not serialized, they are meant to be reconstructed
   ASSERT_EQ(clsag.D, clsag1.D);
+}
+
+// Parsing into a transaction object that already holds another transaction (as the tx pool does
+// with a single object reused across its whole contents) must give the same result as parsing into
+// a fresh one, even for fields the new transaction's version or shape doesn't serialize.
+TEST(serialization, transaction_reparse_resets_state)
+{
+  using namespace cryptonote;
+
+  rct::ctkeyV sc, pc;
+  std::vector<uint64_t> inamounts{6000, 7000};
+  for (auto amount : inamounts) {
+    auto [sk, pk] = rct::ctskpkGen(amount);
+    sc.push_back(sk);
+    pc.push_back(pk);
+  }
+  std::vector<uint64_t> amounts{500, 12500};
+  rct::keyV amount_keys, destinations;
+  for (size_t i = 0; i < amounts.size(); i++) {
+    amount_keys.push_back(rct::hash_to_scalar(rct::zero()));
+    destinations.push_back(rct::pkGen());
+  }
+  const unsigned int mixin = 3;
+
+  transaction transfer;
+  transfer.version = txversion::v4_tx_types;
+  transfer.type = txtype::standard;
+  for (size_t i = 0; i < sc.size(); i++) {
+    txin_to_key in{};
+    in.key_offsets = {1, 2, 3, 4};
+    in.k_image = rct::rct2ki(rct::pkGen());
+    transfer.vin.push_back(in);
+  }
+  for (auto& dest : destinations) {
+    transfer.vout.push_back({0, txout_to_key{rct::rct2pk(dest)}});
+    transfer.output_unlock_times.push_back(0);
+  }
+  transfer.rct_signatures = rct::genRctSimple(
+      rct::zero(), sc, pc, destinations, inamounts, amounts, amount_keys, nullptr, nullptr, 0,
+      mixin, {rct::RangeProofType::PaddedBulletproof, 3}, hw::get_device("default"));
+  const auto transfer_blob = tx_to_blob(transfer);
+
+  transaction state_change;
+  state_change.version = txversion::v4_tx_types;
+  state_change.type = txtype::state_change;
+  state_change.extra = {0x70, 0x01, 0x02, 0x03};
+  const auto state_change_blob = tx_to_blob(state_change);
+
+  transaction v2;
+  v2.version = txversion::v2_ringct;
+  v2.extra = {0x01, 0x02};
+  const auto v2_blob = tx_to_blob(v2);
+
+  transaction v1;
+  v1.version = txversion::v1;
+  {
+    txin_to_key in{};
+    in.amount = 1000;
+    in.key_offsets = {5};
+    in.k_image = rct::rct2ki(rct::pkGen());
+    v1.vin.push_back(in);
+  }
+  v1.vout.push_back({1000, txout_to_key{rct::rct2pk(rct::pkGen())}});
+  v1.signatures = {{crypto::rand<crypto::signature>()}};
+  const auto v1_blob = tx_to_blob(v1);
+
+  transaction parsed;
+  ASSERT_TRUE(parse_and_validate_tx_from_blob(transfer_blob, parsed));
+  ASSERT_EQ(parsed.rct_signatures.type, rct::RCTType::CLSAG);
+  ASSERT_EQ(tx_to_blob(parsed), transfer_blob);
+
+  ASSERT_TRUE(parse_and_validate_tx_from_blob(state_change_blob, parsed));
+  EXPECT_EQ(parsed.rct_signatures.type, rct::RCTType::Null);
+  EXPECT_TRUE(parsed.rct_signatures.ecdhInfo.empty());
+  EXPECT_EQ(tx_to_blob(parsed), state_change_blob);
+  EXPECT_EQ(get_transaction_hash(parsed), get_transaction_hash(state_change));
+
+  ASSERT_TRUE(parse_and_validate_tx_from_blob(v2_blob, parsed));
+  EXPECT_EQ(parsed.type, txtype::standard);
+  EXPECT_EQ(tx_to_blob(parsed), v2_blob);
+
+  ASSERT_TRUE(parse_and_validate_tx_base_from_blob(v1_blob, parsed));
+  ASSERT_TRUE(parsed.pruned);
+  ASSERT_TRUE(parse_and_validate_tx_from_blob(v1_blob, parsed));
+  EXPECT_FALSE(parsed.pruned);
+  EXPECT_EQ(parsed.signatures, v1.signatures);
+  EXPECT_EQ(tx_to_blob(parsed), v1_blob);
 }
 
 struct XYZ {

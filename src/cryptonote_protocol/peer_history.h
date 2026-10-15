@@ -5,11 +5,12 @@
 #include <optional>
 #include <utility>
 
+#include "common/format.h"
 #include "epee/net/net_utils_base.h"
 
 // What peers can serve a syncing node, going by the history they advertise (see
 // CORE_SYNC_DATA::history: 0 if a peer keeps every block, otherwise how many of its most recent
-// blocks it keeps).
+// blocks it keeps; nullopt if it hasn't said, as peers from before the field don't).
 namespace cryptonote {
 
 // A peer's history moves up as its chain grows, and what we know of its chain height can be a
@@ -20,20 +21,33 @@ inline constexpr uint64_t PEER_HISTORY_MARGIN = 100;
 // Whether a peer at chain height `peer_height` keeping `history` blocks still keeps block
 // `height` (and so every block from there up).  This doesn't check that the peer has reached
 // `height` at all: it is also what a peerlist entry, whose height we don't know, is judged by
-// against the height of the chain.
-constexpr bool history_covers(uint64_t height, uint64_t peer_height, uint64_t history) {
-    return history == 0 || height + history >= peer_height + PEER_HISTORY_MARGIN;
+// against the height of the chain.  A peer that hasn't said what it keeps is taken to keep every
+// block, as every peer from before the field does.
+constexpr bool history_covers(
+        uint64_t height, uint64_t peer_height, std::optional<uint64_t> history) {
+    return !history || *history == 0 || height + *history >= peer_height + PEER_HISTORY_MARGIN;
+}
+
+// Describes a peer's history for a log or listing: "archive", "N blocks" or "???".
+inline std::string describe_history(std::optional<uint64_t> history) {
+    if (!history)
+        return "???";
+    if (*history == 0)
+        return "archive";
+    return "{} blocks"_format(*history);
 }
 
 // Whether a connected peer at chain height `peer_height` keeping `history` blocks can give us
 // block `height`.
-constexpr bool peer_can_serve(uint64_t height, uint64_t peer_height, uint64_t history) {
+constexpr bool peer_can_serve(
+        uint64_t height, uint64_t peer_height, std::optional<uint64_t> history) {
     return height < peer_height && history_covers(height, peer_height, history);
 }
 
 // Whether a connected peer at chain height `peer_height` keeping `history` blocks has had block
 // `height` but no longer keeps it (unlike a peer that just hasn't got it yet).
-constexpr bool peer_no_longer_keeps(uint64_t height, uint64_t peer_height, uint64_t history) {
+constexpr bool peer_no_longer_keeps(
+        uint64_t height, uint64_t peer_height, std::optional<uint64_t> history) {
     return height < peer_height && !history_covers(height, peer_height, history);
 }
 
@@ -52,7 +66,10 @@ struct sync_need {
 class unhelpful_peers {
   public:
     // Records a peer, with the chain height and history it had, as unable to serve the sync.
-    void add(const epee::net_utils::network_address& addr, uint64_t height, uint64_t history);
+    void add(
+            const epee::net_utils::network_address& addr,
+            uint64_t height,
+            std::optional<uint64_t> history);
 
     bool contains(const epee::net_utils::network_address& addr) const;
 
@@ -69,7 +86,8 @@ class unhelpful_peers {
 
   private:
     // address -> {chain height, history}
-    std::map<epee::net_utils::network_address, std::pair<uint64_t, uint64_t>> m_peers;
+    std::map<epee::net_utils::network_address, std::pair<uint64_t, std::optional<uint64_t>>>
+            m_peers;
 };
 
 }  // namespace cryptonote
