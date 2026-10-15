@@ -1,3 +1,9 @@
+oxen (11.7.0-1~ubuntu2610) stonking; urgency=medium
+
+  * UNRELEASED
+
+ -- Jason Rhinelander <jason@session.foundation>  Thu, 15 Oct 2026 19:14:15 -0300
+
 oxen (11.7.0~rc3-1~ubuntu2610) stonking; urgency=medium
 
   * Stop logging errors for explorer lookups that come up empty
