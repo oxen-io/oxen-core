@@ -6946,32 +6946,31 @@ void Blockchain::load_compiled_in_block_hashes(const GetCheckpointsCallback& get
                         m_blocks_hash_of_hashes.size() * HASH_OF_HASHES_STEP, null<hash>);
                 log::info(logcat, "{} block hashes loaded", nblocks);
 
-                // FIXME: clear tx_pool because the process might have been
-                // terminated and caused it to store txs kept by blocks.
-                // The core will not call check_tx_inputs(..) for these
-                // transactions in this case. Consequently, the sanity check
-                // for tx hashes will fail in handle_block_to_main_chain(..)
-                std::unique_lock lock{tx_pool};
-
-                std::vector<transaction> txs;
-                tx_pool.get_transactions(txs);
-
-                size_t tx_weight;
-                uint64_t fee;
-                bool relayed, do_not_relay, double_spend_seen;
-                transaction pool_tx;
-                std::string txblob;
-                for (const transaction& tx : txs) {
-                    crypto::hash tx_hash = get_transaction_hash(tx);
-                    tx_pool.take_tx(
-                            tx_hash,
-                            pool_tx,
-                            txblob,
-                            tx_weight,
-                            fee,
-                            relayed,
-                            do_not_relay,
-                            double_spend_seen);
+                // Drop any stored pool txs (such as those kept by blocks when the process was
+                // terminated, or returned to the pool by popped blocks): the core will not call
+                // check_tx_inputs(..) for them while syncing within the compiled-in hashes, and
+                // so the sanity check for tx hashes would fail in handle_block_to_main_chain(..).
+                //
+                // The tx pool doesn't load its contents from the db until after the blockchain
+                // is initialized, so this has to remove the rows directly: going through the
+                // pool would try to remove key images and weights it hasn't loaded yet.
+                std::vector<crypto::hash> pool_txids;
+                m_db->for_all_txpool_txes([&pool_txids](
+                                                  const crypto::hash& txid,
+                                                  const txpool_tx_meta_t&,
+                                                  const std::string*) {
+                    pool_txids.push_back(txid);
+                    return true;
+                });
+                if (!pool_txids.empty()) {
+                    db_wtxn_guard wtxn_guard{*m_db};
+                    for (const auto& txid : pool_txids)
+                        m_db->remove_txpool_tx(txid);
+                    log::info(
+                            logcat,
+                            "Removed {} stored tx pool transactions while within compiled-in "
+                            "block hashes",
+                            pool_txids.size());
                 }
             }
         }

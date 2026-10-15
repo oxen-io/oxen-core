@@ -5902,6 +5902,28 @@ std::vector<uint64_t> BlockchainLMDB::get_service_node_archive_heights() const {
     return heights;
 }
 
+std::optional<std::pair<uint64_t, uint64_t>> BlockchainLMDB::get_service_node_archive_range()
+        const {
+    log::trace(logcat, "BlockchainLMDB::{}", __func__);
+    check_open();
+
+    TXN_PREFIX_RDONLY();
+    RCURSOR(service_node_archive);
+
+    MDB_val k, v;
+    int result = mdb_cursor_get(m_cursors->service_node_archive, &k, &v, MDB_FIRST);
+    if (result == MDB_NOTFOUND)
+        return std::nullopt;
+    if (result)
+        throw0(DB_ERROR("DB error attempting to find the first service node archive: {}"_format(
+                mdb_strerror(result))));
+    const uint64_t lowest = *static_cast<const uint64_t*>(k.mv_data);
+    if (int result = mdb_cursor_get(m_cursors->service_node_archive, &k, &v, MDB_LAST))
+        throw0(DB_ERROR("DB error attempting to find the last service node archive: {}"_format(
+                mdb_strerror(result))));
+    return std::make_pair(lowest, *static_cast<const uint64_t*>(k.mv_data));
+}
+
 void BlockchainLMDB::delete_service_node_archives(uint64_t begin, uint64_t end) {
     log::trace(logcat, "BlockchainLMDB::{}", __func__);
     check_open();
