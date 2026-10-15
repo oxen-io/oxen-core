@@ -185,6 +185,12 @@ bool core_rpc_server::check_core_ready() {
     return m_p2p.get_payload_object().is_synchronized();
 }
 
+oxen::log::Level rpc_error_log_level(const rpc_error& e) {
+    return e.code == ERROR_ID_NOT_FOUND || e.code == ERROR_HISTORY_NOT_KEPT
+                 ? oxen::log::Level::debug
+                 : oxen::log::Level::warn;
+}
+
 uint64_t core_rpc_server::history_start() const {
     return m_core.blockchain.db().history_start();
 }
@@ -1677,9 +1683,7 @@ void core_rpc_server::invoke(GET_BLOCK_HEADER_BY_HASH& gbh, rpc_context context)
                 m_core.blockchain.get_block_by_hash(block_hash, blk, &block_size, &orphan);
         if (!have_block) {
             require_history(block_hash);
-            throw rpc_error{
-                    ERROR_INTERNAL,
-                    "Internal error: can't get block by hash. Hash = " + hash + '.'};
+            throw rpc_error{ERROR_ID_NOT_FOUND, "Requested block hash: {} not found"_format(hash)};
         }
         fill_block_header_response(
                 blk,

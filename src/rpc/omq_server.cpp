@@ -297,8 +297,9 @@ omq_rpc::omq_rpc(
                         m.send_reply(OMQ_BAD_REQUEST, "Unable to parse request: "s + e.what());
                         return;
                     } catch (const rpc_error& e) {
-                        log::warning(
+                        log::log(
                                 logcat,
+                                rpc_error_log_level(e),
                                 "OMQ RPC request '{}{}' failed with: {}",
                                 (call.is_public ? "rpc." : "admin."),
                                 name,
