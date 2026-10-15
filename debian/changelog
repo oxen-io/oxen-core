@@ -1,3 +1,18 @@
+oxen (11.7.0~rc2-1~deb14) forky; urgency=medium
+
+  * Measure a sync from its start, not from the last new tip
+  * Look up stored quorum history in the database, not memory
+  * Report the archived SN states' range at startup without visiting them all
+  * Want half the sync's peers able to serve it, and say how many can
+  * Tell a peer that keeps every block from one that never said
+  * Store the peerlist entry's optional history without Boost's optional support
+  * Leave the sync peer policy out of it within the margin of the target
+  * Reset a transaction before deserializing into it
+  * Drop stored pool txs at startup without going through the pool
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 14 Oct 2026 21:30:56 -0300
+
 oxen (11.7.0~rc1-2~deb14) forky; urgency=medium
 
   * Add oxend-download-sqlite for installing an oxen.db snapshot
