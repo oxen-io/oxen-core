@@ -67,8 +67,9 @@ struct cryptonote_connection_context : public epee::net_utils::connection_contex
     bool m_need_blink_sync{false};
     uint32_t m_drop_count{0};  // How many times we've wanted to drop
     uint64_t m_remote_blockchain_height{0};
-    // The peer's advertised history (see CORE_SYNC_DATA::history): 0 if it has every block.
-    uint64_t m_history{0};
+    // The peer's advertised history (see CORE_SYNC_DATA::history): 0 if it has every block;
+    // nullopt until its sync data has said (or if it never does).
+    std::optional<uint64_t> m_history;
     uint64_t m_last_response_height{0};
     std::optional<std::chrono::steady_clock::time_point> m_last_request_time;
     epee::copyable_atomic m_callback_request_count{

@@ -464,6 +464,53 @@ bool oxen_history_window_reorg_rewards::generate(std::vector<test_event_entry>& 
   return true;
 }
 
+// NOTE: - A node asked to keep a quorum history (--store-quorum-history) keeps the quorums of every
+// height from then on as rows of the blockchain database, which historic lookups read; before
+// that, only the few before each stored state that consensus needs are kept.
+bool oxen_quorum_history::generate(std::vector<test_event_entry>& events)
+{
+  auto hard_forks = oxen_generate_hard_fork_table(hf::hf15_ons);
+  oxen_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().version);
+  gen.add_mined_money_unlock_blocks();
+  add_service_nodes(gen, service_nodes::CHECKPOINT_QUORUM_SIZE, hard_forks.back().version);
+  gen.add_n_blocks(300);
+
+  const uint64_t enabled = gen.height();
+  oxen_register_callback(events, "enable_quorum_history", [](cryptonote::core &c, size_t ev_index)
+  {
+    c.service_node_list.set_quorum_history_storage(1);
+    return true;
+  });
+  gen.add_n_blocks(400);
+  const uint64_t top = gen.height();
+
+  oxen_register_callback(events, "check_quorum_history", [enabled, top](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_quorum_history");
+    auto& db = c.blockchain.db();
+    CHECK_EQ(c.blockchain.get_current_blockchain_height(), top + 1);
+    for (uint64_t h = enabled + 1; h <= top; h++)
+      CHECK_AND_ASSERT_MES(c.service_node_list.get_quorum(service_nodes::quorum_type::obligations, h, true), false, "[{}] no obligations quorum at height {}", perr_context, h);
+    // A node keeping a limited history stores its states differently (see store_state_snapshot),
+    // and the recent heights it has in memory have no rows yet.
+    if (!db.history())
+    {
+      // A height's state is stored when the next block replaces it, so the top's is still only in
+      // memory.
+      for (uint64_t h = enabled + 1; h < top; h++)
+        CHECK_AND_ASSERT_MES(db.get_service_node_archive(h), false, "[{}] no stored quorums at height {} (history from {} to {})", perr_context, h, enabled + 1, top);
+      // Before the history was asked for, the stored quorums were dropped as usual once the states
+      // they were kept for had been.
+      const uint64_t before = enabled - 250;
+      CHECK_TEST_CONDITION(!db.get_service_node_archive(before));
+      CHECK_TEST_CONDITION(!c.service_node_list.get_quorum(service_nodes::quorum_type::obligations, before, true));
+    }
+    return true;
+  });
+  return true;
+}
+
 // NOTE: - Checks that an alt chain eventually takes over the main chain with
 // only 1 checkpoint, by progressively adding 2 more checkpoints at the next
 // available checkpoint heights whilst maintaining equal heights with the main chain
