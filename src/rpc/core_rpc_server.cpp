@@ -1432,7 +1432,7 @@ static nlohmann::json json_peer_info(const nodetool::peerlist_entry& peer) {
             {"port", peer.adr.port()},
             {"last_seen", peer.last_seen}};
     if (peer.history)
-        p["history"] = peer.history;
+        p["history"] = *peer.history;
     return p;
 }
 
@@ -1892,7 +1892,7 @@ static json json_connection_info(const connection_info& ci) {
     if (uint16_t port; tools::parse_int(ci.port, port) && port > 0)
         info["port"] = port;
     if (ci.history)
-        info["history"] = ci.history;
+        info["history"] = *ci.history;
     return info;
 }
 

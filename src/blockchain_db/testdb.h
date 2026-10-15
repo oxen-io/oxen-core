@@ -340,6 +340,10 @@ class BaseTestDB : public cryptonote::BlockchainDB {
         return std::nullopt;
     }
     virtual std::vector<uint64_t> get_service_node_archive_heights() const override { return {}; }
+    virtual std::optional<std::pair<uint64_t, uint64_t>> get_service_node_archive_range()
+            const override {
+        return std::nullopt;
+    }
     virtual void delete_service_node_archives(uint64_t begin, uint64_t end) override {}
 
     bool get_service_node_proof(

@@ -245,11 +245,18 @@ TEST(sync_need, only_until_first_synchronized)
   // At the network's height (the test core's chain height is 1)
   ASSERT_FALSE(cprotocol.get_sync_need());
 
-  pr_core.target_height = 100;
+  pr_core.target_height = 1000;
   auto need = cprotocol.get_sync_need();
   ASSERT_TRUE(need);
   EXPECT_EQ(need->height, 1);
-  EXPECT_EQ(need->target, 100);
+  EXPECT_EQ(need->target, 1000);
+
+  // Within the margin of the target only a peer's height, not its history, could keep it from
+  // serving, so there is nothing for the peer policy to do
+  pr_core.target_height = 1 + cryptonote::PEER_HISTORY_MARGIN;
+  EXPECT_FALSE(cprotocol.get_sync_need());
+  pr_core.target_height = 2 + cryptonote::PEER_HISTORY_MARGIN;
+  EXPECT_TRUE(cprotocol.get_sync_need());
 
   // Once synchronized, a target ahead of us is just a new block arriving, not a sync
   cryptonote::t_cryptonote_protocol_handler<test_core> synced(pr_core, /*offline=*/true);

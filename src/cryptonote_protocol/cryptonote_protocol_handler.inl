@@ -87,7 +87,7 @@ namespace cryptonote
   template<class t_core>
   bool t_cryptonote_protocol_handler<t_core>::init(const boost::program_options::variables_map& vm)
   {
-    m_sync_timer = std::chrono::steady_clock::now();
+    m_sync_start_time = std::chrono::steady_clock::now();
     m_last_add_end_time = std::chrono::steady_clock::now();
     m_sync_spans_downloaded = 0;
     m_sync_old_spans_downloaded = 0;
@@ -453,26 +453,30 @@ namespace cryptonote
       else
         log::debug(globallogcat, "{}", sync_msg);
 
-      m_period_start_time = m_sync_start_time = std::chrono::steady_clock::now();
-      m_sync_start_height = curr_height;
+      // A sync starts with the first target, or when a node that had caught up with its target is
+      // given a higher one.  A higher target while still syncing (the chain grows throughout a
+      // long sync) only extends the sync: what was measured from its start keeps being, or the
+      // "Synced N blocks in T" summary and the time estimates would cover only the stretch since
+      // the last time a peer's sync data happened to be first with a new tip.
+      if (m_core.get_target_blockchain_height() == 0 || (is_synchronized() && curr_height >= target))
       {
-        std::lock_guard lock{m_sync_rate_mutex};
-        m_sync_rate_samples.clear();
-      }
-
-      if (hshd.current_height >= curr_height + 5) // don't switch to unsafe mode just for a few blocks
-      {
-        m_core.safesyncmode(false);
-      }
-      if (m_core.get_target_blockchain_height() == 0) // only when sync starts
-      {
-        m_sync_timer = std::chrono::steady_clock::now();
-        m_last_add_end_time = std::chrono::steady_clock::now();
+        const auto now = std::chrono::steady_clock::now();
+        m_sync_start_time = m_period_start_time = m_last_add_end_time = now;
+        m_sync_start_height = curr_height;
+        {
+          std::lock_guard lock{m_sync_rate_mutex};
+          m_sync_rate_samples.clear();
+        }
         m_sync_spans_downloaded = 0;
         m_sync_old_spans_downloaded = 0;
         m_sync_bad_spans_downloaded = 0;
         m_sync_download_chain_size = 0;
         m_sync_download_objects_size = 0;
+      }
+
+      if (hshd.current_height >= curr_height + 5) // don't switch to unsafe mode just for a few blocks
+      {
+        m_core.safesyncmode(false);
       }
       m_core.set_target_blockchain_height((hshd.current_height));
     }
@@ -2196,7 +2200,7 @@ You are now synchronized with the network.
 **********************************************************************)");
       if (logcat->should_log(log::Level::info))
       {
-        const std::chrono::duration<double> sync_time{std::chrono::steady_clock::now() - m_sync_timer};
+        const std::chrono::duration<double> sync_time{std::chrono::steady_clock::now() - m_sync_start_time};
         log::info(logcat, fg(fmt::terminal_color::yellow), "Sync time: {:.1f} min, {:.1f} + {:.1f} MB downloaded, {:.2f}% old spans, {:.2f}% bad spans",
             sync_time.count()/60.0,
             m_sync_download_objects_size / 1000.0 / 1000.0,
@@ -2472,7 +2476,15 @@ You are now synchronized with the network.
     const uint64_t height = m_core.blockchain.get_current_blockchain_height();
     if (target <= height)
       return std::nullopt;
-    return sync_need{m_block_queue.get_next_needed_height(height), target};
+    // Downloading runs ahead of adding blocks, often all the way to the target, and then what is
+    // "needed" next is whatever block the target just moved on to: the newest block, which only
+    // the peers that have announced it yet appear able to serve.  Within the margin of the target
+    // no peer's history can be what stops it serving, only its height lagging the tip by a block
+    // or two, so there is no sync need the peer policy should act on.
+    const uint64_t need = m_block_queue.get_next_needed_height(height);
+    if (need + PEER_HISTORY_MARGIN >= target)
+      return std::nullopt;
+    return sync_need{need, target};
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
@@ -2481,7 +2493,7 @@ You are now synchronized with the network.
     if (!need || !peer_no_longer_keeps(need->height, context.m_remote_blockchain_height, context.m_history))
       return false;
     if (context.m_state != cryptonote_connection_context::state_standby)
-      log::debug(logcat, "{}peer keeps only its last {} blocks, so it can't serve height {}: waiting", context, context.m_history, need->height);
+      log::debug(logcat, "{}peer keeps only its last {} blocks, so it can't serve height {}: waiting", context, *context.m_history, need->height);
     context.m_state = cryptonote_connection_context::state_standby;
     return true;
   }
