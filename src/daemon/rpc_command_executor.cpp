@@ -197,22 +197,38 @@ miner tx hash: {})",
         return get_human_time_ago(std::chrono::seconds{now - t}, abbreviate);
     }
 
+    // The peer's history as get_peer_list reports it: how many recent blocks it keeps, 0 for all
+    // of them, absent if it never said.
+    std::string peer_history(const json& peer) {
+        auto it = peer.find("history");
+        if (it == peer.end())
+            return "???";
+        auto history = it->get<uint64_t>();
+        return history == 0 ? "archive" : "{} blocks"_format(history);
+    }
+
     void print_peer(std::string_view prefix, const json& peer) {
         time_t now = std::time(nullptr);
         time_t last_seen = peer.value<time_t>("last_seen", 0);
 
         tools::msg_writer(
-                "{:<10} {:016x}    {:<30} {}",
+                "{:<10} {:016x}    {:<30} {:<14} {}",
                 prefix,
                 peer["id"].get<uint64_t>(),
                 "{}:{}"_format(peer["host"].get<std::string_view>(), peer["port"].get<uint16_t>()),
+                peer_history(peer),
                 last_seen == 0 ? "never" : get_human_time_ago(last_seen, now));
     }
 
     void print_peers(std::string_view prefix, const json& peers, size_t& limit) {
         if (limit > 0)
             tools::msg_writer(
-                    "{:<10} {:<16}    {:<30} {}", "Type", "Peer id", "Remote address", "Last seen");
+                    "{:<10} {:<16}    {:<30} {:<14} {}",
+                    "Type",
+                    "Peer id",
+                    "Remote address",
+                    "History",
+                    "Last seen");
         for (auto it = peers.begin(); it != peers.end() && limit > 0; it++, limit--)
             print_peer(prefix, *it);
     }

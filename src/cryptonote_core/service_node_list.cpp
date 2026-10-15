@@ -234,9 +234,6 @@ struct data_for_serialization {
 // Temporary data that the SNL maintains for various book-keeping tasks. This structure is
 // zero-initialised on `service_node_list::reset` and can be repopulated from scratch.
 struct service_node_list_transient_storage {
-    // Store all old quorum history only if run with --store-full-quorum-history
-    std::deque<quorums_by_height> old_quorum_states;
-
     // Store state_t's from MIN(2nd oldest checkpoint | height -
     // DEFAULT_SHORT_TERM_STATE_HISTORY) up to the block height
     service_node_list::state_set state_history;
@@ -320,11 +317,15 @@ uint64_t oldest_retained_archive(const cryptonote::network_config& netconf, uint
 }
 
 // Returns the lowest height whose archived state is retained once the chain reaches `height`: the
-// oldest retained archive height, less the quorums before it that restoring it needs.
-static uint64_t archive_cull_height(const cryptonote::network_config& netconf, uint64_t height) {
+// oldest retained archive height, less the quorums before it that restoring it needs, or further
+// back when the stored quorums of the last `quorum_history` heights are to be kept.
+static uint64_t archive_cull_height(
+        const cryptonote::network_config& netconf, uint64_t height, uint64_t quorum_history) {
     uint64_t cull_height = oldest_retained_archive(netconf, height);
     if (cull_height >= PREDECESSOR_QUORUMS)
         cull_height -= PREDECESSOR_QUORUMS;
+    if (quorum_history)
+        cull_height = std::min(cull_height, height > quorum_history ? height - quorum_history : 0);
     return cull_height;
 }
 
@@ -441,16 +442,6 @@ void service_node_list::init() {
 
     uint64_t current_height = blockchain.get_current_blockchain_height();
     bool loaded = load(current_height);
-    if (loaded &&
-        m_transient->old_quorum_states.size() < std::min(m_store_quorum_history, uint64_t{10})) {
-        log::warning(
-                logcat,
-                "Full history storage requested, but {} old quorum states found",
-                m_transient->old_quorum_states.size());
-        loaded = false;  // Either we don't have stored history or the history is very short, so
-                         // recalculation is necessary or cheap.
-    }
-
     if (!loaded || m_state.height > current_height)
         reset(true);
 
@@ -542,20 +533,6 @@ std::shared_ptr<const quorum> service_node_list::get_quorum(
             quorums = &it->quorums;
         else if (archived = load_archived_state(blockchain.db(), m_state.sn_list, height); archived)
             quorums = &archived->quorums;
-    }
-
-    if (!quorums && include_old)  // NOTE: Search m_transient->old_quorum_states
-    {
-        auto it = std::lower_bound(
-                m_transient->old_quorum_states.begin(),
-                m_transient->old_quorum_states.end(),
-                height,
-                [](quorums_by_height const& entry, uint64_t height) {
-                    return entry.height < height;
-                });
-
-        if (it != m_transient->old_quorum_states.end() && it->height == height)
-            quorums = &it->quorums;
     }
 
     if (alt_quorums) {
@@ -3111,9 +3088,10 @@ void service_node_list::verify_block(
                     offset_testing_quorum_height(quorum_type::checkpointing, checkpoint->height),
                     checkpoint->height);
 
-            auto archive_heights = blockchain.db().get_service_node_archive_heights();
-            uint64_t min_archive = archive_heights.empty() ? 0 : archive_heights.front();
-            uint64_t max_archive = archive_heights.empty() ? 0 : archive_heights.back();
+            const auto archive_range =
+                    blockchain.db().get_service_node_archive_range().value_or(std::pair{0, 0});
+            uint64_t min_archive = archive_range.first;
+            uint64_t max_archive = archive_range.second;
 
             uint64_t min_history = m_transient->state_history.size()
                                          ? m_transient->state_history.begin()->height
@@ -4672,15 +4650,22 @@ block_add_result service_node_list::process_block(
         const uint64_t keep_quorum_min = archive_height - PREDECESSOR_QUORUMS;
         const uint64_t keep_quorum_max = archive_height - 1;
 
-        // NOTE: Store the current SNL state into our archived storage if we are eligible
-        bool quorums_only = m_state.height >= keep_quorum_min && m_state.height <= keep_quorum_max;
-        bool store = m_state.height == archive_height || quorums_only;
+        // NOTE: Store the current SNL state into our archived storage if we are eligible.  With a
+        // quorum history requested (--store-quorum-history), the quorums of every height are
+        // stored, to be looked up from the database on demand (see get_quorum).
+        const bool full = m_state.height == archive_height;
+        const bool quorums_only =
+                !full &&
+                ((m_state.height >= keep_quorum_min && m_state.height <= keep_quorum_max) ||
+                 m_store_quorum_history);
+        const bool store = full || quorums_only;
 
         // NOTE: During a rescan, don't bother archiving states that will have been culled by the
         // time the rescan reaches the top of the chain.
-        if (store &&
-            m_state.height >=
-                    archive_cull_height(netconf, blockchain.get_current_blockchain_height() - 1)) {
+        if (store && m_state.height >= archive_cull_height(
+                                               netconf,
+                                               blockchain.get_current_blockchain_height() - 1,
+                                               m_store_quorum_history)) {
             cryptonote::db_wtxn_guard txn_guard{blockchain.db()};
             if (quorums_only) {
                 auto copy = state_t(this);
@@ -4694,12 +4679,6 @@ block_add_result service_node_list::process_block(
         }
     }
 
-    // NOTE: Store quorums from this height if requested (m_store_quorum_history is a CLI flag)
-    TracyCZoneN(store_quorum_history, "Store quorum history", true);
-    if (m_store_quorum_history)
-        m_transient->old_quorum_states.emplace_back(m_state.height, m_state.quorums);
-    TracyCZoneEnd(store_quorum_history);
-
     // NOTE: Cull recent history
     const uint64_t cull_recent_height = min_recent_height(blockchain.nettype(), m_state.height);
     {
@@ -4711,8 +4690,9 @@ block_add_result service_node_list::process_block(
 
     // NOTE: Cull archive history.  The cull height only advances once per archive interval, so we
     // only touch the DB at the block where it does rather than opening a write txn on every block.
-    if (uint64_t cull_height = archive_cull_height(netconf, m_state.height);
-        m_state.height > 0 && cull_height != archive_cull_height(netconf, m_state.height - 1)) {
+    if (uint64_t cull_height = archive_cull_height(netconf, m_state.height, m_store_quorum_history);
+        m_state.height > 0 &&
+        cull_height != archive_cull_height(netconf, m_state.height - 1, m_store_quorum_history)) {
         ZoneScopedN("Cull archive history");
         cryptonote::db_wtxn_guard txn_guard{blockchain.db()};
         blockchain.db().delete_service_node_archives(0, cull_height);
@@ -4724,14 +4704,6 @@ block_add_result service_node_list::process_block(
         std::unordered_map<crypto::hash, state_t>& map = m_transient->alt_state;
         while (map.size() && map.begin()->second.height < cull_recent_height)
             map.erase(map.begin());
-    }
-
-    // NOTE: Cull old quorums stored
-    {
-        ZoneScopedN("Cull old quorums");
-        auto& old = m_transient->old_quorum_states;
-        if (old.size() > m_store_quorum_history)
-            old.erase(old.begin(), old.begin() + (old.size() - m_store_quorum_history));
     }
 
     auto pulse_quorum_size = PULSE_QUORUM_SIZE(block.major_version, active_service_nodes_count());
@@ -5870,18 +5842,15 @@ void service_node_list::store_state_snapshot() {
     // kept for the quorum history, it becomes just those.
     if (!history_window && height >= 3 * STATE_SNAPSHOT_INTERVAL) {
         const uint64_t leaving = height - 3 * STATE_SNAPSHOT_INTERVAL;
-        const auto& old = m_transient->old_quorum_states;
-        auto it = std::lower_bound(
-                old.begin(), old.end(), leaving, [](const quorums_by_height& q, uint64_t h) {
-                    return q.height < h;
-                });
-        if (height - leaving <= keep_quorums_window && !archive_keeps(netconf, leaving) &&
-            it != old.end() && it->height == leaving) {
-            state_t quorums{this};
-            quorums.only_loaded_quorums = true;
-            quorums.quorums = it->quorums;
-            quorums.height = leaving;
-            archive_state(db, quorums);
+        if (height - leaving <= keep_quorums_window && !archive_keeps(netconf, leaving)) {
+            if (auto stored = load_archived_state(db, this, leaving);
+                stored && !stored->only_loaded_quorums) {
+                state_t quorums{this};
+                quorums.only_loaded_quorums = true;
+                quorums.quorums = std::move(stored->quorums);
+                quorums.height = leaving;
+                archive_state(db, quorums);
+            }
         }
     }
 
@@ -5958,8 +5927,11 @@ bool service_node_list::store(uint64_t state_height) {
         {
             TracyCZoneN(serialize_step, "Serialize and compress history array of blobs", true);
             serialization::binary_string_archiver ar;
+            // The blob format has a list of stored quorums; those are archive rows instead (see
+            // process_block), so it is written empty.
+            std::deque<quorums_by_height> no_quorums;
             auto db_blob = zstd_compress(
-                    serialize_db_blob(ar, history_blob_list, &m_transient->old_quorum_states),
+                    serialize_db_blob(ar, history_blob_list, &no_quorums),
                     SHORT_TERM_STATE_COMPRESS_LEVEL,
                     MAGIC_COMPRESSED_BLOB_PREFIX);
 
@@ -6774,8 +6746,7 @@ static try_load_blobs_result try_load_as_old_style_blobs(
         service_node_list_transient_storage* m_transient,
         service_node_list::state_set& legacy_archive,
         cryptonote::Blockchain& blockchain,
-        service_node_list::state_t& m_state,
-        uint64_t m_store_quorum_history) {
+        service_node_list::state_t& m_state) {
     auto& db = blockchain.db();
     cryptonote::db_rtxn_guard txn_guard{db};
 
@@ -6831,29 +6802,6 @@ static try_load_blobs_result try_load_as_old_style_blobs(
 
     if (data_in.states.empty())
         return result;
-
-    {
-        const uint64_t hist_state_from_height = current_height - m_store_quorum_history;
-        uint64_t last_loaded_height = 0;
-        for (auto& states : data_in.quorum_states) {
-            if (states.height < hist_state_from_height)
-                continue;
-
-            quorums_by_height entry = {};
-            entry.height = states.height;
-            entry.quorums = quorum_for_serialization_to_quorum_manager(states);
-
-            if (states.height <= last_loaded_height) {
-                log::warning(
-                        logcat,
-                        "Serialised quorums is not stored in ascending order by height in DB, "
-                        "failed to load from DB");
-                return result;
-            }
-            last_loaded_height = states.height;
-            m_transient->old_quorum_states.push_back(entry);
-        }
-    }
 
     assert(data_in.states.size());
     if (data_in.states.size()) {
@@ -6917,8 +6865,7 @@ static try_load_blobs_result try_load_as_new_style_blobs(
         service_node_list_transient_storage* m_transient,
         service_node_list::state_set& legacy_archive,
         cryptonote::Blockchain& blockchain,
-        service_node_list::state_t& m_state,
-        uint64_t m_store_quorum_history) {
+        service_node_list::state_t& m_state) {
     try_load_blobs_result result = {};
     std::string db_blob;
 
@@ -7010,7 +6957,10 @@ static try_load_blobs_result try_load_as_new_style_blobs(
 
     serialization::binary_string_unarchiver ar{db_blob};
     std::vector<std::string> sn_blob_list;
-    serialize_db_blob(ar, sn_blob_list, &m_transient->old_quorum_states);
+    // The blob format has a list of stored quorums, which has to be read to get past it; the
+    // archive rows are what is used (see process_block).
+    std::deque<quorums_by_height> unused_quorums;
+    serialize_db_blob(ar, sn_blob_list, &unused_quorums);
 
     std::mutex mutex;
     const service_node_list::state_t* prev = nullptr;
@@ -7040,15 +6990,13 @@ static try_load_blobs_result try_load_as_new_style_blobs(
 }
 
 // Loads the SN list from the states stored in the blockchain database (see store_state_snapshot):
-// m_state from the newest restorable one at or below the top of the chain, and the old quorums to
-// keep for --store-quorum-history.
+// m_state from the newest restorable one at or below the top of the chain.
 static try_load_blobs_result try_load_from_db_states(
         uint64_t current_height,
         service_node_list* snl,
         service_node_list_transient_storage* m_transient,
         cryptonote::Blockchain& blockchain,
-        service_node_list::state_t& m_state,
-        uint64_t m_store_quorum_history) {
+        service_node_list::state_t& m_state) {
     try_load_blobs_result result = {};
     if (current_height == 0)
         return result;
@@ -7061,19 +7009,6 @@ static try_load_blobs_result try_load_from_db_states(
         return result;
     m_state = std::move(*state);
     result.recent_min_height = result.recent_max_height = m_state.height;
-
-    // Replaying from m_state adds the quorums of m_state.height and later.
-    if (m_store_quorum_history) {
-        const uint64_t from = m_state.height > m_store_quorum_history
-                                    ? m_state.height - m_store_quorum_history
-                                    : 0;
-        for (uint64_t h : db.get_service_node_archive_heights()) {
-            if (h < from || h >= m_state.height)
-                continue;
-            if (auto stored = load_archived_state(db, snl, h))
-                m_transient->old_quorum_states.emplace_back(h, std::move(stored->quorums));
-        }
-    }
 
     result.success = true;
     return result;
@@ -7093,12 +7028,7 @@ bool service_node_list::load(const uint64_t current_height) {
     if (states_in_db()) {
         try {
             load_result = try_load_from_db_states(
-                    current_height,
-                    this,
-                    m_transient.get(),
-                    blockchain,
-                    m_state,
-                    m_store_quorum_history);
+                    current_height, this, m_transient.get(), blockchain, m_state);
         } catch (const std::exception& e) {
             log::warning(logcat, "Failed to load the stored SN list states: {}", e.what());
         }
@@ -7107,13 +7037,7 @@ bool service_node_list::load(const uint64_t current_height) {
     } else {
         try {
             load_result = try_load_as_new_style_blobs(
-                    current_height,
-                    this,
-                    m_transient.get(),
-                    legacy_archive,
-                    blockchain,
-                    m_state,
-                    m_store_quorum_history);
+                    current_height, this, m_transient.get(), legacy_archive, blockchain, m_state);
         } catch (std::exception&) {
             // NOTE: Try as old style blob then
         }
@@ -7128,13 +7052,7 @@ bool service_node_list::load(const uint64_t current_height) {
         // can then just delete this entire function and promote the else branch
         // below to the default code path to run.
         load_result = try_load_as_old_style_blobs(
-                current_height,
-                this,
-                m_transient.get(),
-                legacy_archive,
-                blockchain,
-                m_state,
-                m_store_quorum_history);
+                current_height, this, m_transient.get(), legacy_archive, blockchain, m_state);
     }
 
     if (!load_result.success)
@@ -7147,8 +7065,8 @@ bool service_node_list::load(const uint64_t current_height) {
     // dropping any states that are already too old to keep, and remove the blob.
     if (std::string legacy_blob; db.get_service_node_data(legacy_blob, true /*long_term*/)) {
         cryptonote::db_wtxn_guard txn_guard{db};
-        const uint64_t cull_height =
-                archive_cull_height(get_config(blockchain.nettype()), m_state.height);
+        const uint64_t cull_height = archive_cull_height(
+                get_config(blockchain.nettype()), m_state.height, m_store_quorum_history);
         while (!legacy_archive.empty()) {
             auto node = legacy_archive.extract(legacy_archive.begin());
             if (node.value().height >= cull_height)
@@ -7184,23 +7102,20 @@ bool service_node_list::load(const uint64_t current_height) {
 
     cleanup_zombies_from_state();
 
-    const auto archive_heights = db.get_service_node_archive_heights();
-    const auto& netconf = get_config(blockchain.nettype());
+    // Only the ends of the archive are reported: with a quorum history stored there is an archived
+    // state for every block, and anything that visits them all takes a long time.
+    const auto archive_range = db.get_service_node_archive_range();
     log::info(
             globallogcat,
-            "{} nodes, {} recent states [blks {}-{}] loaded ({}), {} archived [blks {}-{}] (w/ {} "
-            "quorums) @ height: {}",
+            "{} nodes, {} recent states [blks {}-{}] loaded ({}), archived states [blks {}-{}] @ "
+            "height: {}",
             m_state.service_nodes_infos.size(),
             m_transient->state_history.size(),
             load_result.recent_min_height,
             load_result.recent_max_height,
             tools::get_human_readable_bytes(load_result.bytes_loaded),
-            archive_heights.size(),
-            archive_heights.empty() ? 0 : archive_heights.front(),
-            archive_heights.empty() ? 0 : archive_heights.back(),
-            std::ranges::count_if(
-                    archive_heights,
-                    [&](uint64_t h) { return h % netconf.HISTORY_ARCHIVE_INTERVAL != 0; }),
+            archive_range ? archive_range->first : 0,
+            archive_range ? archive_range->second : 0,
             m_state.height);
     return true;
 }
