@@ -62,6 +62,12 @@ constexpr bool FIXME_has_nested_response_v = FIXME_has_nested_response<T>::value
 
 class core_rpc_server;
 
+/// The level at which an RPC server logs a request that failed with `e`: a request for something
+/// this node doesn't have (an unknown id, or history it no longer keeps) is the client's business,
+/// such as an explorer trying a hash as a block, a transaction and a service node in turn, not a
+/// problem with the server, so it is logged at debug rather than warning.
+oxen::log::Level rpc_error_log_level(const rpc_error& e);
+
 /// Stores an RPC command callback.  These are set up in core_rpc_server.cpp.
 struct rpc_command {
     using result_type = std::variant<oxenc::bt_value, nlohmann::json, std::string>;

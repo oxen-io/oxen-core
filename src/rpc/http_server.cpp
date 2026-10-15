@@ -393,7 +393,12 @@ namespace {
             json_message = "Invalid params";
             json_error_data = http_message;
         } catch (const rpc_error& e) {
-            log::warning(logcat, "HTTP RPC request '{}' failed with: {}", data.uri, e.what());
+            log::log(
+                    logcat,
+                    rpc_error_log_level(e),
+                    "HTTP RPC request '{}' failed with: {}",
+                    data.uri,
+                    e.what());
             json_error = e.code;
             json_message = e.message;
             http_message = e.message;
