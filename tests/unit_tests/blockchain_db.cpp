@@ -1110,6 +1110,7 @@ TYPED_TEST(BlockchainDBTest, ServiceNodeData)
     EXPECT_FALSE(db.get_service_node_data(data, false));
   }
   EXPECT_EQ(db.get_service_node_archive_heights(), (std::vector<uint64_t>{0, 1}));
+  EXPECT_EQ(db.get_service_node_archive_range(), (std::pair<uint64_t, uint64_t>{0, 1}));
   EXPECT_EQ(db.get_service_node_archive(1), "archive 1");
   EXPECT_EQ(db.get_service_node_archive(5), std::nullopt);
 
@@ -1120,6 +1121,7 @@ TYPED_TEST(BlockchainDBTest, ServiceNodeData)
   }
   EXPECT_FALSE(db.get_service_node_data(data, false));
   EXPECT_EQ(db.get_service_node_archive_heights(), (std::vector<uint64_t>{0}));
+  EXPECT_EQ(db.get_service_node_archive_range(), (std::pair<uint64_t, uint64_t>{0, 0}));
 
   {
     db_wtxn_guard guard{db};
@@ -1127,6 +1129,7 @@ TYPED_TEST(BlockchainDBTest, ServiceNodeData)
   }
   EXPECT_FALSE(db.get_service_node_data(data, true));
   EXPECT_TRUE(db.get_service_node_archive_heights().empty());
+  EXPECT_EQ(db.get_service_node_archive_range(), std::nullopt);
 }
 
 TYPED_TEST(BlockchainDBTest, ServiceNodeProofs)

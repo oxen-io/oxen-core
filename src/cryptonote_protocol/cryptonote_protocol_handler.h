@@ -246,17 +246,17 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     tools::periodic_task m_standby_checker{"standby checker", 100ms};
     tools::periodic_task m_sync_search_checker{"sync search check", 101s};
     std::atomic<unsigned int> m_max_out_peers;
-    std::chrono::steady_clock::time_point m_sync_timer;
     std::chrono::steady_clock::time_point m_last_add_end_time;
     uint64_t m_sync_spans_downloaded, m_sync_old_spans_downloaded, m_sync_bad_spans_downloaded;
     uint64_t m_sync_download_chain_size, m_sync_download_objects_size;
     size_t m_block_download_max_size;
 
-    // Values for sync time estimates
+    // When and at what height the current sync started (see process_payload_sync_data for what
+    // counts as a start): the sync time estimates, the sync rate and the "Synced N blocks" summary
+    // are all measured from here.
     std::chrono::steady_clock::time_point m_sync_start_time;
+    uint64_t m_sync_start_height = 0;
     std::chrono::steady_clock::time_point m_period_start_time;
-    uint64_t m_sync_start_height;
-    uint64_t m_period_start_height;
     uint64_t get_estimated_remaining_sync_seconds(
             uint64_t current_blockchain_height, uint64_t target_blockchain_height);
     std::string get_periodic_sync_estimate(
