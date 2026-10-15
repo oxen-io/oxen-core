@@ -875,6 +875,7 @@ add_custom_target(strip_binaries_all ${strip_binaries_all} DEPENDS ${oxen_exec_t
 
 execute_process(COMMAND tar --version RESULT_VARIABLE tar_exit_code OUTPUT_VARIABLE tar_vers)
 set(git_tag "-unknown")
+find_package(Git)
 if(GIT_FOUND)
   execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --abbrev-ref HEAD RESULT_VARIABLE ret OUTPUT_VARIABLE branch OUTPUT_STRIP_TRAILING_WHITESPACE)
   if(NOT ret AND branch STREQUAL "stable")
