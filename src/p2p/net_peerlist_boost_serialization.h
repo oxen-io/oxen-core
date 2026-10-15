@@ -32,7 +32,6 @@
 
 #include <common/exception.h>
 #include <common/expect.h>
-#include <common/pruning.h>
 
 #include <cstring>
 
@@ -41,7 +40,7 @@
 #include "net/tor_address.h"
 #include "p2p/p2p_protocol_defs.h"
 
-BOOST_CLASS_VERSION(nodetool::peerlist_entry, 3)
+BOOST_CLASS_VERSION(nodetool::peerlist_entry, 6)
 
 namespace boost::serialization {
 template <class T, class Archive>
@@ -201,26 +200,41 @@ inline void serialize(Archive& a, nodetool::peerlist_entry& pl, const ver_type v
     a & pl.adr;
     a & pl.id;
     a & pl.last_seen;
-    if (ver < 1) {
-        if (!typename Archive::is_saving())
-            pl.pruning_seed = 0;
-        return;
+    // Versions 1 to 3 had an (always unused) pruning seed, and version 2 an unused rpc port too,
+    // which are only ever read: anything saved now is the current version.
+    //
+    // ver can be a boost::serialization::version_type, whose boost::operators comparisons with an
+    // integer (other than <) recurse forever, so it is compared as a plain integer.
+    const unsigned version = ver;
+    if (version >= 1 && version < 4) {
+        uint32_t pruning_seed = 0;
+        a & pruning_seed;
     }
-    a & pl.pruning_seed;
-    if constexpr (cryptonote::PRUNING_DEBUG_SPOOF_SEED && !typename Archive::is_saving()) {
-        pl.pruning_seed = tools::make_pruning_seed(
-                1 + pl.adr.as<epee::net_utils::ipv4_network_address>().ip() %
-                                (1 << cryptonote::PRUNING_LOG_STRIPES),
-                cryptonote::PRUNING_LOG_STRIPES);
-    }
-    if (ver < 2) {
-        return;
-    }
-
-    if (ver < 3) {
-        // Unused, but don't break
+    if (version == 2) {
         uint16_t rpc_port = 0;
         a & rpc_port;
+    }
+    if (version == 5) {
+        // Version 5 could not tell a peer that never said what it keeps from one keeping every
+        // block: both were 0.
+        uint64_t history = 0;
+        a & history;
+        if (history)
+            pl.history = history;
+        else
+            pl.history.reset();
+    } else if (version >= 6) {
+        // As a flag and a value, rather than through boost/serialization/optional.hpp, which only
+        // handles std::optional in newer Boost versions than some builds have.
+        bool has_history = pl.history.has_value();
+        a & has_history;
+        if (has_history) {
+            uint64_t history = pl.history.value_or(0);
+            a & history;
+            pl.history = history;
+        } else {
+            pl.history.reset();
+        }
     }
 }
 

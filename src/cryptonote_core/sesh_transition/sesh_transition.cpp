@@ -139,7 +139,7 @@ static void dump_transition_outcome_csv(
     {
         FileFormatter file{
                 "{:%Y%m%d_%H%M%S}_sesh_transition_result_stake_req_{}_conv_ratio_{}_oxen_per_{}_sesh_eth_addr_allocation.csv"_format(
-                        fmt::localtime(now),
+                        fmt::gmtime(now),
                         cryptonote::print_money(
                                 context.staking_requirement,
                                 cryptonote::strip_zeros::yes,
@@ -336,7 +336,7 @@ static void dump_transition_outcome_csv(
         // NOTE: Generate file
         FileFormatter file{
                 "{:%Y%m%d_%H%M%S}_sesh_transition_result_stake_req_{}_conv_ratio_{}_oxen_per_{}_sesh_transition_{}pct.csv"_format(
-                        fmt::localtime(now),
+                        fmt::gmtime(now),
                         cryptonote::print_money(
                                 context.staking_requirement,
                                 cryptonote::strip_zeros::yes,
@@ -418,7 +418,7 @@ static void dump_transition_outcome_csv(
 void transition(
         const transition_context& context,
         service_nodes::service_node_list::state_t& snl_state,
-        cryptonote::BlockchainSQLite& sql,
+        cryptonote::RewardsDB& sql,
         network_type net,
         service_nodes::block_add_result& add_result,
         uint32_t block_tx_count) {
@@ -799,7 +799,7 @@ void transition(
     // All OXEN rewards are wiped first, any unconverted are dropped (but were paid out last block
     // anyway).
     {
-        sql.db.exec("DELETE FROM batched_payments_accrued");
+        sql.clear_accrued_rewards();
         cryptonote::block_payments rewards_payments;
         for (const auto& [eth_addr, amt] : unallocated) {
             cryptonote::sql_payment payment = {};

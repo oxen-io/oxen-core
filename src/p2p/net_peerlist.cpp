@@ -48,6 +48,15 @@ namespace {
 
     constexpr unsigned CURRENT_PEERLIST_STORAGE_ARCHIVE_VER = 6;
 
+    // An entry relayed without a history (by a peer that predates the field, or that never heard
+    // one) says nothing about a peer whose history we know.  Any relayed history does replace what
+    // we knew: if it is out of date, it costs at most passing over the peer once while syncing,
+    // until the peer itself tells us otherwise.
+    void keep_known_history(peerlist_entry& updated, const peerlist_entry& known) {
+        if (!updated.history)
+            updated.history = known.history;
+    }
+
     struct by_zone {
         using zone = epee::net_utils::zone;
 
@@ -356,15 +365,26 @@ bool peerlist_manager::get_peerlist_head(
 }
 
 bool peerlist_manager::set_peer_just_seen(
-        peerid_type peer, const epee::net_utils::network_address& addr, uint32_t pruning_seed) {
+        peerid_type peer,
+        const epee::net_utils::network_address& addr,
+        std::optional<uint64_t> history) {
     TRY_ENTRY();
+    if (!is_host_allowed(addr))
+        return true;
+
     std::lock_guard lock{m_peerlist_lock};
-    // find in white list
     peerlist_entry ple;
     ple.adr = addr;
     ple.id = peer;
     ple.last_seen = time(NULL);
-    ple.pruning_seed = pruning_seed;
+    ple.history = history;
+    // This comes from the peer itself, so unlike what append_with_peer_white is given it replaces
+    // the whole entry, last seen time and history included.
+    auto by_addr_it = m_peers_white.get<by_addr>().find(addr);
+    if (by_addr_it != m_peers_white.get<by_addr>().end()) {
+        m_peers_white.replace(by_addr_it, ple);
+        return true;
+    }
     return append_with_peer_white(ple);
     CATCH_ENTRY("peerlist_manager::set_peer_just_seen()", false);
 }
@@ -384,11 +404,9 @@ bool peerlist_manager::append_with_peer_white(const peerlist_entry& ple) {
     } else {
         // update record in white list
         peerlist_entry new_ple = ple;
-        if (by_addr_it_wt->pruning_seed &&
-            ple.pruning_seed == 0)  // guard against older nodes not passing pruning info around
-            new_ple.pruning_seed = by_addr_it_wt->pruning_seed;
         new_ple.last_seen = by_addr_it_wt->last_seen;  // do not overwrite the last seen timestamp,
                                                        // incoming peer list are untrusted
+        keep_known_history(new_ple, *by_addr_it_wt);
         m_peers_white.replace(by_addr_it_wt, new_ple);
     }
     // remove from gray list, if need
@@ -420,11 +438,9 @@ bool peerlist_manager::append_with_peer_gray(const peerlist_entry& ple) {
     } else {
         // update record in gray list
         peerlist_entry new_ple = ple;
-        if (by_addr_it_gr->pruning_seed &&
-            ple.pruning_seed == 0)  // guard against older nodes not passing pruning info around
-            new_ple.pruning_seed = by_addr_it_gr->pruning_seed;
         new_ple.last_seen = by_addr_it_gr->last_seen;  // do not overwrite the last seen timestamp,
                                                        // incoming peer list are untrusted
+        keep_known_history(new_ple, *by_addr_it_gr);
         m_peers_gray.replace(by_addr_it_gr, new_ple);
     }
     return true;

@@ -61,13 +61,27 @@
 namespace cryptonote {
 class Blockchain;
 class BlockchainDB;
-class BlockchainSQLite;
+class RewardsDB;
 struct checkpoint_t;
 struct wallet_info;
 };  // namespace cryptonote
 
+namespace SQLite {
+class Transaction;
+}
+
 namespace service_nodes {
 inline constexpr uint64_t INVALID_HEIGHT = static_cast<uint64_t>(-1);
+
+// With the SQLite blockchain database, the SN list state is stored at each height divisible by
+// this, inside that block's transaction, so a restart replays at most this many blocks.
+inline constexpr uint64_t STATE_SNAPSHOT_INTERVAL = 60;
+
+// The lowest archive height (a multiple of HISTORY_ARCHIVE_INTERVAL) whose full state the archive
+// still retains once the chain reaches `height`.  The rewards keep their snapshots at archive
+// heights for exactly as long, which makes each of those archived states a height that both can be
+// restored to.
+uint64_t oldest_retained_archive(const cryptonote::network_config& netconf, uint64_t height);
 
 struct rescan_context {
     bool skip_verify;
@@ -226,12 +240,20 @@ struct eth_stake {
     uint32_t contributor_index;  // Index of the contributor in the event the exit stake is for
 };
 
+// A stake returned by a node's exit, which the rewards pay back to its contributor once the block
+// at `payout_height` is reached.
+struct delayed_stake {
+    eth_stake stake;
+    uint64_t payout_height;
+};
+
 struct block_add_result {
     // List of payable nodes. Populated when the block height is >= HF19, empty
     // otherwise
     std::vector<crypto::public_key> payable_nodes_hf19_onwards;
     std::vector<eth_stake> locked_stakes;
     std::vector<eth_stake> purged_stakes;
+    std::vector<delayed_stake> exited_stakes;
 };
 
 struct service_node_info  // registration information
@@ -269,6 +291,8 @@ struct service_node_info  // registration information
                 uint64_t amount) :
                 version{version}, key_image_pub_key{pubkey}, key_image{key_image}, amount{amount} {}
 
+        bool operator==(const contribution_t&) const = default;
+
         template <class Archive>
         void serialize_object(Archive& ar) {
             field_varint(ar, "version", version, [](auto& version) {
@@ -296,6 +320,8 @@ struct service_node_info  // registration information
             reserved = reserved_;
             address = address_;
         }
+
+        bool operator==(const contributor_t&) const = default;
 
         template <class Archive>
         void serialize_object(Archive& ar) {
@@ -346,6 +372,7 @@ struct service_node_info  // registration information
     pulse_sort_key pulse_sorter;
 
     service_node_info() = default;
+    bool operator==(const service_node_info&) const = default;
     bool is_fully_funded() const { return total_contributed >= staking_requirement; }
     bool is_decommissioned() const { return active_since_height < 0; }
 
@@ -359,7 +386,10 @@ struct service_node_info  // registration information
     }
 
     bool can_transition_to_state(
-            cryptonote::hf hf_version, uint64_t block_height, new_state proposed_state) const;
+            cryptonote::network_type nettype,
+            cryptonote::hf hf_version,
+            uint64_t block_height,
+            new_state proposed_state) const;
     bool can_be_voted_on(uint64_t block_height) const;
     size_t total_num_locked_contributions() const;
 
@@ -527,20 +557,32 @@ struct service_node_keys {
     eth::bls_public_key pub_bls;
 };
 
-// Caches the window of block entropy for deriving pulse quorums of blocks for forming pulse
-// quorums. This prevents having to pull blocks from the DB and instead have them sitting in memory.
-// The entropy for `block` is defined as the first `PULSE_QUORUM_SIZE` hashes from `data` after
-// `add_block` is called at-least once for a block.
+// Caches the window of block entropy for deriving round 0 pulse quorums of blocks for forming pulse
+// quorums. This prevents having to pull blocks from the DB in the most common case and instead have
+// them sitting in memory.
+//
+// This cache is still fed but *not* used for backup pulse rounds quora: they require a different
+// entropy calculation through the entire range of blocks, but are most likely not useful for the
+// next round (because it's much more likely to be round 0 again, not whatever the previous block's
+// backup round was).
 //
 // If `add_block` fails then the window is not initialised and no hashes will be returned when
 // queried.
 struct pulse_entropy_feeder {
-    bool init = false;
-    uint8_t pulse_round = 0;
-    crypto::hash last_hash = {};
-    crypto::hash data[PULSE_QUORUM_ENTROPY_LAG + 2] = {};
+    crypto::hash last_hash = crypto::null<crypto::hash>;
+
+    // The number of valid elements in `data`, i.e. data[data_offset] until data[data_offset +
+    // ENTROPY_NEEDED] are set to the entropy values for the last ENTROPY_NEEDED blocks.  The
+    // underlying data array is larger so that we can reduce how often we have to shift elements in
+    // it.
+    inline static constexpr size_t ENTROPY_NEEDED =
+            PULSE_QUORUM_MAX_SIZE + PULSE_QUORUM_ENTROPY_MIN_LAG + 1;
+
+    std::array<crypto::hash, 2 * ENTROPY_NEEDED - 1> data = {};
+    size_t data_offset = 0;
+
     bool add_block(const cryptonote::BlockchainDB& db, const cryptonote::block& block);
-    std::span<const crypto::hash> get_window() const;
+    std::span<const crypto::hash> get_round0_entropy(size_t quorum_size) const;
 };
 
 class service_node_list {
@@ -552,12 +594,21 @@ class service_node_list {
     service_node_list(const service_node_list&) = delete;
     service_node_list& operator=(const service_node_list&) = delete;
 
+    // `hash_listed` says that the block's hash is the one the compiled-in list of known blocks has
+    // at its height, so that a pulse block's signatures needn't be checked (everything else about
+    // it still is).
     void block_add(
             const cryptonote::block& block,
             const std::vector<cryptonote::transaction>& txs,
             const cryptonote::checkpoint_t* checkpoint,
-            const std::optional<rescan_context>& rescan = std::nullopt);
+            const std::optional<rescan_context>& rescan = std::nullopt,
+            bool hash_listed = false);
     void blockchain_detached(uint64_t height);
+
+    // Whether detaching the chain down to `height` blocks could be followed: the SN list and the
+    // rewards both have a state at or below its new top block to restore and replay from, or can
+    // be rebuilt from scratch (always, when the blockchain database keeps all of its history).
+    bool can_detach_to(uint64_t height) const;
     void init();
     void validate_miner_tx(const cryptonote::miner_tx_info& info) const;
     void alt_block_add(const cryptonote::block_add_info& info);
@@ -623,14 +674,10 @@ class service_node_list {
             f(it->second);
     }
 
-    /// FIXME: remove some time after HF21
-    /// core needs to update the service node keys (to which we have a pointer) at HF21,
-    /// this allows core to make sure we're not using them at that moment
-    template <typename Func>
-    void while_locked(Func f) const {
-        std::unique_lock lock{m_sn_mutex};
-        f();
-    }
+    // Implement lockable for the object
+    void lock() { m_sn_mutex.lock(); }
+    void unlock() { m_sn_mutex.unlock(); }
+    bool try_lock() { return m_sn_mutex.try_lock(); }
 
     /// Returns the primary SN pubkey associated with a x25519 pubkey.  Returns a null public key if
     /// not found.  (Note: this is just looking up the association, not derivation).
@@ -856,10 +903,16 @@ class service_node_list {
         std::unique_lock lock{m_sn_mutex};
         return m_state.active_service_nodes_infos();
     }
+    size_t active_service_nodes_count() const {
+        std::unique_lock lock{m_sn_mutex};
+        return m_state.active_service_nodes_count();
+    }
 
     void set_my_service_node_keys(const service_node_keys* keys);
-    void set_quorum_history_storage(
-            uint64_t hist_size);  // 0 = none (default), 1 = unlimited, N = # of blocks
+    // Sets how many blocks of quorum history to keep stored, for historic get_quorum lookups: 0 =
+    // none beyond what consensus needs (default), 1 = unlimited, N = the last N blocks.  The
+    // quorums are rows of the blockchain database, read when looked up.
+    void set_quorum_history_storage(uint64_t hist_size);
     bool store(uint64_t state_height = 0);
 
     uptime_proof::Proof generate_uptime_proof(
@@ -1122,6 +1175,7 @@ class service_node_list {
         service_nodes_infos_t::iterator erase_info(
                 const service_nodes_infos_t::iterator& it, recently_removed_node::type_t exit_type);
 
+        size_t active_service_nodes_count() const;
         std::vector<pubkey_and_sninfo> active_service_nodes_infos() const;
         std::vector<pubkey_and_sninfo> decommissioned_service_nodes_infos()
                 const;  // return: All nodes that are fully funded *and* decommissioned.
@@ -1156,14 +1210,16 @@ class service_node_list {
                 uint64_t block_height) const;
 
         // oxen_chain_generator in core_tests does not have a Blockchain,
-        // but we can't include db_sqlite header here because it includes us,
+        // but we can't include rewards_db header here because it includes us,
         // so this overload is necessary.
+        //
+        // Changes to `rewards_db_ptr` (made by the HF21 transition and HF22 fixups) are pending in
+        // it until its add_block (see RewardsDB).
         block_add_result update_from_block(
                 const cryptonote::BlockchainDB& db,
-                cryptonote::BlockchainSQLite* sqlite_db_ptr,
+                cryptonote::RewardsDB* rewards_db_ptr,
                 cryptonote::network_type nettype,
                 state_set const& state_history,
-                state_set const& state_archive,
                 std::unordered_map<crypto::hash, state_t> const& alt_states,
                 const cryptonote::block& block,
                 const std::vector<cryptonote::transaction>& txs,
@@ -1186,8 +1242,8 @@ class service_node_list {
         // Returns true if a service node changed state (deregistered, decommissioned, or
         // recommissioned)
         bool process_state_change_tx(
+                const cryptonote::BlockchainDB& db,
                 state_set const& state_history,
-                state_set const& state_archive,
                 std::unordered_map<crypto::hash, state_t> const& alt_states,
                 cryptonote::network_type nettype,
                 const cryptonote::block& block,
@@ -1225,6 +1281,8 @@ class service_node_list {
             bool success;
             bool need_swarm_update;
             std::vector<eth_stake> exit_stakes;
+            // For an exit: the block that pays `exit_stakes` back to their contributors.
+            uint64_t payout_height = 0;
         };
 
         // Applies a pulse-quorums-confirmed L2 event to the service node list state.  Returns true
@@ -1392,14 +1450,44 @@ class service_node_list {
             crypto::public_key const& pubkey, uint64_t height, uint8_t round, bool participated);
 
     // Verify block against Service Node state that has just been called with
-    // 'state.update_from_block(block)'.
+    // 'state.update_from_block(block)'.  `active_node_count` is the node count at the time the
+    // block was produced (i.e. the count of the previous state, not the just-updated state).
+    // `hash_listed` (see block_add) skips checking the pulse signatures themselves.
     void verify_block(
             const cryptonote::block& block,
             bool alt_block,
-            cryptonote::checkpoint_t const* checkpoint) const;
+            cryptonote::checkpoint_t const* checkpoint,
+            size_t active_node_count,
+            bool hash_listed = false) const;
 
     void reset(bool delete_db_entry = false);
     bool load(uint64_t current_height);
+
+    // True when the SN list's states are rows of the blockchain database (the SQLite backend,
+    // where they're written every STATE_SNAPSHOT_INTERVAL blocks) rather than its short-term blob,
+    // written by store() (LMDB).
+    bool states_in_db() const;
+
+    // How many of the most recent blocks the blockchain database keeps the history of (see
+    // cryptonote::history_window): 0 when it keeps all of it.
+    uint64_t kept_history_window() const;
+
+    // Whether the SN list (and with it the rewards) can start over from scratch, replaying the
+    // blocks from HF9: only if the blockchain database still has them all.
+    bool can_rescan() const;
+
+    // Whether `height` is before HF9, where the SN list holds nothing.
+    bool before_hf9(uint64_t height) const;
+
+    // The lowest height a detach may restore a state from (and so replay blocks from): the start of
+    // the history kept, or the heights after it whose quorums are all stored too (for a `stored`
+    // state, which needs those).  0 when all of the history is kept.
+    uint64_t min_restore_height(bool stored) const;
+
+    // Stores m_state, whose height is a multiple of STATE_SNAPSHOT_INTERVAL, along with the
+    // quorums of the heights before it that a restart from it needs, and deletes the stored
+    // states that have dropped out of what is kept.  Only used when states_in_db().
+    void store_state_snapshot();
 
     mutable std::recursive_mutex m_sn_mutex;
     const service_node_keys* m_service_node_keys;
@@ -1520,14 +1608,20 @@ service_nodes::quorum generate_pulse_quorum(
 // The pulse entropy is generated for the next block after the top_block passed in.
 std::vector<crypto::hash> get_pulse_entropy_for_next_block(
         cryptonote::BlockchainDB const& db,
+        cryptonote::hf hf,
         cryptonote::block const& top_block,
-        uint8_t pulse_round);
+        uint8_t pulse_round,
+        size_t active_nodes);
 std::vector<crypto::hash> get_pulse_entropy_for_next_block(
-        cryptonote::BlockchainDB const& db, crypto::hash const& top_hash, uint8_t pulse_round);
+        cryptonote::BlockchainDB const& db,
+        cryptonote::hf hf,
+        crypto::hash const& top_hash,
+        uint8_t pulse_round,
+        size_t active_nodes);
 // Same as above, but uses the current blockchain top block and defaults to round 0 if not
 // specified.
 std::vector<crypto::hash> get_pulse_entropy_for_next_block(
-        cryptonote::BlockchainDB const& db, uint8_t pulse_round = 0);
+        const cryptonote::Blockchain& bc, uint8_t pulse_round = 0);
 
 payout service_node_payout_portions(const crypto::public_key& key, const service_node_info& info);
 

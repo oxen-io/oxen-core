@@ -35,6 +35,13 @@ enum class txtype : uint16_t {
     _count
 };
 
+// Whether a transaction of this type transfers funds, and so has inputs (and the key images that
+// come with them); a transaction of any other type has no inputs at all (as check_tx_semantic and
+// check_tx_inputs enforce).
+inline constexpr bool is_transfer_type(txtype type) {
+    return type == txtype::standard || type == txtype::stake || type == txtype::oxen_name_system;
+}
+
 inline constexpr bool is_l2_event_tx(txtype type) {
     return type >= txtype::ethereum_service_node_exit_request &&
            type <= txtype::ethereum_new_service_node_v2;

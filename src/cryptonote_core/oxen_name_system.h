@@ -4,16 +4,21 @@
 #include <oxenc/hex.h>
 
 #include <cassert>
+#include <memory>
+#include <span>
 #include <string>
 
 #include "common/fs.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_config.h"
-#include "epee/span.h"
 
-struct sqlite3;
-struct sqlite3_stmt;
+namespace session::sqlite {
+class Database;
+}
+namespace SQLite {
+class Transaction;
+}
 namespace cryptonote {
 struct checkpoint_t;
 struct block;
@@ -178,8 +183,6 @@ constexpr bool mapping_type_allowed(cryptonote::hf hf_version, mapping_type type
 // relevant within a ONS buy tx).
 std::vector<mapping_type> all_mapping_types(cryptonote::hf hf_version);
 
-sqlite3* init_oxen_name_system(const fs::path& file_path, bool read_only);
-
 /// Returns the integer value used in the database and in RPC lookup calls for the given mapping
 /// type.  In particularly this maps all mapping_type::lokinet_Xyears values to the underlying value
 /// of mapping_type::lokinet.
@@ -303,48 +306,27 @@ struct mapping_record {
     generic_owner backup_owner;
 };
 
-struct name_system_db;
-class sql_compiled_statement final {
-  public:
-    /// The name_system_db upon which this object operates
-    name_system_db& nsdb;
-    /// The stored, owned statement
-    sqlite3_stmt* statement = nullptr;
-
-    /// Constructor; takes a reference to the name_system_db.
-    explicit sql_compiled_statement(name_system_db& nsdb) : nsdb{nsdb} {}
-
-    /// Non-copyable (because we own an internal sqlite3 statement handle)
-    sql_compiled_statement(const sql_compiled_statement&) = delete;
-    sql_compiled_statement& operator=(const sql_compiled_statement&) = delete;
-
-    /// Move construction; ownership of the internal statement handle, if present, is transferred to
-    /// the new object.
-    sql_compiled_statement(sql_compiled_statement&& from) :
-            nsdb{from.nsdb}, statement{from.statement} {
-        from.statement = nullptr;
-    }
-
-    /// Move copying.  The referenced name_system_db must be the same.  Ownership of the internal
-    /// statement handle is transferred.  If the target already has a statement handle then it is
-    /// destroyed.
-    sql_compiled_statement& operator=(sql_compiled_statement&& from);
-
-    /// Destroys the internal sqlite3 statement on destruction
-    ~sql_compiled_statement();
-
-    /// Attempts to prepare the given statement.  MERRORs and returns false on failure.  If the
-    /// object already has a prepare statement then it is finalized first.
-    bool compile(std::string_view query, bool optimise_for_multiple_usage = true);
-
-    /// Returns true if the object owns a prepared statement
-    explicit operator bool() const { return statement != nullptr; }
-};
-
 struct name_system_db {
-    bool
-    init(cryptonote::Blockchain const* blockchain, cryptonote::network_type nettype, sqlite3* db);
-    bool add_block(const cryptonote::block& block, const std::vector<cryptonote::transaction>& txs);
+    // Uses (creating or upgrading as needed) the ONS tables in `db`, which may also hold other
+    // things, such as the blockchain itself; it must stay alive until close() or destruction.
+    // Returns false (after logging the reason) on failure.
+    bool init(
+            cryptonote::Blockchain const* blockchain,
+            cryptonote::network_type nettype,
+            session::sqlite::Database& db);
+
+    // Saves the current height to the database, and stops using it.  Does nothing if not
+    // initialized (or already closed).
+    void close();
+
+    // Adds the ONS records of a block.  `active_tx`, if given, is a transaction open on this
+    // thread's shared connection to the database (such as the blockchain's write transaction, when
+    // the ONS tables are in the blockchain database) that the writes belong in; otherwise they get
+    // a transaction of their own, which is only committed when there is something worth saving.
+    bool add_block(
+            const cryptonote::block& block,
+            const std::vector<cryptonote::transaction>& txs,
+            SQLite::Transaction* active_tx = nullptr);
 
     cryptonote::network_type network_type() const { return nettype; }
     uint64_t height() const { return last_processed_height; }
@@ -360,11 +342,14 @@ struct name_system_db {
     bool save_settings(uint64_t top_height, crypto::hash const& top_hash, int version);
 
     // Delete all mappings that are registered after height followed by deleting all owners no
-    // longer referenced in the DB.  Updates the state to the given height and hash.
-    bool prune_db(uint64_t top_height, const crypto::hash& top_hash);
+    // longer referenced in the DB.  Updates the state to the given height and hash.  `active_tx`
+    // is as for add_block.
+    bool prune_db(
+            uint64_t top_height,
+            const crypto::hash& top_hash,
+            SQLite::Transaction* active_tx = nullptr);
 
     owner_record get_owner_by_key(generic_owner const& owner);
-    owner_record get_owner_by_id(int64_t owner_id);
     // Returns a wallet address from the passed ONS name in "str"
     bool get_wallet_mapping(
             std::string str, uint64_t blockchain_height, cryptonote::address_parse_info& addr_info);
@@ -403,29 +388,16 @@ struct name_system_db {
             cryptonote::tx_extra_oxen_name_system& entry,
             std::string* reason);
 
-    // Destructor; closes the sqlite3 database if one is open
+    // Destructor; calls close()
     ~name_system_db();
 
-    sqlite3* db = nullptr;
-    bool transaction_begun = false;
+    // The database holding the ONS tables, or nullptr if not initialized.  Not owned.
+    session::sqlite::Database* db = nullptr;
 
   private:
     cryptonote::network_type nettype;
     uint64_t last_processed_height = 0;
     crypto::hash last_processed_hash{};
-    sql_compiled_statement save_owner_sql{*this};
-    sql_compiled_statement save_mapping_sql{*this};
-    sql_compiled_statement save_settings_sql{*this};
-    sql_compiled_statement get_owner_by_key_sql{*this};
-    sql_compiled_statement get_owner_by_id_sql{*this};
-    sql_compiled_statement get_mapping_sql{*this};
-    sql_compiled_statement resolve_sql{*this};
-    sql_compiled_statement get_settings_sql{*this};
-    sql_compiled_statement prune_mappings_sql{*this};
-    sql_compiled_statement prune_owners_sql{*this};
-    sql_compiled_statement get_mappings_by_owner_sql{*this};
-    sql_compiled_statement get_mapping_counts_sql{*this};
-    sql_compiled_statement get_mappings_on_height_and_newer_sql{*this};
 };
 
 };  // namespace ons

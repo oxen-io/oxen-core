@@ -29,12 +29,15 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
+#include <optional>
+#include <span>
 #include <vector>
 
 #include "common/fs.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_config.h"
+#include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/service_node_voting.h"
 
 namespace cryptonote {
@@ -74,6 +77,24 @@ struct checkpoint_t {
         field(ar, "prev_height", prev_height);
     }
 };
+
+// Of the newest checkpoints at or below some height (newest first, at most
+// CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY of them), the one that makes the chain up to it
+// immutable, if any: a hardcoded checkpoint is immutable itself; a service node one only once a
+// second checkpoint follows it.
+inline const checkpoint_t* find_immutable_checkpoint(std::span<const checkpoint_t> newest) {
+    static_assert(
+            service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY == 2,
+            "Expect checkpoint finality to be 2, otherwise the immutable logic needs to check for "
+            "any hardcoded checkpoints inbetween");
+    if (newest.empty())
+        return nullptr;
+    if (newest[0].type != checkpoint_type::service_node)
+        return &newest[0];
+    if (newest.size() >= service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY)
+        return &newest[1];
+    return nullptr;
+}
 
 struct height_to_hash {
     uint64_t height;   //!< the height of the checkpoint
@@ -189,6 +210,12 @@ class checkpoints {
     uint64_t get_max_height() const;
 
     /**
+     * @brief gets the height of the immutable checkpoint at a height (see
+     * find_immutable_checkpoint), if there is one
+     */
+    std::optional<uint64_t> immutable_height(uint64_t height);
+
+    /**
      * @brief loads the default main chain checkpoints
      * @param nettype network type
      *
@@ -201,6 +228,23 @@ class checkpoints {
     uint64_t m_last_cull_height = 0;
     uint64_t m_immutable_height = 0;
     BlockchainDB* m_db;
+
+    // What the immutable checkpoint follows from at every height from `height` up to (not
+    // including) `next`: the newest checkpoints at or below `height`, as find_immutable_checkpoint
+    // takes them (without their signatures).  block_add needs it for every block, and querying the
+    // DB for it each time was a significant part of adding a block, but it only changes when the
+    // chain reaches a checkpoint or one is added or removed.  Every change to the checkpoints goes
+    // through this class, which keeps this up to date (or drops it) as it makes them; a detach
+    // drops it.
+    struct finality_cache {
+        uint64_t height;
+        std::vector<checkpoint_t> newest;
+        std::optional<uint64_t> next;
+    };
+    std::optional<finality_cache> m_finality;
+
+    void cache_added(const checkpoint_t& checkpoint);
+    void remove_checkpoint(uint64_t height);
 };
 
 }  // namespace cryptonote

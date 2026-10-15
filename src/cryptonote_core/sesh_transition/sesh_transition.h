@@ -2,7 +2,7 @@
 
 #include <unordered_map>
 
-#include "blockchain_db/sqlite/db_sqlite.h"
+#include "blockchain_db/sqlite/rewards_db.h"
 #include "crypto/eth.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_list.h"
@@ -70,7 +70,7 @@ transition_context get_transition_context(network_type net, uint64_t top_block_h
 void transition(
         const transition_context& context,
         service_nodes::service_node_list::state_t& sns,
-        cryptonote::BlockchainSQLite& sql,
+        cryptonote::RewardsDB& sql,
         network_type net,
         service_nodes::block_add_result& add_result,
         uint32_t block_tx_count);

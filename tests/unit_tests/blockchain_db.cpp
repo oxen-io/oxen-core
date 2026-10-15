@@ -28,6 +28,7 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <cstdio>
+#include <fstream>
 #include <iostream>
 #include <chrono>
 #include <random>
@@ -37,10 +38,22 @@
 
 #include "epee/string_tools.h"
 #include "blockchain_db/blockchain_db.h"
+#include "blockchain_db/history.h"
 #include "blockchain_db/lmdb/db_lmdb.h"
+#include "blockchain_db/sqlite/blockchain_sqlite.h"
+#include "blockchain_db/sqlite/rewards_db.h"
+#include "checkpoints/checkpoints.h"
+#include "cryptonote_core/oxen_name_system.h"
+#include "cryptonote_core/service_node_list.h"
+#include "cryptonote_core/uptime_proof.h"
+
+#include <sodium/crypto_sign.h>
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "common/fs.h"
 #include "logging/oxen_logger.h"
+#include "ringct/rctOps.h"
+
+#include <oxen/log/ring_buffer_sink.hpp>
 
 #include "random_path.h"
 
@@ -152,6 +165,13 @@ std::string h2b(const std::string& s)
   return result;
 }
 
+// What each backend's open() takes, given the directory a test puts its database in: LMDB opens a
+// directory, SQLite the database file.
+template <typename T>
+fs::path db_open_path(const fs::path& dir) { return dir; }
+template <>
+fs::path db_open_path<BlockchainSQLite>(const fs::path& dir) { return dir / SQLITE_DB_FILENAME; }
+
 template <typename T>
 class BlockchainDBTest : public testing::Test
 {
@@ -223,11 +243,59 @@ protected:
   {
     m_prefix = tools::utf8_path(prefix);
   }
+
+  // Opens the database in a new temporary directory.
+  void open_db()
+  {
+    set_prefix(random_tmp_file().string());
+    m_db->open(db_open_path<T>(m_prefix), network_type::FAKECHAIN);
+    get_filenames();
+  }
+
+  void reopen_db()
+  {
+    m_db->close();
+    m_db->open(db_open_path<T>(m_prefix), network_type::FAKECHAIN);
+  }
+
+  void add_test_block(size_t i)
+  {
+    m_db->add_block(m_blocks[i], t_sizes[i], t_sizes[i], t_diffs[i], t_coins[i], m_txs[i]);
+  }
+
+  // Opens the database and adds both test blocks to it.
+  void open_with_blocks()
+  {
+    open_db();
+    db_wtxn_guard guard{*m_db};
+    add_test_block(0);
+    add_test_block(1);
+  }
+
+  // Extends the chain with copies of the second test block (which has only a miner tx), one per
+  // given timestamp, each with its own miner tx; the database checks neither proof of work nor
+  // signatures, so this gives tests a longer chain than the two real test blocks.
+  void add_synthetic_blocks(const std::vector<uint64_t>& timestamps)
+  {
+    db_wtxn_guard guard{*m_db};
+    for (auto timestamp : timestamps)
+    {
+      block b = m_blocks[1].first;
+      const uint64_t height = m_db->height();
+      b.prev_id = m_db->top_block_hash();
+      b.timestamp = timestamp;
+      b.miner_tx->vin[0] = txin_gen{height};
+      b.miner_tx->unprunable_size = 0;
+      b.miner_tx->invalidate_hashes();
+      b.invalidate_hashes();
+      m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1] + height, t_coins[1], {});
+    }
+  }
 };
 
 using testing::Types;
 
-typedef Types<BlockchainLMDB> implementations;
+typedef Types<BlockchainLMDB, BlockchainSQLite> implementations;
 
 TYPED_TEST_CASE(BlockchainDBTest, implementations);
 
@@ -239,11 +307,11 @@ TYPED_TEST(BlockchainDBTest, OpenAndClose)
   this->set_prefix(dirPath);
 
   // make sure open does not throw
-  ASSERT_NO_THROW(this->m_db->open(dirPath, network_type::FAKECHAIN));
+  ASSERT_NO_THROW(this->m_db->open(db_open_path<TypeParam>(dirPath), network_type::FAKECHAIN));
   this->get_filenames();
 
   // make sure open when already open DOES throw
-  ASSERT_THROW(this->m_db->open(dirPath, network_type::FAKECHAIN), DB_OPEN_FAILURE);
+  ASSERT_THROW(this->m_db->open(db_open_path<TypeParam>(dirPath), network_type::FAKECHAIN), DB_OPEN_FAILURE);
 
   ASSERT_NO_THROW(this->m_db->close());
 }
@@ -257,7 +325,7 @@ TYPED_TEST(BlockchainDBTest, AddBlock)
   this->set_prefix(dirPath);
 
   // make sure open does not throw
-  ASSERT_NO_THROW(this->m_db->open(dirPath, network_type::FAKECHAIN));
+  ASSERT_NO_THROW(this->m_db->open(db_open_path<TypeParam>(dirPath), network_type::FAKECHAIN));
   this->get_filenames();
 
   db_wtxn_guard guard{*this->m_db};
@@ -304,7 +372,7 @@ TYPED_TEST(BlockchainDBTest, RetrieveBlockData)
   this->set_prefix(dirPath);
 
   // make sure open does not throw
-  ASSERT_NO_THROW(this->m_db->open(dirPath, network_type::FAKECHAIN));
+  ASSERT_NO_THROW(this->m_db->open(db_open_path<TypeParam>(dirPath), network_type::FAKECHAIN));
   this->get_filenames();
 
   db_wtxn_guard guard{*this->m_db};
@@ -334,6 +402,1953 @@ TYPED_TEST(BlockchainDBTest, RetrieveBlockData)
 
   ASSERT_HASH_EQ(get_block_hash(this->m_blocks[0].first), hashes[0]);
   ASSERT_HASH_EQ(get_block_hash(this->m_blocks[1].first), hashes[1]);
+}
+
+crypto::hash missing_hash()
+{
+  return crypto::cn_fast_hash("not in the db", 13);
+}
+
+TYPED_TEST(BlockchainDBTest, PopBlock)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  const auto& blk0 = this->m_blocks[0].first;
+  const auto& blk1 = this->m_blocks[1].first;
+  const auto& tx0 = this->m_txs[0][0].first;
+
+  {
+    db_wtxn_guard guard{db};
+    this->add_test_block(0);
+  }
+
+  std::map<uint64_t, uint64_t> outputs_after_0;
+  for (const auto* tx : {&*blk0.miner_tx, &tx0, &*blk1.miner_tx})
+    for (const auto& out : tx->vout)
+      outputs_after_0[out.amount] = db.get_num_outputs(out.amount);
+  const uint64_t txs_after_0 = db.get_tx_count();
+  ASSERT_EQ(txs_after_0, 2);
+
+  {
+    db_wtxn_guard guard{db};
+    this->add_test_block(1);
+  }
+  ASSERT_EQ(db.height(), 2);
+  ASSERT_EQ(db.get_tx_count(), 3);
+
+  std::vector<crypto::key_image> key_images;
+  for (const auto& in : tx0.vin)
+    key_images.push_back(std::get<txin_to_key>(in).k_image);
+  ASSERT_FALSE(key_images.empty());
+  for (const auto& ki : key_images)
+    ASSERT_TRUE(db.has_key_image(ki));
+
+  block popped;
+  std::vector<transaction> txs;
+  ASSERT_NO_THROW(db.pop_block(popped, txs));
+  EXPECT_TRUE(compare_blocks(popped, blk1));
+  EXPECT_TRUE(txs.empty());
+  EXPECT_EQ(db.height(), 1);
+  EXPECT_EQ(db.get_tx_count(), txs_after_0);
+  EXPECT_FALSE(db.tx_exists(get_transaction_hash(*blk1.miner_tx)));
+  EXPECT_TRUE(db.tx_exists(blk0.tx_hashes[0]));
+  for (const auto& [amount, count] : outputs_after_0)
+    EXPECT_EQ(db.get_num_outputs(amount), count);
+  for (const auto& ki : key_images)
+    EXPECT_TRUE(db.has_key_image(ki));
+
+  txs.clear();
+  ASSERT_NO_THROW(db.pop_block(popped, txs));
+  EXPECT_TRUE(compare_blocks(popped, blk0));
+  ASSERT_EQ(txs.size(), 1);
+  ASSERT_HASH_EQ(get_transaction_hash(txs[0]), blk0.tx_hashes[0]);
+  EXPECT_EQ(db.height(), 0);
+  EXPECT_EQ(db.get_tx_count(), 0);
+  EXPECT_FALSE(db.tx_exists(blk0.tx_hashes[0]));
+  EXPECT_FALSE(db.tx_exists(get_transaction_hash(*blk0.miner_tx)));
+  for (const auto& [amount, count] : outputs_after_0)
+    EXPECT_EQ(db.get_num_outputs(amount), 0);
+  for (const auto& ki : key_images)
+    EXPECT_FALSE(db.has_key_image(ki));
+
+  EXPECT_THROW(db.pop_block(popped, txs), BLOCK_DNE);
+
+  // Popping must leave the ids dense, so that adding the blocks again gives the same ids.
+  {
+    db_wtxn_guard guard{db};
+    this->add_test_block(0);
+    this->add_test_block(1);
+  }
+  EXPECT_EQ(db.height(), 2);
+  EXPECT_EQ(db.get_tx_count(), 3);
+  uint64_t tx_id;
+  ASSERT_TRUE(db.tx_exists(blk0.tx_hashes[0], tx_id));
+  EXPECT_EQ(tx_id, 1);
+}
+
+TYPED_TEST(BlockchainDBTest, GetOutputKey)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  const auto& miner0 = *this->m_blocks[0].first.miner_tx;
+
+  const uint64_t a = miner0.vout[0].amount;
+  const auto& key_a0 = std::get<txout_to_key>(miner0.vout[0].target).key;
+  const uint64_t n = db.get_num_outputs(a);
+  ASSERT_GE(n, 1);
+
+  output_data_t out = db.get_output_key(a, 0);
+  ASSERT_HASH_EQ(out.pubkey, key_a0);
+  EXPECT_EQ(out.height, 0);
+  EXPECT_EQ(out.commitment, rct::zeroCommit(a));
+  EXPECT_THROW(db.get_output_key(a, n), OUTPUT_DNE);
+  EXPECT_EQ(db.get_num_outputs(123456789), 0);
+
+  std::vector<output_data_t> outs;
+  std::vector<uint64_t> amounts{a};
+  ASSERT_NO_THROW(db.get_output_key(amounts, {0, 0, n - 1}, outs));
+  ASSERT_EQ(outs.size(), 3);
+  ASSERT_HASH_EQ(outs[0].pubkey, key_a0);
+  ASSERT_HASH_EQ(outs[1].pubkey, key_a0);
+  ASSERT_HASH_EQ(outs[2].pubkey, db.get_output_key(a, n - 1).pubkey);
+
+  EXPECT_THROW(db.get_output_key(amounts, {0, n}, outs), OUTPUT_DNE);
+  ASSERT_NO_THROW(db.get_output_key(amounts, {0, n, 0}, outs, true));
+  ASSERT_EQ(outs.size(), 1);
+  ASSERT_HASH_EQ(outs[0].pubkey, key_a0);
+
+  // One amount per offset
+  const tx_out* other = nullptr;
+  for (const auto& vout : miner0.vout)
+    if (vout.amount != a)
+      other = &vout;
+  ASSERT_NE(other, nullptr);
+  const uint64_t b = other->amount;
+  std::vector<uint64_t> per_offset{b, a, b};
+  ASSERT_NO_THROW(db.get_output_key(per_offset, {0, 0, 0}, outs));
+  ASSERT_EQ(outs.size(), 3);
+  ASSERT_HASH_EQ(outs[0].pubkey, db.get_output_key(b, 0).pubkey);
+  ASSERT_HASH_EQ(outs[1].pubkey, key_a0);
+  ASSERT_HASH_EQ(outs[2].pubkey, db.get_output_key(b, 0).pubkey);
+  EXPECT_THROW(db.get_output_key(per_offset, {0, 0}, outs), DB_ERROR);
+
+  auto [tx_hash, local_index] = db.get_output_tx_and_index(a, 0);
+  ASSERT_HASH_EQ(tx_hash, get_transaction_hash(miner0));
+  EXPECT_EQ(local_index, 0);
+  EXPECT_THROW(db.get_output_tx_and_index(a, n), OUTPUT_DNE);
+
+  auto indices = db.get_tx_amount_output_indices(0, 3);
+  ASSERT_EQ(indices.size(), 3);
+  EXPECT_EQ(indices[0].size(), miner0.vout.size());
+  EXPECT_EQ(indices[1].size(), this->m_txs[0][0].first.vout.size());
+  EXPECT_EQ(indices[2].size(), this->m_blocks[1].first.miner_tx->vout.size());
+  EXPECT_EQ(indices[0][0], 0);
+}
+
+TYPED_TEST(BlockchainDBTest, TxLookups)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  const auto& blk0 = this->m_blocks[0].first;
+  const auto miner0_hash = get_transaction_hash(*blk0.miner_tx);
+  const auto miner1_hash = get_transaction_hash(*this->m_blocks[1].first.miner_tx);
+
+  EXPECT_EQ(
+      db.get_tx_block_heights({blk0.tx_hashes[0], miner1_hash, missing_hash()}),
+      (std::vector<uint64_t>{0, 1, std::numeric_limits<uint64_t>::max()}));
+
+  // The test transactions predate RingCT, so have no prunable hash.
+  crypto::hash prunable_hash;
+  EXPECT_FALSE(db.get_prunable_tx_hash(blk0.tx_hashes[0], prunable_hash));
+  EXPECT_FALSE(db.get_prunable_tx_hash(missing_hash(), prunable_hash));
+
+  std::vector<std::string> blobs;
+  ASSERT_TRUE(db.get_pruned_tx_blobs_from(miner0_hash, 3, blobs));
+  ASSERT_EQ(blobs.size(), 3);
+  std::string pruned;
+  ASSERT_TRUE(db.get_pruned_tx_blob(blk0.tx_hashes[0], pruned));
+  EXPECT_EQ(blobs[1], pruned);
+
+  blobs.clear();
+  EXPECT_FALSE(db.get_pruned_tx_blobs_from(miner0_hash, 4, blobs));
+  blobs.clear();
+  EXPECT_FALSE(db.get_pruned_tx_blobs_from(missing_hash(), 1, blobs));
+  EXPECT_TRUE(blobs.empty());
+  EXPECT_TRUE(db.get_pruned_tx_blobs_from(missing_hash(), 0, blobs));
+
+  std::string full;
+  ASSERT_TRUE(db.get_tx_blob(blk0.tx_hashes[0], full));
+  EXPECT_EQ(full, this->m_txs[0][0].second);
+  EXPECT_FALSE(db.get_tx_blob(missing_hash(), full));
+}
+
+TYPED_TEST(BlockchainDBTest, BlockWeights)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+
+  EXPECT_EQ(db.get_block_weights(0, 2), (std::vector<uint64_t>{t_sizes[0], t_sizes[1]}));
+  EXPECT_EQ(db.get_block_weights(1, 5), (std::vector<uint64_t>{t_sizes[1]}));
+  EXPECT_EQ(db.get_long_term_block_weights(0, 1), (std::vector<uint64_t>{t_sizes[0]}));
+  EXPECT_THROW(db.get_block_weights(2, 1), DB_ERROR);
+  EXPECT_THROW(db.get_long_term_block_weights(2, 1), DB_ERROR);
+
+  EXPECT_EQ(db.get_block_cumulative_rct_outputs({0, 1}), (std::vector<uint64_t>{0, 0}));
+  EXPECT_THROW(db.get_block_cumulative_rct_outputs({0, 2}), BLOCK_DNE);
+
+  uint64_t top;
+  ASSERT_HASH_EQ(db.top_block_hash(&top), get_block_hash(this->m_blocks[1].first));
+  EXPECT_EQ(top, 1);
+
+  EXPECT_EQ(db.get_blocks_range(1, 1).size(), 1);
+  EXPECT_TRUE(db.get_blocks_range(1, 0).empty());
+  EXPECT_THROW(db.get_blocks_range(1, 3), BLOCK_DNE);
+  EXPECT_EQ(db.get_hashes_range(0, 1).size(), 2);
+  EXPECT_THROW(db.get_hashes_range(0, 2), BLOCK_DNE);
+
+  const auto& tx0 = this->m_txs[0][0];
+  auto txs = db.get_tx_list({get_transaction_hash(tx0.first)});
+  ASSERT_EQ(txs.size(), 1);
+  ASSERT_HASH_EQ(get_transaction_hash(txs[0]), get_transaction_hash(tx0.first));
+  EXPECT_THROW(db.get_tx_list({missing_hash()}), TX_DNE);
+}
+
+// A copy of `h` with byte `i` changed.
+crypto::hash flip_byte(crypto::hash h, size_t i)
+{
+  h.data()[i] ^= 0xff;
+  return h;
+}
+
+TYPED_TEST(BlockchainDBTest, HashPrefixes)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  const auto& [tx0, tx0_blob] = this->m_txs[0][0];
+
+  // Transaction hashes are taken from the block (only miner tx hashes are computed), so two txes
+  // can be given hashes that differ only after their first 8 bytes.  The second tx is the first
+  // with a different key image, so that it is not a double spend.
+  const auto h1 = crypto::cn_fast_hash("prefix twins", 12);
+  const auto h2 = flip_byte(h1, 31);
+  const auto h3 = flip_byte(h1, 8);
+  transaction tx1 = tx0;
+  std::get<txin_to_key>(tx1.vin[0]).k_image.data()[0] ^= 1;
+  tx1.unprunable_size = 0;
+  tx1.invalidate_hashes();
+
+  block a = this->m_blocks[0].first;
+  a.tx_hashes = {h1};
+  a.invalidate_hashes();
+  block b = this->m_blocks[1].first;
+  b.prev_id = get_block_hash(a);
+  b.tx_hashes = {h2};
+  b.invalidate_hashes();
+  {
+    db_wtxn_guard guard{db};
+    db.add_block({a, block_to_blob(a)}, t_sizes[0], t_sizes[0], t_diffs[0], t_coins[0], {{tx0, tx0_blob}});
+    db.add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {{tx1, tx_to_blob(tx1)}});
+  }
+
+  EXPECT_TRUE(db.tx_exists(h1));
+  EXPECT_TRUE(db.tx_exists(h2));
+  EXPECT_FALSE(db.tx_exists(h3));
+  EXPECT_EQ(
+      db.get_tx_block_heights({h1, h2, h3}),
+      (std::vector<uint64_t>{0, 1, std::numeric_limits<uint64_t>::max()}));
+  EXPECT_EQ(
+      std::get<txin_to_key>(db.get_tx(h1).vin[0]).k_image,
+      std::get<txin_to_key>(tx0.vin[0]).k_image);
+  EXPECT_EQ(
+      std::get<txin_to_key>(db.get_tx(h2).vin[0]).k_image,
+      std::get<txin_to_key>(tx1.vin[0]).k_image);
+
+  EXPECT_TRUE(db.block_exists(get_block_hash(a)));
+  EXPECT_FALSE(db.block_exists(flip_byte(get_block_hash(a), 31)));
+
+  // A tx whose hash is already stored (in a block with a new miner tx and key image) is refused.
+  block c = this->m_blocks[1].first;
+  c.prev_id = get_block_hash(b);
+  c.miner_tx->vin[0] = txin_gen{2};
+  c.miner_tx->unprunable_size = 0;
+  c.miner_tx->invalidate_hashes();
+  c.tx_hashes = {h1};
+  c.invalidate_hashes();
+  transaction tx2 = tx0;
+  std::get<txin_to_key>(tx2.vin[0]).k_image.data()[0] ^= 2;
+  tx2.unprunable_size = 0;
+  tx2.invalidate_hashes();
+  {
+    db_wtxn_guard guard{db};
+    EXPECT_THROW(
+        db.add_block({c, block_to_blob(c)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {{tx2, tx_to_blob(tx2)}}),
+        TX_EXISTS);
+    guard.abort();
+  }
+
+  // A block that is already stored is refused (one without a miner tx, so that it gets that far).
+  block d = this->m_blocks[1].first;
+  d.major_version = feature::ETH_BLS;
+  d.miner_tx.reset();
+  d.tx_hashes.clear();
+  d.prev_id = get_block_hash(b);
+  d.invalidate_hashes();
+  {
+    db_wtxn_guard guard{db};
+    db.add_block({d, block_to_blob(d)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {});
+  }
+  {
+    db_wtxn_guard guard{db};
+    EXPECT_THROW(
+        db.add_block({d, block_to_blob(d)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {}),
+        BLOCK_EXISTS);
+    guard.abort();
+  }
+  EXPECT_EQ(db.height(), 3);
+  EXPECT_EQ(db.get_tx_count(), 4);
+}
+
+TYPED_TEST(BlockchainDBTest, OutputHistogramAndDistribution)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  const auto& blk0 = this->m_blocks[0].first;
+  const auto& blk1 = this->m_blocks[1].first;
+
+  // Heights 2-21, with an out-of-order timestamp at height 8.
+  std::map<uint64_t, uint64_t> timestamps;
+  std::vector<uint64_t> synthetic;
+  for (uint64_t h = 2; h < 22; h++)
+  {
+    timestamps[h] = h == 8 ? 900 : 1000 + 100 * h;
+    synthetic.push_back(timestamps[h]);
+  }
+  this->add_synthetic_blocks(synthetic);
+  ASSERT_EQ(db.height(), 22);
+
+  // Expected counts per amount and height, from the blocks' outputs.
+  std::map<uint64_t, std::map<uint64_t, uint64_t>> counts;
+  auto count = [&](const transaction& tx, uint64_t height) {
+    for (const auto& out : tx.vout)
+      counts[out.amount][height]++;
+  };
+  count(*blk0.miner_tx, 0);
+  count(this->m_txs[0][0].first, 0);
+  for (uint64_t h = 1; h < 22; h++)
+    count(*blk1.miner_tx, h);
+  const uint64_t a = blk1.miner_tx->vout[0].amount;
+  auto& a_counts = counts[a];
+  auto total = [](const std::map<uint64_t, uint64_t>& c, uint64_t max_height) {
+    uint64_t n = 0;
+    for (auto& [h, k] : c)
+      if (h <= max_height)
+        n += k;
+    return n;
+  };
+
+  using histo = std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>>;
+  const uint64_t all_a = total(a_counts, 100);
+  // Spendable once height + 10 <= 22
+  const uint64_t unlocked_a = total(a_counts, 12);
+  EXPECT_EQ(db.get_output_histogram({a}, false, 0, 0), (histo{{a, {all_a, 0, 0}}}));
+  EXPECT_EQ(db.get_output_histogram({a}, true, 0, 0), (histo{{a, {all_a, unlocked_a, 0}}}));
+  // Recent: the unlocked outputs from height 12 down, stopping at height 8's old timestamp.
+  const uint64_t recent_a = a_counts[12] + a_counts[11] + a_counts[10] + a_counts[9];
+  EXPECT_EQ(
+      db.get_output_histogram({a}, false, 1500, 0), (histo{{a, {all_a, unlocked_a, recent_a}}}));
+  EXPECT_EQ(db.get_output_histogram({123456789}, false, 0, 0), (histo{{123456789, {0, 0, 0}}}));
+  EXPECT_EQ(db.get_output_histogram({123456789}, false, 0, 1), histo{});
+
+  histo all_amounts;
+  for (auto& [amount, c] : counts)
+    if (auto n = total(c, 100); n >= 25)
+      all_amounts[amount] = {n, 0, 0};
+  EXPECT_EQ(db.get_output_histogram({}, false, 0, 25), all_amounts);
+  EXPECT_EQ(db.get_output_histogram({}, false, 0, 0).size(), counts.size());
+
+  // Distribution from height 5 to 9: everything below 5 is folded into the first entry, and (as
+  // LMDB has always done) the first output above height 9 is included.
+  std::vector<uint64_t> dist;
+  uint64_t base = 99;
+  ASSERT_TRUE(db.get_output_distribution(a, 5, 9, dist, base));
+  EXPECT_EQ(base, 0);
+  std::vector<uint64_t> expected(22 - 5, 0);
+  for (uint64_t h = 0; h <= 9; h++)
+    expected[h < 5 ? 0 : h - 5] += a_counts[h];
+  expected[10 - 5] += 1;
+  for (size_t i = 1; i < expected.size(); i++)
+    expected[i] += expected[i - 1];
+  EXPECT_EQ(dist, expected);
+
+  ASSERT_TRUE(db.get_output_distribution(a, 0, 0, dist, base));
+  std::vector<uint64_t> cumulative;
+  uint64_t sum = 0;
+  for (uint64_t h = 0; h < 22; h++)
+    cumulative.push_back(sum += a_counts[h]);
+  EXPECT_EQ(dist, cumulative);
+
+  EXPECT_FALSE(db.get_output_distribution(a, 22, 0, dist, base));
+}
+
+TYPED_TEST(BlockchainDBTest, ReadTransactions)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+
+  {
+    db_wtxn_guard guard{db};
+    // The writer reads within its write transaction, so it gets no read transaction of its own...
+    EXPECT_FALSE(db.block_rtxn_start());
+    this->add_test_block(0);
+    // ...and sees what it has not committed yet, which other threads do not.
+    EXPECT_EQ(db.height(), 1);
+
+    bool started = false;
+    uint64_t other_height = 99;
+    std::thread reader{[&] {
+      started = db.block_rtxn_start();
+      other_height = db.height();
+      if (started)
+        db.block_rtxn_stop();
+    }};
+    reader.join();
+    EXPECT_TRUE(started);
+    EXPECT_EQ(other_height, 0);
+  }
+  EXPECT_EQ(db.height(), 1);
+
+  ASSERT_TRUE(db.block_rtxn_start());
+  EXPECT_FALSE(db.block_rtxn_start());
+  EXPECT_EQ(db.height(), 1);
+  db.block_rtxn_stop();
+}
+
+TYPED_TEST(BlockchainDBTest, Batch)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  const uint64_t a = this->m_blocks[0].first.miner_tx->vout[0].amount;
+
+  ASSERT_TRUE(db.batch_start());
+  EXPECT_FALSE(db.batch_start());
+  {
+    // A block transaction inside a batch is part of the batch.
+    db_wtxn_guard guard{db};
+    this->add_test_block(0);
+  }
+  this->add_test_block(1);
+  EXPECT_EQ(db.height(), 2);
+  db.batch_abort();
+
+  EXPECT_EQ(db.height(), 0);
+  EXPECT_EQ(db.get_tx_count(), 0);
+  EXPECT_EQ(db.get_num_outputs(a), 0);
+  EXPECT_FALSE(db.tx_exists(this->m_blocks[0].first.tx_hashes[0]));
+
+  ASSERT_TRUE(db.batch_start());
+  this->add_test_block(0);
+  this->add_test_block(1);
+  db.batch_stop();
+  EXPECT_EQ(db.height(), 2);
+  EXPECT_EQ(db.get_tx_count(), 3);
+}
+
+checkpoint_t make_checkpoint(uint64_t height, size_t num_signatures)
+{
+  checkpoint_t cp{};
+  cp.height = height;
+  cp.block_hash = crypto::cn_fast_hash(&height, sizeof(height));
+  cp.type = num_signatures ? checkpoint_type::service_node : checkpoint_type::hardcoded;
+  for (size_t i = 0; i < num_signatures; i++)
+  {
+    crypto::signature sig;
+    std::memset(&sig, static_cast<int>(height + i), sizeof(sig));
+    cp.signatures.emplace_back(static_cast<uint16_t>(2 * i + 1), sig);
+  }
+  return cp;
+}
+
+void expect_checkpoint_eq(const checkpoint_t& a, const checkpoint_t& b)
+{
+  EXPECT_EQ(a.height, b.height);
+  EXPECT_EQ(a.type, b.type);
+  ASSERT_HASH_EQ(a.block_hash, b.block_hash);
+  ASSERT_EQ(a.signatures.size(), b.signatures.size());
+  for (size_t i = 0; i < a.signatures.size(); i++)
+  {
+    EXPECT_EQ(a.signatures[i].voter_index, b.signatures[i].voter_index);
+    ASSERT_HASH_EQ(a.signatures[i].signature, b.signatures[i].signature);
+  }
+}
+
+std::vector<uint64_t> heights_of(const std::vector<checkpoint_t>& cps)
+{
+  std::vector<uint64_t> heights;
+  for (auto& cp : cps)
+    heights.push_back(cp.height);
+  return heights;
+}
+
+TYPED_TEST(BlockchainDBTest, Checkpoints)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  using v = std::vector<uint64_t>;
+
+  checkpoint_t cp;
+  EXPECT_FALSE(db.get_top_checkpoint(cp));
+  EXPECT_TRUE(db.get_checkpoints_range(0, 100).empty());
+
+  const std::vector<checkpoint_t> cps{
+      make_checkpoint(4, 0), make_checkpoint(8, 3), make_checkpoint(12, 2),
+      make_checkpoint(16, 5), make_checkpoint(20, 0)};
+  {
+    db_wtxn_guard guard{db};
+    for (auto& c : cps)
+      db.update_block_checkpoint(c);
+  }
+
+  ASSERT_TRUE(db.get_top_checkpoint(cp));
+  expect_checkpoint_eq(cp, cps[4]);
+  ASSERT_TRUE(db.get_block_checkpoint(8, cp));
+  expect_checkpoint_eq(cp, cps[1]);
+  EXPECT_FALSE(db.get_block_checkpoint(9, cp));
+
+  auto all = db.get_checkpoints_range(4, 20);
+  ASSERT_EQ(all.size(), cps.size());
+  for (size_t i = 0; i < cps.size(); i++)
+    expect_checkpoint_eq(all[i], cps[i]);
+
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(20, 4)), (v{20, 16, 12, 8, 4}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(5, 13)), (v{8, 12}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(13, 5)), (v{12, 8}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(8, 8)), (v{8}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(5, 7)), (v{}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(7, 5)), (v{}));
+  // Clamped to the stored checkpoints' heights
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 100)), (v{4, 8, 12, 16, 20}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(100, 0)), (v{20, 16, 12, 8, 4}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(100, 100)), (v{20}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 0)), (v{4}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 6)), (v{4}));
+  // Limited
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 100, 2)), (v{4, 8}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(100, 0, 2)), (v{20, 16}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(15, 0, 1)), (v{12}));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(9, 100, 3)), (v{12, 16, 20}));
+
+  // Replacing a checkpoint replaces its signatures; removing a missing one is not an error.
+  {
+    db_wtxn_guard guard{db};
+    auto replaced = make_checkpoint(8, 1);
+    db.update_block_checkpoint(replaced);
+    db.remove_block_checkpoint(16);
+    db.remove_block_checkpoint(17);
+  }
+  ASSERT_TRUE(db.get_block_checkpoint(8, cp));
+  expect_checkpoint_eq(cp, make_checkpoint(8, 1));
+  EXPECT_FALSE(db.get_block_checkpoint(16, cp));
+  EXPECT_EQ(heights_of(db.get_checkpoints_range(0, 100)), (v{4, 8, 12, 20}));
+
+  // A checkpoint signed by a full quorum
+  const auto full = make_checkpoint(24, service_nodes::CHECKPOINT_QUORUM_SIZE);
+  {
+    db_wtxn_guard guard{db};
+    db.update_block_checkpoint(full);
+  }
+  this->reopen_db();
+  ASSERT_TRUE(db.get_top_checkpoint(cp));
+  expect_checkpoint_eq(cp, full);
+  EXPECT_EQ(cp.signatures.size(), service_nodes::CHECKPOINT_QUORUM_SIZE);
+}
+
+TYPED_TEST(BlockchainDBTest, MaxBlockSize)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  EXPECT_EQ(db.get_max_block_size(), std::numeric_limits<uint64_t>::max());
+  {
+    db_wtxn_guard guard{db};
+    db.add_max_block_size(100);
+    EXPECT_EQ(db.get_max_block_size(), 100);
+    db.add_max_block_size(50);
+    EXPECT_EQ(db.get_max_block_size(), 100);
+    db.add_max_block_size(200);
+  }
+  EXPECT_EQ(db.get_max_block_size(), 200);
+}
+
+TYPED_TEST(BlockchainDBTest, Txpool)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+
+  txpool_tx_meta_t meta{};
+  meta.max_used_block_id = crypto::cn_fast_hash("max used", 8);
+  meta.last_failed_id = crypto::cn_fast_hash("last failed", 11);
+  meta.weight = 1234;
+  meta.fee = 5678;
+  meta.max_used_block_height = 9;
+  meta.last_failed_height = 7;
+  meta.receive_time = 1700000000;
+  meta.last_relayed_time = 1700000123;
+  meta.kept_by_block = 1;
+  meta.relayed = 1;
+  meta.double_spend_seen = 1;
+  meta.l2_height = 77;
+  txpool_tx_meta_t unrelayed = meta;
+  unrelayed.do_not_relay = 1;
+  unrelayed.double_spend_seen = 0;
+
+  const auto h1 = crypto::cn_fast_hash("tx1", 3), h2 = crypto::cn_fast_hash("tx2", 3);
+  const std::string blob1 = "tx one", blob2 = "tx two!";
+  {
+    db_wtxn_guard guard{db};
+    db.add_txpool_tx(h1, blob1, meta);
+    db.add_txpool_tx(h2, blob2, unrelayed);
+    // Adding an existing tx replaces it
+    db.add_txpool_tx(h1, "replaced", unrelayed);
+    EXPECT_EQ(db.get_txpool_tx_blob(h1), "replaced");
+    db.add_txpool_tx(h1, blob1, meta);
+    EXPECT_THROW(db.add_txpool_tx(missing_hash(), "", meta), DB_ERROR);
+  }
+
+  EXPECT_EQ(db.get_txpool_tx_count(), 2);
+  EXPECT_EQ(db.get_txpool_tx_count(false), 1);
+  EXPECT_TRUE(db.txpool_has_tx(h2));
+  EXPECT_FALSE(db.txpool_has_tx(missing_hash()));
+
+  txpool_tx_meta_t got;
+  ASSERT_TRUE(db.get_txpool_tx_meta(h2, got));
+  EXPECT_EQ(std::memcmp(&got, &unrelayed, sizeof(got)), 0);
+  EXPECT_FALSE(db.get_txpool_tx_meta(missing_hash(), got));
+  EXPECT_EQ(db.get_txpool_tx_blob(h1), blob1);
+  std::string bd;
+  EXPECT_FALSE(db.get_txpool_tx_blob(missing_hash(), bd));
+  EXPECT_THROW(db.get_txpool_tx_blob(missing_hash()), DB_ERROR);
+
+  std::vector<std::pair<crypto::hash, std::string>> seen;
+  db.for_all_txpool_txes(
+      [&](const crypto::hash& h, const txpool_tx_meta_t& m, const std::string* b) {
+        EXPECT_EQ(std::memcmp(&m, &meta, sizeof(m)), 0);
+        seen.emplace_back(h, b ? *b : "(none)");
+        return true;
+      },
+      true, false);
+  ASSERT_EQ(seen.size(), 1);
+  ASSERT_HASH_EQ(seen[0].first, h1);
+  EXPECT_EQ(seen[0].second, blob1);
+
+  size_t count = 0;
+  db.for_all_txpool_txes([&](const crypto::hash&, const txpool_tx_meta_t&, const std::string* b) {
+    EXPECT_EQ(b, nullptr);
+    ++count;
+    return true;
+  });
+  EXPECT_EQ(count, 2);
+
+  {
+    db_wtxn_guard guard{db};
+    meta.fee = 1;
+    meta.relayed = 0;
+    db.update_txpool_tx(h1, meta);
+    EXPECT_THROW(db.update_txpool_tx(missing_hash(), meta), DB_ERROR);
+    db.remove_txpool_tx(h2);
+    db.remove_txpool_tx(missing_hash());
+  }
+  ASSERT_TRUE(db.get_txpool_tx_meta(h1, got));
+  EXPECT_EQ(std::memcmp(&got, &meta, sizeof(got)), 0);
+  EXPECT_EQ(db.get_txpool_tx_count(), 1);
+  EXPECT_FALSE(db.txpool_has_tx(h2));
+
+  // Toggling do_not_relay moves a tx in and out of the relayable count.
+  {
+    db_wtxn_guard guard{db};
+    meta.do_not_relay = 1;
+    db.update_txpool_tx(h1, meta);
+  }
+  EXPECT_EQ(db.get_txpool_tx_count(false), 0);
+  EXPECT_EQ(db.get_txpool_tx_count(true), 1);
+  {
+    db_wtxn_guard guard{db};
+    meta.do_not_relay = 0;
+    db.update_txpool_tx(h1, meta);
+  }
+  EXPECT_EQ(db.get_txpool_tx_count(false), 1);
+
+  this->reopen_db();
+  ASSERT_TRUE(db.get_txpool_tx_meta(h1, got));
+  EXPECT_EQ(std::memcmp(&got, &meta, sizeof(got)), 0);
+  EXPECT_EQ(db.get_txpool_tx_blob(h1), blob1);
+}
+
+TYPED_TEST(BlockchainDBTest, ServiceNodeData)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  // SQLite keeps no data blobs: the SN list stores its recent states as archive entries there.
+  constexpr bool blobs = !std::is_same_v<TypeParam, BlockchainSQLite>;
+  std::string data;
+  EXPECT_FALSE(db.get_service_node_data(data, false));
+  {
+    db_wtxn_guard guard{db};
+    if (blobs) {
+      db.set_service_node_data("short", false);
+      db.set_service_node_data("long", true);
+    } else {
+      EXPECT_THROW(db.set_service_node_data("short", false), DB_ERROR);
+    }
+    db.put_service_node_archive(0, "archive 0", true);
+    db.put_service_node_archive(1, "archive 1", true);
+  }
+  if (blobs) {
+    ASSERT_TRUE(db.get_service_node_data(data, false));
+    EXPECT_EQ(data, "short");
+    ASSERT_TRUE(db.get_service_node_data(data, true));
+    EXPECT_EQ(data, "long");
+  } else {
+    EXPECT_FALSE(db.get_service_node_data(data, false));
+  }
+  EXPECT_EQ(db.get_service_node_archive_heights(), (std::vector<uint64_t>{0, 1}));
+  EXPECT_EQ(db.get_service_node_archive_range(), (std::pair<uint64_t, uint64_t>{0, 1}));
+  EXPECT_EQ(db.get_service_node_archive(1), "archive 1");
+  EXPECT_EQ(db.get_service_node_archive(5), std::nullopt);
+
+  {
+    db_wtxn_guard guard{db};
+    db.delete_service_node_data(false);
+    db.delete_service_node_archives(1, std::numeric_limits<uint64_t>::max());
+  }
+  EXPECT_FALSE(db.get_service_node_data(data, false));
+  EXPECT_EQ(db.get_service_node_archive_heights(), (std::vector<uint64_t>{0}));
+  EXPECT_EQ(db.get_service_node_archive_range(), (std::pair<uint64_t, uint64_t>{0, 0}));
+
+  {
+    db_wtxn_guard guard{db};
+    db.clear_service_node_data();
+  }
+  EXPECT_FALSE(db.get_service_node_data(data, true));
+  EXPECT_TRUE(db.get_service_node_archive_heights().empty());
+  EXPECT_EQ(db.get_service_node_archive_range(), std::nullopt);
+}
+
+TYPED_TEST(BlockchainDBTest, ServiceNodeProofs)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+
+  // Since SN_PK_IS_ED25519 a service node's pubkey is its ed25519 pubkey.
+  unsigned char pk[crypto_sign_PUBLICKEYBYTES], sk[crypto_sign_SECRETKEYBYTES];
+  crypto_sign_keypair(pk, sk);
+  crypto::public_key pubkey;
+  std::memcpy(&pubkey, pk, sizeof(pubkey));
+  crypto::ed25519_public_key pubkey_ed25519;
+  std::memcpy(pubkey_ed25519.data(), pk, sizeof(pk));
+
+  service_nodes::proof_info proof;
+  proof.timestamp = 1700000000;
+  proof.proof->public_ip = 0x01020304;
+  proof.proof->storage_https_port = 22021;
+  proof.proof->storage_omq_port = 22020;
+  proof.proof->qnet_port = 22025;
+  proof.proof->version = {11, 6, 1};
+  proof.proof->storage_server_version = {2, 10, 0};
+  proof.proof->lokinet_version = {0, 9, 11};
+  proof.proof->pubkey_ed25519 = pubkey_ed25519;
+
+  {
+    db_wtxn_guard guard{db};
+    db.set_service_node_proof(pubkey, proof);
+  }
+
+  service_nodes::proof_info got;
+  ASSERT_TRUE(db.get_service_node_proof(pubkey, got));
+  EXPECT_FALSE(db.get_service_node_proof(crypto::public_key{}, got));
+  auto check = [&](const service_nodes::proof_info& p) {
+    EXPECT_EQ(p.timestamp, proof.timestamp);
+    EXPECT_GE(p.effective_timestamp, proof.timestamp);
+    EXPECT_EQ(p.proof->public_ip, proof.proof->public_ip);
+    EXPECT_EQ(p.proof->storage_https_port, proof.proof->storage_https_port);
+    EXPECT_EQ(p.proof->storage_omq_port, proof.proof->storage_omq_port);
+    EXPECT_EQ(p.proof->qnet_port, proof.proof->qnet_port);
+    EXPECT_EQ(p.proof->version, proof.proof->version);
+    EXPECT_EQ(p.proof->storage_server_version, proof.proof->storage_server_version);
+    EXPECT_EQ(p.proof->lokinet_version, proof.proof->lokinet_version);
+    ASSERT_HASH_EQ(p.proof->pubkey_ed25519, pubkey_ed25519);
+    EXPECT_TRUE(p.pubkey_x25519);
+  };
+  check(got);
+
+  auto all = db.get_all_service_node_proofs();
+  ASSERT_EQ(all.size(), 1);
+  ASSERT_TRUE(all.count(pubkey));
+  check(all.at(pubkey));
+
+  // Reloaded from disk, and replaced by a newer proof with the largest version components that
+  // can be stored.
+  this->reopen_db();
+  service_nodes::proof_info reloaded;
+  ASSERT_TRUE(db.get_service_node_proof(pubkey, reloaded));
+  check(reloaded);
+  proof.timestamp += 3600;
+  proof.proof->version = {999, 999, 999};
+  proof.proof->storage_server_version = {0, 0, 1};
+  proof.proof->lokinet_version = {1, 0, 0};
+  {
+    db_wtxn_guard guard{db};
+    db.set_service_node_proof(pubkey, proof);
+  }
+  this->reopen_db();
+  ASSERT_TRUE(db.get_service_node_proof(pubkey, reloaded));
+  check(reloaded);
+
+  {
+    db_wtxn_guard guard{db};
+    EXPECT_TRUE(db.remove_service_node_proof(pubkey));
+    EXPECT_FALSE(db.remove_service_node_proof(pubkey));
+  }
+  EXPECT_TRUE(db.get_all_service_node_proofs().empty());
+}
+
+TYPED_TEST(BlockchainDBTest, AltBlocks)
+{
+  this->open_db();
+  auto& db = *this->m_db;
+  const auto& [blk0, blob0] = this->m_blocks[0];
+  const auto& [blk1, blob1] = this->m_blocks[1];
+  const auto id0 = get_block_hash(blk0), id1 = get_block_hash(blk1);
+
+  alt_block_data_t data0{};
+  data0.height = 5;
+  data0.cumulative_weight = 123;
+  data0.cumulative_difficulty = 456;
+  data0.already_generated_coins = 789;
+  alt_block_data_t data1 = data0;
+  data1.height = 6;
+  data1.checkpointed = 1;
+  const std::string checkpoint_blob = "a serialized checkpoint";
+
+  EXPECT_EQ(db.get_alt_block_count(), 0);
+  EXPECT_FALSE(db.get_alt_block(id0, nullptr, nullptr, nullptr));
+  {
+    db_wtxn_guard guard{db};
+    db.add_alt_block(id0, data0, blob0, nullptr);
+    db.add_alt_block(id1, data1, blob1, &checkpoint_blob);
+    // LMDB means to refuse a duplicate too, but silently overwrites (MDB_NODUPDATA has no effect
+    // without MDB_DUPSORT); its caller never adds a duplicate.
+    if constexpr (std::is_same_v<TypeParam, BlockchainSQLite>)
+      EXPECT_THROW(db.add_alt_block(id0, data0, blob0, nullptr), DB_ERROR);
+  }
+  EXPECT_EQ(db.get_alt_block_count(), 2);
+
+  alt_block_data_t got{};
+  std::string blob, checkpoint;
+  ASSERT_TRUE(db.get_alt_block(id1, &got, &blob, &checkpoint));
+  EXPECT_EQ(got.height, 6);
+  EXPECT_EQ(got.cumulative_weight, 123);
+  EXPECT_EQ(got.cumulative_difficulty, 456);
+  EXPECT_EQ(got.already_generated_coins, 789);
+  EXPECT_EQ(got.checkpointed, 1);
+  EXPECT_EQ(blob, blob1);
+  EXPECT_EQ(checkpoint, checkpoint_blob);
+  ASSERT_TRUE(db.get_alt_block(id0, &got, nullptr, nullptr));
+  EXPECT_EQ(got.checkpointed, 0);
+  // A block without a checkpoint leaves the checkpoint output alone.
+  checkpoint = "untouched";
+  ASSERT_TRUE(db.get_alt_block(id0, &got, &blob, &checkpoint));
+  EXPECT_EQ(blob, blob0);
+  EXPECT_EQ(checkpoint, "untouched");
+
+  size_t without_blobs = 0;
+  db.for_all_alt_blocks(
+      [&](const crypto::hash&, const alt_block_data_t&, const std::string* b, const std::string* c) {
+        EXPECT_EQ(b, nullptr);
+        EXPECT_EQ(c, nullptr);
+        ++without_blobs;
+        return true;
+      });
+  EXPECT_EQ(without_blobs, 2);
+
+  size_t count = 0;
+  db.for_all_alt_blocks(
+      [&](const crypto::hash& id, const alt_block_data_t& d, const std::string* b, const std::string* c) {
+        EXPECT_NE(b, nullptr);
+        EXPECT_NE(c, nullptr);
+        if (id == id1) {
+          EXPECT_EQ(*b, blob1);
+          EXPECT_EQ(*c, checkpoint_blob);
+        } else {
+          EXPECT_EQ(*b, blob0);
+          EXPECT_EQ(d.checkpointed, 0);
+        }
+        ++count;
+        return true;
+      },
+      true);
+  EXPECT_EQ(count, 2);
+
+  {
+    db_wtxn_guard guard{db};
+    db.remove_alt_block(id0);
+    EXPECT_THROW(db.remove_alt_block(id0), DB_ERROR);
+  }
+  EXPECT_EQ(db.get_alt_block_count(), 1);
+  db.drop_alt_blocks();
+  EXPECT_EQ(db.get_alt_block_count(), 0);
+}
+
+TYPED_TEST(BlockchainDBTest, ServiceNodeArchiveRanges)
+{
+  this->open_with_blocks();
+  this->add_synthetic_blocks(std::vector<uint64_t>(8, 1000));
+  auto& db = *this->m_db;
+  using v = std::vector<uint64_t>;
+  {
+    db_wtxn_guard guard{db};
+    for (uint64_t h = 0; h < 10; h++)
+      db.put_service_node_archive(h, "state " + std::to_string(h), true);
+    db.put_service_node_archive(4, "state 4, again", true);
+  }
+  EXPECT_EQ(db.get_service_node_archive_heights(), (v{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
+  EXPECT_EQ(db.get_service_node_archive(4), "state 4, again");
+
+  {
+    db_wtxn_guard guard{db};
+    db.delete_service_node_archives(3, 6);
+  }
+  EXPECT_EQ(db.get_service_node_archive_heights(), (v{0, 1, 2, 6, 7, 8, 9}));
+  {
+    db_wtxn_guard guard{db};
+    db.delete_service_node_archives(8, std::numeric_limits<uint64_t>::max());
+  }
+  EXPECT_EQ(db.get_service_node_archive_heights(), (v{0, 1, 2, 6, 7}));
+  {
+    db_wtxn_guard guard{db};
+    db.delete_service_node_archives(0, 1);
+  }
+  this->reopen_db();
+  EXPECT_EQ(db.get_service_node_archive_heights(), (v{1, 2, 6, 7}));
+  EXPECT_EQ(db.get_service_node_archive(6), "state 6");
+}
+
+TYPED_TEST(BlockchainDBTest, NewestFullServiceNodeArchive)
+{
+  this->open_with_blocks();
+  this->add_synthetic_blocks(std::vector<uint64_t>(10, 1000));
+  auto& db = *this->m_db;
+  // Full states are stored zstd-compressed, which is how a backend that doesn't store the
+  // quorums_only flag (LMDB) tells them apart.
+  auto full = [](uint64_t h) { return std::string{"\x28\xb5\x2f\xfd", 4} + "full " + std::to_string(h); };
+  {
+    db_wtxn_guard guard{db};
+    for (uint64_t h : {2, 6, 10})
+      db.put_service_node_archive(h, full(h), false);
+    for (uint64_t h : {3, 4, 5, 7, 8, 9})
+      db.put_service_node_archive(h, "quorums " + std::to_string(h), true);
+  }
+  using found = std::optional<std::pair<uint64_t, std::string>>;
+  EXPECT_EQ(db.get_newest_full_service_node_archive(1), found{});
+  EXPECT_EQ(db.get_newest_full_service_node_archive(2), (found{{2, full(2)}}));
+  EXPECT_EQ(db.get_newest_full_service_node_archive(5), (found{{2, full(2)}}));
+  EXPECT_EQ(db.get_newest_full_service_node_archive(9), (found{{6, full(6)}}));
+  EXPECT_EQ(db.get_newest_full_service_node_archive(10), (found{{10, full(10)}}));
+  EXPECT_EQ(db.get_newest_full_service_node_archive(1000), (found{{10, full(10)}}));
+}
+
+TYPED_TEST(BlockchainDBTest, Reset)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  const auto& blk0 = this->m_blocks[0].first;
+  const uint64_t a = blk0.miner_tx->vout[0].amount;
+  txpool_tx_meta_t meta{};
+  {
+    db_wtxn_guard guard{db};
+    db.update_block_checkpoint(make_checkpoint(1, 2));
+    if constexpr (!std::is_same_v<TypeParam, BlockchainSQLite>)
+      db.set_service_node_data("data", true);
+    db.put_service_node_archive(1, "archive", true);
+    db.add_max_block_size(1000);
+    db.add_txpool_tx(missing_hash(), "a tx", meta);
+    db.add_alt_block(get_block_hash(blk0), alt_block_data_t{}, this->m_blocks[0].second, nullptr);
+  }
+
+  db.reset();
+
+  EXPECT_EQ(db.height(), 0);
+  EXPECT_EQ(db.get_tx_count(), 0);
+  EXPECT_EQ(db.get_num_outputs(a), 0);
+  EXPECT_FALSE(db.tx_exists(blk0.tx_hashes[0]));
+  checkpoint_t cp;
+  EXPECT_FALSE(db.get_top_checkpoint(cp));
+  std::string data;
+  EXPECT_FALSE(db.get_service_node_data(data, true));
+  EXPECT_TRUE(db.get_service_node_archive_heights().empty());
+  EXPECT_EQ(db.get_max_block_size(), std::numeric_limits<uint64_t>::max());
+  // The LMDB backend's reset leaves the txpool and alt blocks alone; the SQLite one empties every
+  // table.
+  if constexpr (std::is_same_v<TypeParam, BlockchainSQLite>)
+  {
+    EXPECT_EQ(db.get_txpool_tx_count(), 0);
+    EXPECT_EQ(db.get_alt_block_count(), 0);
+  }
+
+  {
+    db_wtxn_guard guard{db};
+    this->add_test_block(0);
+    this->add_test_block(1);
+  }
+  EXPECT_EQ(db.height(), 2);
+  EXPECT_EQ(db.get_tx_count(), 3);
+}
+
+TYPED_TEST(BlockchainDBTest, RemoveDataFile)
+{
+  this->open_with_blocks();
+  auto& db = *this->m_db;
+  const auto files = db.get_filenames();
+  const auto path = db_open_path<TypeParam>(this->m_prefix);
+  db.close();
+  ASSERT_TRUE(fs::exists(files[0]));
+
+  // SQLite removes its write-ahead log and shared memory files when the last connection closes;
+  // make sure that remove_data_file removes them when they are left behind.
+  if constexpr (std::is_same_v<TypeParam, BlockchainSQLite>)
+    for (const auto& f : files)
+      if (!fs::exists(f))
+        std::ofstream{f} << "left behind";
+
+  EXPECT_TRUE(db.remove_data_file(path));
+  EXPECT_FALSE(fs::exists(files[0]));
+  if constexpr (std::is_same_v<TypeParam, BlockchainSQLite>)
+    for (const auto& f : files)
+      EXPECT_FALSE(fs::exists(f)) << f;
+
+  // Missing files are not an error.
+  EXPECT_TRUE(db.remove_data_file(path));
+}
+
+struct temp_data_dir
+{
+  const fs::path path = random_tmp_file();
+
+  temp_data_dir() { fs::create_directories(path); }
+  ~temp_data_dir() { fs::remove_all(path); }
+
+  void touch(const fs::path& relative)
+  {
+    fs::create_directories((path / relative).parent_path());
+    std::ofstream{path / relative};
+  }
+};
+
+// select_db_backend's choice, along with the warning it logged about the other backend's database
+// not being used (empty if none).
+struct backend_selection {
+  db_backend backend;
+  std::string warning;
+};
+
+backend_selection select_logged(const fs::path& dir, std::optional<db_backend> requested)
+{
+  // Added once and kept, as the oxen-logging this may be built against can't remove a sink
+  static const auto sink = [] {
+    auto s = std::make_shared<oxen::log::RingBufferSink>(1);
+    oxen::log::add_sink(s);
+    return s;
+  }();
+  std::vector<std::string> logged;
+  sink->set_log_callback([&logged](const std::string& msg) { logged.push_back(msg); });
+  backend_selection result{select_db_backend(dir, requested), ""};
+  sink->set_log_callback();
+  for (const auto& msg : logged)
+    if (msg.find("is not used (and not touched)") != std::string::npos)
+      result.warning = msg;
+  return result;
+}
+
+TEST(db_backend, detect)
+{
+  temp_data_dir dir;
+  EXPECT_EQ(select_db_backend(dir.path, std::nullopt), FRESH_DB_BACKEND);
+
+  // An lmdb directory without a data.mdb in it is not an LMDB database
+  fs::create_directories(dir.path / "lmdb");
+  EXPECT_EQ(select_db_backend(dir.path, std::nullopt), FRESH_DB_BACKEND);
+
+  dir.touch("lmdb/data.mdb");
+  auto lmdb = select_logged(dir.path, std::nullopt);
+  EXPECT_EQ(lmdb.backend, db_backend::lmdb);
+  EXPECT_EQ(lmdb.warning, "");
+
+  // With both, the SQLite one is used, with a warning that the LMDB one isn't
+  dir.touch("oxen.db");
+  auto both = select_logged(dir.path, std::nullopt);
+  EXPECT_EQ(both.backend, db_backend::sqlite);
+  EXPECT_NE(both.warning.find("Using the existing SQLite blockchain database; the LMDB database"),
+            std::string::npos) << both.warning;
+}
+
+// An explicit choice is always used, warning whenever the other backend's database is there too.
+TEST(db_backend, explicit_choice)
+{
+  temp_data_dir dir;
+  for (auto backend : {db_backend::lmdb, db_backend::sqlite}) {
+    auto sel = select_logged(dir.path, backend);
+    EXPECT_EQ(sel.backend, backend);
+    EXPECT_EQ(sel.warning, "");
+  }
+
+  dir.touch("lmdb/data.mdb");
+  auto lmdb = select_logged(dir.path, db_backend::lmdb);
+  EXPECT_EQ(lmdb.backend, db_backend::lmdb);
+  EXPECT_EQ(lmdb.warning, "");
+  auto new_sqlite = select_logged(dir.path, db_backend::sqlite);
+  EXPECT_EQ(new_sqlite.backend, db_backend::sqlite);
+  EXPECT_NE(new_sqlite.warning.find(
+                "Using a new SQLite blockchain database; the LMDB database also in"),
+            std::string::npos) << new_sqlite.warning;
+
+  dir.touch("oxen.db");
+  auto both_lmdb = select_logged(dir.path, db_backend::lmdb);
+  EXPECT_EQ(both_lmdb.backend, db_backend::lmdb);
+  EXPECT_NE(both_lmdb.warning.find(
+                "Using the existing LMDB blockchain database; the SQLite database also in"),
+            std::string::npos) << both_lmdb.warning;
+  auto both_sqlite = select_logged(dir.path, db_backend::sqlite);
+  EXPECT_EQ(both_sqlite.backend, db_backend::sqlite);
+  EXPECT_NE(both_sqlite.warning.find(
+                "Using the existing SQLite blockchain database; the LMDB database also in"),
+            std::string::npos) << both_sqlite.warning;
+
+  fs::remove_all(dir.path / "lmdb");
+  auto new_lmdb = select_logged(dir.path, db_backend::lmdb);
+  EXPECT_EQ(new_lmdb.backend, db_backend::lmdb);
+  EXPECT_NE(new_lmdb.warning.find(
+                "Using a new LMDB blockchain database; the SQLite database also in"),
+            std::string::npos) << new_lmdb.warning;
+  auto sqlite = select_logged(dir.path, db_backend::sqlite);
+  EXPECT_EQ(sqlite.backend, db_backend::sqlite);
+  EXPECT_EQ(sqlite.warning, "");
+}
+
+// Choosing the backend whose database isn't there yet creates it beside the other one's, which is
+// left untouched (e.g. to resync into SQLite while keeping the LMDB database until that's done).
+TEST(db_backend, new_sqlite_beside_lmdb)
+{
+  temp_data_dir dir;
+  dir.touch("lmdb/data.mdb");
+  ASSERT_EQ(select_db_backend(dir.path, db_backend::sqlite), db_backend::sqlite);
+  {
+    auto db = new_db(db_backend::sqlite);
+    db->open(dir.path / SQLITE_DB_FILENAME, network_type::FAKECHAIN);
+    db->close();
+  }
+  EXPECT_TRUE(fs::exists(dir.path / SQLITE_DB_FILENAME));
+  ASSERT_TRUE(fs::exists(dir.path / "lmdb/data.mdb"));
+  EXPECT_EQ(fs::file_size(dir.path / "lmdb/data.mdb"), 0);
+}
+
+TEST(db_backend, new_lmdb_beside_sqlite)
+{
+  temp_data_dir dir;
+  dir.touch("oxen.db");
+  ASSERT_EQ(select_db_backend(dir.path, db_backend::lmdb), db_backend::lmdb);
+  {
+    auto db = new_db(db_backend::lmdb);
+    db->open(dir.path / BlockchainLMDB::DB_NAME, network_type::FAKECHAIN);
+    db->close();
+  }
+  EXPECT_TRUE(fs::exists(dir.path / "lmdb/data.mdb"));
+  ASSERT_TRUE(fs::exists(dir.path / SQLITE_DB_FILENAME));
+  EXPECT_EQ(fs::file_size(dir.path / SQLITE_DB_FILENAME), 0);
+}
+
+TEST(db_backend, option)
+{
+  temp_data_dir dir;
+  dir.touch("lmdb/data.mdb");
+
+  auto parse = [](std::vector<std::string> args) {
+    boost::program_options::options_description desc;
+    BlockchainDB::init_options(desc);
+    boost::program_options::variables_map vm;
+    boost::program_options::store(
+        boost::program_options::command_line_parser(args).options(desc).run(), vm);
+    boost::program_options::notify(vm);
+    return vm;
+  };
+
+  EXPECT_EQ(select_db_backend(dir.path, parse({})), db_backend::lmdb);
+  EXPECT_EQ(select_db_backend(dir.path, parse({"--db-backend=lmdb"})), db_backend::lmdb);
+  EXPECT_EQ(select_db_backend(dir.path, parse({"--db-backend=sqlite"})), db_backend::sqlite);
+  EXPECT_THROW(select_db_backend(dir.path, parse({"--db-backend=bdb"})), DB_ERROR);
+}
+
+TEST(db_backend, new_db)
+{
+  EXPECT_NE(dynamic_cast<BlockchainLMDB*>(new_db(db_backend::lmdb).get()), nullptr);
+  EXPECT_NE(dynamic_cast<BlockchainSQLite*>(new_db(db_backend::sqlite).get()), nullptr);
+}
+
+TEST(BlockchainSQLite, reopen)
+{
+  temp_data_dir dir;
+  const auto path = dir.path / SQLITE_DB_FILENAME;
+  {
+    BlockchainSQLite db;
+    db.open(path, network_type::FAKECHAIN);
+    EXPECT_EQ(db.height(), 0);
+    db.close();
+  }
+  BlockchainSQLite db;
+  ASSERT_NO_THROW(db.open(path, network_type::FAKECHAIN));
+  EXPECT_EQ(db.height(), 0);
+}
+
+TEST(BlockchainSQLite, newer_schema)
+{
+  temp_data_dir dir;
+  const auto path = dir.path / SQLITE_DB_FILENAME;
+  {
+    BlockchainSQLite db;
+    db.open(path, network_type::FAKECHAIN);
+  }
+  {
+    session::sqlite::Database raw{path};
+    raw.conn().sql.exec("PRAGMA user_version = 1000");
+  }
+  BlockchainSQLite db;
+  EXPECT_THROW(db.open(path, network_type::FAKECHAIN), DB_OPEN_FAILURE);
+}
+
+TEST(BlockchainSQLite, upgrade_from_v1)
+{
+  temp_data_dir dir;
+  const auto path = dir.path / SQLITE_DB_FILENAME;
+  {
+    BlockchainSQLite db;
+    db.open(path, network_type::FAKECHAIN);
+  }
+  {
+    // Back to version 1: sn_states holding a full (compressed) and a quorums-only (raw) state,
+    // and the sn_data blobs.
+    session::sqlite::Database raw{path};
+    raw.conn().sql.exec(R"(
+PRAGMA foreign_keys = OFF;
+DROP INDEX sn_states_full;
+ALTER TABLE sn_states DROP COLUMN quorums_only;
+INSERT INTO sn_states (height, blob) VALUES (10, x'28b52ffd00'), (11, x'0100');
+CREATE TABLE sn_data (long_term INTEGER PRIMARY KEY, blob BLOB NOT NULL) STRICT, WITHOUT ROWID;
+INSERT INTO sn_data VALUES (0, x'00');
+DROP TABLE trimmed_txes;
+PRAGMA user_version = 1;
+)");
+  }
+  BlockchainSQLite db;
+  ASSERT_NO_THROW(db.open(path, network_type::FAKECHAIN));
+  auto newest = db.get_newest_full_service_node_archive(100);
+  ASSERT_TRUE(newest);
+  EXPECT_EQ(newest->first, 10);
+  EXPECT_EQ(db.get_service_node_archive_heights(), (std::vector<uint64_t>{10, 11}));
+  session::sqlite::Database raw{path};
+  EXPECT_FALSE(raw.conn().table_exists("sn_data"));
+  EXPECT_TRUE(raw.conn().table_exists("trimmed_txes"));
+  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 4);
+}
+
+TEST(BlockchainSQLite, own_write_transaction)
+{
+  temp_data_dir dir;
+  BlockchainSQLite db;
+  db.open(dir.path / SQLITE_DB_FILENAME, network_type::FAKECHAIN);
+  BlockchainDB& base = db;
+  base.add_max_block_size(123);
+  EXPECT_EQ(base.get_max_block_size(), 123);
+
+  // ...including while this thread is in a read transaction, which it must not nest inside.
+  ASSERT_TRUE(db.block_rtxn_start());
+  base.add_max_block_size(456);
+  db.block_rtxn_stop();
+  EXPECT_EQ(base.get_max_block_size(), 456);
+}
+
+TEST(BlockchainSQLite, write_needs_transaction)
+{
+  temp_data_dir dir;
+  BlockchainSQLite db;
+  db.open(dir.path / SQLITE_DB_FILENAME, network_type::FAKECHAIN);
+  block b;
+  std::string blob = h2b(t_blocks[0]);
+  ASSERT_TRUE(parse_and_validate_block_from_blob(blob, b));
+  std::vector<std::pair<transaction, std::string>> txs;
+  for (auto& t : t_transactions[0])
+  {
+    transaction tx;
+    std::string bd = h2b(t);
+    ASSERT_TRUE(parse_and_validate_tx_from_blob(bd, tx));
+    txs.emplace_back(std::move(tx), std::move(bd));
+  }
+  EXPECT_THROW(
+      db.add_block({b, blob}, t_sizes[0], t_sizes[0], t_diffs[0], t_coins[0], txs), DB_ERROR);
+  EXPECT_EQ(db.height(), 0);
+  EXPECT_EQ(db.get_tx_count(), 0);
+}
+
+// The rewards and ONS tables kept in the blockchain database, as core does with this backend.
+struct shared_sqlite
+{
+  temp_data_dir dir;
+  BlockchainSQLite db;
+
+  shared_sqlite() { db.open(dir.path / SQLITE_DB_FILENAME, network_type::FAKECHAIN); }
+
+  session::sqlite::Database& sql() { return *db.sqlite_database(); }
+
+  // Reads on a connection of its own, and so sees only what has been committed.
+  std::optional<int64_t> committed(const std::string& query)
+  {
+    return sql().unique_conn().prepared_maybe_get<int64_t>(query);
+  }
+};
+
+std::vector<service_nodes::delayed_stake> test_stakes(uint32_t tx_index, int count, uint64_t payout_height)
+{
+  std::vector<service_nodes::delayed_stake> stakes(count);
+  for (auto& [s, payout] : stakes) {
+    s.amount = cryptonote::reward_money::from_coin(1000);
+    s.block_height = 10;
+    s.tx_index = tx_index;
+    payout = payout_height;
+  }
+  return stakes;
+}
+
+// Whatever sync mode is asked for (or switched to), writes use synchronous=NORMAL, which WAL makes
+// crash-safe.
+TEST(BlockchainSQLite, synchronous_is_always_normal)
+{
+  for (int flags : {DBF_SAFE, DBF_FAST, DBF_FASTEST}) {
+    temp_data_dir dir;
+    BlockchainSQLite db;
+    db.open(dir.path / SQLITE_DB_FILENAME, network_type::FAKECHAIN, flags);
+    db.safesyncmode(true);
+    db.block_wtxn_start();
+    EXPECT_EQ(db.sqlite_database()->conn().prepared_get<int>("PRAGMA synchronous"), 1)
+        << "flags " << flags;
+    db.block_wtxn_abort();
+    db.close();
+  }
+}
+
+// Every connection to the database, pooled or not, gets the backend's settings.
+TEST(BlockchainSQLite, connection_settings)
+{
+  shared_sqlite s;
+  auto check = [](session::sqlite::Connection conn) {
+    EXPECT_EQ(conn.prepared_get<int64_t>("PRAGMA journal_size_limit"), 64 << 20);
+    EXPECT_EQ(conn.prepared_get<int>("PRAGMA temp_store"), 2);  // MEMORY
+  };
+  check(s.sql().conn());
+  check(s.sql().unique_conn());
+}
+
+// The rewards, with access to the last step of adding a block (which is all these tests need of it)
+struct test_rewards : cryptonote::RewardsDB
+{
+  using RewardsDB::RewardsDB;
+  using RewardsDB::publish_block;
+  using RewardsDB::add_delayed_payments;
+};
+
+TEST(BlockchainSQLite, rewards_in_write_transaction)
+{
+  shared_sqlite s;
+  test_rewards rewards{network_type::FAKECHAIN, s.sql()};
+  const std::string delayed = "SELECT COUNT(*) FROM delayed_payments";
+  const std::string snapshots = "SELECT COUNT(*) FROM rewards_snapshot_heights";
+  auto add_blocks = [&](SQLite::Transaction* tx) {
+    rewards.add_delayed_payments(test_stakes(0, 1, rewards.height + 101), rewards.height + 1);
+    while (rewards.height < service_nodes::STATE_SNAPSHOT_INTERVAL)
+      rewards.publish_block(std::nullopt, tx);
+  };
+
+  s.db.block_wtxn_start();
+  auto* tx = s.db.active_write_transaction();
+  ASSERT_NE(tx, nullptr);
+  add_blocks(tx);
+  EXPECT_EQ(s.committed(delayed), 0);
+  EXPECT_EQ(s.committed(snapshots), 0);
+  s.db.block_wtxn_abort();
+  EXPECT_EQ(s.committed(delayed), 0);
+  EXPECT_EQ(s.committed(snapshots), 0);
+  // As the blockchain would, after the failure of the blocks it was adding
+  rewards.blockchain_detached(0);
+
+  s.db.block_wtxn_start();
+  add_blocks(s.db.active_write_transaction());
+  s.db.block_wtxn_stop();
+  EXPECT_EQ(s.committed(delayed), 1);
+  EXPECT_EQ(s.committed(snapshots), 1);
+  EXPECT_EQ(rewards.get_delayed_payments().size(), 1);
+}
+
+// With a limited history the rewards keep a snapshot every 60 blocks across the whole of it (so that
+// they can be restored to anywhere in it), rather than just the newest three.
+TEST(BlockchainSQLite, rewards_snapshots_across_kept_history)
+{
+  for (uint64_t kept : {0, 720}) {
+    shared_sqlite s;
+    test_rewards rewards{network_type::FAKECHAIN, s.sql()};
+    rewards.kept_history = kept;
+    while (rewards.height < 1'000)
+      rewards.publish_block();
+    EXPECT_EQ(s.committed("SELECT MAX(height) FROM rewards_snapshot_heights"), 960);
+    EXPECT_EQ(s.committed("SELECT MIN(height) FROM rewards_snapshot_heights"), kept ? 300 : 840);
+    EXPECT_EQ(s.committed("SELECT COUNT(*) FROM rewards_snapshot_heights"), kept ? 12 : 3);
+  }
+}
+
+TEST(BlockchainSQLite, rewards_failure_leaves_nothing_in_write_transaction)
+{
+  shared_sqlite s;
+  test_rewards rewards{network_type::FAKECHAIN, s.sql()};
+
+  s.db.block_wtxn_start();
+  auto* tx = s.db.active_write_transaction();
+  rewards.add_delayed_payments(test_stakes(0, 1, 11), 1);
+  // A duplicate of the first doesn't get added
+  rewards.add_delayed_payments(test_stakes(0, 1, 11), 1);
+  rewards.publish_block(std::nullopt, tx);
+
+  // A block whose changes are invalid (here, by making an amount negative) changes nothing
+  cryptonote::block_payments payments;
+  auto& p = payments[eth::address{}];
+  p.amount = cryptonote::reward_money::from_coin(1);
+  p.liquidation = cryptonote::reward_money::from_coin(2);
+  rewards.add_delayed_payments(test_stakes(1, 1, 12), 2);
+  rewards.add_sn_rewards(hf::hf21_eth, payments, false);
+  EXPECT_THROW(rewards.publish_block(std::nullopt, tx), std::exception);
+  EXPECT_EQ(rewards.height, 1);
+  EXPECT_TRUE(rewards.get_accrued_rows().empty());
+  s.db.block_wtxn_stop();
+
+  EXPECT_EQ(s.committed("SELECT COUNT(*) FROM delayed_payments"), 1);
+  EXPECT_EQ(s.committed("SELECT COUNT(*) FROM delayed_payments WHERE block_tx_index = 1"), 0);
+  EXPECT_EQ(rewards.get_delayed_payments().size(), 1);
+}
+
+TEST(BlockchainSQLite, rewards_reader_beside_read_transaction)
+{
+  shared_sqlite s;
+  cryptonote::RewardsDB rewards{network_type::FAKECHAIN, s.sql()};
+
+  // This thread's shared connection is in a blockchain read transaction, which a reader that
+  // started a transaction of its own on that connection would collide with.
+  ASSERT_TRUE(s.db.block_rtxn_start());
+  EXPECT_NO_THROW(rewards.get_delayed_payments());
+  EXPECT_NO_THROW(rewards.get_accrued_rewards(eth::address{}));
+  s.db.block_rtxn_stop();
+}
+
+TEST(BlockchainSQLite, ons_in_write_transaction)
+{
+  shared_sqlite s;
+  ons::name_system_db ons;
+  ASSERT_TRUE(ons.init(nullptr, network_type::FAKECHAIN, s.sql()));
+  const std::string ons_height = "SELECT value FROM properties WHERE key = 'ons_top_height'";
+
+  block b{};
+  b.major_version = hf::hf7;
+  b.miner_tx.emplace();
+  b.miner_tx->vin.push_back(txin_gen{1});
+
+  s.db.block_wtxn_start();
+  EXPECT_TRUE(ons.add_block(b, {}, s.db.active_write_transaction()));
+  EXPECT_EQ(s.committed(ons_height), std::nullopt);
+  s.db.block_wtxn_abort();
+  EXPECT_EQ(s.committed(ons_height), std::nullopt);
+
+  // In a transaction it doesn't own, ONS saves its height with every block, even one with no ONS
+  // records (which, on its own, it wouldn't commit at all).
+  ons.prune_db(0, crypto::null<crypto::hash>);
+  s.db.block_wtxn_start();
+  EXPECT_TRUE(ons.add_block(b, {}, s.db.active_write_transaction()));
+  s.db.block_wtxn_stop();
+  EXPECT_EQ(s.committed(ons_height), 1);
+
+  // A prune saves the height it goes back to
+  s.db.block_wtxn_start();
+  EXPECT_TRUE(ons.prune_db(0, crypto::null<crypto::hash>, s.db.active_write_transaction()));
+  s.db.block_wtxn_stop();
+  EXPECT_EQ(s.committed(ons_height), 0);
+  ons.close();
+}
+
+TEST(BlockchainSQLite, reset_keeps_others_tables)
+{
+  shared_sqlite s;
+  test_rewards rewards{network_type::FAKECHAIN, s.sql()};
+  BlockchainDB& base = s.db;
+  base.add_max_block_size(123);
+  while (rewards.height < service_nodes::STATE_SNAPSHOT_INTERVAL)
+    rewards.publish_block();
+
+  s.db.reset();
+
+  EXPECT_EQ(base.get_max_block_size(), std::numeric_limits<uint64_t>::max());
+  EXPECT_EQ(s.committed("SELECT MAX(height) FROM rewards_snapshot_heights"), 60);
+  EXPECT_EQ(s.committed("SELECT value FROM properties WHERE key = 'rewards_fixup_version'"), 2);
+}
+
+TEST(history, parse)
+{
+  constexpr auto main = network_type::MAINNET;
+  EXPECT_EQ(parse_history("full", main), 0);
+  EXPECT_EQ(parse_history("720", main), 720);
+  EXPECT_EQ(parse_history("100000", main), 100'000);
+  EXPECT_EQ(parse_history("1d", main), 720);
+  EXPECT_EQ(parse_history("24h", main), 720);
+  EXPECT_EQ(parse_history("3d", main), 2'160);
+  EXPECT_EQ(parse_history("2w", main), 10'080);
+  // Durations convert at the network's target block time (30s on devnet)
+  EXPECT_EQ(parse_history("1d", network_type::DEVNET), 2'880);
+
+  for (auto bad : {"", "719", "12h", "0", "abc", "2x", "2ww", "-5", "1.5d", "w", "Full", "99999999999999999w"})
+    EXPECT_THROW(parse_history(bad, main), std::invalid_argument) << bad;
+}
+
+TEST(history, option)
+{
+  auto parse = [](std::vector<std::string> args) {
+    boost::program_options::options_description desc;
+    BlockchainDB::init_options(desc);
+    boost::program_options::variables_map vm;
+    boost::program_options::store(
+        boost::program_options::command_line_parser(args).options(desc).run(), vm);
+    boost::program_options::notify(vm);
+    return vm;
+  };
+  constexpr auto main = network_type::MAINNET;
+  EXPECT_EQ(requested_history(parse({}), main), std::nullopt);
+  EXPECT_EQ(requested_history(parse({"--history=full"}), main), 0);
+  EXPECT_EQ(requested_history(parse({"--history=2w"}), main), 10'080);
+  EXPECT_THROW(requested_history(parse({"--history=10"}), main), DB_ERROR);
+}
+
+TEST(history, lmdb_keeps_everything)
+{
+  temp_data_dir dir;
+  BlockchainLMDB db;
+  db.open(dir.path, network_type::FAKECHAIN);
+  EXPECT_EQ(db.history(), 0);
+  EXPECT_NO_THROW(db.set_history(0));
+  EXPECT_THROW(db.set_history(720), DB_ERROR);
+  EXPECT_EQ(db.history(), 0);
+}
+
+// The history kept at a height is the larger of the setting and what block processing needs there.
+TEST(history, window)
+{
+  constexpr auto main = network_type::MAINNET;
+  constexpr uint64_t early = 21'600 + HISTORY_LOCK_MARGIN;
+  EXPECT_EQ(history_minimum(main, 0), early);
+  EXPECT_EQ(history_minimum(main, 101'250), early);
+  EXPECT_EQ(history_minimum(main, 496'968), early);
+  EXPECT_EQ(history_minimum(main, 496'969), HISTORY_MIN_BLOCKS);
+  EXPECT_EQ(history_minimum(main, 2'130'531), HISTORY_MIN_BLOCKS);
+  // Testnet's lock period is 48 hours (1,440 blocks), and it reaches HF15 at height 6.
+  EXPECT_EQ(history_minimum(network_type::TESTNET, 5), 1'440 + HISTORY_LOCK_MARGIN);
+  EXPECT_EQ(history_minimum(network_type::TESTNET, 6), HISTORY_MIN_BLOCKS);
+
+  EXPECT_EQ(history_window(main, 0, 100'000), 0);
+  EXPECT_EQ(history_window(main, 720, 100'000), early);
+  EXPECT_EQ(history_window(main, 720, 2'000'000), 720);
+  EXPECT_EQ(history_window(main, 10'080, 2'000'000), 10'080);
+  EXPECT_EQ(history_window(main, 50'000, 100'000), 50'000);
+}
+
+TEST(history, complete_at)
+{
+  EXPECT_EQ(history_complete_at(0, 500, 1'000), std::nullopt);       // keeps everything
+  EXPECT_EQ(history_complete_at(10'080, 0, 1'000), std::nullopt);    // nothing dropped yet
+  EXPECT_EQ(history_complete_at(10'080, 500, 1'000), 10'580);
+  EXPECT_EQ(history_complete_at(10'080, 500, 10'579), 10'580);
+  EXPECT_EQ(history_complete_at(10'080, 500, 10'580), std::nullopt);
+}
+
+class SQLiteHistoryTest : public BlockchainDBTest<BlockchainSQLite>
+{
+protected:
+  // The history is dropped by the tests themselves (calling trim_history or run_history_catch_up),
+  // rather than by the background catch-up, unless a test turns that on.
+  SQLiteHistoryTest() { sqlite().set_background_trim(false); }
+
+  BlockchainSQLite& sqlite() { return *static_cast<BlockchainSQLite*>(m_db); }
+
+  // Extends the test chain to `height` blocks, as add_synthetic_blocks does but with miner txs
+  // that can't come out the same as the second test block's (which add_synthetic_blocks' do at
+  // height 111).
+  void extend_to(uint64_t height)
+  {
+    db_wtxn_guard guard{*m_db};
+    for (uint64_t h = m_db->height(); h < height; h++)
+    {
+      block b = m_blocks[1].first;
+      b.prev_id = m_db->top_block_hash();
+      b.timestamp = 1'600'000'000 + 120 * h;
+      b.miner_tx->vin[0] = txin_gen{1'000'000 + h};
+      b.miner_tx->unprunable_size = 0;
+      b.miner_tx->invalidate_hashes();
+      b.invalidate_hashes();
+      m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1] + h, t_coins[1], {});
+    }
+  }
+
+  crypto::hash miner_tx_hash(uint64_t height)
+  {
+    return get_transaction_hash(*m_db->get_block_from_height(height).miner_tx);
+  }
+
+  // A transaction without inputs of the given type, made distinct by `n`.  (The database doesn't
+  // validate what it stores, so it needs no more than that.)
+  static std::pair<transaction, std::string> zero_input_tx(txtype type, uint8_t n)
+  {
+    transaction tx;
+    tx.version = txversion::v4_tx_types;
+    tx.type = type;
+    tx.extra = {n};
+    tx.rct_signatures.type = rct::RCTType::Null;
+    return {tx, tx_to_blob(tx)};
+  }
+
+  // Adds a block (with its own miner tx, as extend_to's) containing `txs` at the top of the chain.
+  void add_block_with(const std::vector<std::pair<transaction, std::string>>& txs)
+  {
+    const uint64_t h = m_db->height();
+    block b = m_blocks[1].first;
+    b.prev_id = m_db->top_block_hash();
+    b.timestamp = 1'600'000'000 + 120 * h;
+    b.miner_tx->vin[0] = txin_gen{1'000'000 + h};
+    b.miner_tx->unprunable_size = 0;
+    b.miner_tx->invalidate_hashes();
+    for (const auto& [tx, blob] : txs)
+      b.tx_hashes.push_back(get_transaction_hash(tx));
+    b.invalidate_hashes();
+    m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1] + h, t_coins[1], txs);
+  }
+};
+
+TEST_F(SQLiteHistoryTest, setting)
+{
+  open_with_blocks();
+  auto& db = *m_db;
+  EXPECT_EQ(db.history(), 0);
+  EXPECT_EQ(db.history_start(), 0);
+  EXPECT_NO_THROW(db.set_history(0));
+
+  extend_to(1'000);
+  const auto old_miner_tx = miner_tx_hash(100);
+  const auto kept_miner_tx = miner_tx_hash(500);
+  const uint64_t outputs = db.get_num_outputs(0);
+  const auto block_100 = db.get_block_hash_from_height(100);
+
+  // Full -> 800 blocks: setting it only records it; then what is older than the last 800 goes.
+  db.set_history(800);
+  EXPECT_EQ(db.history(), 800);
+  EXPECT_EQ(db.history_start(), 0);
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 200);
+  EXPECT_THROW(db.get_block_from_height(199), BLOCK_DNE);
+  EXPECT_NO_THROW(db.get_block_from_height(200));
+  EXPECT_FALSE(db.tx_exists(old_miner_tx));
+  EXPECT_TRUE(db.tx_exists(kept_miner_tx));
+  // The block index and the outputs stay for every height.
+  EXPECT_EQ(db.get_block_hash_from_height(100), block_100);
+  EXPECT_EQ(db.get_block_timestamp(100), 1'600'000'000 + 120 * 100);
+  EXPECT_EQ(db.get_num_outputs(0), outputs);
+  EXPECT_EQ(db.height(), 1'000);
+
+  // The setting is stored in the database.
+  reopen_db();
+  EXPECT_EQ(m_db->history(), 800);
+  EXPECT_EQ(m_db->history_start(), 200);
+
+  // Keeping more: nothing more is dropped (until the chain grows into it), and nothing comes back.
+  m_db->set_history(2'000);
+  EXPECT_EQ(m_db->history_start(), 200);
+  EXPECT_EQ(history_complete_at(m_db->history(), m_db->history_start(), m_db->height()), 2'200);
+  extend_to(1'100);
+  m_db->trim_history();
+  EXPECT_EQ(m_db->history_start(), 200);
+
+  // Keeping less again
+  m_db->set_history(720);
+  m_db->trim_history();
+  EXPECT_EQ(m_db->history_start(), 380);
+
+  // A limited history can't be made full again, nor go below the minimum.
+  EXPECT_THROW(m_db->set_history(0), DB_ERROR);
+  EXPECT_THROW(m_db->set_history(719), DB_ERROR);
+  EXPECT_EQ(m_db->history(), 720);
+}
+
+// The trim keeps track of how far it has got, so that it only touches what is newly outside the
+// history as the chain grows.
+TEST_F(SQLiteHistoryTest, trim_bookkeeping)
+{
+  open_with_blocks();
+  auto& db = *m_db;
+  extend_to(700);
+  db.set_history(720);
+  EXPECT_EQ(db.history_start(), 0);  // Shorter than the history: nothing to drop yet
+
+  extend_to(721);
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 1);
+  EXPECT_THROW(db.get_block_from_height(0), BLOCK_DNE);
+  EXPECT_NO_THROW(db.get_block_from_height(1));
+
+  extend_to(1'000);
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 280);
+  EXPECT_THROW(db.get_block_from_height(279), BLOCK_DNE);
+  EXPECT_NO_THROW(db.get_block_from_height(280));
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 280);
+  EXPECT_EQ(
+      db.sqlite_database()->conn().prepared_get<int64_t>(
+          "SELECT value FROM properties WHERE key = 'history_start'"),
+      280);
+}
+
+// The trim keeps the hashes of the transactions without inputs (and only those, not miner txs or
+// transactions with inputs), so that the chain's transaction hashes stay unique: tx_exists still
+// finds them, a block including one again is refused, but the transaction itself can't be read.
+TEST_F(SQLiteHistoryTest, trim_keeps_zero_input_tx_hashes)
+{
+  open_with_blocks();
+  auto& db = *m_db;
+  const auto with_inputs = get_transaction_hash(m_txs[0][0].first);  // in block 0
+  extend_to(100);
+  const auto state_change = zero_input_tx(txtype::state_change, 1);
+  const auto l2_event = zero_input_tx(txtype::ethereum_service_node_exit, 2);
+  {
+    db_wtxn_guard guard{db};
+    add_block_with({state_change, l2_event});
+  }
+  const auto miner = miner_tx_hash(100);
+  extend_to(1'000);
+
+  // The drop when the history is first limited
+  db.set_history(720);
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 280);
+  auto conn = db.sqlite_database()->conn();
+  EXPECT_EQ(conn.prepared_get<int64_t>("SELECT COUNT(*) FROM trimmed_txes"), 2);
+  EXPECT_EQ(conn.prepared_get<int64_t>("SELECT MIN(height) FROM trimmed_txes"), 100);
+  EXPECT_EQ(conn.prepared_get<int64_t>("SELECT MAX(height) FROM trimmed_txes"), 100);
+  EXPECT_FALSE(db.tx_exists(with_inputs));
+  EXPECT_FALSE(db.tx_exists(miner));
+  for (const auto& tx : {state_change, l2_event}) {
+    const auto hash = get_transaction_hash(tx.first);
+    EXPECT_TRUE(db.tx_exists(hash));
+    uint64_t tx_id;
+    EXPECT_FALSE(db.tx_exists(hash, tx_id));
+    std::string blob;
+    EXPECT_FALSE(db.get_tx_blob(hash, blob));
+    EXPECT_THROW(db.get_tx(hash), TX_DNE);
+  }
+
+  // Including one again is refused, as it is on a node that keeps all of its history.
+  {
+    db_wtxn_guard guard{db};
+    EXPECT_THROW(add_block_with({state_change}), TX_EXISTS);
+    guard.abort();
+  }
+  EXPECT_EQ(db.height(), 1'000);
+
+  // The trim as the chain grows keeps them too
+  const auto later = zero_input_tx(txtype::key_image_unlock, 3);
+  {
+    db_wtxn_guard guard{db};
+    add_block_with({later});
+  }
+  extend_to(1'721);
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 1'001);
+  EXPECT_EQ(conn.prepared_get<int64_t>("SELECT COUNT(*) FROM trimmed_txes"), 3);
+  EXPECT_TRUE(db.tx_exists(get_transaction_hash(later.first)));
+}
+
+// Besides block bodies and transactions, the SN list states, rewards snapshots and alt blocks below
+// the history go; checkpoints go only from below the immutable one.
+TEST_F(SQLiteHistoryTest, trim_other_tables)
+{
+  open_with_blocks();
+  auto& db = *m_db;
+  extend_to(1'000);
+  RewardsDB rewards{network_type::FAKECHAIN, *db.sqlite_database()};
+  {
+    db_wtxn_guard guard{db};
+    db.put_service_node_archive(100, "old", true);
+    db.put_service_node_archive(900, "new", true);
+  }
+  {
+    auto conn = db.sqlite_database()->unique_conn();
+    conn.sql.exec("INSERT INTO rewards_snapshot_heights (height) VALUES (120), (960)");
+  }
+
+  db.set_history(720);
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 280);
+  EXPECT_FALSE(db.get_service_node_archive(100));
+  EXPECT_TRUE(db.get_service_node_archive(900));
+  auto conn = db.sqlite_database()->conn();
+  EXPECT_EQ(conn.prepared_get<int64_t>("SELECT MIN(height) FROM rewards_snapshot_heights"), 960);
+}
+
+TEST_F(SQLiteHistoryTest, trim_keeps_immutable_checkpoints)
+{
+  open_with_blocks();
+  auto& db = *m_db;
+  extend_to(1'000);
+  auto add_checkpoint = [&](uint64_t height) {
+    checkpoint_t cp{};
+    cp.type = checkpoint_type::service_node;
+    cp.height = height;
+    cp.block_hash = db.get_block_hash_from_height(height);
+    db_wtxn_guard guard{db};
+    db.update_block_checkpoint(cp);
+  };
+  for (uint64_t h : {100, 148, 196})
+    add_checkpoint(h);
+
+  // The window would start at 280, above all of them; but the immutable checkpoint (the older of
+  // the two newest, at 148) and the one after it must stay.
+  db.set_history(720);
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 280);
+  checkpoint_t cp;
+  EXPECT_FALSE(db.get_block_checkpoint(100, cp));
+  EXPECT_TRUE(db.get_block_checkpoint(148, cp));
+  EXPECT_TRUE(db.get_block_checkpoint(196, cp));
+
+  // Once newer checkpoints make a later one immutable, the old ones below the window go.
+  for (uint64_t h : {960, 964})
+    add_checkpoint(h);
+  extend_to(1'001);
+  db.trim_history();
+  EXPECT_FALSE(db.get_block_checkpoint(148, cp));
+  EXPECT_FALSE(db.get_block_checkpoint(196, cp));
+  EXPECT_TRUE(db.get_block_checkpoint(960, cp));
+  EXPECT_TRUE(db.get_block_checkpoint(964, cp));
+}
+
+// Limiting the history only records it: what is no longer kept is left to the catch-up, which drops
+// it in chunks, each recording how far it has got, and can be stopped between any two (to carry on
+// from there later, as after a restart).
+TEST_F(SQLiteHistoryTest, catch_up)
+{
+  open_with_blocks();
+  auto& db = sqlite();
+  extend_to(5'000);
+  db.set_history(720);
+  EXPECT_EQ(db.history(), 720);
+  EXPECT_EQ(db.history_start(), 0);
+  // Too much to drop on the spot after adding blocks, so that leaves it to the catch-up too.
+  db.trim_history();
+  EXPECT_EQ(db.history_start(), 0);
+  // The new history applies at once, though, even to what hasn't been dropped yet (so that, for
+  // instance, the chain can't be rewound into it).
+  EXPECT_EQ(db.history_window_start(), 4'280);
+
+  // Chunk sizes go by how long chunks take, but start at 100 blocks and at most double each time
+  int chunks = 0;
+  db.run_history_catch_up([&] { return ++chunks == 3; });
+  const uint64_t stopped_at = db.history_start();
+  EXPECT_GE(stopped_at, 100);
+  EXPECT_LE(stopped_at, 700);
+  EXPECT_EQ(
+      db.sqlite_database()->conn().prepared_get<int64_t>(
+          "SELECT value FROM properties WHERE key = 'history_start'"),
+      stopped_at);
+  EXPECT_THROW(db.get_block_from_height(stopped_at - 1), BLOCK_DNE);
+  EXPECT_NO_THROW(db.get_block_from_height(stopped_at));
+  EXPECT_EQ(db.history_window_start(), 4'280);
+
+  reopen_db();
+  EXPECT_EQ(m_db->history_start(), stopped_at);
+  sqlite().run_history_catch_up();
+  EXPECT_EQ(m_db->history_start(), 4'280);
+}
+
+// The background catch-up drops it all by itself; and once it has, a clean close compacts the
+// database (when that frees enough of it).
+TEST_F(SQLiteHistoryTest, background_catch_up_and_compaction)
+{
+  open_with_blocks();
+  auto& db = sqlite();
+  // Blocks with a 4 kB transaction each, so that dropping their history frees most of the file
+  // (rather than leaving it mostly the outputs, which are kept).
+  for (uint64_t h = db.height(); h < 5'000; h++) {
+    transaction tx;
+    tx.version = txversion::v4_tx_types;
+    tx.type = txtype::state_change;
+    tx.extra.assign(4'096, 0);
+    std::memcpy(tx.extra.data(), &h, sizeof(h));
+    tx.rct_signatures.type = rct::RCTType::Null;
+    db_wtxn_guard guard{db};
+    add_block_with({{tx, tx_to_blob(tx)}});
+  }
+  db.set_background_trim(true);
+  db.set_history(720);
+  // Setting it doesn't start dropping anything: that waits for the start to be done (when core
+  // starts it).
+  std::this_thread::sleep_for(200ms);
+  EXPECT_EQ(db.history_start(), 0);
+  db.start_history_catch_up();
+  for (int i = 0; i < 600 && db.history_start() < 4'280; i++)
+    std::this_thread::sleep_for(100ms);
+  ASSERT_EQ(db.history_start(), 4'280);
+
+  const auto path = db_open_path<BlockchainSQLite>(m_prefix);
+  auto free_fraction = [](session::sqlite::Connection conn) {
+    return double(conn.prepared_get<int64_t>("PRAGMA freelist_count")) /
+           conn.prepared_get<int64_t>("PRAGMA page_count");
+  };
+  ASSERT_GT(free_fraction(db.sqlite_database()->conn()), 0.25);
+  m_db->close();
+  EXPECT_FALSE(fs::exists(fs::path{path} += ".compacting"));
+  {
+    session::sqlite::Database raw{path};
+    EXPECT_LT(free_fraction(raw.conn()), 0.25);
+  }
+  m_db->open(path, network_type::FAKECHAIN);
+  EXPECT_EQ(m_db->history_start(), 4'280);
+  EXPECT_EQ(m_db->height(), 5'000);
+}
+
+// A compaction cut short at shutdown (as by kill -9, or a service manager's stop timeout) leaves its
+// partial copy and that copy's journal, which the next open removes.
+TEST_F(SQLiteHistoryTest, removes_unfinished_compaction)
+{
+  open_db();
+  const auto path = db_open_path<BlockchainSQLite>(m_prefix);
+  const auto partial = fs::path{path} += ".compacting";
+  const auto journal = fs::path{partial} += "-journal";
+  m_db->close();
+  std::ofstream{partial} << "partial copy";
+  std::ofstream{journal} << "its journal";
+  m_db->open(path, network_type::FAKECHAIN);
+  EXPECT_FALSE(fs::exists(partial));
+  EXPECT_FALSE(fs::exists(journal));
+
+  // A journal left on its own (by a version that only removed the copy) goes too
+  m_db->close();
+  std::ofstream{journal} << "its journal";
+  m_db->open(path, network_type::FAKECHAIN);
+  EXPECT_FALSE(fs::exists(journal));
 }
 
 }  // anonymous namespace

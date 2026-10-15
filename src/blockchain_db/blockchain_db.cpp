@@ -29,6 +29,8 @@
 
 #include "blockchain_db.h"
 
+#include <fmt/std.h>
+
 #include <chrono>
 
 #include "checkpoints/checkpoints.h"
@@ -39,8 +41,10 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "epee/string_tools.h"
+#include "history.h"
 #include "lmdb/db_lmdb.h"
 #include "ringct/rctOps.h"
+#include "sqlite/blockchain_sqlite.h"
 
 namespace cryptonote {
 
@@ -53,14 +57,123 @@ const command_line::arg_descriptor<std::string> arg_db_sync_mode = {
         "fast:async:250000000bytes"};
 const command_line::arg_flag arg_db_salvage = {
         "db-salvage", "Try to salvage a blockchain database if it seems corrupted"};
+const command_line::arg_descriptor<std::string> arg_db_backend = {
+        "db-backend",
+        "Blockchain database backend: lmdb or sqlite.  If omitted, the backend of the existing "
+        "database in the data directory is used (sqlite, if there are both), or "s +
+                std::string{to_string(FRESH_DB_BACKEND)} +
+                " for a new data directory.  If given, that backend is used (and its database "
+                "created, if there isn't one yet) whatever the data directory holds; the other "
+                "backend's database is left as it is.",
+        ""};
+const command_line::arg_descriptor<std::string> arg_history = {
+        "history",
+        "Changes how much block history the blockchain database keeps: 'full', or a number of "
+        "recent blocks given as a count or as a duration such as 2w, 3d or 12h (at least "s +
+                std::to_string(HISTORY_MIN_BLOCKS) +
+                " blocks).  Keeping a limited history needs the sqlite backend.  The setting is "
+                "stored in the database, so this is only needed to change it: if omitted, the "
+                "database keeps what it was set to keep (everything, for a new one).  Keeping "
+                "less drops the older history straight away; keeping more keeps more from now "
+                "on.  A database keeping a limited history can't be made full again (resync, or "
+                "install a full database).",
+        ""};
 
-std::unique_ptr<BlockchainDB> new_db() {
-    return std::make_unique<BlockchainLMDB>();
+std::string_view to_string(db_backend backend) {
+    switch (backend) {
+        case db_backend::lmdb: return "lmdb"sv;
+        case db_backend::sqlite: return "sqlite"sv;
+    }
+    return "unknown"sv;
+}
+
+db_backend select_db_backend(const fs::path& folder, std::optional<db_backend> requested) {
+    const auto sqlite_path = folder / SQLITE_DB_FILENAME;
+    const auto lmdb_path = folder / BlockchainLMDB::DB_NAME / BLOCKCHAINDATA_FILENAME;
+    const bool have_sqlite = fs::exists(sqlite_path);
+    const bool have_lmdb = fs::exists(lmdb_path);
+
+    const auto backend = requested   ? *requested
+                       : have_sqlite ? db_backend::sqlite
+                       : have_lmdb   ? db_backend::lmdb
+                                     : FRESH_DB_BACKEND;
+
+    // The other backend's database is left alone, so that (for instance) a node can resync into
+    // one while keeping the other until that is done.
+    const bool sqlite = backend == db_backend::sqlite;
+    if (sqlite ? have_lmdb : have_sqlite)
+        log::warning(
+                logcat,
+                "Using {} {} blockchain database; the {} database also in {} is not used (and not "
+                "touched)",
+                (sqlite ? have_sqlite : have_lmdb) ? "the existing" : "a new",
+                sqlite ? "SQLite" : "LMDB",
+                sqlite ? "LMDB" : "SQLite",
+                folder);
+    return backend;
+}
+
+db_backend select_db_backend(
+        const fs::path& folder, const boost::program_options::variables_map& vm) {
+    return select_db_backend(folder, requested_db_backend(vm));
+}
+
+std::optional<db_backend> requested_db_backend(const boost::program_options::variables_map& vm) {
+    auto name = command_line::get_arg(vm, arg_db_backend);
+    if (name == to_string(db_backend::lmdb))
+        return db_backend::lmdb;
+    if (name == to_string(db_backend::sqlite))
+        return db_backend::sqlite;
+    if (!name.empty())
+        throw DB_ERROR{"Invalid --{} value '{}': expected '{}' or '{}'"_format(
+                arg_db_backend.name,
+                name,
+                to_string(db_backend::lmdb),
+                to_string(db_backend::sqlite))};
+    return std::nullopt;
+}
+
+std::optional<uint64_t> requested_history(
+        const boost::program_options::variables_map& vm, network_type nettype) {
+    auto value = command_line::get_arg(vm, arg_history);
+    if (value.empty())
+        return std::nullopt;
+    try {
+        return parse_history(value, nettype);
+    } catch (const std::invalid_argument& e) {
+        throw DB_ERROR{"Invalid --{} value: {}"_format(arg_history.name, e.what())};
+    }
+}
+
+void BlockchainDB::set_history(uint64_t blocks) {
+    if (blocks != 0)
+        throw DB_ERROR{
+                "Keeping a limited history needs the sqlite blockchain database backend "
+                "(--db-backend=sqlite)"};
+}
+
+uint64_t BlockchainDB::served_history() const {
+    if (!history())
+        return 0;
+    const uint64_t h = height();
+    const uint64_t start = history_window_start();
+    // 0 would claim the whole chain, so even a node with nothing to serve claims a block
+    return start < h ? h - start : 1;
+}
+
+std::unique_ptr<BlockchainDB> new_db(db_backend backend) {
+    switch (backend) {
+        case db_backend::lmdb: return std::make_unique<BlockchainLMDB>();
+        case db_backend::sqlite: return std::make_unique<BlockchainSQLite>();
+    }
+    throw DB_ERROR{"Unknown blockchain database backend"};
 }
 
 void BlockchainDB::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_db_sync_mode);
     command_line::add_arg(desc, arg_db_salvage);
+    command_line::add_arg(desc, arg_db_backend);
+    command_line::add_arg(desc, arg_history);
 }
 
 void BlockchainDB::pop_block() {
@@ -331,6 +444,21 @@ void BlockchainDB::show_stats() {
             tools::friendly_duration(time_commit1));
 }
 
+std::optional<std::pair<uint64_t, std::string>> BlockchainDB::get_newest_full_service_node_archive(
+        uint64_t height) const {
+    // The little-endian zstd frame magic number (ZSTD_MAGICNUMBER), which begins every full
+    // state; a quorums-only state is stored raw, and starts with its small version varint.
+    constexpr std::string_view zstd_magic{"\x28\xb5\x2f\xfd", 4};
+    auto heights = get_service_node_archive_heights();
+    for (auto it = std::upper_bound(heights.begin(), heights.end(), height);
+         it != heights.begin();) {
+        --it;
+        if (auto data = get_service_node_archive(*it); data && data->starts_with(zstd_magic))
+            return std::make_pair(*it, std::move(*data));
+    }
+    return std::nullopt;
+}
+
 void BlockchainDB::fixup(cryptonote::network_type) {
     if (is_read_only()) {
         log::info(logcat, "Database is opened read only - skipping fixup check");
@@ -342,36 +470,13 @@ void BlockchainDB::fixup(cryptonote::network_type) {
 
 bool BlockchainDB::get_immutable_checkpoint(
         checkpoint_t* immutable_checkpoint, uint64_t block_height) const {
-    size_t constexpr NUM_CHECKPOINTS = service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY;
-    static_assert(
-            NUM_CHECKPOINTS == 2,
-            "Expect checkpoint finality to be 2, otherwise the immutable logic needs to check for "
-            "any hardcoded "
-            "checkpoints inbetween");
-
-    std::vector<checkpoint_t> checkpoints = get_checkpoints_range(block_height, 0, NUM_CHECKPOINTS);
-
-    if (checkpoints.empty())
+    auto checkpoints = get_checkpoints_range(
+            block_height, 0, service_nodes::CHECKPOINT_NUM_CHECKPOINTS_FOR_CHAIN_FINALITY);
+    const auto* found = find_immutable_checkpoint(checkpoints);
+    if (!found)
         return false;
-
-    checkpoint_t* checkpoint_ptr = nullptr;
-    if (checkpoints[0].type != checkpoint_type::service_node)  // checkpoint[0] is the first closest
-                                                               // checkpoint that is <= my height
-    {
-        checkpoint_ptr = &checkpoints[0];  // Must be hard-coded then, always immutable
-    } else if (checkpoints.size() == NUM_CHECKPOINTS) {
-        // NOTE: The first checkpoint is a service node checkpoint. Go back
-        // 1 checkpoint, which will either be another service node checkpoint or
-        // a predefined one.
-        checkpoint_ptr = &checkpoints[1];
-    } else {
-        return false;  // NOTE: Only one service node checkpoint recorded, we can override this
-                       // checkpoint.
-    }
-
     if (immutable_checkpoint)
-        *immutable_checkpoint = std::move(*checkpoint_ptr);
-
+        *immutable_checkpoint = *found;
     return true;
 }
 

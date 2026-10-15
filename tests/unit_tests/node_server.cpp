@@ -91,10 +91,10 @@ public:
     bool blink_rollback(uint64_t rollback_height) { return false; }
     bool get_short_chain_history(std::list<crypto::hash>& ids) const { return true; }
     bool is_within_compiled_block_hash_area(uint64_t height) const { return false; }
-    uint32_t get_blockchain_pruning_seed() const { return 0; }
 
     struct fake_db {
         cryptonote::difficulty_type get_block_cumulative_difficulty(uint64_t height) const { return 0; }
+        uint64_t served_history() const { return 0; }
     } db_;
     fake_db& db() { return db_; }
   } blockchain;
@@ -102,13 +102,13 @@ public:
   bool get_test_drop_download_height() const {return true;}
   bool prepare_handle_incoming_blocks(const std::vector<cryptonote::block_complete_entry>  &blocks_entry, std::vector<cryptonote::block> &blocks) { return true; }
   bool cleanup_handle_incoming_blocks(bool force_sync = false) { return true; }
-  uint64_t get_target_blockchain_height() const { return 1; }
+  uint64_t target_height = 1;
+  uint64_t get_target_blockchain_height() const { return target_height; }
   size_t get_block_sync_size(uint64_t height) const { return cryptonote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT; }
   virtual crypto::hash on_transaction_relayed(const std::string& tx) { return crypto::null<crypto::hash>; }
   cryptonote::network_type get_nettype() const { return cryptonote::network_type::MAINNET; }
   const cryptonote::network_config& get_net_config() const { return get_config(get_nettype()); }
   bool pad_transactions() { return false; }
-  bool prune_blockchain(uint32_t pruning_seed = 0) { return true; }
   void stop() {}
 
   // TODO(oxen): Write tests
@@ -236,6 +236,32 @@ TEST(ban, add)
   ASSERT_TRUE(is_blocked(server,MAKE_IPV4_ADDRESS(1,2,3,4), &t));
   ASSERT_FALSE(is_blocked(server,MAKE_IPV4_ADDRESS(1,2,3,5)));
   ASSERT_TRUE(t >= 4);
+}
+
+TEST(sync_need, only_until_first_synchronized)
+{
+  test_core pr_core;
+  cryptonote::t_cryptonote_protocol_handler<test_core> cprotocol(pr_core);
+  // At the network's height (the test core's chain height is 1)
+  ASSERT_FALSE(cprotocol.get_sync_need());
+
+  pr_core.target_height = 1000;
+  auto need = cprotocol.get_sync_need();
+  ASSERT_TRUE(need);
+  EXPECT_EQ(need->height, 1);
+  EXPECT_EQ(need->target, 1000);
+
+  // Within the margin of the target only a peer's height, not its history, could keep it from
+  // serving, so there is nothing for the peer policy to do
+  pr_core.target_height = 1 + cryptonote::PEER_HISTORY_MARGIN;
+  EXPECT_FALSE(cprotocol.get_sync_need());
+  pr_core.target_height = 2 + cryptonote::PEER_HISTORY_MARGIN;
+  EXPECT_TRUE(cprotocol.get_sync_need());
+
+  // Once synchronized, a target ahead of us is just a new block arriving, not a sync
+  cryptonote::t_cryptonote_protocol_handler<test_core> synced(pr_core, /*offline=*/true);
+  ASSERT_TRUE(synced.is_synchronized());
+  EXPECT_FALSE(synced.get_sync_need());
 }
 
 TEST(ban, limit)

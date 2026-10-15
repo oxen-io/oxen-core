@@ -30,9 +30,11 @@
 
 #pragma once
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 #include <array>
-#include "span.h"
+#include "byte_span.h"
 
 extern "C" {
 #endif
