@@ -48,11 +48,10 @@ namespace {
 
     constexpr unsigned CURRENT_PEERLIST_STORAGE_ARCHIVE_VER = 6;
 
-    // Peers that predate the history field pass along every entry with a history of 0 (which is
-    // what they all have themselves), so a 0 from anyone but the peer itself says nothing about a
-    // peer we know to keep a limited history.  Any other relayed history does replace what we
-    // knew: if it is out of date, it costs at most passing over the peer once while syncing, until
-    // the peer itself tells us otherwise.
+    // An entry relayed without a history (by a peer that predates the field, or that never heard
+    // one) says nothing about a peer whose history we know.  Any relayed history does replace what
+    // we knew: if it is out of date, it costs at most passing over the peer once while syncing,
+    // until the peer itself tells us otherwise.
     void keep_known_history(peerlist_entry& updated, const peerlist_entry& known) {
         if (!updated.history)
             updated.history = known.history;
@@ -366,7 +365,9 @@ bool peerlist_manager::get_peerlist_head(
 }
 
 bool peerlist_manager::set_peer_just_seen(
-        peerid_type peer, const epee::net_utils::network_address& addr, uint64_t history) {
+        peerid_type peer,
+        const epee::net_utils::network_address& addr,
+        std::optional<uint64_t> history) {
     TRY_ENTRY();
     if (!is_host_allowed(addr))
         return true;
