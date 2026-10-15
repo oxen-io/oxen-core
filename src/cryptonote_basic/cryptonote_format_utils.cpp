@@ -573,6 +573,12 @@ bool get_tx_miner_fee(
         const transaction& tx, uint64_t& fee, bool burning_enabled, uint64_t* burned) {
     if (burned)
         *burned = 0;
+    // A coinbase has no fee, and its one input is not a spend that the v1 arithmetic below could
+    // add up.
+    if (tx.is_miner_tx()) {
+        fee = 0;
+        return true;
+    }
     if (tx.version >= txversion::v2_ringct) {
         fee = tx.rct_signatures.txnFee;
         if (burning_enabled) {
