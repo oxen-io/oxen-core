@@ -1988,8 +1988,13 @@ class BlockchainDB {
     /// state from `height` down; backends can do better.
     virtual std::optional<std::pair<uint64_t, std::string>> get_newest_full_service_node_archive(
             uint64_t height) const;
-    /// Returns the heights of all archived service node list states, in ascending order.
+    /// Returns the heights of all archived service node list states, in ascending order.  This
+    /// visits every archived state, of which a node keeping a quorum history has one per block:
+    /// use get_service_node_archive_range() when only the ends are wanted.
     virtual std::vector<uint64_t> get_service_node_archive_heights() const = 0;
+    /// Returns the lowest and highest heights with an archived service node list state, or
+    /// nullopt if there are none.
+    virtual std::optional<std::pair<uint64_t, uint64_t>> get_service_node_archive_range() const = 0;
     /// Deletes the archived service node list states with heights in [begin, end).
     virtual void delete_service_node_archives(uint64_t begin, uint64_t end) = 0;
 

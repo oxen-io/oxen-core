@@ -40,7 +40,7 @@
 #include "net/tor_address.h"
 #include "p2p/p2p_protocol_defs.h"
 
-BOOST_CLASS_VERSION(nodetool::peerlist_entry, 5)
+BOOST_CLASS_VERSION(nodetool::peerlist_entry, 6)
 
 namespace boost::serialization {
 template <class T, class Archive>
@@ -214,8 +214,28 @@ inline void serialize(Archive& a, nodetool::peerlist_entry& pl, const ver_type v
         uint16_t rpc_port = 0;
         a & rpc_port;
     }
-    if (version >= 5)
-        a & pl.history;
+    if (version == 5) {
+        // Version 5 could not tell a peer that never said what it keeps from one keeping every
+        // block: both were 0.
+        uint64_t history = 0;
+        a & history;
+        if (history)
+            pl.history = history;
+        else
+            pl.history.reset();
+    } else if (version >= 6) {
+        // As a flag and a value, rather than through boost/serialization/optional.hpp, which only
+        // handles std::optional in newer Boost versions than some builds have.
+        bool has_history = pl.history.has_value();
+        a & has_history;
+        if (has_history) {
+            uint64_t history = pl.history.value_or(0);
+            a & history;
+            pl.history = history;
+        } else {
+            pl.history.reset();
+        }
+    }
 }
 
 template <class Archive, class ver_type>
