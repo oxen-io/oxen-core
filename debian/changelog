@@ -1,3 +1,9 @@
+oxen (11.7.0-2~deb13) trixie; urgency=medium
+
+  * Build dbgsym packages
+
+ -- Jason Rhinelander <jason@session.foundation>  Mon, 19 Oct 2026 14:35:37 -0300
+
 oxen (11.7.0-1~deb13) trixie; urgency=medium
 
   * UNRELEASED
