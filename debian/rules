@@ -36,8 +36,5 @@ override_dh_auto_configure:
 override_dh_shlibdeps:
 	dh_shlibdeps -l/usr/lib/$(DEB_HOST_MULTIARCH)/oxen
 
-override_dh_strip:
-	dh_strip --no-ddebs
-
 override_dh_installsystemd:
 	dh_installsystemd --name=oxen-node
