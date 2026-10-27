@@ -93,9 +93,6 @@ using namespace cryptonote;
 static auto logcat = log::Cat("blockchain");
 static auto logverify = log::Cat("verify");
 
-// used to overestimate the block reward when estimating a per kB to use
-#define BLOCK_REWARD_OVERESTIMATE (10 * 1000000000000)
-
 Blockchain::block_extended_info::block_extended_info(
         const alt_block_data_t& src, block const& blk, checkpoint_t const* checkpoint) {
     assert((src.checkpointed) == (checkpoint != nullptr));
@@ -116,8 +113,6 @@ Blockchain::Blockchain(
         m_db(),
         tx_pool{tx_pool},
         service_node_list(service_node_list),
-        m_current_block_cumul_weight_limit(0),
-        m_current_block_cumul_weight_median(0),
         m_db_sync_mode(db_async),
         m_fast_sync(true),
         m_show_time_stats(false),
@@ -127,10 +122,6 @@ Blockchain::Blockchain(
         m_max_prepare_blocks_threads(4),
         m_sync_counter(0),
         m_bytes_to_sync(0),
-        m_long_term_block_weights_window(LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE),
-        m_long_term_effective_median_block_weight(0),
-        m_long_term_block_weights_cache_tip_hash{},
-        m_long_term_block_weights_cache_rolling_median(LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE),
         m_cancel(false),
         m_btc_valid(false),
         m_batch_success(true),
@@ -1013,18 +1004,6 @@ bool Blockchain::init(
         tx_pool.on_blockchain_dec();
     }
 
-    if (test_options && test_options->long_term_block_weight_window) {
-        m_long_term_block_weights_window = test_options->long_term_block_weight_window;
-        m_long_term_block_weights_cache_rolling_median =
-                epee::misc_utils::rolling_median_t<uint64_t>(m_long_term_block_weights_window);
-    }
-
-    {
-        db_txn_guard txn_guard{*m_db, m_db->is_read_only()};
-        if (!update_next_cumulative_weight_limit())
-            return false;
-    }
-
     if (ons_sql && !m_ons_db.init(this, nettype, *ons_sql)) {
         log::error(logcat, "ONS failed to initialise");
         return false;
@@ -1296,10 +1275,6 @@ block Blockchain::pop_block_from_db() {
     m_scan_table.clear();
     m_blocks_txs_check.clear();
 
-    if (!update_next_cumulative_weight_limit()) {
-        log::error(logcat, "Error updating next cumulative weight limit");
-        throw std::runtime_error{"Error updating next cumulative weight limit"};
-    }
     tx_pool.on_blockchain_dec();
     invalidate_block_template_cache();
     return popped_block;
@@ -1319,8 +1294,6 @@ bool Blockchain::reset_and_set_genesis_block(const block& b) {
     db_wtxn_guard wtxn_guard{*m_db};
     block_verification_context bvc{};
     add_new_block(b, bvc, nullptr /*checkpoint*/);
-    if (!update_next_cumulative_weight_limit())
-        return false;
     return bvc.m_added_to_main_chain && !bvc.m_verifivation_failed;
 }
 //------------------------------------------------------------------
@@ -1939,15 +1912,6 @@ bool Blockchain::validate_block_rewards(
         return false;
     }
 
-    uint64_t median_weight;
-    if (version >= feature::EFFECTIVE_SHORT_TERM_MEDIAN_IN_PENALTY) {
-        median_weight = m_current_block_cumul_weight_median;
-    } else {
-        std::vector<uint64_t> last_blocks_weights;
-        get_last_n_blocks_weights(last_blocks_weights, REWARD_BLOCKS_WINDOW);
-        median_weight = tools::median(std::move(last_blocks_weights));
-    }
-
     oxen_block_reward_context block_reward_context = {};
     block_reward_context.fee = fee;
     block_reward_context.height = height;
@@ -1959,7 +1923,6 @@ bool Blockchain::validate_block_rewards(
     block_reward_parts reward_parts{};
 
     if (!get_oxen_block_reward(
-                median_weight,
                 cumulative_block_weight,
                 already_generated_coins,
                 version,
@@ -2113,78 +2076,6 @@ std::pair<uint64_t, uint64_t> Blockchain::l2_reward_range(uint64_t height) const
 }
 
 //------------------------------------------------------------------
-// get the block weights of the last <count> blocks, and return by reference <sz>.
-void Blockchain::get_last_n_blocks_weights(std::vector<uint64_t>& weights, size_t count) const {
-    log::trace(logcat, "Blockchain::{}", __func__);
-    std::unique_lock lock{*this};
-    auto h = m_db->height();
-
-    // this function is meaningless for an empty blockchain...granted it should never be empty
-    if (h == 0)
-        return;
-
-    // add weight of last <count> blocks to vector <weights> (or less, if blockchain size < count)
-    size_t start_offset = h - std::min<size_t>(h, count);
-    weights = m_db->get_block_weights(start_offset, count);
-}
-//------------------------------------------------------------------
-uint64_t Blockchain::get_long_term_block_weight_median(uint64_t start_height, size_t count) const {
-    log::trace(logcat, "Blockchain::{}", __func__);
-    std::unique_lock lock{*this};
-
-    if (count <= 0) {
-        log::error(logcat, "count == 0");
-        throw std::runtime_error{"count == 0"};
-    }
-
-    bool cached = false;
-    uint64_t blockchain_height = m_db->height();
-    uint64_t tip_height = start_height + count - 1;
-    crypto::hash tip_hash{};
-    if (tip_height < blockchain_height &&
-        count == (size_t)m_long_term_block_weights_cache_rolling_median.size()) {
-        tip_hash = m_db->get_block_hash_from_height(tip_height);
-        cached = tip_hash == m_long_term_block_weights_cache_tip_hash;
-    }
-
-    if (cached) {
-        log::trace(logcat, "requesting {} from {}, cached", count, start_height);
-        return m_long_term_block_weights_cache_rolling_median.median();
-    }
-
-    // in the vast majority of uncached cases, most is still cached,
-    // as we just move the window one block up:
-    if (tip_height > 0 && count == (size_t)m_long_term_block_weights_cache_rolling_median.size() &&
-        tip_height < blockchain_height) {
-        crypto::hash old_tip_hash = m_db->get_block_hash_from_height(tip_height - 1);
-        if (old_tip_hash == m_long_term_block_weights_cache_tip_hash) {
-            log::trace(logcat, "requesting {} from {}, incremental", count, start_height);
-            m_long_term_block_weights_cache_tip_hash = tip_hash;
-            m_long_term_block_weights_cache_rolling_median.insert(
-                    m_db->get_block_long_term_weight(tip_height));
-            return m_long_term_block_weights_cache_rolling_median.median();
-        }
-    }
-
-    log::trace(logcat, "requesting {} from {}, uncached", count, start_height);
-    std::vector<uint64_t> weights = m_db->get_long_term_block_weights(start_height, count);
-    m_long_term_block_weights_cache_tip_hash = tip_hash;
-    m_long_term_block_weights_cache_rolling_median.clear();
-    for (uint64_t w : weights)
-        m_long_term_block_weights_cache_rolling_median.insert(w);
-    return m_long_term_block_weights_cache_rolling_median.median();
-}
-//------------------------------------------------------------------
-uint64_t Blockchain::get_current_cumulative_block_weight_limit() const {
-    log::trace(logcat, "Blockchain::{}", __func__);
-    return m_current_block_cumul_weight_limit;
-}
-//------------------------------------------------------------------
-uint64_t Blockchain::get_current_cumulative_block_weight_median() const {
-    log::trace(logcat, "Blockchain::{}", __func__);
-    return m_current_block_cumul_weight_median;
-}
-//------------------------------------------------------------------
 // TODO: This function only needed minor modification to work with BlockchainDB,
 //      and *works*.  As such, to reduce the number of things that might break
 //      in moving to BlockchainDB, this function will remain otherwise
@@ -2201,7 +2092,6 @@ bool Blockchain::create_block_template_internal(
         std::vector<std::string>* state_change_txes) {
     ZoneScoped;
     log::trace(logcat, "Blockchain::{}", __func__);
-    size_t median_weight;
     uint64_t already_generated_coins;
     uint64_t pool_cookie;
 
@@ -2253,7 +2143,6 @@ bool Blockchain::create_block_template_internal(
         invalidate_block_template_cache();
     }
 
-    median_weight = m_current_block_cumul_weight_limit / 2;
     diffic = get_difficulty_for_next_block(!info.is_miner);
     already_generated_coins = m_db->get_block_already_generated_coins(height - 1);
     b.timestamp = time(NULL);
@@ -2280,7 +2169,6 @@ bool Blockchain::create_block_template_internal(
     // Add transactions in mempool to block
     if (!tx_pool.fill_block_template(
                 b,
-                median_weight,
                 already_generated_coins,
                 txs_weight,
                 fee,
@@ -2366,7 +2254,6 @@ bool Blockchain::create_block_template_internal(
     b.miner_tx.emplace();
     auto [r, block_rewards] = construct_miner_tx(
             height,
-            median_weight,
             already_generated_coins,
             txs_weight,
             fee,
@@ -2384,7 +2271,6 @@ bool Blockchain::create_block_template_internal(
     for (size_t try_count = 0; try_count != 10; ++try_count) {
         std::tie(r, block_rewards) = construct_miner_tx(
                 height,
-                median_weight,
                 already_generated_coins,
                 cumulative_weight,
                 fee,
@@ -5014,22 +4900,17 @@ uint64_t Blockchain::get_fee_quantization_mask() {
 }
 
 //------------------------------------------------------------------
-byte_and_output_fees Blockchain::get_dynamic_base_fee(
-        uint64_t block_reward, size_t median_block_weight, hf version) {
-    const uint64_t min_block_weight = get_min_block_weight(version);
-    if (median_block_weight < min_block_weight)
-        median_block_weight = min_block_weight;
+byte_and_output_fees Blockchain::get_dynamic_base_fee(uint64_t block_reward, hf version) {
     byte_and_output_fees fees{0, 0};
     uint64_t hi, &lo = fees.first;
 
     if (version >= feature::PER_BYTE_FEE) {
-        // fee = block_reward * DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT / min_block_weight /
-        // median_block_weight / 5 (but done in 128-bit math).  Note that the wallet uses
-        // FEE_PER_BYTE as a fallback if it can't get the dynamic fee from the daemon, so it needs
-        // to satisfy FEE_PER_BYTE >= BLOCK_REWARD * DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT /
-        // (min_block_weight)^2 / 5 (The square because median_block_weight >= min_block_weight). As
-        // of writing we are past block 300000 with base block reward of ~32.04; and so the fee is
-        // below 214 (hence the use of 215 in cryptonote_config.h).
+        // fee = block_reward * DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT /
+        // BLOCK_GRANTED_FULL_REWARD_ZONE^2 / 5 (but done in 128-bit math).  Note that the wallet
+        // uses FEE_PER_BYTE as a fallback if it can't get the dynamic fee from the daemon, so it
+        // needs to satisfy FEE_PER_BYTE >= that.  As of writing we are past block 300000 with base
+        // block reward of ~32.04; and so the fee is below 214 (hence the use of 215 in
+        // cryptonote_config.h).
         //
         // In v12 we increase the reference transaction fee by 80 (to 240000), and so the
         // FEE_PER_BYTE fallback also goes up (to a conservative estimate of 17200).
@@ -5041,8 +4922,8 @@ byte_and_output_fees Blockchain::get_dynamic_base_fee(
                                              ? DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT
                                              : old::DYNAMIC_FEE_REFERENCE_TRANSACTION_WEIGHT_V12;
         lo = mul128(block_reward, reference_fee, &hi);
-        div128_32(hi, lo, min_block_weight, &hi, &lo);
-        div128_32(hi, lo, median_block_weight, &hi, &lo);
+        div128_32(hi, lo, BLOCK_GRANTED_FULL_REWARD_ZONE, &hi, &lo);
+        div128_32(hi, lo, BLOCK_GRANTED_FULL_REWARD_ZONE, &hi, &lo);
         assert(hi == 0);
         lo /= 5;
 
@@ -5054,10 +4935,7 @@ byte_and_output_fees Blockchain::get_dynamic_base_fee(
         return fees;
     }
 
-    constexpr uint64_t fee_base = old::DYNAMIC_FEE_PER_KB_BASE_FEE_V5;
-
-    uint64_t unscaled_fee_base = (fee_base * min_block_weight / median_block_weight);
-    lo = mul128(unscaled_fee_base, block_reward, &hi);
+    lo = mul128(old::DYNAMIC_FEE_PER_KB_BASE_FEE_V5, block_reward, &hi);
     static_assert(
             old::DYNAMIC_FEE_PER_KB_BASE_BLOCK_REWARD % 1000000 == 0,
             "DYNAMIC_FEE_PER_KB_BASE_BLOCK_REWARD must be divisible by 1000000");
@@ -5089,31 +4967,10 @@ bool Blockchain::check_fee(
         uint64_t burned,
         const tx_pool_options& opts) const {
     const auto version = get_network_version();
-    const uint64_t blockchain_height = get_current_blockchain_height();
-
-    uint64_t median = m_current_block_cumul_weight_limit / 2;
-    uint64_t already_generated_coins =
-            blockchain_height ? m_db->get_block_already_generated_coins(blockchain_height - 1) : 0;
-    uint64_t base_reward, base_reward_unpenalized;
-    if (!get_base_block_reward(
-                median,
-                1,
-                already_generated_coins,
-                base_reward,
-                base_reward_unpenalized,
-                version,
-                blockchain_height))
-        return false;
+    const auto fees = get_current_base_fee();
 
     uint64_t needed_fee;
     if (version >= feature::PER_BYTE_FEE) {
-        const bool use_long_term_median_in_fee = version >= feature::LONG_TERM_BLOCK_WEIGHT;
-        auto fees = get_dynamic_base_fee(
-                base_reward,
-                use_long_term_median_in_fee
-                        ? std::min<uint64_t>(median, m_long_term_effective_median_block_weight)
-                        : median,
-                version);
         log::debug(
                 logcat,
                 "Using {}/byte + {}/out fee",
@@ -5124,7 +4981,6 @@ bool Blockchain::check_fee(
         const uint64_t mask = get_fee_quantization_mask();
         needed_fee = (needed_fee + mask - 1) / mask * mask;
     } else {
-        auto fees = get_dynamic_base_fee(base_reward, median, version);
         assert(fees.second == 0);
         log::debug(logcat, "Using {}/kB fee", print_money(fees.first));
 
@@ -5164,57 +5020,20 @@ bool Blockchain::check_fee(
 }
 
 //------------------------------------------------------------------
-byte_and_output_fees Blockchain::get_dynamic_base_fee_estimate(uint64_t grace_blocks) const {
-    const auto version = get_network_version();
-    const uint64_t db_height = m_db->height();
-
-    if (grace_blocks >= REWARD_BLOCKS_WINDOW)
-        grace_blocks = REWARD_BLOCKS_WINDOW - 1;
-
-    const uint64_t min_block_weight = get_min_block_weight(version);
-    std::vector<uint64_t> weights;
-    get_last_n_blocks_weights(weights, REWARD_BLOCKS_WINDOW - grace_blocks);
-    weights.reserve(grace_blocks);
-    for (size_t i = 0; i < grace_blocks; ++i)
-        weights.push_back(min_block_weight);
-
-    uint64_t median = tools::median(std::move(weights));
-    if (median <= min_block_weight)
-        median = min_block_weight;
-
+byte_and_output_fees Blockchain::get_current_base_fee() const {
+    const uint64_t height = m_db->height();
     uint64_t already_generated_coins =
-            db_height ? m_db->get_block_already_generated_coins(db_height - 1) : 0;
+            height ? m_db->get_block_already_generated_coins(height - 1) : 0;
     uint64_t base_reward, base_reward_unpenalized;
-    if (!get_base_block_reward(
-                m_current_block_cumul_weight_limit / 2,
-                1,
-                already_generated_coins,
-                base_reward,
-                base_reward_unpenalized,
-                version,
-                m_db->height())) {
-        log::error(
-                logcat,
-                "Failed to determine block reward, using placeholder {} as a high bound",
-                print_money(BLOCK_REWARD_OVERESTIMATE));
-        base_reward = BLOCK_REWARD_OVERESTIMATE;
-    }
-
-    const bool use_long_term_median_in_fee = version >= feature::LONG_TERM_BLOCK_WEIGHT;
-    const uint64_t use_median_value =
-            use_long_term_median_in_fee
-                    ? std::min<uint64_t>(median, m_long_term_effective_median_block_weight)
-                    : median;
-    auto fee = get_dynamic_base_fee(base_reward, use_median_value, version);
-    const bool per_byte = version < feature::PER_BYTE_FEE;
-    log::debug(
-            logcat,
-            "Estimating {}-block fee at {}/{} + {}.out",
-            grace_blocks,
-            print_money(fee.first),
-            (per_byte ? "byte" : "kB"),
-            print_money(fee.second));
-    return fee;
+    // Can't fail: a 1-byte block is never too big
+    get_base_block_reward(
+            1,
+            already_generated_coins,
+            base_reward,
+            base_reward_unpenalized,
+            get_network_version(),
+            height);
+    return get_dynamic_base_fee(base_reward, get_network_version());
 }
 
 //------------------------------------------------------------------
@@ -5949,12 +5768,11 @@ bool Blockchain::handle_block_to_main_chain(
     uint64_t new_height = 0;
     if (!bvc.m_verifivation_failed) {
         try {
-            uint64_t long_term_block_weight = get_next_long_term_block_weight(block_weight);
             std::string bd = cryptonote::block_to_blob(bl);
             new_height = m_db->add_block(
                     std::make_pair(bl, std::move(bd)),
                     block_weight,
-                    long_term_block_weight,
+                    0,
                     cumulative_difficulty,
                     already_generated_coins,
                     txs);
@@ -6042,15 +5860,6 @@ bool Blockchain::handle_block_to_main_chain(
     }
     auto addblock_elapsed = std::chrono::steady_clock::now() - addblock;
 
-    // do this after updating the hard fork state since the weight limit may change due to fork
-    if (!update_next_cumulative_weight_limit()) {
-        log::info(
-                logcat,
-                fg(fmt::terminal_color::red),
-                "Failed to update next cumulative weight limit");
-        return false;
-    }
-
     abort_block.cancel();
     uint64_t const fee_after_penalty = get_outs_money_amount(bl.miner_tx) - base_reward;
     if (bl.signatures.size() ==
@@ -6121,96 +5930,6 @@ bool Blockchain::handle_block_to_main_chain(
         for (const auto& hook : m_block_post_add_hooks)
             hook(hook_data);
     }
-    return true;
-}
-//------------------------------------------------------------------
-uint64_t Blockchain::get_next_long_term_block_weight(uint64_t block_weight) const {
-
-    const uint64_t db_height = m_db->height();
-    const uint64_t nblocks = std::min<uint64_t>(m_long_term_block_weights_window, db_height);
-
-    if (!is_hard_fork_at_least(
-                m_nettype, feature::LONG_TERM_BLOCK_WEIGHT, get_current_blockchain_height()))
-        return block_weight;
-
-    uint64_t long_term_median = get_long_term_block_weight_median(db_height - nblocks, nblocks);
-    uint64_t long_term_effective_median_block_weight =
-            std::max<uint64_t>(BLOCK_GRANTED_FULL_REWARD_ZONE_V5, long_term_median);
-
-    uint64_t short_term_constraint = long_term_effective_median_block_weight +
-                                     long_term_effective_median_block_weight * 2 / 5;
-    uint64_t long_term_block_weight = std::min<uint64_t>(block_weight, short_term_constraint);
-
-    return long_term_block_weight;
-}
-//------------------------------------------------------------------
-bool Blockchain::update_next_cumulative_weight_limit(
-        uint64_t* long_term_effective_median_block_weight) {
-
-    log::trace(logcat, "Blockchain::{}", __func__);
-
-    // when we reach this, the last hf version is not yet written to the db
-    const uint64_t db_height = m_db->height();
-    const auto hf_version = get_network_version();
-    uint64_t full_reward_zone = get_min_block_weight(hf_version);
-
-    if (hf_version < feature::LONG_TERM_BLOCK_WEIGHT) {
-        std::vector<uint64_t> weights;
-        get_last_n_blocks_weights(weights, REWARD_BLOCKS_WINDOW);
-        m_current_block_cumul_weight_median = tools::median(std::move(weights));
-    } else {
-        const uint64_t block_weight = m_db->get_block_weight(db_height - 1);
-
-        uint64_t long_term_median;
-        if (db_height == 1) {
-            long_term_median = BLOCK_GRANTED_FULL_REWARD_ZONE_V5;
-        } else {
-            uint64_t nblocks = std::min<uint64_t>(m_long_term_block_weights_window, db_height);
-            if (nblocks == db_height)
-                --nblocks;
-            long_term_median = get_long_term_block_weight_median(db_height - nblocks - 1, nblocks);
-        }
-
-        m_long_term_effective_median_block_weight =
-                std::max<uint64_t>(BLOCK_GRANTED_FULL_REWARD_ZONE_V5, long_term_median);
-
-        uint64_t short_term_constraint = m_long_term_effective_median_block_weight +
-                                         m_long_term_effective_median_block_weight * 2 / 5;
-        uint64_t long_term_block_weight = std::min<uint64_t>(block_weight, short_term_constraint);
-
-        if (db_height == 1) {
-            long_term_median = long_term_block_weight;
-        } else {
-            m_long_term_block_weights_cache_tip_hash =
-                    m_db->get_block_hash_from_height(db_height - 1);
-            m_long_term_block_weights_cache_rolling_median.insert(long_term_block_weight);
-            long_term_median = m_long_term_block_weights_cache_rolling_median.median();
-        }
-        m_long_term_effective_median_block_weight =
-                std::max<uint64_t>(BLOCK_GRANTED_FULL_REWARD_ZONE_V5, long_term_median);
-
-        std::vector<uint64_t> weights;
-        get_last_n_blocks_weights(weights, REWARD_BLOCKS_WINDOW);
-
-        uint64_t short_term_median = tools::median(std::move(weights));
-        uint64_t effective_median_block_weight = std::min<uint64_t>(
-                std::max<uint64_t>(BLOCK_GRANTED_FULL_REWARD_ZONE_V5, short_term_median),
-                SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR * m_long_term_effective_median_block_weight);
-
-        m_current_block_cumul_weight_median = effective_median_block_weight;
-    }
-
-    if (m_current_block_cumul_weight_median <= full_reward_zone)
-        m_current_block_cumul_weight_median = full_reward_zone;
-
-    m_current_block_cumul_weight_limit = m_current_block_cumul_weight_median * 2;
-
-    if (long_term_effective_median_block_weight)
-        *long_term_effective_median_block_weight = m_long_term_effective_median_block_weight;
-
-    if (!m_db->is_read_only())
-        m_db->add_max_block_size(m_current_block_cumul_weight_limit);
-
     return true;
 }
 //------------------------------------------------------------------

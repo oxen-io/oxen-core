@@ -48,7 +48,6 @@
 namespace cryptonote {
 struct test_options {
     std::vector<hard_fork> hard_forks;
-    size_t long_term_block_weight_window;
 };
 
 extern const command_line::arg_descriptor<std::string> arg_data_dir;

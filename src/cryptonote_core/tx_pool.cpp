@@ -79,9 +79,9 @@ namespace {
     uint64_t get_transaction_weight_limit(hf version) {
         // from v10, bulletproofs, limit a tx to 50% of the minimum block weight
         if (version >= hf::hf10_bulletproofs)
-            return get_min_block_weight(version) / 2 - COINBASE_BLOB_RESERVED_SIZE;
+            return BLOCK_GRANTED_FULL_REWARD_ZONE / 2 - COINBASE_BLOB_RESERVED_SIZE;
         else
-            return get_min_block_weight(version) - COINBASE_BLOB_RESERVED_SIZE;
+            return BLOCK_GRANTED_FULL_REWARD_ZONE - COINBASE_BLOB_RESERVED_SIZE;
     }
 }  // namespace
 //---------------------------------------------------------------------------------
@@ -1864,7 +1864,6 @@ void tx_memory_pool::mark_double_spend(const transaction& tx) {
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::fill_block_template(
         block& bl,
-        size_t median_weight,
         uint64_t already_generated_coins,
         size_t& total_weight,
         uint64_t& raw_fee,
@@ -1886,7 +1885,6 @@ bool tx_memory_pool::fill_block_template(
 
         block_reward_parts reward_parts = {};
         if (!get_oxen_block_reward(
-                    median_weight,
                     total_weight,
                     already_generated_coins,
                     version,
@@ -1898,7 +1896,7 @@ bool tx_memory_pool::fill_block_template(
 
         best_reward = version >= hf::hf16_pulse ? 0 /*Empty block, starts with 0 fee*/
                                                 : reward_parts.base_miner;
-        max_total_weight = 2 * median_weight - COINBASE_BLOB_RESERVED_SIZE;
+        max_total_weight = BLOCK_WEIGHT_LIMIT - COINBASE_BLOB_RESERVED_SIZE;
     } else {  // HF21+
         // Before SESH, there was the "full reward" limit (300kB) and then a hard limit of double
         // that (600kB), but over 300kB a quadratic penalty applied that reduced the miner (or pulse
@@ -1906,7 +1904,7 @@ bool tx_memory_pool::fill_block_template(
         //
         // Under SESH we don't have any Oxen rewards to subtract *from* so all OXEN tx fees just get
         // burned and the 300kB block weight soft limit (before HF21) just becomes a hard limit.
-        max_total_weight = BLOCK_GRANTED_FULL_REWARD_ZONE_V5 - COINBASE_BLOB_RESERVED_SIZE;
+        max_total_weight = BLOCK_GRANTED_FULL_REWARD_ZONE - COINBASE_BLOB_RESERVED_SIZE;
     }
 
     std::unordered_set<crypto::key_image> k_images;
@@ -1917,11 +1915,7 @@ bool tx_memory_pool::fill_block_template(
     // but actual block addition does).
     std::unordered_set<crypto::hash> ons_seen;
 
-    log::debug(
-            logcat,
-            "Filling block template, median weight {}, {} txes in the pool",
-            median_weight,
-            m_txs_by_priority.size());
+    log::debug(logcat, "Filling block template, {} txes in the pool", m_txs_by_priority.size());
 
     LockedTXN lock(m_blockchain);
 
@@ -1964,7 +1958,6 @@ bool tx_memory_pool::fill_block_template(
             next_block_reward_context.fee = raw_fee + meta.fee;
 
             if (!get_oxen_block_reward(
-                        median_weight,
                         total_weight + meta.weight,
                         already_generated_coins,
                         version,

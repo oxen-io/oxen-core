@@ -441,7 +441,6 @@ class tx_memory_pool {
      * @brief Chooses transactions for a block to include
      *
      * @param bl return-by-reference the block to fill in with transactions
-     * @param median_weight the current median block weight
      * @param already_generated_coins the current total number of coins "minted"
      * @param total_weight return-by-reference the total weight of the new block
      * @param raw_fee return-by-reference the total of fees from the included transactions.  Note
@@ -459,7 +458,6 @@ class tx_memory_pool {
      */
     bool fill_block_template(
             block& bl,
-            size_t median_weight,
             uint64_t already_generated_coins,
             size_t& total_weight,
             uint64_t& raw_fee,

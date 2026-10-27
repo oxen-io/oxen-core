@@ -315,8 +315,8 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
         return;
     }
 
-    info.response["block_size_limit"] = bs.get_current_cumulative_block_weight_limit();
-    info.response["block_size_median"] = bs.get_current_cumulative_block_weight_median();
+    info.response["block_size_limit"] = BLOCK_WEIGHT_LIMIT;
+    info.response["block_size_median"] = BLOCK_GRANTED_FULL_REWARD_ZONE;
 
     auto ons_counts = bs.name_system_db().get_mapping_counts(height);
     info.response["ons_counts"] = std::array{
@@ -2122,8 +2122,7 @@ void core_rpc_server::invoke(GET_COINBASE_TX_SUM& get_coinbase_tx_sum, rpc_conte
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_FEE_ESTIMATE& get_fee_estimate, rpc_context) {
-    auto fees =
-            m_core.blockchain.get_dynamic_base_fee_estimate(get_fee_estimate.request.grace_blocks);
+    auto fees = m_core.blockchain.get_current_base_fee();
     get_fee_estimate.response["fee_per_byte"] = fees.first;
     get_fee_estimate.response["fee_per_output"] = fees.second;
     get_fee_estimate.response["blink_fee_fixed"] = oxen::BLINK_BURN_FIXED;

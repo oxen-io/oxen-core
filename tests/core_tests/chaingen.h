@@ -329,14 +329,13 @@ public:
   explicit test_generator(hf hf_version = hf::hf7) : m_hf_version(hf_version) {}
   void get_block_chain(std::vector<block_info>& blockchain,        const crypto::hash& head, size_t n) const;
   void get_block_chain(std::vector<cryptonote::block>& blockchain, const crypto::hash& head, size_t n) const;
-  void get_last_n_block_weights(std::vector<uint64_t>& block_weights, const crypto::hash& head, size_t n) const;
   uint64_t get_already_generated_coins(const crypto::hash& blk_id) const;
   uint64_t get_already_generated_coins(const cryptonote::block& blk) const;
 
-  void add_block(const cryptonote::block& blk, size_t tsx_size, std::vector<uint64_t>& block_weights, uint64_t already_generated_coins);
+  void add_block(const cryptonote::block& blk, size_t tsx_size, uint64_t already_generated_coins);
   bool construct_block(cryptonote::block& blk, uint64_t height, const crypto::hash& prev_id,
     const cryptonote::account_base& miner_acc, uint64_t timestamp, uint64_t already_generated_coins,
-    std::vector<uint64_t>& block_weights, const std::list<cryptonote::transaction>& tx_list, const service_nodes::payout &block_leader = {});
+    const std::list<cryptonote::transaction>& tx_list, const service_nodes::payout &block_leader = {});
   bool construct_block(cryptonote::block& blk, const cryptonote::account_base& miner_acc, uint64_t timestamp);
   bool construct_block(cryptonote::block& blk, const cryptonote::block& blk_prev, const cryptonote::account_base& miner_acc,
     const std::list<cryptonote::transaction>& tx_list = std::list<cryptonote::transaction>(), const service_nodes::payout &block_leader = {});
@@ -977,7 +976,7 @@ try {
 template<typename t_test_class>
 struct get_test_options {
   const cryptonote::test_options test_options = {
-      std::vector<cryptonote::hard_fork>{{cryptonote::hf::hf7, 0, 0, 0}}, 0
+      std::vector<cryptonote::hard_fork>{{cryptonote::hf::hf7, 0, 0, 0}}
   };
 };
 //--------------------------------------------------------------------------
@@ -1024,7 +1023,6 @@ inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cry
   const cryptonote::test_options derived_test_options =
   {
     derived_hardforks,
-    gto.test_options.long_term_block_weight_window,
   };
 
   // FIXME: make sure that vm has arg_testnet_on set to true or false if
@@ -1471,7 +1469,6 @@ struct oxen_create_block_params
   oxen_blockchain_entry                prev;
   cryptonote::account_base             miner_acc;
   uint64_t                             timestamp;
-  std::vector<uint64_t>                block_weights;
   std::vector<cryptonote::transaction> tx_list;
   service_nodes::payout                block_leader;
   uint64_t                             total_fee;
@@ -1571,7 +1568,6 @@ struct oxen_chain_generator
   bool                                                 process_registration_tx(cryptonote::transaction& tx, uint64_t block_height, hf hf_version);
 
   hf                                                   get_hf_version_at(uint64_t height) const;
-  std::vector<uint64_t>                                last_n_block_weights(uint64_t height, uint64_t num) const;
   const cryptonote::account_base&                      first_miner() const { return first_miner_; }
 
   oxen_chain_generator& operator=(const oxen_chain_generator& other)

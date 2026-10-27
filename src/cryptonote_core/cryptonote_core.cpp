@@ -2006,14 +2006,12 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
     }
 
     if (!keeped_by_block &&
-        get_transaction_weight(tx) >= blockchain.get_current_cumulative_block_weight_limit() -
-                                              COINBASE_BLOB_RESERVED_SIZE) {
+        get_transaction_weight(tx) >= BLOCK_WEIGHT_LIMIT - COINBASE_BLOB_RESERVED_SIZE) {
         log::error(
                 log::Cat("verify"),
                 "tx is too large {}, expected not bigger than {}",
                 get_transaction_weight(tx),
-                blockchain.get_current_cumulative_block_weight_limit() -
-                        COINBASE_BLOB_RESERVED_SIZE);
+                BLOCK_WEIGHT_LIMIT - COINBASE_BLOB_RESERVED_SIZE);
         return false;
     }
 
@@ -2615,8 +2613,7 @@ bool core::handle_incoming_block(
     // blob size against the block weight limit, which acts as a sanity check without
     // having to parse/weigh first; in fact, since the block blob is the block header
     // plus the tx hashes, the weight will typically be much larger than the blob size
-    if (block_blob.size() >
-        blockchain.get_current_cumulative_block_weight_limit() + BLOCK_SIZE_SANITY_LEEWAY) {
+    if (block_blob.size() > BLOCK_WEIGHT_LIMIT + BLOCK_SIZE_SANITY_LEEWAY) {
         log::info(
                 logcat,
                 "WRONG BLOCK BLOB, sanity check failed on size {}, rejected",

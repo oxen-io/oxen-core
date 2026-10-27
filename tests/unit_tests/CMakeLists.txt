@@ -52,7 +52,6 @@ add_executable(unit_tests
   levin.cpp
   logging.cpp
   oxen_name_system.cpp
-  long_term_block_weight.cpp
   main.cpp
   median.cpp
   mnemonics.cpp
@@ -67,7 +66,6 @@ add_executable(unit_tests
   parse_address.cpp
   peer_history.cpp
   random.cpp
-  rolling_median.cpp
   rpc_history.cpp
   serialization.cpp
   service_nodes.cpp

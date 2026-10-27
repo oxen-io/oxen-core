@@ -540,8 +540,9 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 /// - `immutable_block_hash` -- Hash of the highest block in the chain that can not be reorganized.
 ///   Hex string for json, bytes for bt.
 /// - `cumulative_difficulty` -- Cumulative difficulty of all blocks in the blockchain.
-/// - `block_size_limit` -- Maximum allowed block size.
-/// - `block_size_median` -- Median block size of latest 100 blocks.
+/// - `block_size_limit` -- Maximum allowed block weight (always 600000).
+/// - `block_size_median` -- Block weight above which (pre-HF21) block rewards are penalized (always
+///   300000).
 /// - `ons_counts` -- ONS registration counts, as a three-element list: [session, wallet, lokinet]
 /// - `offline` -- Indicates that the node is offline, if true.  Omitted for online nodes.
 /// - `database_size` -- Current size of Blockchain data.  Over public RPC this is rounded up to the
@@ -1477,10 +1478,7 @@ struct GET_COINBASE_TX_SUM : RPC_COMMAND {
 ///
 /// Gives an estimation of per-output + per-byte fees
 ///
-/// Inputs:
-///
-/// - `grace_blocks` -- If specified, make sure that the fee is high enough to cover any fee
-///   increases in the next `grace_blocks` blocks.
+/// Inputs: none.
 ///
 /// Outputs:
 ///
@@ -1506,12 +1504,8 @@ struct GET_COINBASE_TX_SUM : RPC_COMMAND {
 /// ```
 ///
 /// Example-JSON-Fetch
-struct GET_FEE_ESTIMATE : PUBLIC {
+struct GET_FEE_ESTIMATE : PUBLIC, NO_ARGS {
     static constexpr auto names() { return NAMES("get_fee_estimate"); }
-
-    struct request_parameters {
-        uint64_t grace_blocks;
-    } request;
 };
 
 /// RPC: blockchain/get_alternative_chains
