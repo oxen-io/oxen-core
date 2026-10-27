@@ -64,7 +64,7 @@ using tools::span_guts;
 namespace {
 
     // PRAGMA user_version of the current schema.
-    constexpr int SCHEMA_VERSION = 5;
+    constexpr int SCHEMA_VERSION = 6;
 
     // The hashes of the transactions without inputs (other than miner txs) whose rows a limited
     // history has dropped.  Unlike a transaction with inputs, whose spent key images (kept for
@@ -111,6 +111,14 @@ CREATE INDEX sn_states_full ON sn_states(height) WHERE NOT quorums_only;
 UPDATE sn_proofs SET ip = ((ip & 0xff) << 24) | ((ip & 0xff00) << 8) | ((ip >> 8) & 0xff00) | ((ip >> 24) & 0xff);
 )");
         }
+        if (version < 6) {
+            // Block weight medians are no longer tracked, so neither are long-term block weights
+            // or the largest block size limit seen.
+            conn.sql.exec(R"(
+ALTER TABLE blocks DROP COLUMN long_term_weight;
+DELETE FROM properties WHERE key = 'max_block_size';
+)");
+        }
     }
 
     // Upper bound on the values bound into one `IN (...)` list, well below SQLite's limit on the
@@ -140,7 +148,6 @@ CREATE TABLE blocks (
     hash8                 BLOB    GENERATED ALWAYS AS (substr(hash, 1, 8)) VIRTUAL,
     timestamp             INTEGER NOT NULL,
     weight                INTEGER NOT NULL,
-    long_term_weight      INTEGER NOT NULL,
     cumulative_difficulty INTEGER NOT NULL,
     coins_generated       INTEGER NOT NULL,
     rct_outputs           INTEGER NOT NULL,
@@ -589,7 +596,7 @@ void BlockchainSQLite::reset() {
     // The rewards and ONS tables, which can be in this database too, are left alone (as with
     // LMDB, where they are in databases of their own), and so is their row of properties.  The
     // history setting stays, but with no blocks left there is no history missing any more.
-    conn.sql.exec("DELETE FROM properties WHERE key IN ('max_block_size', 'history_start')");
+    conn.sql.exec("DELETE FROM properties WHERE key = 'history_start'");
     tx.commit();
     m_history_start = 0;
 }
@@ -839,21 +846,18 @@ std::optional<SQLite::Transaction> BlockchainSQLite::read_tx(Connection& conn) c
 uint64_t BlockchainSQLite::add_block(
         const std::pair<block, std::string>& blk,
         size_t block_weight,
-        uint64_t long_term_block_weight,
         const difficulty_type& cumulative_difficulty,
         const uint64_t& coins_generated,
         const std::vector<std::pair<transaction, std::string>>& txs) {
     log::trace(logcat, "BlockchainSQLite::{}", __func__);
     uint64_t new_height = chain_height(write_conn());
-    BlockchainDB::add_block(
-            blk, block_weight, long_term_block_weight, cumulative_difficulty, coins_generated, txs);
+    BlockchainDB::add_block(blk, block_weight, cumulative_difficulty, coins_generated, txs);
     return new_height + 1;
 }
 
 void BlockchainSQLite::add_block(
         const block& blk,
         size_t block_weight,
-        uint64_t long_term_block_weight,
         const difficulty_type& cumulative_difficulty,
         const uint64_t& coins_generated,
         uint64_t num_rct_outs,
@@ -878,14 +882,13 @@ void BlockchainSQLite::add_block(
 
     std::string block_blob = block_to_blob(blk);
     conn.prepared_exec(
-            "INSERT INTO blocks (height, hash, timestamp, weight, long_term_weight, "
-            "cumulative_difficulty, coins_generated, rct_outputs, blob) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO blocks (height, hash, timestamp, weight, cumulative_difficulty, "
+            "coins_generated, rct_outputs, blob) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             as_i64(height),
             span_guts(blk_hash),
             as_i64(blk.timestamp),
             as_i64(block_weight),
-            as_i64(long_term_block_weight),
             as_i64(cumulative_difficulty),
             as_i64(coins_generated),
             prev_rct_outputs + as_i64(num_rct_outs),
@@ -1033,34 +1036,6 @@ size_t BlockchainSQLite::get_block_weight(const uint64_t& height) const {
     return as_u64(get_block_column<int64_t>(height, "weight", "block weight"));
 }
 
-std::vector<uint64_t> BlockchainSQLite::get_block_weight_column(
-        std::string_view column, uint64_t start_height, size_t count) const {
-    check_open();
-    auto conn = m_sql->conn();
-    auto tx = read_tx(conn);
-    if (start_height >= chain_height(conn))
-        throw DB_ERROR("Height {} not in blockchain"_format(start_height));
-    std::vector<uint64_t> ret;
-    for (auto w : conn.prepared_results<int64_t>(
-                 "SELECT {} FROM blocks WHERE height >= ? ORDER BY height LIMIT ?"_format(column),
-                 as_i64(start_height),
-                 as_i64(count)))
-        ret.push_back(as_u64(w));
-    return ret;
-}
-
-std::vector<uint64_t> BlockchainSQLite::get_block_weights(
-        uint64_t start_height, size_t count) const {
-    log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    return get_block_weight_column("weight", start_height, count);
-}
-
-std::vector<uint64_t> BlockchainSQLite::get_long_term_block_weights(
-        uint64_t start_height, size_t count) const {
-    log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    return get_block_weight_column("long_term_weight", start_height, count);
-}
-
 difficulty_type BlockchainSQLite::get_block_cumulative_difficulty(const uint64_t& height) const {
     return as_u64(
             get_block_column<int64_t>(height, "cumulative_difficulty", "cumulative difficulty"));
@@ -1075,10 +1050,6 @@ difficulty_type BlockchainSQLite::get_block_difficulty(const uint64_t& height) c
 
 uint64_t BlockchainSQLite::get_block_already_generated_coins(const uint64_t& height) const {
     return as_u64(get_block_column<int64_t>(height, "coins_generated", "generated coins"));
-}
-
-uint64_t BlockchainSQLite::get_block_long_term_weight(const uint64_t& height) const {
-    return as_u64(get_block_column<int64_t>(height, "long_term_weight", "long term weight"));
 }
 
 crypto::hash BlockchainSQLite::get_block_hash_from_height(const uint64_t& height) const {
@@ -1979,29 +1950,6 @@ std::vector<checkpoint_t> BlockchainSQLite::get_checkpoints_range(
     for (auto& [height, hash, type] : rows)
         result.push_back(load_checkpoint(conn, height, hash, type));
     return result;
-}
-
-// ---------------------------------------------------------------------------------------------
-// Properties
-// ---------------------------------------------------------------------------------------------
-
-uint64_t BlockchainSQLite::get_max_block_size() {
-    log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    check_open();
-    auto conn = m_sql->conn();
-    auto size = conn.prepared_maybe_get<int64_t>(
-            "SELECT value FROM properties WHERE key = 'max_block_size'");
-    return size ? as_u64(*size) : std::numeric_limits<uint64_t>::max();
-}
-
-void BlockchainSQLite::add_max_block_size(uint64_t sz) {
-    log::trace(logcat, "BlockchainSQLite::{}", __func__);
-    in_write_txn([&](Connection& conn) {
-        conn.prepared_exec(
-                "INSERT INTO properties (key, value) VALUES ('max_block_size', ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = MAX(value, excluded.value)",
-                as_i64(sz));
-    });
 }
 
 // ---------------------------------------------------------------------------------------------

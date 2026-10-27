@@ -206,18 +206,11 @@ class BlockchainLMDB : public BlockchainDB {
 
     size_t get_block_weight(const uint64_t& height) const override;
 
-    std::vector<uint64_t> get_block_weights(uint64_t start_height, size_t count) const override;
-
     difficulty_type get_block_cumulative_difficulty(const uint64_t& height) const override;
 
     difficulty_type get_block_difficulty(const uint64_t& height) const override;
 
     uint64_t get_block_already_generated_coins(const uint64_t& height) const override;
-
-    uint64_t get_block_long_term_weight(const uint64_t& height) const override;
-
-    std::vector<uint64_t> get_long_term_block_weights(
-            uint64_t start_height, size_t count) const override;
 
     crypto::hash get_block_hash_from_height(const uint64_t& height) const override;
 
@@ -336,7 +329,6 @@ class BlockchainLMDB : public BlockchainDB {
     uint64_t add_block(
             const std::pair<block, std::string>& blk,
             size_t block_weight,
-            uint64_t long_term_block_weight,
             const difficulty_type& cumulative_difficulty,
             const uint64_t& coins_generated,
             const std::vector<std::pair<transaction, std::string>>& txs) override;
@@ -407,7 +399,6 @@ class BlockchainLMDB : public BlockchainDB {
     void add_block(
             const block& blk,
             size_t block_weight,
-            uint64_t long_term_block_weight,
             const difficulty_type& cumulative_difficulty,
             const uint64_t& coins_generated,
             uint64_t num_rct_outs,
@@ -448,12 +439,6 @@ class BlockchainLMDB : public BlockchainDB {
     bool is_read_only() const override;
 
     uint64_t get_database_size() const override;
-
-    std::vector<uint64_t> get_block_info_64bit_fields(
-            uint64_t start_height, size_t count, uint64_t (*extract)(const mdb_block_info*)) const;
-
-    uint64_t get_max_block_size() override;
-    void add_max_block_size(uint64_t sz) override;
 
     // fix up anything that may be wrong due to past bugs
     void fixup(cryptonote::network_type nettype) override;

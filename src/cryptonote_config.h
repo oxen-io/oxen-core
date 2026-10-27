@@ -64,8 +64,6 @@ inline constexpr uint64_t BLOCK_GRANTED_FULL_REWARD_ZONE_V1 = 20000;
 // largest 100-block median ever was 299022.  It is therefore simply a constant.
 inline constexpr uint64_t BLOCK_GRANTED_FULL_REWARD_ZONE = 300000;
 inline constexpr uint64_t BLOCK_WEIGHT_LIMIT = 2 * BLOCK_GRANTED_FULL_REWARD_ZONE;
-// size in blocks of the long term block weight median window
-inline constexpr uint64_t LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE = 100000;
 inline constexpr uint64_t COINBASE_BLOB_RESERVED_SIZE = 600;
 
 inline constexpr uint64_t LOCKED_TX_ALLOWED_DELTA_BLOCKS = 1;
@@ -267,7 +265,6 @@ static_assert(static_cast<uint8_t>(hf_max) == 23);
 namespace feature {
     constexpr auto PER_BYTE_FEE = hf::hf10_bulletproofs;
     constexpr auto SMALLER_BP = hf::hf11_infinite_staking;
-    constexpr auto LONG_TERM_BLOCK_WEIGHT = hf::hf11_infinite_staking;
     constexpr auto INCREASE_FEE = hf::hf12_checkpointing;
     constexpr auto PER_OUTPUT_FEE = hf::hf13_enforce_checkpoints;
     constexpr auto ED25519_KEY = hf::hf13_enforce_checkpoints;

@@ -135,7 +135,6 @@ cumulative_difficulty: {}
 POW hash: {}
 block size: {}
 block weight: {}
-long term weight: {}
 num txes: {}
 reward: {}
 coinbase payouts: {}
@@ -154,7 +153,6 @@ miner tx hash: {})",
                 header.value<std::string_view>("pow_hash", "N/A"),
                 header["block_size"].get<uint64_t>(),
                 header["block_weight"].get<uint64_t>(),
-                header["long_term_weight"].get<uint64_t>(),
                 header["num_txes"].get<uint64_t>(),
                 cryptonote::print_money(header["reward"].get<uint64_t>()),
                 cryptonote::print_money(header["coinbase_payouts"].get<uint64_t>()),
@@ -870,8 +868,7 @@ bool rpc_command_executor::print_blockchain_info(
     auto writer = tools::msg_writer("\n");
     for (auto& header : block_headers["headers"]) {
         writer.flush().append(
-                "height: {}, timestamp: {} ({}), size: {}, weight: {} (long term {}), "
-                "transactions: {}\n"
+                "height: {}, timestamp: {} ({}), size: {}, weight: {}, transactions: {}\n"
                 "major version: {}, minor version: {}\n"
                 "block id: {}, previous block id: {}\n"
                 "difficulty: {}, nonce {}, reward {}\n",
@@ -880,7 +877,6 @@ bool rpc_command_executor::print_blockchain_info(
                 tools::get_human_readable_timestamp(header["timestamp"].get<uint64_t>()),
                 header["block_size"].get<int64_t>(),
                 header["block_weight"].get<int64_t>(),
-                header["long_term_weight"].get<int64_t>(),
                 header["num_txes"].get<int64_t>(),
                 header["major_version"].get<int64_t>(),
                 header["minor_version"].get<int64_t>(),

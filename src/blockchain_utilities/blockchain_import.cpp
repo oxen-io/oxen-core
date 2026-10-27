@@ -425,7 +425,6 @@ int import_from_file(
                         core.blockchain.db().add_block(
                                 std::make_pair(b, block_to_blob(b)),
                                 block_weight,
-                                0,
                                 cumulative_difficulty,
                                 coins_generated,
                                 txs);
