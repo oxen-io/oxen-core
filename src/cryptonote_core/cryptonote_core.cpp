@@ -42,6 +42,7 @@ extern "C" {
 
 #include <boost/algorithm/string.hpp>
 #include <csignal>
+#include <ranges>
 #include <unordered_set>
 
 #include "blockchain_db/blockchain_db.h"
@@ -55,6 +56,7 @@ extern "C" {
 #include "common/guts.h"
 #include "common/notify.h"
 #include "common/sha256sum.h"
+#include "common/string_util.h"
 #include "common/threadpool.h"
 #include "common/tracy_shim.h"
 #include "crypto/crypto.h"
@@ -66,6 +68,7 @@ extern "C" {
 #include "epee/string_tools.h"
 #include "epee/warnings.h"
 #include "logging/oxen_logger.h"
+#include "net/parse.h"
 #include "network_config/mocknet.h"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
@@ -238,6 +241,13 @@ static const command_line::arg_descriptor<uint64_t> arg_store_quorum_history = {
         0};
 static const command_line::arg_flag arg_disable_ip_check = {
         "disable-ip-check", "Disable the periodic Service Node IP check"};
+static const command_line::arg_descriptor<std::vector<std::string>> arg_force_unreachable = {
+        "force-unreachable",
+        "Treat service nodes whose public IP is within the given IPv4 address or CIDR range (e.g. "
+        "1.2.3.4 or 1.2.3.0/24) as having unreachable storage server, lokinet, and session router "
+        "when this service node votes in obligations quorums, regardless of the actual "
+        "reachability test results.  Can be specified multiple times, and each value may be a "
+        "comma-separated list.  Only applies when running as a service node."};
 
 // Loads stubs that fail if invoked.  The stubs are replaced in the
 // cryptonote_protocol/quorumnet.cpp glue code.
@@ -375,10 +385,19 @@ void core::init_options(boost::program_options::options_description& desc) {
     command_line::add_arg(desc, arg_store_quorum_history);
     command_line::add_arg(desc, arg_omq_quorumnet_public);
     command_line::add_arg(desc, arg_disable_ip_check);
+    command_line::add_arg(desc, arg_force_unreachable);
 
     mocknet_add_cli_arg(desc);
     miner::init_options(desc);
     BlockchainDB::init_options(desc);
+}
+//-----------------------------------------------------------------------------------------------
+bool core::is_forced_unreachable(uint32_t ip) const {
+    // 0 means we don't know the IP (no proof yet), which shouldn't match even a /0
+    return ip != 0 && std::any_of(
+                              m_force_unreachable.begin(),
+                              m_force_unreachable.end(),
+                              [ip](const auto& subnet) { return subnet.matches(ip); });
 }
 //-----------------------------------------------------------------------------------------------
 bool core::handle_command_line(const boost::program_options::variables_map& vm) {
@@ -399,6 +418,30 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
 
     if (command_line::get_arg(vm, arg_dev_allow_local))
         service_node_list.debug_allow_local_ips = true;
+
+    for (const auto& val : command_line::get_arg(vm, arg_force_unreachable)) {
+        for (auto range : tools::split_any(val, ", \t", true)) {
+            auto subnet = net::get_ipv4_subnet_address(range, true);
+            if (!subnet) {
+                log::error(
+                        logcat,
+                        "Invalid --{} value '{}': expected an IPv4 address or CIDR range",
+                        arg_force_unreachable.name,
+                        range);
+                return false;
+            }
+            m_force_unreachable.push_back(*subnet);
+        }
+    }
+    if (!m_force_unreachable.empty())
+        log::warning(
+                logcat,
+                "Service nodes with public IPs in {} will be treated as unreachable when voting in "
+                "obligations quorums",
+                fmt::join(
+                        m_force_unreachable |
+                                std::views::transform([](const auto& s) { return s.str(); }),
+                        ", "));
 
     m_service_node = command_line::get_arg(vm, arg_service_node);
 

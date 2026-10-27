@@ -2052,6 +2052,11 @@ struct GET_SERVICE_PRIVKEYS : NO_ARGS {
 ///   - `storage_server_last_reachable` -- The last time we received a successful ping response for
 ///     this storage server (whether or not it is currently failing). Will be omitted if we have
 ///     never received a successful ping response since startup.
+///   - `storage_server_forced_unreachable` -- True if this service node's public IP is within one
+///     of the queried oxend's `--force-unreachable` ranges, in which case the queried oxend votes
+///     the storage server as unreachable in obligations quorums regardless of the test results
+///     reported by the other `storage_server_*` fields.  This field is omitted if the queried oxend
+///     is not a service node.
 ///   - `lokinet_reachable` -- Same as `storage_server_reachable`, but for lokinet router testing.
 ///   - `lokinet_first_unreachable` -- Same as `storage_server_first_unreachable`, but for lokinet
 ///     router testing.
@@ -2059,6 +2064,12 @@ struct GET_SERVICE_PRIVKEYS : NO_ARGS {
 ///     router testing.
 ///   - `lokinet_last_reachable` -- Same as `storage_server_last_reachable`, but for lokinet router
 ///     testing.
+///   - `lokinet_forced_unreachable` -- Same as `storage_server_forced_unreachable`, but for lokinet
+///     router testing.
+///   - `session_router_reachable`, `session_router_first_unreachable`,
+///     `session_router_last_unreachable`, `session_router_last_reachable`,
+///     `session_router_forced_unreachable` -- Same as the equivalent `storage_server_*` fields, but
+///     for session router testing.
 ///   - `checkpoint_votes` -- dict containing recent received checkpoint voting information for this
 ///     service node.  Service node tests will fail if too many recent pulse blocks are missed.
 ///     Contains keys:

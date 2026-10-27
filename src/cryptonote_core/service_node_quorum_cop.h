@@ -118,11 +118,14 @@ struct service_node_test_results {
     bool lokinet_reachable = true;
     bool recent_l2_height = true;
     bool failed_transition = false;
+    // Set when the node's public IP is in a `--force-unreachable` range: this is voted as storage
+    // server, lokinet, and session router unreachability regardless of the actual test results.
+    bool forced_unreachable = false;
 
     // Returns a vector of reasons why this node is failing (nullopt if not failing).
     std::optional<std::vector<std::string_view>> why() const;
     constexpr bool passed() const {
-        return !failed_transition && uptime_proved &&
+        return !failed_transition && !forced_unreachable && uptime_proved &&
                // single_ip -- deliberately excluded (it only gives ip-change penalties, not deregs)
                checkpoint_participation && pulse_participation && timestamp_participation &&
                timesync_status && storage_server_reachable && lokinet_reachable && recent_l2_height;

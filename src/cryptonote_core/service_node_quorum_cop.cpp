@@ -36,6 +36,7 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
 #include "epee/net/local_ip.h"
+#include "epee/string_tools.h"
 #include "service_node_list.h"
 #include "service_node_voting.h"
 #include "uptime_proof.h"
@@ -83,6 +84,8 @@ std::optional<std::vector<std::string_view>> service_node_test_results::why() co
         results.push_back("Storage server is not reachable."sv);
     if (!lokinet_reachable)
         results.push_back("Lokinet router is not reachable."sv);
+    if (forced_unreachable)
+        results.push_back("Public IP is within a --force-unreachable range."sv);
     return results;
 }
 
@@ -96,6 +99,7 @@ service_node_test_results quorum_cop::check_service_node(
 
     service_node_test_results result;  // Defaults to true for individual tests
     bool ss_reachable = true, lokinet_reachable = true;
+    uint32_t public_ip = 0;
     uint64_t timestamp = 0;
     decltype(std::declval<proof_info>().public_ips) ips{};
     uint64_t l2_height = 0;
@@ -115,6 +119,7 @@ service_node_test_results quorum_cop::check_service_node(
     m_core.service_node_list.access_proof(pubkey, [&](const proof_info& proof) {
         ss_reachable = !proof.ss_reachable.unreachable_for(unreachable_threshold);
         lokinet_reachable = !proof.lokinet_reachable.unreachable_for(unreachable_threshold);
+        public_ip = proof.proof->public_ip;
         timestamp = std::max(proof.timestamp, proof.effective_timestamp);
         ips = proof.public_ips;
         checkpoint_participation = proof.checkpoint_participation;
@@ -154,6 +159,15 @@ service_node_test_results quorum_cop::check_service_node(
     if (!lokinet_reachable && hf_version >= hf::hf19_reward_batching) {
         log::info(logcat, "Service Node lokinet is not reachable for node: {}", pubkey);
         result.lokinet_reachable = false;
+    }
+
+    if (m_core.is_forced_unreachable(public_ip)) {
+        log::info(
+                logcat,
+                "Service Node {} public IP {} is within a --force-unreachable range",
+                pubkey,
+                epee::string_tools::get_ip_string_from_int32(public_ip));
+        result.forced_unreachable = true;
     }
 
     // IP change checks
@@ -456,11 +470,16 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                 if (!test_results.pulse_participation)
                                     reason |= cryptonote::Decommission_Reason::
                                             missed_pulse_participations;
-                                if (!test_results.storage_server_reachable)
+                                if (!test_results.storage_server_reachable ||
+                                    test_results.forced_unreachable)
                                     reason |= cryptonote::Decommission_Reason::
                                             storage_server_unreachable;
-                                if (!test_results.lokinet_reachable)
+                                if (!test_results.lokinet_reachable ||
+                                    test_results.forced_unreachable)
                                     reason |= cryptonote::Decommission_Reason::lokinet_unreachable;
+                                if (test_results.forced_unreachable)
+                                    reason |= cryptonote::Decommission_Reason::
+                                            session_router_unreachable;
                                 if (!test_results.timestamp_participation)
                                     reason |= cryptonote::Decommission_Reason::
                                             timestamp_response_unreachable;
