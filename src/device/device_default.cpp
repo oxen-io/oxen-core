@@ -32,11 +32,11 @@
 #include <sodium/crypto_generichash.h>
 
 #include "crypto/crypto.h"
+#include "crypto/int-util.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/subaddress_index.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
-#include "epee/int-util.h"
 #include "ringct/rctOps.h"
 
 namespace hw::core {

@@ -35,8 +35,7 @@
 
 #include "levin_base.h"
 #include "buffer.h"
-#include "../scope_leaver.h"
-#include "../int-util.h"
+#include "common/oxen.h"
 
 #include <random>
 #include <chrono>
@@ -356,8 +355,7 @@ public:
 
   void request_callback()
   {
-    auto scope_exit_handler = misc_utils::create_scope_leave_handler(
-      [this] { return finish_outer_call(); });
+    OXEN_DEFER { finish_outer_call(); };
 
     m_pservice_endpoint->request_callback();
   }
@@ -492,7 +490,7 @@ public:
               );
 
               bucket_head2 head = make_header(m_current_head.m_command, return_buff.size(), LEVIN_PACKET_RESPONSE, false);
-              head.m_return_code = SWAP32LE(return_code);
+              head.m_return_code = return_code;
               return_buff.insert(0, reinterpret_cast<const char*>(&head), sizeof(head));
 
               if(!m_pservice_endpoint->do_send(shared_sv{std::move(return_buff)}))
@@ -513,7 +511,7 @@ public:
         {
           if(m_cache_in_buffer.size() < sizeof(bucket_head2))
           {
-            if(m_cache_in_buffer.size() >= sizeof(uint64_t) && *((uint64_t*)m_cache_in_buffer.span(8).data()) != SWAP64LE(LEVIN_SIGNATURE))
+            if(m_cache_in_buffer.size() >= sizeof(uint64_t) && *((uint64_t*)m_cache_in_buffer.span(8).data()) != LEVIN_SIGNATURE)
             {
               return false;
             }
@@ -521,17 +519,7 @@ public:
             break;
           }
 
-#if BYTE_ORDER == LITTLE_ENDIAN
           bucket_head2& phead = *(bucket_head2*)m_cache_in_buffer.span(sizeof(bucket_head2)).data();
-#else
-          bucket_head2 phead = *(bucket_head2*)m_cache_in_buffer.span(sizeof(bucket_head2)).data();
-          phead.m_signature = SWAP64LE(phead.m_signature);
-          phead.m_cb = SWAP64LE(phead.m_cb);
-          phead.m_command = SWAP32LE(phead.m_command);
-          phead.m_return_code = SWAP32LE(phead.m_return_code);
-          phead.m_flags = SWAP32LE(phead.m_flags);
-          phead.m_protocol_version = SWAP32LE(phead.m_protocol_version);
-#endif
           if(LEVIN_SIGNATURE != phead.m_signature)
           {
             return false;
@@ -568,8 +556,7 @@ public:
   template<class callback_t>
   bool async_invoke(int command, const std::span<const uint8_t> in_buff, const callback_t &cb, std::chrono::nanoseconds timeout = {})
   {
-    auto scope_exit_handler = misc_utils::create_scope_leave_handler(
-      [this] { return finish_outer_call(); });
+    OXEN_DEFER { finish_outer_call(); };
 
     if(timeout == timeout.zero())
       timeout = m_config.m_invoke_timeout;
@@ -622,8 +609,7 @@ public:
 
   int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out)
   {
-    auto scope_exit_handler = misc_utils::create_scope_leave_handler(
-      [this] { return finish_outer_call(); });
+    OXEN_DEFER { finish_outer_call(); };
 
     if(m_deletion_initiated)
       return LEVIN_ERROR_CONNECTION_DESTROYED;
@@ -671,8 +657,7 @@ public:
 
   int notify(int command, const std::span<const uint8_t> in_buff)
   {
-    auto scope_exit_handler = misc_utils::create_scope_leave_handler(
-      [this] { return finish_outer_call(); });
+    OXEN_DEFER { finish_outer_call(); };
 
     if(m_deletion_initiated)
       return LEVIN_ERROR_CONNECTION_DESTROYED;
@@ -698,8 +683,7 @@ public:
       \return 1 on success */
   int send(shared_sv message)
   {
-    auto scope_exit_handler = misc_utils::create_scope_leave_handler(
-      [this] { return finish_outer_call(); });
+    OXEN_DEFER { finish_outer_call(); };
 
     if(m_deletion_initiated)
       return LEVIN_ERROR_CONNECTION_DESTROYED;

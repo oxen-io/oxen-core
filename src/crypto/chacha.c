@@ -12,7 +12,7 @@ Public domain.
 #endif
 
 #include "chacha.h"
-#include "epee/int-util.h"
+#include "int-util.h"
 
 /*
  * The following macros are used to obtain exact-width results.

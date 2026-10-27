@@ -45,6 +45,7 @@ oxen_add_library(cncrypto
   hash.c
   hash.cpp
   hmac-keccak.c
+  int-util.c
   jh.c
   keccak.c
   oaes_lib_expand.c

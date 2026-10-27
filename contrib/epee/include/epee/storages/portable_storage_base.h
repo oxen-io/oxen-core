@@ -35,15 +35,14 @@
 #include <cstdint>
 #include <map>
 #include "../misc_log_ex.h"
-#include "../int-util.h"
 
 namespace epee
 {
 
   namespace serialization
   {
-    constexpr uint32_t PORTABLE_STORAGE_SIGNATUREA = SWAP32LE(0x01011101);
-    constexpr uint32_t PORTABLE_STORAGE_SIGNATUREB = SWAP32LE(0x01020101); // bender's nightmare 
+    constexpr uint32_t PORTABLE_STORAGE_SIGNATUREA = 0x01011101;
+    constexpr uint32_t PORTABLE_STORAGE_SIGNATUREB = 0x01020101; // bender's nightmare
     constexpr uint8_t PORTABLE_STORAGE_FORMAT_VER = 1;
 
     // When sending a "varint" the binary serialization uses the bottom 2 bits to store the size,

@@ -34,11 +34,10 @@
 
 #include <boost/bind/bind.hpp>
 #include <boost/asio/steady_timer.hpp>
-#include "../scope_leaver.h"
 #include "../misc_log_ex.h"
-#include "../pragma_comp_defs.h"
 // Not epee headers: this server template is only ever instantiated by oxend's p2p code, which
 // provides them.
+#include "common/oxen.h"
 #include "common/string_util.h"
 #include "net/ipv4_address.h"
 
@@ -60,7 +59,6 @@
 #define TIMEOUT_EXTRA_MS_PER_BYTE 0.2
 
 
-PRAGMA_WARNING_PUSH
 namespace epee
 {
 namespace net_utils
@@ -78,8 +76,6 @@ namespace net_utils
   /************************************************************************/
   /*                                                                      */
   /************************************************************************/
-PRAGMA_WARNING_DISABLE_VS(4355)
-
   template<class t_protocol_handler>
   connection<t_protocol_handler>::connection( boost::asio::io_service& io_service,
                 std::shared_ptr<shared_state> state,
@@ -106,7 +102,6 @@ PRAGMA_WARNING_DISABLE_VS(4355)
   {
   }
 
-PRAGMA_WARNING_DISABLE_VS(4355)
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   connection<t_protocol_handler>::~connection() noexcept(false)
@@ -1223,7 +1218,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
         std::lock_guard lock{connections_mutex};
         connections_.insert(new_connection_l);
     }
-    auto scope_exit_handler = epee::misc_utils::create_scope_leave_handler([&](){ std::lock_guard lock{connections_mutex}; connections_.erase(new_connection_l); });
+    OXEN_DEFER { std::lock_guard lock{connections_mutex}; connections_.erase(new_connection_l); };
     boost::asio::ip::tcp::socket&  sock_ = new_connection_l->socket();
 
     bool try_ipv6 = false;
@@ -1329,7 +1324,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
         std::lock_guard lock{connections_mutex};
         connections_.insert(new_connection_l);
     }
-    auto scope_exit_handler = epee::misc_utils::create_scope_leave_handler([&](){ std::lock_guard lock{connections_mutex}; connections_.erase(new_connection_l); });
+    OXEN_DEFER { std::lock_guard lock{connections_mutex}; connections_.erase(new_connection_l); };
     boost::asio::ip::tcp::socket&  sock_ = new_connection_l->socket();
     
     bool try_ipv6 = false;
@@ -1439,4 +1434,3 @@ PRAGMA_WARNING_DISABLE_VS(4355)
   
 } // namespace
 } // namespace
-PRAGMA_WARNING_POP

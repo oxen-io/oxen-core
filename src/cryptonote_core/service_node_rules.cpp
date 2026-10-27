@@ -10,9 +10,9 @@
 
 #include "common/oxen.h"
 #include "common/string_util.h"
+#include "crypto/int-util.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
-#include "epee/int-util.h"
 #include "networks.h"
 #include "oxen_economy.h"
 

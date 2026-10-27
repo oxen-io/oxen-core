@@ -40,7 +40,6 @@
 
 #include "epee/net/net_utils_base.h"
 #include "epee/misc_log_ex.h"
-#include "epee/pragma_comp_defs.h"
 
 #include "epee/net/abstract_tcp_server2.h"
 

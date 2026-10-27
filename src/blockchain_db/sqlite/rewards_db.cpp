@@ -47,6 +47,7 @@
 #include <type_traits>
 #include <variant>
 
+#include "crypto/int-util.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "snapshots.h"
 

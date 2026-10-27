@@ -39,11 +39,11 @@
 #include "common/apply_permutation.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
+#include "crypto/int-util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/miner.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_config.h"
-#include "epee/int-util.h"
 #include "multisig/multisig.h"
 #include "ringct/rctSigs.h"
 
