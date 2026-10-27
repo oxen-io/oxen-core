@@ -495,9 +495,8 @@ quitting:
     return 0;
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
     oxen::set_terminate_handler();
-    TRY_ENTRY();
 
     uint64_t num_blocks = 0;
     uint64_t block_stop = 0;
@@ -688,6 +687,7 @@ int main(int argc, char* argv[]) {
     }
 
     return 0;
-
-    CATCH_ENTRY("Import error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Import error: {}", e.what());
+    return 1;
 }

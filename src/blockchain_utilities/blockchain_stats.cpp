@@ -45,11 +45,10 @@ using namespace cryptonote;
 
 static bool stop_requested = false;
 
-int main(int argc, char* argv[]) {
-    oxen::set_terminate_handler();
-    static auto logcat = log::Cat("bcutil");
+static auto logcat = log::Cat("bcutil");
 
-    TRY_ENTRY();
+int main(int argc, char* argv[]) try {
+    oxen::set_terminate_handler();
 
     uint64_t block_start = 0;
     uint64_t block_stop = 0;
@@ -308,6 +307,7 @@ int main(int argc, char* argv[]) {
 
     core_storage->deinit();
     return 0;
-
-    CATCH_ENTRY("Stats reporting error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Stats reporting error: {}", e.what());
+    return 1;
 }

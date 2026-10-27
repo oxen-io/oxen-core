@@ -69,10 +69,7 @@ int Base58Fuzzer::run(const std::string &filename)
 
 int main(int argc, const char **argv)
 {
-  auto logcat = oxen::log::Cat("fuzz");
-  TRY_ENTRY();
   Base58Fuzzer fuzzer;
   return run_fuzzer(argc, argv, fuzzer);
-  CATCH_ENTRY("main", 1);
 }
 

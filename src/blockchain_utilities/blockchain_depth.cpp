@@ -42,9 +42,8 @@ using namespace cryptonote;
 
 static auto logcat = log::Cat("bcutil");
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
     oxen::set_terminate_handler();
-    TRY_ENTRY();
 
     tools::on_startup();
 
@@ -288,6 +287,7 @@ int main(int argc, char* argv[]) {
 
     core_storage->deinit();
     return 0;
-
-    CATCH_ENTRY("Depth query error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Depth query error: {}", e.what());
+    return 1;
 }

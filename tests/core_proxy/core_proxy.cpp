@@ -61,13 +61,10 @@ using namespace crypto;
 BOOST_CLASS_VERSION(nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<tests::proxy_core> >, 1);
 
 int main(int argc, char* argv[])
-{
-
+try {
 #ifdef WIN32
   _CrtSetDbgFlag ( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
-#endif 
-
-  TRY_ENTRY();
+#endif
 
   tools::on_startup();
 
@@ -150,8 +147,9 @@ int main(int argc, char* argv[])
 
   oxen::log::info(logcat, "Node stopped.");
   return 0;
-
-  CATCH_ENTRY("main", 1);
+} catch (const std::exception& e) {
+  oxen::log::error(logcat, "Exception in main: {}", e.what());
+  return 1;
 }
 
 /*

@@ -171,9 +171,8 @@ static bool generate_multisig(
     return true;
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
     oxen::set_terminate_handler();
-    TRY_ENTRY();
 
     po::options_description desc_params(wallet_args::tr("Wallet options"));
     command_line::add_arg(desc_params, arg_filename_base);
@@ -254,5 +253,7 @@ int main(int argc, char* argv[]) {
         return 1;
 
     return 0;
-    CATCH_ENTRY("main", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in main: {}", e.what());
+    return 1;
 }
