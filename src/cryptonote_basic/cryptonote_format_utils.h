@@ -428,12 +428,14 @@ crypto::hash get_tx_tree_hash(const block& b);
 crypto::secret_key encrypt_key(crypto::secret_key key, const epee::wipeable_string& passphrase);
 crypto::secret_key decrypt_key(crypto::secret_key key, const epee::wipeable_string& passphrase);
 #define CHECKED_GET_SPECIFIC_VARIANT(variant_var, specific_type, variable_name, fail_return_val) \
-    CHECK_AND_ASSERT_MES(                                                                        \
-            std::holds_alternative<specific_type>(variant_var),                                  \
-            fail_return_val,                                                                     \
-            "wrong variant type: {}, expected {}",                                               \
-            tools::type_name(tools::variant_type(variant_var)),                                  \
-            tools::type_name<specific_type>());                                                  \
+    if (!std::holds_alternative<specific_type>(variant_var)) {                                   \
+        oxen::log::error(                                                                        \
+                logcat,                                                                          \
+                "wrong variant type: {}, expected {}",                                           \
+                tools::type_name(tools::variant_type(variant_var)),                              \
+                tools::type_name<specific_type>());                                              \
+        return fail_return_val;                                                                  \
+    }                                                                                            \
     auto& variable_name = std::get<specific_type>(variant_var);
 
 // Provide an inline header implementation of this function because device_default needs it (but

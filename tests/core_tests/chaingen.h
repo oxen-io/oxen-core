@@ -1064,7 +1064,10 @@ inline bool do_replay_file(const std::string& filename)
     account.generate();
 
 #define GENERATE_MULTISIG_ACCOUNT(account, threshold, total) \
-    CHECK_AND_ASSERT_MES(threshold >= 2 && threshold <= total, false, "Invalid multisig scheme"); \
+    if (threshold < 2 || threshold > total) { \
+      oxen::log::error(logcat, "Invalid multisig scheme"); \
+      return false; \
+    } \
     std::vector<cryptonote::account_base> account(total); \
     do \
     { \
@@ -1285,10 +1288,11 @@ inline bool do_replay_file(const std::string& filename)
 
 #define QUOTEME(x) #x
 #define DEFINE_TESTS_ERROR_CONTEXT(text) const char* perr_context = text;
-#define CHECK_TEST_CONDITION(cond) CHECK_AND_ASSERT_MES(cond, false, "[{}] failed: \"{}\"", perr_context, QUOTEME(cond))
-#define CHECK_TEST_CONDITION_MSG(cond, ...) CHECK_AND_ASSERT_MES(cond, false, "[{}] failed: \"{}\", msg: {}", perr_context, QUOTEME(cond), fmt::format(__VA_ARGS__))
-#define CHECK_EQ(v1, v2) CHECK_AND_ASSERT_MES(v1 == v2, false, "[{}] failed: \"{} == {}\", {} != {}", perr_context, QUOTEME(v1), QUOTEME(v2), v1, v2)
-#define CHECK_NOT_EQ(v1, v2) CHECK_AND_ASSERT_MES(!(v1 == v2), false, "[{}] failed: \"{} != {}\", {} == {}", perr_context, QUOTEME(v1), QUOTEME(v2), v1, v2)
+#define CHECK_TEST_FAIL_IF(failed, ...) do { if (failed) { oxen::log::error(logcat, __VA_ARGS__); return false; } } while (0)
+#define CHECK_TEST_CONDITION(cond) CHECK_TEST_FAIL_IF(!(cond), "[{}] failed: \"{}\"", perr_context, QUOTEME(cond))
+#define CHECK_TEST_CONDITION_MSG(cond, ...) CHECK_TEST_FAIL_IF(!(cond), "[{}] failed: \"{}\", msg: {}", perr_context, QUOTEME(cond), fmt::format(__VA_ARGS__))
+#define CHECK_EQ(v1, v2) CHECK_TEST_FAIL_IF(!((v1) == (v2)), "[{}] failed: \"{} == {}\", {} != {}", perr_context, QUOTEME(v1), QUOTEME(v2), v1, v2)
+#define CHECK_NOT_EQ(v1, v2) CHECK_TEST_FAIL_IF((v1) == (v2), "[{}] failed: \"{} != {}\", {} == {}", perr_context, QUOTEME(v1), QUOTEME(v2), v1, v2)
 #define MK_COINS(amount) (UINT64_C(amount) * oxen::COIN)
 
 inline std::string make_junk() {

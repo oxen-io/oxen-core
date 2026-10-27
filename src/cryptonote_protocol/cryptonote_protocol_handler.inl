@@ -120,7 +120,10 @@ namespace cryptonote
   bool t_cryptonote_protocol_handler<t_core>::on_callback(cryptonote_connection_context& context)
   {
     log::debug(logcat, "callback fired");
-    CHECK_AND_ASSERT_MES_CC( context.m_callback_request_count > 0, false, "false callback fired, but context.m_callback_request_count={}", context.m_callback_request_count.load());
+    if (context.m_callback_request_count <= 0) {
+      log::error(logcat, "{}: false callback fired, but context.m_callback_request_count={}", context, context.m_callback_request_count.load());
+      return false;
+    }
     --context.m_callback_request_count;
 
     // More than one callback can be queued for a connection: e.g. the standby checker's, plus the one

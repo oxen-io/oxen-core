@@ -1850,12 +1850,12 @@ bool Blockchain::prevalidate_block_rewards(const block& b, uint64_t height, hf h
         }
     }
 
-    if (hf_version >= feature::REJECT_SIGS_IN_COINBASE)  // Enforce empty rct signatures for
-                                                         // miner transactions,
-        CHECK_AND_ASSERT_MES(
-                miner_tx.rct_signatures.type == rct::RCTType::Null,
-                false,
-                "RingCT signatures not allowed in coinbase transactions");
+    // Enforce empty rct signatures for miner transactions
+    if (hf_version >= feature::REJECT_SIGS_IN_COINBASE &&
+        miner_tx.rct_signatures.type != rct::RCTType::Null) {
+        log::error(logcat, "RingCT signatures not allowed in coinbase transactions");
+        return false;
+    }
 
     // check outs overflow
     // NOTE: not entirely sure this is necessary, given that this function is

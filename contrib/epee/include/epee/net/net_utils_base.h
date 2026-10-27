@@ -346,8 +346,6 @@ namespace net_utils
     return os;
   }
 
-#define CHECK_AND_ASSERT_MES_CC(condition, return_val, ...) CHECK_AND_ASSERT_MES(condition, return_val, "{}: {}", context, fmt::format(__VA_ARGS__))
-
 }
 }
 
