@@ -27,7 +27,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <array>
-#include <boost/predef/other/endian.h>
 #include <oxenc/endian.h>
 #include <cstdint>
 #include <gtest/gtest.h>
@@ -46,8 +45,9 @@
 #include "epee/shared_sv.h"
 #include "crypto/crypto.h"
 #include "epee/net/net_utils_base.h"
-#include "epee/net/local_ip.h"
 #include "epee/net/buffer.h"
+#include "epee/storages/portable_storage.h"
+#include "net/ipv4_address.h"
 #include "p2p/net_peerlist_boost_serialization.h"
 #include "epee/string_tools.h"
 #include "epee/storages/parserse_base_utils.h"
@@ -82,11 +82,13 @@ namespace
     EXPECT_FALSE( lhs >= rhs );  \
     EXPECT_TRUE( rhs >= lhs )
 
-  #if BOOST_ENDIAN_LITTLE_BYTE
-    #define CHECK_LESS_ENDIAN(lhs, rhs) CHECK_LESS( rhs , lhs )
-  #else
-    #define CHECK_LESS_ENDIAN(lhs, rhs) CHECK_LESS( lhs , rhs )
-  #endif
+  // The layout in which peerlist files have always stored an IPv4 address.
+  struct legacy_ipv4_address {
+    uint32_t ip;
+    uint16_t port;
+    template <class Archive>
+    void serialize(Archive& a, unsigned) { a & ip; a & port; }
+  };
 }
 
 static_assert(std::is_default_constructible_v<epee::shared_sv>);
@@ -187,54 +189,49 @@ TEST(StringTools, GetIpInt32)
   EXPECT_EQ(htonl(0xff0aff00), ip);
 }
 
-TEST(NetUtils, IPv4NetworkAddress)
+TEST(NetUtils, IPv4Address)
 {
-  static_assert(epee::net_utils::ipv4_network_address::get_type_id() == epee::net_utils::address_type::ipv4, "bad ipv4 type id");
+  static_assert(net::ipv4_address::get_type_id() == epee::net_utils::address_type::ipv4, "bad ipv4 type id");
 
-  const auto ip1 = oxenc::host_to_big(0x330012FFu);
-  const auto ip_loopback = oxenc::host_to_big(0x7F000001u);
-  const auto ip_local = oxenc::host_to_big(0x0A000000u);
+  const oxen::quic::ipv4 ip1{51, 0, 18, 255};
+  const oxen::quic::ipv4 ip_loopback{127, 0, 0, 1};
+  const oxen::quic::ipv4 ip_local{10, 0, 0, 0};
 
-  epee::net_utils::ipv4_network_address address1{ip1, 65535};
+  net::ipv4_address address1{ip1, 65535};
   CHECK_EQUAL(address1, address1);
   EXPECT_STREQ("51.0.18.255:65535", address1.str().c_str());
   EXPECT_STREQ("51.0.18.255", address1.host_str().c_str());
   EXPECT_FALSE(address1.is_loopback());
   EXPECT_FALSE(address1.is_local());
-  EXPECT_EQ(epee::net_utils::ipv4_network_address::get_type_id(), address1.get_type_id());
   EXPECT_EQ(ip1, address1.ip());
   EXPECT_EQ(65535, address1.port());
-  EXPECT_TRUE(epee::net_utils::ipv4_network_address{std::move(address1)} == address1);
-  EXPECT_TRUE(epee::net_utils::ipv4_network_address{address1} == address1);
+  EXPECT_TRUE(net::ipv4_address{address1} == address1);
 
-  const epee::net_utils::ipv4_network_address loopback{ip_loopback, 0};
+  const net::ipv4_address loopback{ip_loopback, 0};
   CHECK_EQUAL(loopback, loopback);
-  CHECK_LESS_ENDIAN(address1, loopback);
+  CHECK_LESS(address1, loopback);
   EXPECT_STREQ("127.0.0.1:0", loopback.str().c_str());
   EXPECT_STREQ("127.0.0.1", loopback.host_str().c_str());
   EXPECT_TRUE(loopback.is_loopback());
   EXPECT_FALSE(loopback.is_local());
-  EXPECT_EQ(epee::net_utils::ipv4_network_address::get_type_id(), address1.get_type_id());
   EXPECT_EQ(ip_loopback, loopback.ip());
   EXPECT_EQ(0, loopback.port());
 
-  const epee::net_utils::ipv4_network_address local{ip_local, 8080};
+  const net::ipv4_address local{ip_local, 8080};
   CHECK_EQUAL(local, local);
   CHECK_LESS(local, address1);
   CHECK_LESS(local, loopback);
   EXPECT_FALSE(local.is_loopback());
   EXPECT_TRUE(local.is_local());
 
-  epee::net_utils::ipv4_network_address address2{ip1, 55};
+  net::ipv4_address address2{ip1, 55};
   CHECK_EQUAL(address2, address2);
-  CHECK_LESS_ENDIAN(address2, loopback);
+  CHECK_LESS(address2, address1);
+  CHECK_LESS(address2, loopback);
   CHECK_LESS(local, address2);
+  EXPECT_TRUE(address2.is_same_host(address1));
   EXPECT_STREQ("51.0.18.255:55", address2.str().c_str());
   EXPECT_STREQ("51.0.18.255", address2.host_str().c_str());
-
-
-  address2 = std::move(address1);
-  CHECK_EQUAL(address2, address1);
 
   address2 = local;
   CHECK_EQUAL(address2, local);
@@ -254,13 +251,37 @@ TEST(NetUtils, IPv4NetworkAddress)
   CHECK_EQUAL(address1, address2);
   EXPECT_EQ(ip1, address2.ip());
   EXPECT_EQ(65535, address2.port());
+
+  // Existing peerlist files and peers carry the IP as the legacy (byte-reversed) integer.
+  {
+    std::stringstream stream, legacy_stream;
+    {
+      boost::archive::portable_binary_oarchive ostream{stream};
+      ostream << address1;
+    }
+    {
+      boost::archive::portable_binary_oarchive ostream{legacy_stream};
+      ostream << legacy_ipv4_address{0xff120033u, 65535};
+    }
+    EXPECT_EQ(stream.str(), legacy_stream.str());
+  }
+  {
+    epee::serialization::portable_storage ps;
+    ASSERT_TRUE(address1.store(ps, nullptr));
+    uint32_t ip = 0;
+    ASSERT_TRUE(ps.get_value("m_ip", ip, nullptr));
+    EXPECT_EQ(ip, 0xff120033u);
+    net::ipv4_address loaded;
+    ASSERT_TRUE(loaded._load(ps, nullptr));
+    CHECK_EQUAL(loaded, address1);
+  }
 }
 
 TEST(NetUtils, NetworkAddress)
 {
-  const auto ip1 = oxenc::host_to_big(0x330012FFu);
-  const auto ip_loopback = oxenc::host_to_big(0x7F000001u);
-  const auto ip_local = oxenc::host_to_big(0x0A000000u);
+  const oxen::quic::ipv4 ip1{51, 0, 18, 255};
+  const oxen::quic::ipv4 ip_loopback{127, 0, 0, 1};
+  const oxen::quic::ipv4 ip_local{10, 0, 0, 0};
 
   struct custom_address {
     constexpr static bool equal(const custom_address&) noexcept { return false; }
@@ -289,7 +310,7 @@ TEST(NetUtils, NetworkAddress)
   EXPECT_THROW(empty.as<custom_address>(), std::bad_cast);
 
   epee::net_utils::network_address address1{
-    epee::net_utils::ipv4_network_address{ip1, 65535}
+    net::ipv4_address{ip1, 65535}
   };
   CHECK_EQUAL(address1, address1);
   CHECK_EQUAL(epee::net_utils::network_address{address1}, address1);
@@ -301,18 +322,18 @@ TEST(NetUtils, NetworkAddress)
   EXPECT_STREQ("51.0.18.255", address1.host_str().c_str());
   EXPECT_FALSE(address1.is_loopback());
   EXPECT_FALSE(address1.is_local());
-  EXPECT_EQ(epee::net_utils::ipv4_network_address::get_type_id(), address1.get_type_id());
+  EXPECT_EQ(net::ipv4_address::get_type_id(), address1.get_type_id());
   EXPECT_EQ(epee::net_utils::zone::public_, address1.get_zone());
   EXPECT_TRUE(address1.is_blockable());
-  EXPECT_NO_THROW(address1.as<epee::net_utils::ipv4_network_address>());
+  EXPECT_NO_THROW(address1.as<net::ipv4_address>());
   EXPECT_THROW(address1.as<custom_address>(), std::bad_cast);
 
   const epee::net_utils::network_address loopback{
-    epee::net_utils::ipv4_network_address{ip_loopback, 0}
+    net::ipv4_address{ip_loopback, 0}
   };
   CHECK_EQUAL(loopback, loopback);
   CHECK_LESS(empty, loopback);
-  CHECK_LESS_ENDIAN(address1, loopback);
+  CHECK_LESS(address1, loopback);
   EXPECT_TRUE(loopback.is_same_host(loopback));
   EXPECT_FALSE(loopback.is_same_host(address1));
   EXPECT_FALSE(address1.is_same_host(loopback));
@@ -320,12 +341,11 @@ TEST(NetUtils, NetworkAddress)
   EXPECT_STREQ("127.0.0.1", loopback.host_str().c_str());
   EXPECT_TRUE(loopback.is_loopback());
   EXPECT_FALSE(loopback.is_local());
-  EXPECT_EQ(epee::net_utils::ipv4_network_address::get_type_id(), address1.get_type_id());
+  EXPECT_EQ(net::ipv4_address::get_type_id(), address1.get_type_id());
   EXPECT_EQ(epee::net_utils::zone::public_, address1.get_zone());
-  EXPECT_EQ(epee::net_utils::ipv4_network_address::get_type_id(), address1.get_type_id());
 
   const epee::net_utils::network_address local{
-    epee::net_utils::ipv4_network_address{ip_local, 8080}
+    net::ipv4_address{ip_local, 8080}
   };
   CHECK_EQUAL(local, local);
   CHECK_LESS(local, loopback);
@@ -334,12 +354,12 @@ TEST(NetUtils, NetworkAddress)
   EXPECT_TRUE(local.is_local());
 
   epee::net_utils::network_address address2{
-    epee::net_utils::ipv4_network_address{ip1, 55}
+    net::ipv4_address{ip1, 55}
   };
   CHECK_EQUAL(address2, address2);
   CHECK_LESS(address2, address1);
   CHECK_LESS(local, address2);
-  CHECK_LESS_ENDIAN(address2, loopback);
+  CHECK_LESS(address2, loopback);
   EXPECT_TRUE(address1.is_same_host(address2));
   EXPECT_TRUE(address2.is_same_host(address1));
   EXPECT_STREQ("51.0.18.255:55", address2.str().c_str());
@@ -355,8 +375,8 @@ TEST(NetUtils, NetworkAddress)
   EXPECT_STREQ("51.0.18.255", address2.host_str().c_str());
   EXPECT_FALSE(address1.is_loopback());
   EXPECT_FALSE(address1.is_local());
-  EXPECT_THROW(address1.as<epee::net_utils::ipv4_network_address>(), std::bad_cast);
-  EXPECT_NO_THROW(address2.as<epee::net_utils::ipv4_network_address>());
+  EXPECT_THROW(address1.as<net::ipv4_address>(), std::bad_cast);
+  EXPECT_NO_THROW(address2.as<net::ipv4_address>());
 
   address2 = local;
   CHECK_EQUAL(address2, local);
@@ -380,23 +400,20 @@ TEST(NetUtils, NetworkAddress)
   CHECK_EQUAL(address1, address2);
   EXPECT_TRUE(address1.is_same_host(address2));
   EXPECT_TRUE(address2.is_same_host(address1));
-  EXPECT_NO_THROW(address1.as<epee::net_utils::ipv4_network_address>());
+  EXPECT_NO_THROW(address1.as<net::ipv4_address>());
 
   address1 = custom_address{};
   CHECK_EQUAL(address1, address1);
   CHECK_LESS(address2, address1);
   EXPECT_FALSE(address1.is_same_host(loopback));
   EXPECT_FALSE(loopback.is_same_host(address1));
-  EXPECT_THROW(address1.as<epee::net_utils::ipv4_network_address>(), std::bad_cast);
+  EXPECT_THROW(address1.as<net::ipv4_address>(), std::bad_cast);
   EXPECT_NO_THROW(address1.as<custom_address>());
 }
 
 static bool is_local(const char *s)
 {
-  auto& logcat = epee::logcat;
-  uint32_t ip;
-  CHECK_AND_ASSERT_THROW_MES(epee::string_tools::get_ip_int32_from_string(ip, s), "Invalid IP address: {}", s);
-  return epee::net_utils::is_ip_local(ip);
+  return net::ipv4_address{oxen::quic::ipv4{std::string{s}}, 0}.is_local();
 }
 
 TEST(NetUtils, PrivateRanges)
@@ -414,13 +431,15 @@ TEST(NetUtils, PrivateRanges)
   ASSERT_EQ(is_local("172.16.255.255"), true);
   ASSERT_EQ(is_local("172.31.255.255"), true);
   ASSERT_EQ(is_local("172.32.0.0"), false);
-  ASSERT_EQ(is_local("0.0.0.0"), false);
-  ASSERT_EQ(is_local("255.255.255.254"), false);
   ASSERT_EQ(is_local("11.255.255.255"), false);
-  ASSERT_EQ(is_local("0.0.0.10"), false);
-  ASSERT_EQ(is_local("0.0.168.192"), false);
-  ASSERT_EQ(is_local("0.0.30.172"), false);
-  ASSERT_EQ(is_local("0.0.30.127"), false);
+  // Not publicly routable, so local:
+  ASSERT_EQ(is_local("0.0.0.0"), true);
+  ASSERT_EQ(is_local("255.255.255.254"), true);
+  // Byte-reversed private addresses (which a byte order mixup would confuse) are public:
+  ASSERT_EQ(is_local("1.0.0.10"), false);
+  ASSERT_EQ(is_local("1.0.168.192"), false);
+  ASSERT_EQ(is_local("1.0.16.172"), false);
+  ASSERT_EQ(is_local("1.0.0.127"), false);
 }
 
 TEST(net_buffer, basic)

@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include <oxen/quic/ip.hpp>
 #include <span>
 #include <utility>
 #include <vector>
@@ -72,7 +73,7 @@ struct i_p2p_endpoint {
             const epee::net_utils::network_address& address, time_t seconds = 0) = 0;
     virtual bool unblock_host(const epee::net_utils::network_address& address) = 0;
     virtual std::map<std::string, time_t> get_blocked_hosts() = 0;
-    virtual std::map<epee::net_utils::ipv4_network_subnet, time_t> get_blocked_subnets() = 0;
+    virtual std::map<oxen::quic::ipv4_range, time_t> get_blocked_subnets() = 0;
     virtual bool add_host_fail(const epee::net_utils::network_address& address) = 0;
 };
 
@@ -122,9 +123,7 @@ struct p2p_endpoint_stub : public i_p2p_endpoint<t_connection_context> {
     virtual std::map<std::string, time_t> get_blocked_hosts() {
         return std::map<std::string, time_t>();
     }
-    virtual std::map<epee::net_utils::ipv4_network_subnet, time_t> get_blocked_subnets() {
-        return std::map<epee::net_utils::ipv4_network_subnet, time_t>();
-    }
+    virtual std::map<oxen::quic::ipv4_range, time_t> get_blocked_subnets() { return {}; }
     virtual bool add_host_fail(const epee::net_utils::network_address& address) { return true; }
 };
 }  // namespace nodetool

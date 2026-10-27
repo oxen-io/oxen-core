@@ -49,6 +49,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/tx_pool.h"
 #include "epee/net/network_throttle-detail.hpp"
+#include "net/ipv4_address.h"
 #include "common/random.h"
 #include "common/lock.h"
 #include "common/util.h"
@@ -278,10 +279,10 @@ namespace cryptonote
       cnx.host = cntxt.m_remote_address.host_str();
       cnx.ip = "";
       cnx.port = "";
-      if (cntxt.m_remote_address.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id())
+      if (cntxt.m_remote_address.get_type_id() == net::ipv4_address::get_type_id())
       {
         cnx.ip = cnx.host;
-        cnx.port = std::to_string(cntxt.m_remote_address.as<epee::net_utils::ipv4_network_address>().port());
+        cnx.port = std::to_string(cntxt.m_remote_address.port());
       }
       cnx.peer_id = "{:016x}"_format(peer_id);
       

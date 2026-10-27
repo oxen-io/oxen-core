@@ -38,8 +38,10 @@
 #include "../string_tools.h"
 #include "../scope_leaver.h"
 #include "../misc_log_ex.h"
-#include "local_ip.h"
 #include "../pragma_comp_defs.h"
+// Not an epee header: this server template is only ever instantiated by oxend's p2p code, which
+// provides it.
+#include "net/ipv4_address.h"
 
 #include <chrono>
 #include <thread>
@@ -141,8 +143,8 @@ PRAGMA_WARNING_DISABLE_VS(4355)
         throw std::runtime_error("Only IPv4 and IPv6 are supported here");
     if (remote_ep.address().is_v4())
     {
-      const unsigned long ip_ = boost::asio::detail::socket_ops::host_to_network_long(remote_ep.address().to_v4().to_uint());
-      return start(is_income, is_multithreaded, ipv4_network_address{uint32_t(ip_), remote_ep.port()});
+      return start(is_income, is_multithreaded, net::ipv4_address{
+              oxen::quic::ipv4{remote_ep.address().to_v4().to_uint()}, remote_ep.port()});
     }
     else
     {

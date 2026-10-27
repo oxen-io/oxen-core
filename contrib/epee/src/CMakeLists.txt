@@ -64,6 +64,7 @@ target_link_libraries(epee
   PUBLIC
     oxenmq::oxenmq
     oxenc::oxenc
+    oxen::quic-utils
   PRIVATE
     Boost::thread
     oxen::logging
