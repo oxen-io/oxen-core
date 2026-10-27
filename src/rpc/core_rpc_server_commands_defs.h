@@ -707,7 +707,6 @@ struct GET_BLOCK_HASH : PUBLIC {
 ///   - `block_size` -- The total block size in bytes (block data size + block_weight)
 ///   - `num_txes` -- Number of transactions in the block, not counting the coinbase tx.
 ///   - `pow_hash` -- The hash of the block's proof of work (requires `fill_pow_hash`)
-///   - `long_term_weight` -- Long term weight of the block.
 ///   - `miner_tx_hash` -- The TX hash of the miner transaction
 ///   - `tx_hashes` -- The TX hashes of all non-coinbase transactions (requires `get_tx_hashes`)
 ///   - `service_node_winner` -- Service node that received a reward for this block

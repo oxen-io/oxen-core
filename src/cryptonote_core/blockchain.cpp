@@ -5772,7 +5772,6 @@ bool Blockchain::handle_block_to_main_chain(
             new_height = m_db->add_block(
                     std::make_pair(bl, std::move(bd)),
                     block_weight,
-                    0,
                     cumulative_difficulty,
                     already_generated_coins,
                     txs);

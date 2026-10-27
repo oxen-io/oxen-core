@@ -272,7 +272,6 @@ void BlockchainDB::add_transaction(
 uint64_t BlockchainDB::add_block(
         const std::pair<block, std::string>& blck,
         size_t block_weight,
-        uint64_t long_term_block_weight,
         const difficulty_type& cumulative_difficulty,
         const uint64_t& coins_generated,
         const std::vector<std::pair<transaction, std::string>>& txs) {
@@ -318,14 +317,7 @@ uint64_t BlockchainDB::add_block(
 
     // call out to subclass implementation to add the block & metadata
     started = std::chrono::steady_clock::now();
-    add_block(
-            blk,
-            block_weight,
-            long_term_block_weight,
-            cumulative_difficulty,
-            coins_generated,
-            num_rct_outs,
-            blk_hash);
+    add_block(blk, block_weight, cumulative_difficulty, coins_generated, num_rct_outs, blk_hash);
     time_add_block1 += std::chrono::steady_clock::now() - started;
 
     ++num_calls;

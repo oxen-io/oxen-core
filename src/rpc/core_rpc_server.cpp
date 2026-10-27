@@ -1614,7 +1614,6 @@ static void fill_block_header_response(
     if (fill_pow_hash)
         response_hex["pow_hash"] = get_block_longhash_w_blockchain(
                 core.get_nettype(), &core.blockchain, blk, height, 0);
-    response["long_term_weight"] = db.get_block_long_term_weight(height);
     if (blk.major_version < feature::ETH_BLS)
         response_hex["service_node_winner"] =
                 cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.value().extra);
