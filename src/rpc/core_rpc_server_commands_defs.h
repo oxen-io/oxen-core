@@ -249,6 +249,9 @@ struct GET_HEIGHT : PUBLIC, LEGACY, NO_ARGS {
 ///           time synchronization checks.  (This generally means oxend's quorumnet port is not
 ///           reachable).
 ///         - `"timesync"` -- the service node's clock was too far out of sync
+///         - `"l2"` -- the service node's L2 height was too far behind
+///         - `"hf21_transition"` -- the service node did not transition at HF21
+///         - `"session_router"` -- the service node's session router was unreachable for too long
 ///         The list is omitted entirely if there are no reasons at all or if there are no reasons
 ///         that were agreed upon by all voting service nodes.
 ///       - `reasons_maybe` list of reported reasons that some but not all service nodes provided
@@ -1948,6 +1951,9 @@ struct GET_SERVICE_PRIVKEYS : NO_ARGS {
 ///     - `0x10` - oxend quorumnet unreachable for timesync checks
 ///     - `0x20` - oxend system clock is too far off
 ///     - `0x40` - Lokinet unreachable
+///     - `0x80` - L2 height too far behind
+///     - `0x100` - Did not transition at HF21
+///     - `0x200` - Session router unreachable
 ///     - other bit values are reserved for future use.
 ///   - `last_decommission_reason_consensus_any` -- The reason for the last decommission as voted
 ///     by *any* SNs.  Reasons are set here if *any* quorum member gave a reason, even if not all
@@ -1967,6 +1973,9 @@ struct GET_SERVICE_PRIVKEYS : NO_ARGS {
 ///     - `"timecheck"`
 ///     - `"timesync"`
 ///     - `"lokinet"`
+///     - `"l2"`
+///     - `"hf21_transition"`
+///     - `"session_router"`
 ///     - other values are reserved for future use.
 ///   - `last_ip_change_height` -- The last height at which the network applied an IP change penalty
 ///     to this service node.  Omitted if an IP change penalty has never been applied.
