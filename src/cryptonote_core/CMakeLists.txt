@@ -64,7 +64,6 @@ target_link_libraries(cryptonote_core
     ethyl
     network_config
   PRIVATE
-    net
     sqlitedb
     systemd
     logging

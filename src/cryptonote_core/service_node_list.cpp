@@ -42,6 +42,7 @@
 #include <chrono>
 #include <limits>
 #include <mutex>
+#include <oxen/quic/format.hpp>
 #include <ranges>
 #include <stdexcept>
 #include <tuple>
@@ -71,7 +72,6 @@
 #include "cryptonote_core/uptime_proof.h"
 #include "cryptonote_tx_utils.h"
 #include "epee/int-util.h"
-#include "epee/net/local_ip.h"
 #include "ethereum_transactions.h"
 #include "l2_tracker/events.h"
 #include "network_config/mocknet.h"
@@ -6058,7 +6058,7 @@ bool service_node_list::store(uint64_t state_height) {
 
 uptime_proof::Proof service_node_list::generate_uptime_proof(
         hf hardfork,
-        uint32_t public_ip,
+        const oxen::quic::ipv4& public_ip,
         uint16_t storage_https_port,
         uint16_t storage_omq_port,
         std::array<uint16_t, 3> ss_version,
@@ -6119,9 +6119,9 @@ std::pair<bool, bool> proof_info::update(
     //
     // If we already know about the IP, update its timestamp:
     auto now = std::time(nullptr);
-    if (public_ips[0].first && public_ips[0].first == proof->public_ip)
+    if (public_ips[0].first != oxen::quic::ipv4{} && public_ips[0].first == proof->public_ip)
         public_ips[0].second = now;
-    else if (public_ips[1].first && public_ips[1].first == proof->public_ip)
+    else if (public_ips[1].first != oxen::quic::ipv4{} && public_ips[1].first == proof->public_ip)
         public_ips[1].second = now;
     // Otherwise replace whichever IP has the older timestamp
     else if (public_ips[0].second > public_ips[1].second)
@@ -6233,7 +6233,7 @@ bool service_node_list::handle_uptime_proof(
         }
     }
 
-    if (!debug_allow_local_ips && !epee::net_utils::is_ip_public(proof->public_ip)) {
+    if (!debug_allow_local_ips && !proof->public_ip.is_public()) {
         log::debug(
                 logcat,
                 "Rejecting uptime proof from {}: public_ip is not actually public",
@@ -6500,7 +6500,7 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
     }
 
     bool found = false;
-    uint32_t ip = 0;
+    oxen::quic::ipv4 ip{};
     uint16_t port = 0;
     for_each_service_node_info_and_proof(&pubkey, &pubkey + 1, [&](auto&, auto&, auto& proof) {
         found = true;
@@ -6512,7 +6512,7 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
         log::debug(logcat, "no connection available: primary pubkey {} is not registered", pubkey);
         return "";
     }
-    if (!(ip && port)) {
+    if (ip == oxen::quic::ipv4{} || !port) {
         log::debug(
                 logcat,
                 "no connection available: service node {} has no associated ip and/or port",
@@ -6520,7 +6520,7 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
         return "";
     }
 
-    return "tcp://" + epee::string_tools::get_ip_string_from_int32(ip) + ":" + std::to_string(port);
+    return "tcp://{}:{}"_format(ip, port);
 }
 
 void service_node_list::record_checkpoint_participation(
@@ -6797,7 +6797,7 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
             // recently removed nodes.  Step 2 happens later once the corresponding ServiceNodeExit
             // comes in.
 
-            uint32_t public_ip = 0;
+            oxen::quic::ipv4 public_ip{};
             uint16_t qnet_port = 0;
             std::array<uint16_t, 3> version = {};
             if (sn_list) {

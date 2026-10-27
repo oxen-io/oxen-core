@@ -37,6 +37,7 @@ oxen_add_library(common
   exception.cpp
   file.cpp
   i18n.cpp
+  ipv4.cpp
   json_binary_proxy.cpp
   oxen.cpp
   notify.cpp
@@ -72,6 +73,7 @@ target_link_libraries(common
     oxenc::oxenc
     oxenmq::oxenmq
     oxen::logging
+    oxen::quic-utils
     nlohmann_json::nlohmann_json
     Boost::program_options
   PRIVATE

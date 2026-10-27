@@ -1147,7 +1147,7 @@ TYPED_TEST(BlockchainDBTest, ServiceNodeProofs)
 
   service_nodes::proof_info proof;
   proof.timestamp = 1700000000;
-  proof.proof->public_ip = 0x01020304;
+  proof.proof->public_ip = oxen::quic::ipv4{200, 1, 2, 3};
   proof.proof->storage_https_port = 22021;
   proof.proof->storage_omq_port = 22020;
   proof.proof->qnet_port = 22025;
@@ -1654,7 +1654,39 @@ PRAGMA user_version = 1;
   session::sqlite::Database raw{path};
   EXPECT_FALSE(raw.conn().table_exists("sn_data"));
   EXPECT_TRUE(raw.conn().table_exists("trimmed_txes"));
-  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 4);
+  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 5);
+}
+
+TEST(BlockchainSQLite, upgrade_from_v4)
+{
+  temp_data_dir dir;
+  const auto path = dir.path / SQLITE_DB_FILENAME;
+  {
+    BlockchainSQLite db;
+    db.open(path, network_type::FAKECHAIN);
+  }
+  {
+    // Version 4 stored sn_proofs.ip byte-reversed: 1.2.3.4 as 0x04030201, 200.1.2.3 as 0x030201c8.
+    session::sqlite::Database raw{path};
+    raw.conn().sql.exec(R"(
+INSERT INTO sn_proofs VALUES
+    (x'0000000000000000000000000000000000000000000000000000000000000001', 1700000000, 67305985, 22021, 22020, 22025, 0, 0, 0),
+    (x'0000000000000000000000000000000000000000000000000000000000000002', 1700000000, 50463176, 22021, 22020, 22025, 0, 0, 0);
+PRAGMA user_version = 4;
+)");
+  }
+  {
+    BlockchainSQLite db;
+    ASSERT_NO_THROW(db.open(path, network_type::FAKECHAIN));
+  }
+  session::sqlite::Database raw{path};
+  EXPECT_EQ(
+      raw.conn().prepared_get<int64_t>("SELECT ip FROM sn_proofs WHERE substr(pubkey, 32) = x'01'"),
+      0x01020304);
+  EXPECT_EQ(
+      raw.conn().prepared_get<int64_t>("SELECT ip FROM sn_proofs WHERE substr(pubkey, 32) = x'02'"),
+      0xc8010203);
+  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 5);
 }
 
 TEST(BlockchainSQLite, own_write_transaction)
