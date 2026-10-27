@@ -36,10 +36,6 @@
 #include <type_traits>
 #include <vector>
 
-#ifndef _WIN32
-# include <arpa/inet.h>
-#endif
-
 #include "boost/archive/portable_binary_iarchive.hpp"
 #include "boost/archive/portable_binary_oarchive.hpp"
 #include "epee/shared_sv.h"
@@ -49,7 +45,6 @@
 #include "epee/storages/portable_storage.h"
 #include "net/ipv4_address.h"
 #include "p2p/net_peerlist_boost_serialization.h"
-#include "epee/string_tools.h"
 #include "epee/storages/parserse_base_utils.h"
 
 namespace
@@ -131,62 +126,6 @@ TEST(SharedSV, Tests)
   EXPECT_EQ(0, from_str.size());
   EXPECT_EQ(0, sv2.size());
   EXPECT_EQ(0, sv3.size());
-}
-
-TEST(StringTools, GetIpString)
-{
-  EXPECT_EQ(
-    std::string{"0.0.0.0"}, epee::string_tools::get_ip_string_from_int32(0)
-  );
-  EXPECT_EQ(
-    std::string{"255.0.255.0"},
-    epee::string_tools::get_ip_string_from_int32(htonl(0xff00ff00))
-  );
-  EXPECT_EQ(
-    std::string{"255.255.255.255"},
-    epee::string_tools::get_ip_string_from_int32(htonl(0xffffffff))
-  );
-}
-
-TEST(StringTools, GetIpInt32)
-{
-  std::uint32_t ip = 0;
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, ""));
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, "1."));
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, "1.1."));
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, "1.1.1."));
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, "ff.0.ff.0"));
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, "1.1.1.256"));
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "1"));
-  EXPECT_EQ(htonl(1), ip);
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "1.1"));
-  EXPECT_EQ(htonl(0x1000001), ip);
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "1.1.1"));
-  EXPECT_EQ(htonl(0x1010001), ip);
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "0.0.0.0"));
-  EXPECT_EQ(0, ip);
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "1.1.1.1"));
-  EXPECT_EQ(htonl(0x01010101), ip);
-
-/*
-  The existing epee conversion function does not work with 255.255.255.255, for
-  the reasons specified in the inet_addr documentation. Consider fixing in a
-  future patch. This address is not likely to be used for purposes within
-  monero.
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "255.255.255.255"));
-  EXPECT_EQ(htonl(0xffffffff), ip);
-*/
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "10.0377.0.0377"));
-  EXPECT_EQ(htonl(0xaff00ff), ip);
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "0xff.10.0xff.0"));
-  EXPECT_EQ(htonl(0xff0aff00), ip);
 }
 
 TEST(NetUtils, IPv4Address)

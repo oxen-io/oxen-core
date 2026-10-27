@@ -90,38 +90,6 @@ DISABLE_GCC_WARNING(maybe-uninitialized)
     return true;
   }
 POP_WARNINGS
-	//----------------------------------------------------------------------------
-	std::string get_ip_string_from_int32(uint32_t ip);
-	//----------------------------------------------------------------------------
-	bool get_ip_int32_from_string(uint32_t& ip, const std::string& ip_str);
-  //----------------------------------------------------------------------------
-  inline bool parse_peer_from_string(uint32_t& ip, uint16_t& port, std::string_view address)
-  {
-    //parse ip and address
-    auto p = address.find(':');
-    std::string_view ip_str, port_str;
-    if(p == std::string_view::npos)
-    {
-      port = 0;
-      ip_str = address;
-    }
-    else
-    {
-      ip_str = address.substr(0, p);
-      port_str = address.substr(p+1);
-    }
-
-    if(!get_ip_int32_from_string(ip, std::string{ip_str}))
-    {
-      return false;
-    }
-
-    if(p != std::string::npos && !get_xtype_from_string(port, port_str))
-    {
-      return false;
-    }
-    return true;
-  }
 
 	//----------------------------------------------------------------------------
 	template<typename T>

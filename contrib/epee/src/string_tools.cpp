@@ -28,37 +28,10 @@
 
 #include <ctype.h>
 
-#ifdef _WIN32
-# include <winsock2.h>
-#else
-# include <arpa/inet.h>
-# include <netinet/in.h>
-#endif
-
 namespace epee
 {
 namespace string_tools
 {
-  std::string get_ip_string_from_int32(uint32_t ip)
-  {
-    in_addr adr;
-    adr.s_addr = ip;
-    const char* pbuf = inet_ntoa(adr);
-    if(pbuf)
-      return pbuf;
-    else
-      return "[failed]";
-  }
-  //----------------------------------------------------------------------------
-  bool get_ip_int32_from_string(uint32_t& ip, const std::string& ip_str)
-  {
-    ip = inet_addr(ip_str.c_str());
-    if(INADDR_NONE == ip)
-      return false;
-
-    return true;
-  }
-  //----------------------------------------------------------------------------
   bool validate_hex(uint64_t length, const std::string& str)
   {
     if (str.size() != length)
