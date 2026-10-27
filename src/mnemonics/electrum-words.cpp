@@ -38,6 +38,8 @@
 
 #include "mnemonics/electrum-words.h"
 
+#include <sodium/utils.h>
+
 #include <boost/crc.hpp>
 #include <cstdint>
 #include <string>
@@ -165,7 +167,8 @@ namespace {
                 return true;
             }
             // Some didn't match. Clear the index array.
-            memwipe(matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
+            sodium_memzero(
+                    matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
             matched_indices.clear();
         }
 
@@ -182,7 +185,7 @@ namespace {
         }
 
         log::info(logcat, "No match found");
-        memwipe(matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
+        sodium_memzero(matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
         return false;
     }
 
@@ -294,7 +297,8 @@ namespace ElectrumWords {
 
         std::vector<uint32_t> matched_indices;
         OXEN_DEFER {
-            memwipe(matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
+            sodium_memzero(
+                    matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
         };
         Language::Base* language;
         if (!find_seed_language(seed, has_checksum, matched_indices, &language)) {
@@ -325,14 +329,14 @@ namespace ElectrumWords {
                            (((word_list_length - w[2]) + w[3]) % word_list_length);
 
             if (!(w[0] % word_list_length == w[1])) {
-                memwipe(w, sizeof(w));
+                sodium_memzero(w, sizeof(w));
                 log::error(logcat, "Invalid seed: mumble mumble");
                 return false;
             }
 
             w[0] = SWAP32LE(w[0]);
             dst.append((const char*)&w[0], 4);  // copy 4 bytes to position
-            memwipe(w, sizeof(w));
+            sodium_memzero(w, sizeof(w));
         }
 
         if (len > 0 && duplicate) {
@@ -422,7 +426,7 @@ namespace ElectrumWords {
             words_store.push_back(word_list[w[2]]);
             words_store.push_back(word_list[w[3]]);
 
-            memwipe(w, sizeof(w));
+            sodium_memzero(w, sizeof(w));
         }
 
         words += words_store[create_checksum_index(words_store, language)];

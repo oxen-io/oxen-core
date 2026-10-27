@@ -681,7 +681,7 @@ inline constexpr account_public_address null_address{};
 
 struct keypair {
     crypto::public_key pub;
-    crypto::secret_key sec;
+    crypto::secret_key sec{};
 
     keypair() = default;
 

@@ -29,10 +29,11 @@
 
 #include "device_trezor_base.hpp"
 
+#include <sodium/utils.h>
+
 #include "common/exception.h"
 #include "common/lock.h"
 #include "common/string_util.h"
-#include "epee/memwipe.h"
 
 namespace hw::trezor {
 
@@ -375,7 +376,7 @@ void device_trezor_base::device_state_initialize_unsafe() {
     std::string tmp_session_id;
     auto initMsg = std::make_shared<messages::management::Initialize>();
     OXEN_DEFER {
-        memwipe(&tmp_session_id[0], tmp_session_id.size());
+        sodium_memzero(&tmp_session_id[0], tmp_session_id.size());
     };
 
     if (!m_device_session_id.empty()) {
@@ -479,7 +480,7 @@ void device_trezor_base::on_pin_request(
     OXEN_DEFER {
         m.release_pin();
         if (!pin_field.empty()) {
-            memwipe(&pin_field[0], pin_field.size());
+            sodium_memzero(&pin_field[0], pin_field.size());
         }
     };
 
@@ -537,7 +538,7 @@ void device_trezor_base::on_passphrase_request(
     OXEN_DEFER {
         m.release_passphrase();
         if (!passphrase_field.empty()) {
-            memwipe(&passphrase_field[0], passphrase_field.size());
+            sodium_memzero(&passphrase_field[0], passphrase_field.size());
         }
     };
 

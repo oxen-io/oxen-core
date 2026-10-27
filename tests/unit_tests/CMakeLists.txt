@@ -56,8 +56,6 @@ add_executable(unit_tests
   long_term_block_weight.cpp
   main.cpp
   median.cpp
-  memwipe.cpp
-  mlocker.cpp
   mnemonics.cpp
   mul_div.cpp
   multiexp.cpp
@@ -121,8 +119,6 @@ if (NOT MSVC)
 endif ()
 
 SET_PROPERTY(SOURCE main.cpp PROPERTY COMPILE_FLAGS -DDEFAULT_DATA_DIR="\\"${CMAKE_SOURCE_DIR}/tests/data\\"")
-
-SET_PROPERTY(SOURCE memwipe.cpp PROPERTY COMPILE_FLAGS -Ofast)
 
 add_test(
   NAME    unit_tests

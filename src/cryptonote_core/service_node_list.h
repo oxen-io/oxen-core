@@ -557,23 +557,23 @@ struct service_node_keys {
     /// curve25519-based but with Monero-specific changes that make it useless for external tools
     /// supporting standard ed25519 or x25519 keys.
     /// TODO(oxen) - eventually drop this key and just do everything with the ed25519 key.
-    crypto::secret_key key;
+    crypto::secret_key key{};
     crypto::public_key pub;
 
     /// A secondary SN key pair used for ancillary operations by tools (e.g. libsodium) that rely
     /// on standard cryptography keypair signatures.
-    crypto::ed25519_secret_key key_ed25519;
+    crypto::ed25519_secret_key key_ed25519{};
     crypto::ed25519_public_key pub_ed25519;
 
     /// A x25519 key computed from the ed25519 key, above, that is used for SN-to-SN encryption.
     /// (Unlike this above two keys this is not stored to disk; it is generated on the fly from the
     /// ed25519 key).
-    crypto::x25519_secret_key key_x25519;
+    crypto::x25519_secret_key key_x25519{};
     crypto::x25519_public_key pub_x25519;
 
     /// BLS keypair of this service node, used for SESH registrations and interacting with the SESH
     /// staking contract.
-    eth::bls_secret_key key_bls;
+    eth::bls_secret_key key_bls{};
     eth::bls_public_key pub_bls;
 };
 
@@ -1568,7 +1568,7 @@ struct staking_components {
     crypto::public_key service_node_pubkey;
     cryptonote::account_public_address address;
     uint64_t transferred;
-    crypto::secret_key tx_key;
+    crypto::secret_key tx_key{};
     std::vector<service_node_info::contribution_t> locked_contributions;
 };
 bool tx_get_staking_components(

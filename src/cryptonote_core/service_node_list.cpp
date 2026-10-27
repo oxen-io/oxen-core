@@ -963,7 +963,7 @@ void validate_registration_signature(const registration_details& registration) {
 struct parsed_tx_contribution {
     cryptonote::account_public_address address;
     uint64_t transferred;
-    crypto::secret_key tx_key;
+    crypto::secret_key tx_key{};
     std::vector<service_node_info::contribution_t> locked_contributions;
 };
 

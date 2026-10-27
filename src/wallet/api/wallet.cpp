@@ -357,7 +357,7 @@ bool Wallet::keyValid(
     }
 
     crypto::secret_key key;
-    if (!tools::try_load_from_hex_guts(secret_key_string, unwrap(unwrap(key)))) {
+    if (!tools::try_load_from_hex_guts(secret_key_string, key)) {
         error = "Failed to parse key";
         return false;
     }
@@ -640,7 +640,7 @@ bool WalletImpl::recoverFromKeysWithPassword(
     // parse optional spend key
     crypto::secret_key spendkey;
     bool has_spendkey = !spendkey_string.empty();
-    if (has_spendkey && !tools::try_load_from_hex_guts(spendkey_string, unwrap(unwrap(spendkey)))) {
+    if (has_spendkey && !tools::try_load_from_hex_guts(spendkey_string, spendkey)) {
         setStatusError("failed to parse secret spend key");
         return false;
     }
@@ -657,7 +657,7 @@ bool WalletImpl::recoverFromKeysWithPassword(
         }
     }
     if (has_viewkey) {
-        if (!tools::try_load_from_hex_guts(viewkey_string, unwrap(unwrap(viewkey)))) {
+        if (!tools::try_load_from_hex_guts(viewkey_string, viewkey)) {
             setStatusError("failed to parse secret view key");
             return false;
         }

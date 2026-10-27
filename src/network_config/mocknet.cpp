@@ -52,9 +52,9 @@ struct mocknet_global_data {
 static mocknet_global_data globals;
 
 struct mocknet_key {
-    eth::bls_secret_key bls;
+    eth::bls_secret_key bls{};
     eth::bls_public_key bls_pubkey;
-    crypto::ed25519_secret_key ed25519;
+    crypto::ed25519_secret_key ed25519{};
     crypto::ed25519_public_key ed25519_pubkey;
 };
 

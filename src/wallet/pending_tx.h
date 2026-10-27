@@ -45,7 +45,7 @@ struct pending_tx {
     cryptonote::tx_destination_entry change_dts;
     std::vector<size_t> selected_transfers;
     std::string key_images;
-    crypto::secret_key tx_key;
+    crypto::secret_key tx_key{};
     std::vector<crypto::secret_key> additional_tx_keys;
     std::vector<cryptonote::tx_destination_entry> dests;
     std::vector<multisig_sig> multisig_sigs;

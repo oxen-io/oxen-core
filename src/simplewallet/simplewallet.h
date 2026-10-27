@@ -471,7 +471,7 @@ class simple_wallet : public tools::i_wallet2_callback {
 
     epee::wipeable_string m_electrum_seed;  // electrum-style seed parameter
 
-    crypto::secret_key m_recovery_key;    // recovery key (used as random for wallet gen)
+    crypto::secret_key m_recovery_key{};  // recovery key (used as random for wallet gen)
     bool m_restore_deterministic_wallet;  // recover flag
     bool m_restore_multisig_wallet;       // recover flag
     bool m_non_deterministic;             // old 2-random generation

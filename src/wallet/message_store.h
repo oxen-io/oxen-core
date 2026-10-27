@@ -120,7 +120,7 @@ struct authorized_signer {
     uint32_t index;
     std::string auto_config_token;
     crypto::public_key auto_config_public_key;
-    crypto::secret_key auto_config_secret_key;
+    crypto::secret_key auto_config_secret_key{};
     std::string auto_config_transport_address;
     bool auto_config_running;
 
@@ -177,7 +177,7 @@ struct file_data {
 struct multisig_wallet_state {
     cryptonote::account_public_address address;
     cryptonote::network_type nettype;
-    crypto::secret_key view_secret_key;
+    crypto::secret_key view_secret_key{};
     bool multisig;
     bool multisig_is_ready;
     bool has_multisig_partial_key_images;

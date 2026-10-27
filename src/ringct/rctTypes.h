@@ -36,6 +36,7 @@
 
 #include <common/exception.h>
 #include <sodium/crypto_verify_32.h>
+#include <sodium/utils.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -99,7 +100,7 @@ struct multisig_kLRki {
     key R;
     key ki;
 
-    ~multisig_kLRki() { memwipe(&k, sizeof(k)); }
+    ~multisig_kLRki() { sodium_memzero(&k, sizeof(k)); }
 };
 
 struct multisig_out {

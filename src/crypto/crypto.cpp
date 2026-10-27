@@ -326,7 +326,7 @@ signature generate_signature(
         sc_mulsub(sig.r(), sig.c(), sec.data(), k.data());
         if (!sc_isnonzero(sig.r()))
             continue;
-        memwipe(k.data(), k.size());
+        sodium_memzero(k.data(), k.size());
         return sig;
     }
 }
@@ -440,7 +440,7 @@ void generate_tx_proof(
     // sig.r = k - sig.c*r
     sc_mulsub(sig.r(), sig.c(), r.data(), k.data());
 
-    memwipe(k.data(), k.size());
+    sodium_memzero(k.data(), k.size());
 }
 
 bool check_tx_proof(
@@ -629,7 +629,7 @@ void generate_ring_signature(
             random_scalar(sig[i].c());  // ci = wi = random
             random_scalar(sig[i].r());  // ri = qi = random
             if (ge_frombytes_vartime(&tmp3, pubs[i]->data()) != 0) {
-                memwipe(qs.data(), qs.size());
+                sodium_memzero(qs.data(), qs.size());
                 local_abort("invalid pubkey");
             }
             ge_double_scalarmult_base_vartime(
@@ -647,7 +647,7 @@ void generate_ring_signature(
     sc_sub(sig[sec_index].c(), c.data(), sum.data());  // cs = c - sum(ci, i≠s) = c - sum(wi)
     sc_mulsub(sig[sec_index].r(), sig[sec_index].c(), sec.data(), qs.data());  // rs = qs - cs*x
 
-    memwipe(qs.data(), qs.size());
+    sodium_memzero(qs.data(), qs.size());
 }
 
 bool check_ring_signature(
@@ -711,7 +711,7 @@ void generate_key_image_signature(
     sig.c(rs.hash_to_scalar());                         // c = H(I || L || R) = H(I || kG || kH(A))
     sc_mulsub(sig.r(), sig.c(), sec.data(), k.data());  // r = k - ac = k - aH(I || kG || kH(A))
 
-    memwipe(k.data(), k.size());
+    sodium_memzero(k.data(), k.size());
 }
 
 bool check_key_image_signature(

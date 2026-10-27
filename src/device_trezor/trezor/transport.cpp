@@ -33,6 +33,7 @@
 
 #include <oxenc/endian.h>
 #include <oxenc/hex.h>
+#include <sodium/utils.h>
 
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
@@ -504,7 +505,7 @@ namespace {
     class WipingBody : public cpr::Body {
       public:
         using cpr::Body::Body;
-        ~WipingBody() override { memwipe(str_.data(), str_.size()); }
+        ~WipingBody() override { sodium_memzero(str_.data(), str_.size()); }
     };
 }  // namespace
 
@@ -527,7 +528,7 @@ std::string BridgeTransport::post_json(std::string_view uri, std::string json) {
     cpr::Response res;
     OXEN_DEFER {
         if (!res.text.empty())
-            memwipe(res.text.data(), res.text.size());
+            sodium_memzero(res.text.data(), res.text.size());
     };
 
     res = m_http_session.Post();
