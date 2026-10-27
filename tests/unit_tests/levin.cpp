@@ -40,7 +40,6 @@
 #include "cryptonote_protocol/levin_notify.h"
 #include "epee/int-util.h"
 #include "p2p/net_node.h"
-#include "net/dandelionpp.h"
 #include "epee/net/levin_base.h"
 #include "epee/byte_span.h"
 
@@ -269,12 +268,9 @@ namespace
             EXPECT_EQ(connection_ids_.size(), connections_->get_connections_count());
         }
 
-        cryptonote::levin::notify make_notifier(const std::size_t noise_size, bool is_public)
+        cryptonote::levin::notify make_notifier()
         {
-            epee::shared_sv noise;
-            if (noise_size)
-                noise = epee::shared_sv{epee::levin::make_noise_notify(noise_size)};
-            return cryptonote::levin::notify{io_service_, connections_, std::move(noise), is_public};
+            return cryptonote::levin::notify{io_service_, connections_};
         }
 
         boost::asio::io_service io_service_;
@@ -426,33 +422,15 @@ TEST(make_fragment, multiple)
 TEST_F(levin_notify, defaulted)
 {
     cryptonote::levin::notify notifier{};
-    {
-        const auto status = notifier.get_status();
-        EXPECT_FALSE(status.has_noise);
-        EXPECT_FALSE(status.connections_filled);
-    }
     EXPECT_FALSE(notifier.send_txs({}, connection_id_t::random(), false));
 }
 
 TEST_F(levin_notify, flood)
 {
-    cryptonote::levin::notify notifier = make_notifier(0, true);
+    cryptonote::levin::notify notifier = make_notifier();
 
     for (unsigned count = 0; count < 10; ++count)
         add_connection(count % 2 == 0);
-
-    {
-        const auto status = notifier.get_status();
-        EXPECT_FALSE(status.has_noise);
-        EXPECT_FALSE(status.connections_filled);
-    }
-    notifier.new_out_connection();
-    io_service_.poll();
-    {
-        const auto status = notifier.get_status();
-        EXPECT_FALSE(status.has_noise);
-        EXPECT_FALSE(status.connections_filled); // not tracked
-    }
 
     std::vector<std::string> txs(2);
     txs[0].resize(100, 'f');
@@ -501,158 +479,3 @@ TEST_F(levin_notify, flood)
     }
 }
 
-TEST_F(levin_notify, private_flood)
-{
-    cryptonote::levin::notify notifier = make_notifier(0, false);
-
-    for (unsigned count = 0; count < 10; ++count)
-        add_connection(count % 2 == 0);
-
-    {
-        const auto status = notifier.get_status();
-        EXPECT_FALSE(status.has_noise);
-        EXPECT_FALSE(status.connections_filled);
-    }
-    notifier.new_out_connection();
-    io_service_.poll();
-    {
-        const auto status = notifier.get_status();
-        EXPECT_FALSE(status.has_noise);
-        EXPECT_FALSE(status.connections_filled); // not tracked
-    }
-
-    std::vector<std::string> txs(2);
-    txs[0].resize(100, 'f');
-    txs[1].resize(200, 'e');
-
-    ASSERT_EQ(10u, contexts_.size());
-    {
-        auto context = contexts_.begin();
-        EXPECT_TRUE(notifier.send_txs(txs, context->get_id(), false));
-
-        io_service_.restart();
-        ASSERT_LT(0u, io_service_.poll());
-        EXPECT_EQ(0u, context->process_send_queue());
-        for (++context; context != contexts_.end(); ++context)
-        {
-            const bool is_incoming = ((context - contexts_.begin()) % 2 == 0);
-            EXPECT_EQ(is_incoming ? 0u : 1u, context->process_send_queue());
-        }
-
-        ASSERT_EQ(5u, receiver_.notified_size());
-        for (unsigned count = 0; count < 5; ++count)
-        {
-            auto notification = receiver_.get_notification<cryptonote::NOTIFY_NEW_TRANSACTIONS>().second;
-            EXPECT_EQ(txs, notification.txs);
-            EXPECT_TRUE(notification._.empty());
-        }
-    }
-
-    ASSERT_EQ(10u, contexts_.size());
-    {
-        auto context = contexts_.begin();
-        EXPECT_TRUE(notifier.send_txs(txs, context->get_id(), true));
-
-        io_service_.restart();
-        ASSERT_LT(0u, io_service_.poll());
-        EXPECT_EQ(0u, context->process_send_queue());
-        for (++context; context != contexts_.end(); ++context)
-        {
-            const bool is_incoming = ((context - contexts_.begin()) % 2 == 0);
-            EXPECT_EQ(is_incoming ? 0u : 1u, context->process_send_queue());
-        }
-
-        ASSERT_EQ(5u, receiver_.notified_size());
-        for (unsigned count = 0; count < 5; ++count)
-        {
-            auto notification = receiver_.get_notification<cryptonote::NOTIFY_NEW_TRANSACTIONS>().second;
-            EXPECT_EQ(txs, notification.txs);
-            EXPECT_FALSE(notification._.empty());
-        }
-    }
-}
-
-TEST_F(levin_notify, noise)
-{
-    for (unsigned count = 0; count < 10; ++count)
-        add_connection(count % 2 == 0);
-
-    std::vector<std::string> txs(1);
-    txs[0].resize(1900, 'h');
-
-    const auto incoming_id = connection_id_t::random();
-    cryptonote::levin::notify notifier = make_notifier(2048, false);
-
-    {
-        const auto status = notifier.get_status();
-        EXPECT_TRUE(status.has_noise);
-        EXPECT_FALSE(status.connections_filled);
-    }
-    ASSERT_LT(0u, io_service_.poll());
-    {
-        const auto status = notifier.get_status();
-        EXPECT_TRUE(status.has_noise);
-        EXPECT_TRUE(status.connections_filled);
-    }
-
-    notifier.run_stems();
-    io_service_.restart();
-    ASSERT_LT(0u, io_service_.poll());
-    {
-        std::size_t sent = 0;
-        for (auto& context : contexts_)
-            sent += context.process_send_queue();
-
-        EXPECT_EQ(2u, sent);
-        EXPECT_EQ(0u, receiver_.notified_size());
-    }
-
-    EXPECT_TRUE(notifier.send_txs(txs, incoming_id, false));
-    notifier.run_stems();
-    io_service_.restart();
-    ASSERT_LT(0u, io_service_.poll());
-    {
-        std::size_t sent = 0;
-        for (auto& context : contexts_)
-            sent += context.process_send_queue();
-
-        ASSERT_EQ(2u, sent);
-        while (sent--)
-        {
-            auto notification = receiver_.get_notification<cryptonote::NOTIFY_NEW_TRANSACTIONS>().second;
-            EXPECT_EQ(txs, notification.txs);
-            EXPECT_TRUE(notification._.empty());
-        }
-    }
-
-    txs[0].resize(3000, 'r');
-    EXPECT_TRUE(notifier.send_txs(txs, incoming_id, true));
-    notifier.run_stems();
-    io_service_.restart();
-    ASSERT_LT(0u, io_service_.poll());
-    {
-        std::size_t sent = 0;
-        for (auto& context : contexts_)
-            sent += context.process_send_queue();
-
-        EXPECT_EQ(2u, sent);
-        EXPECT_EQ(0u, receiver_.notified_size());
-    }
-
-    notifier.run_stems();
-    io_service_.restart();
-    ASSERT_LT(0u, io_service_.poll());
-    {
-        std::size_t sent = 0;
-        for (auto& context : contexts_)
-            sent += context.process_send_queue();
-
-        ASSERT_EQ(2u, sent);
-        while (sent--)
-        {
-            auto notification = receiver_.get_notification<cryptonote::NOTIFY_NEW_TRANSACTIONS>().second;
-            EXPECT_EQ(txs, notification.txs);
-            EXPECT_TRUE(notification._.empty());
-        }
-    }
-}

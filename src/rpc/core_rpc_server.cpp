@@ -1445,10 +1445,7 @@ static nlohmann::json json_peer_info(const nodetool::peerlist_entry& peer) {
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_PEER_LIST& pl, rpc_context) {
     std::vector<nodetool::peerlist_entry> white_list, gray_list;
-    if (pl.request.public_only)
-        m_p2p.get_public_peerlist(gray_list, white_list);
-    else
-        m_p2p.get_peerlist(gray_list, white_list);
+    m_p2p.get_peerlist(gray_list, white_list);
 
     std::transform(
             white_list.begin(),

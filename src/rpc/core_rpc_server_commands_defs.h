@@ -850,15 +850,8 @@ struct GET_BLOCK : PUBLIC {
 /// - `history` -- how many of the most recent blocks the peer last said it keeps, 0 if it keeps
 ///   every block; omitted if it has never said (a peer from before this was sent, or an entry
 ///   relayed by one).
-struct GET_PEER_LIST : LEGACY {
+struct GET_PEER_LIST : LEGACY, NO_ARGS {
     static constexpr auto names() { return NAMES("get_peer_list"); }
-
-    struct request_parameters {
-        bool public_only =
-                false;  // Hidden option: can be set to false to also include non-public-zone peers
-                        // (Tor, I2P), but since Oxen currently only really exists in public zones,
-                        // we don't put this in the RPC docs.
-    } request;
 };
 
 /// RPC: daemon/set_log_level
@@ -978,7 +971,7 @@ struct GET_TRANSACTION_POOL_STATS : PUBLIC, LEGACY {
 ///     by us to the remove (false).
 ///   - `ip` -- address of the remote peer
 ///   - `port` -- the remote port of the peer connection
-///   - `address_type` -- 1/2/3/4 for ipv4/ipv6/i2p/tor, respectively.
+///   - `address_type` -- 1/2 for ipv4/ipv6, respectively.
 ///   - `peer_id` -- a string that uniquely identifies a peer node
 ///   - `recv_count` -- number of bytes of data received from this peer
 ///   - `recv_idle_ms` -- number of milliseconds since we last received data from this peer

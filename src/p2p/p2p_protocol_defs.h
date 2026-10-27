@@ -36,8 +36,7 @@
 #include "epee/net/net_utils_base.h"
 #include "epee/serialization/keyvalue_serialization.h"
 #include "epee/string_tools.h"
-#include "net/i2p_address.h"  // needed for serialization
-#include "net/tor_address.h"  // needed for serialization
+#include "net/ipv4_address.h"  // needed for serialization
 
 namespace nodetool {
 using peerid_type = uint64_t;

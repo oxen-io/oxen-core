@@ -240,10 +240,6 @@ void parse_request(GET_BLOCK_HASH& bh, rpc_input in) {
         throw std::domain_error{"Error: too many block heights requested at once"};
 }
 
-void parse_request(GET_PEER_LIST& pl, rpc_input in) {
-    get_values(in, "public_only", pl.request.public_only);
-}
-
 void parse_request(SET_LOG_LEVEL& set_log_level, rpc_input in) {
     auto& cats = set_log_level.request.categories;
     std::optional<int8_t> level;

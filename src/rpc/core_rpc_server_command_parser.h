@@ -32,7 +32,6 @@ void parse_request(GET_FEE_ESTIMATE& get_fee_estimate, rpc_input in);
 void parse_request(GET_LAST_BLOCK_HEADER& get_last_block_header, rpc_input in);
 void parse_request(GET_OUTPUTS& get_outputs, rpc_input in);
 void parse_request(GET_OUTPUT_HISTOGRAM& get_output_histogram, rpc_input in);
-void parse_request(GET_PEER_LIST& bh, rpc_input in);
 void parse_request(GET_PENDING_EVENTS& pe, rpc_input in);
 void parse_request(GET_QUORUM_STATE& get_quorum_state, rpc_input in);
 void parse_request(GET_SERVICE_NODES& sns, rpc_input in);

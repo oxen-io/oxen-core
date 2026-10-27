@@ -356,13 +356,6 @@ namespace cryptonote
 
     context.m_remote_blockchain_height = hshd.current_height;
 
-    // No chain synchronization over hidden networks (tor, i2p, etc.)
-    if(context.m_remote_address.get_zone() != epee::net_utils::zone::public_)
-    {
-      context.m_state = cryptonote_connection_context::state_normal;
-      return true;
-    }
-
     auto curr_height = m_core.blockchain.get_current_blockchain_height();
 
     context.m_need_blink_sync = false;
@@ -2429,7 +2422,7 @@ You are now synchronized with the network.
     }
 
     // no check for success, so tell core they're relayed unconditionally
-    m_p2p->send_txs(std::move(arg.txs), exclude_context.m_remote_address.get_zone(), exclude_context.m_connection_id, m_core.pad_transactions());
+    m_p2p->send_txs(std::move(arg.txs), exclude_context.m_connection_id, m_core.pad_transactions());
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
