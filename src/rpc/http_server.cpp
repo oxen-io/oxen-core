@@ -6,7 +6,6 @@
 #include <variant>
 
 #include "common/command_line.h"
-#include "common/exception.h"
 #include "common/string_util.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
@@ -149,7 +148,7 @@ http_server::http_server(
                         error << "tried to bind to:";
                         for (const auto& [addr, port, required] : bind)
                             error << ' ' << addr << ':' << port;
-                        throw oxen::traced<std::runtime_error>(error.str());
+                        throw std::runtime_error(error.str());
                     }
                 } catch (...) {
                     startup_success.set_exception(std::current_exception());
@@ -702,7 +701,7 @@ static std::unordered_set<oxenmq::OxenMQ*> timer_started;
 
 void http_server::start() {
     if (m_sent_startup)
-        throw oxen::traced<std::logic_error>{"Cannot call http_server::start() more than once"};
+        throw std::logic_error{"Cannot call http_server::start() more than once"};
 
     auto net = m_server.nettype();
     m_server_header = "oxend/{} {}"_format(

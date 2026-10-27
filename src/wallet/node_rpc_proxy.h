@@ -33,7 +33,6 @@
 #include <string>
 #include <type_traits>
 
-#include "common/exception.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "rpc/http_client.h"
 
@@ -89,7 +88,7 @@ class NodeRPCProxy {
                                 (result.status == cryptonote::rpc::STATUS_BUSY ? "daemon is busy"
                                                                                : result.status);
             log::error(globallogcat, "{}", error);
-            throw oxen::traced<std::runtime_error>{error};
+            throw std::runtime_error{error};
         }
 
         return result;

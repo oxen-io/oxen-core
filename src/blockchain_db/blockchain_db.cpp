@@ -34,7 +34,6 @@
 #include <chrono>
 
 #include "checkpoints/checkpoints.h"
-#include "common/exception.h"
 #include "common/string_util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"
@@ -281,9 +280,9 @@ uint64_t BlockchainDB::add_block(
 
     // sanity
     if (blk.tx_hashes.size() != txs.size())
-        throw oxen::traced<std::runtime_error>("Inconsistent tx/hashes sizes");
+        throw std::runtime_error("Inconsistent tx/hashes sizes");
     if ((blk.major_version >= feature::ETH_BLS) == blk.miner_tx.has_value())
-        throw oxen::traced<std::runtime_error>("Block with HF {} {} have a miner_tx"_format(
+        throw std::runtime_error("Block with HF {} {} have a miner_tx"_format(
                 static_cast<int>(blk.major_version),
                 blk.major_version >= feature::ETH_BLS ? "should not" : "should"));
 

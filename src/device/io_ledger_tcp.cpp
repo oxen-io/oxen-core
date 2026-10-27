@@ -1,6 +1,5 @@
 #include "io_ledger_tcp.hpp"
 
-#include <common/exception.h>
 #include <oxenc/endian.h>
 
 #include <array>
@@ -59,23 +58,21 @@ void ledger_tcp::connect() {
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0)
-        throw oxen::traced<std::runtime_error>{"Failed to open socket: "s + strerror(errno)};
+        throw std::runtime_error{"Failed to open socket: "s + strerror(errno)};
     auto closer = oxen::defer([&] { close(fd); });
 
 #ifdef _WIN32
     unsigned long blocking_param = 1;  // 1 = make non-blocking, 0 = blocking
     if (auto result = ioctlsocket(fd, FIONBIO, &blocking_param); result != NO_ERROR)
-        throw oxen::traced<std::runtime_error>{
-                "ioctlsocket failed with error: " + std::to_string(result)};
+        throw std::runtime_error{"ioctlsocket failed with error: " + std::to_string(result)};
 #else
     if (-1 == fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK))
-        throw oxen::traced<std::runtime_error>{
-                "Failed to set socket non-blocking: "s + strerror(errno)};
+        throw std::runtime_error{"Failed to set socket non-blocking: "s + strerror(errno)};
 #endif
 
     addrinfo* addr;
     if (int rc = getaddrinfo(host.data(), port.data(), nullptr, &addr); rc != 0)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Failed to resolve " + host + ":" + port + ": " + gai_strerror(rc)};
     auto addr_free = oxen::defer([&] { freeaddrinfo(addr); });
 
@@ -108,20 +105,17 @@ void ledger_tcp::connect() {
         }
     }
     if (!connected)
-        throw oxen::traced<std::runtime_error>{
-                "Failed to connect to " + host + ":" + port + ": " + err};
+        throw std::runtime_error{"Failed to connect to " + host + ":" + port + ": " + err};
 
     log::debug(logcat, "Connected to {}", to_string(a));
 
 #ifdef _WIN32
     blocking_param = 0;
     if (auto result = ioctlsocket(fd, FIONBIO, &blocking_param); result != NO_ERROR)
-        throw oxen::traced<std::runtime_error>{
-                "ioctlsocket failed with error: " + std::to_string(result)};
+        throw std::runtime_error{"ioctlsocket failed with error: " + std::to_string(result)};
 #else
     if (-1 == fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) & ~O_NONBLOCK))
-        throw oxen::traced<std::runtime_error>{
-                "Failed to set socket back to blocking: "s + strerror(errno)};
+        throw std::runtime_error{"Failed to set socket back to blocking: "s + strerror(errno)};
 #endif
 
     timeval timeo;
@@ -156,7 +150,7 @@ void full_read(int fd, unsigned char* to, int size) {
     while (size > 0) {
         auto read_size = read(fd, to, size);
         if (read_size == -1)
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Failed to read from hardware wallet socket: "s + strerror(errno)};
         size -= read_size;
         to += read_size;
@@ -167,7 +161,7 @@ void full_write(int fd, const unsigned char* from, int size) {
     while (size > 0) {
         auto wrote = write(fd, from, size);
         if (wrote == -1)
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Failed to write to hardware wallet socket: "s + strerror(errno)};
         size -= wrote;
         from += wrote;
@@ -181,8 +175,7 @@ int ledger_tcp::exchange(
         unsigned int max_resp_len,
         bool user_input) {
     if (!sockfd)
-        throw oxen::traced<std::runtime_error>{
-                "Unable to exchange data with hardware wallet: not connected"};
+        throw std::runtime_error{"Unable to exchange data with hardware wallet: not connected"};
 
     // Sending: [SIZE][DATA], where SIZE is a uint32_t in network order
     uint32_t size = oxenc::host_to_big(cmd_len);
@@ -197,7 +190,7 @@ int ledger_tcp::exchange(
     auto data_size = oxenc::big_to_host(size) + 2;
 
     if (data_size > max_resp_len)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Hardware wallet returned unexpectedly large response: got " +
                 std::to_string(data_size) + " bytes, expected <= " + std::to_string(max_resp_len)};
 

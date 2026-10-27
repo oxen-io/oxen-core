@@ -8,7 +8,6 @@
 #include <type_traits>
 #include <utility>
 
-#include "common/exception.h"
 #include "crypto/eth.h"
 #include "rpc/common/param_parser.hpp"
 

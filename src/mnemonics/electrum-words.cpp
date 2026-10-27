@@ -47,7 +47,6 @@
 #include <vector>
 
 #include "chinese_simplified.h"
-#include "common/exception.h"
 #include "common/oxen.h"
 #include "dutch.h"
 #include "english.h"
@@ -208,7 +207,7 @@ namespace {
             word = Language::utf8prefix(*it, unique_prefix_length);
             auto it2 = trimmed_word_map.find(word);
             if (it2 == trimmed_word_map.end())
-                throw oxen::traced<std::runtime_error>(
+                throw std::runtime_error(
                         "Word \"" + std::string(word.data(), word.size()) +
                         "\" not found in trimmed word map in " +
                         language->get_english_language_name());
@@ -443,7 +442,7 @@ namespace ElectrumWords {
     std::string bytes_to_words(const crypto::secret_key& src, const std::string& language_name) {
         epee::wipeable_string epee_words;
         if (!bytes_to_words(src.data(), src.size(), epee_words, language_name))
-            throw oxen::traced<std::runtime_error>(
+            throw std::runtime_error(
                     "Failed to create seed from key for language: " + language_name);
         return std::string(epee_words.view());
     }

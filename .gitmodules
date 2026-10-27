@@ -35,9 +35,6 @@
 [submodule "external/oxen-encoding"]
 	path = external/oxen-encoding
 	url = https://github.com/session-foundation/oxen-encoding.git
-[submodule "external/cpptrace"]
-	path = external/cpptrace
-	url = https://github.com/jeremy-rifkin/cpptrace
 [submodule "external/bn256"]
 	path = external/bn256
 	url = https://github.com/oxen-io/bn256.git

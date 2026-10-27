@@ -29,7 +29,6 @@
 
 #include <SQLiteCpp/Savepoint.h>
 #include <blockchain_db/history.h>
-#include <common/exception.h>
 #include <common/formattable.h>
 #include <common/guts.h>
 #include <cryptonote_basic/hardfork.h>
@@ -136,8 +135,7 @@ static rewards_address address_from_blob(std::span<const std::byte> b) {
         return tools::make_from_guts<eth::address>(b);
     if (b.size() == sizeof(account_public_address))
         return tools::make_from_guts<account_public_address>(b);
-    throw oxen::traced<std::runtime_error>{
-            "Invalid {}-byte address in the stored rewards"_format(b.size())};
+    throw std::runtime_error{"Invalid {}-byte address in the stored rewards"_format(b.size())};
 }
 
 static std::span<const unsigned char> address_bytes(const rewards_address& a) {
@@ -368,7 +366,7 @@ DROP TABLE batch_db_info;
             constexpr auto error =
                     "Batching db update to add offsets failed: not all addresses were converted";
             log::error(logcat, error);
-            throw oxen::traced<std::runtime_error>{error};
+            throw std::runtime_error{error};
         }
     }
 
@@ -543,7 +541,7 @@ DROP TABLE batch_db_info;
                         " lifetime_liquidated_stakes % {factor} != 0"_format(
                                 "table"_a = table, "factor"_a = BATCH_REWARD_FACTOR)};
                 if (int uhoh = session::sqlite::exec_and_get<int>(no_subatomic_stakes); uhoh > 0)
-                    throw oxen::traced<std::logic_error>{
+                    throw std::logic_error{
                             "Internal error: 11.4.0 transition code found {} {} rows with"
                             " unexpected sub-atomic stake values"_format(uhoh, table)};
             }
@@ -615,8 +613,7 @@ DROP TABLE batch_db_info;
                             logcat,
                             "DB setup error: HF21 transition code attempted to run on a database "
                             "already on HF22");
-                    throw oxen::traced<std::logic_error>{
-                            "HF21 transition code called on HF22 database"};
+                    throw std::logic_error{"HF21 transition code called on HF22 database"};
                 }
                 if (is_primary) {
                     if (db_h > fixup_height) {
@@ -662,7 +659,7 @@ DROP TABLE batch_db_info;
                     " amount % {factor} != 0 OR liquidation_amount % {factor} != 0"_format(
                             "factor"_a = BATCH_REWARD_FACTOR)};
             if (int uhoh = session::sqlite::exec_and_get<int>(no_subatomic_amount); uhoh > 0)
-                throw oxen::traced<std::logic_error>{
+                throw std::logic_error{
                         "Internal error: 11.4.0 transition code found {} delayed_payments rows with"
                         " unexpected sub-atomic amounts"_format(uhoh)};
         }
@@ -708,7 +705,7 @@ static void check_legacy_types(Connection& conn) {
         if (auto bad = conn.prepared_maybe_get<std::string, int64_t>(
                     "SELECT typeof({0}), COUNT(*) FROM {1} WHERE typeof({0}) NOT IN ({2})"
                     " GROUP BY 1 LIMIT 1"_format(column, table, types)))
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Unable to migrate the legacy rewards table {}: its {} column holds {} {} "
                     "value(s), where only {} can be migrated"_format(
                             table, column, std::get<1>(*bad), std::get<0>(*bad), types)};
@@ -891,7 +888,7 @@ void RewardsDB::blockchain_detached(uint64_t new_height, SQLite::Transaction* ac
         load_stored(conn, new_height);
         from = "pre-HF19 empty state";
     } else {
-        throw oxen::traced<std::logic_error>{
+        throw std::logic_error{
                 "Internal error: rewards cannot be restored to height {}"_format(new_height)};
     }
 
@@ -925,7 +922,7 @@ static std::optional<accrued_row> current_row(
         const accrued_history& history, const rewards_address& addr, uint64_t height) {
     auto r = history.lookup(addr, height);
     if (!r.known)
-        throw oxen::traced<std::logic_error>{
+        throw std::logic_error{
                 "Internal error: the rewards at the current height {} are unknown"_format(height)};
     return std::move(r.row);
 }
@@ -1265,7 +1262,7 @@ void RewardsDB::add_rewards(
         log::critical(
                 logcat, "Internal error: invalid SN reward distribution: {}", distribution_amount);
         assert(opt_amt);
-        throw oxen::traced<std::logic_error>{"Invalid SN reward distribution"};
+        throw std::logic_error{"Invalid SN reward distribution"};
     }
 
     // Find out how much is due for the operator: fee_portions/PORTIONS * reward
@@ -1332,7 +1329,7 @@ void RewardsDB::reward_handler(
     // amount goes directly into the database, as of HF22 the final reward for each recipient gets
     // truncated to an atomic unit.
     if (block.reward > std::numeric_limits<uint64_t>::max() / BATCH_REWARD_FACTOR)
-        throw oxen::traced<std::logic_error>{"Reward distribution amount is too large"};
+        throw std::logic_error{"Reward distribution amount is too large"};
 
     auto block_reward = reward_money::from_coin(block.reward);
 
@@ -1342,7 +1339,7 @@ void RewardsDB::reward_handler(
         // below, this applies even if the SN isn't currently payable).
         auto base_sn_reward = reward_money::from_coin(oxen::SN_REWARD_HF15);
         if (block_reward < base_sn_reward)
-            throw oxen::traced<std::logic_error>{"Invalid payment: block reward is too small"};
+            throw std::logic_error{"Invalid payment: block reward is too small"};
         if (auto tx_fees = block_reward - base_sn_reward;
             tx_fees.to_intermediate() > 0 && block.has_pulse()) {
             auto pulse_leader = sn_state.get_block_producer();
@@ -1609,7 +1606,7 @@ void RewardsDB::publish_block(
     pending.reset();
     for (const auto& [addr, row] : changes.accrued)
         if (row && row->amount < 0)
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Accrued amount of {} would become negative"_format(log_addr{addr, nettype})};
 
     {

@@ -30,8 +30,6 @@
 
 #pragma once
 
-#include <common/exception.h>
-
 #include <boost/mpl/bool.hpp>
 
 #include "common/ipv4.h"
@@ -71,7 +69,7 @@ inline void serialize(Archive& a, epee::net_utils::network_address& na, const ve
             do_serialize<epee::net_utils::ipv6_network_address>(is_saving, a, na);
             break;
         case epee::net_utils::address_type::invalid:
-        default: throw oxen::traced<std::runtime_error>("Unsupported network address type");
+        default: throw std::runtime_error("Unsupported network address type");
     }
 }
 template <class Archive, class ver_type>

@@ -168,12 +168,6 @@ add_subdirectory(ethyl EXCLUDE_FROM_ALL)
 oxen_install_library(ethyl)
 
 
-# NOTE: By default cpptrace is configured to make stack-traces using libdwarf.
-# On this codebase libdward segfaults trying to handle our stack-traces so we
-# switch to a more primitive method, addr2line which does work.
-set(CPPTRACE_GET_SYMBOLS_WITH_ADDR2LINE ON CACHE BOOL "")
-add_subdirectory(cpptrace EXCLUDE_FROM_ALL)
-
 option(TRACY_ENABLE "Enable the profiler markers to be captured and displayable with the Tracy Profiler" OFF)
 if (TRACY_ENABLE)
     add_subdirectory(tracy)

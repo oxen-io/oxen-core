@@ -72,8 +72,7 @@ miner::miner(
         m_handle_block_found{std::move(found)},
         m_create_next_miner_block_template{std::move(create)} {
     if (!(m_get_block_hash && m_handle_block_found && m_create_next_miner_block_template))
-        throw oxen::traced<std::invalid_argument>{
-                "Invalid miner constructor: required callbacks cannot be null"};
+        throw std::invalid_argument{"Invalid miner constructor: required callbacks cannot be null"};
 }
 
 //-----------------------------------------------------------------------------------------------------

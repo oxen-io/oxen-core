@@ -37,7 +37,6 @@
 
 #include "blockchain.h"
 #include "common/apply_permutation.h"
-#include "common/exception.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
@@ -289,8 +288,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
         hf hard_fork_version) {
 
     if (hard_fork_version >= feature::ETH_BLS)
-        throw oxen::traced<std::logic_error>{
-                "Invalid usage: construct_miner_tx cannot be used in HF21+"};
+        throw std::logic_error{"Invalid usage: construct_miner_tx cannot be used in HF21+"};
 
     tx.vin.clear();
     tx.vout.clear();
@@ -620,8 +618,7 @@ bool get_oxen_block_reward(
         const oxen_block_reward_context& oxen_context) {
 
     if (hard_fork_version >= feature::ETH_BLS)
-        throw oxen::traced<std::logic_error>{
-                "Invalid usage: get_oxen_block_reward is not applicable in HF21+"};
+        throw std::logic_error{"Invalid usage: get_oxen_block_reward is not applicable in HF21+"};
 
     result = {};
     uint64_t base_reward, base_reward_unpenalized;

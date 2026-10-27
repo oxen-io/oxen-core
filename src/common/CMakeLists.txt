@@ -34,7 +34,6 @@ oxen_add_library(common
   command_line.cpp
   error.cpp
   expect.cpp
-  exception.cpp
   file.cpp
   i18n.cpp
   ipv4.cpp
@@ -57,18 +56,12 @@ oxen_add_library(common
 set_source_files_properties(${PROJECT_BINARY_DIR}/translations/translation_files.cpp PROPERTIES GENERATED 1)
 add_dependencies(common generate_translation_data)
 
-option(WITH_STACKTRACE "Enable stacktraces on exceptions" OFF)
-if (WITH_STACKTRACE)
-  target_compile_definitions(common PUBLIC WITH_STACKTRACE)
-endif()
-
 if (BACKCOMPAT)
   target_sources(common PRIVATE compat/glibc_compat.cpp)
 endif()
 
 target_link_libraries(common
   PUBLIC
-    $<$<CONFIG:Debug>:cpptrace::cpptrace>
     cncrypto
     oxenc::oxenc
     oxenmq::oxenmq

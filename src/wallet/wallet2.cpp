@@ -31,7 +31,6 @@
 
 #include "wallet2.h"
 
-#include <common/exception.h>
 #include <cpr/parameters.h>
 #include <fmt/color.h>
 #include <fmt/core.h>
@@ -4196,7 +4195,7 @@ void wallet2::refresh(
                     short_chain_history.clear();
                     get_short_chain_history(short_chain_history);
                     start_height = stop_height;
-                    throw oxen::traced<std::runtime_error>("");  // loop again
+                    throw std::runtime_error("");  // loop again
                 } catch (const std::exception& e) {
                     log::error(logcat, "Error parsing blocks: {}", e.what());
                     error = true;
@@ -4213,7 +4212,7 @@ void wallet2::refresh(
 
             // handle error from async fetching thread
             if (error) {
-                throw oxen::traced<std::runtime_error>("proxy exception in refresh thread");
+                throw std::runtime_error("proxy exception in refresh thread");
             }
 
             // if we've got at least 10 blocks to refresh, assume we're starting
@@ -13654,7 +13653,7 @@ void wallet2::cold_sign_tx(
         std::vector<std::string>& tx_device_aux) {
     auto& hwdev = get_account().get_device();
     if (!hwdev.has_tx_cold_sign()) {
-        throw oxen::traced<std::invalid_argument>("Device does not support cold sign protocol");
+        throw std::invalid_argument("Device does not support cold sign protocol");
     }
 
     unsigned_tx_set txs;
@@ -15417,7 +15416,7 @@ void wallet2::set_account_tag_description(const std::string& tag, const std::str
 
 std::string wallet2::sign(std::string_view data, cryptonote::subaddress_index index) const {
     if (m_watch_only)
-        throw oxen::traced<std::logic_error>{"Unable to sign with a watch-only wallet"};
+        throw std::logic_error{"Unable to sign with a watch-only wallet"};
 
     crypto::hash hash;
     crypto::cn_fast_hash(data.data(), data.size(), hash);
@@ -16938,25 +16937,24 @@ bool wallet2::parse_uri(
 uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, uint8_t day) {
     rpc::version_t version;
     if (!check_connection(&version)) {
-        throw oxen::traced<std::runtime_error>(
-                "failed to connect to daemon: " + get_daemon_address());
+        throw std::runtime_error("failed to connect to daemon: " + get_daemon_address());
     }
     if (version < rpc::version_t{1, 6}) {
-        throw oxen::traced<std::runtime_error>("this function requires RPC version 1.6 or higher");
+        throw std::runtime_error("this function requires RPC version 1.6 or higher");
     }
     std::tm date = {0, 0, 0, 0, 0, 0, 0, 0};
     date.tm_year = year - 1900;
     date.tm_mon = month - 1;
     date.tm_mday = day;
     if (date.tm_mon < 0 || 11 < date.tm_mon || date.tm_mday < 1 || 31 < date.tm_mday) {
-        throw oxen::traced<std::runtime_error>("month or day out of range");
+        throw std::runtime_error("month or day out of range");
     }
     uint64_t timestamp_target = std::mktime(&date);
     std::string err;
     uint64_t height_min = 0;
     uint64_t height_max = get_daemon_blockchain_height(err) - 1;
     if (!err.empty()) {
-        throw oxen::traced<std::runtime_error>("failed to get blockchain height");
+        throw std::runtime_error("failed to get blockchain height");
     }
     while (true) {
         rpc::GET_BLOCKS_BY_HEIGHT_BIN::request req{};
@@ -16976,19 +16974,19 @@ uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, ui
                 oss << "daemon is busy";
             else
                 oss << get_rpc_status(res.status);
-            throw oxen::traced<std::runtime_error>(oss.str());
+            throw std::runtime_error(oss.str());
         }
         cryptonote::block blk_min, blk_mid, blk_max;
         if (res.blocks.size() < 3)
-            throw oxen::traced<std::runtime_error>("Not enough blocks returned from daemon");
+            throw std::runtime_error("Not enough blocks returned from daemon");
         if (!parse_and_validate_block_from_blob(res.blocks[0].block, blk_min))
-            throw oxen::traced<std::runtime_error>(
+            throw std::runtime_error(
                     "failed to parse blob at height " + std::to_string(height_min));
         if (!parse_and_validate_block_from_blob(res.blocks[1].block, blk_mid))
-            throw oxen::traced<std::runtime_error>(
+            throw std::runtime_error(
                     "failed to parse blob at height " + std::to_string(height_mid));
         if (!parse_and_validate_block_from_blob(res.blocks[2].block, blk_max))
-            throw oxen::traced<std::runtime_error>(
+            throw std::runtime_error(
                     "failed to parse blob at height " + std::to_string(height_max));
         uint64_t timestamp_min = blk_min.timestamp;
         uint64_t timestamp_mid = blk_mid.timestamp;
@@ -16999,7 +16997,7 @@ uint64_t wallet2::get_blockchain_height_by_date(uint16_t year, uint8_t month, ui
             return std::min({height_min, height_mid, height_max});
         }
         if (timestamp_target > timestamp_max) {
-            throw oxen::traced<std::runtime_error>("specified date is in the future");
+            throw std::runtime_error("specified date is in the future");
         }
         if (timestamp_target <= timestamp_min + 2 * 24 * 60 * 60)  // two days of "buffer" period
         {

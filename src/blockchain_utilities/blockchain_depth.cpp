@@ -27,7 +27,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <common/command_line.h>
-#include <common/exception.h>
 #include <common/guts.h>
 #include <common/median.h>
 #include <fmt/std.h>
@@ -43,8 +42,6 @@ using namespace cryptonote;
 static auto logcat = log::Cat("bcutil");
 
 int main(int argc, char* argv[]) try {
-    oxen::set_terminate_handler();
-
     tools::on_startup();
 
     auto opt_size = command_line::boost_option_sizes();

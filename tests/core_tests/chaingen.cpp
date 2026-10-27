@@ -659,7 +659,7 @@ cryptonote::checkpoint_t oxen_chain_generator::create_service_node_checkpoint(ui
 {
   service_nodes::quorum const &quorum = *get_quorum(service_nodes::quorum_type::checkpointing, block_height);
   if (num_votes >= quorum.validators.size())
-      throw oxen::traced<std::logic_error>{"cannot create checkpoint with " + std::to_string(num_votes) +
+      throw std::logic_error{"cannot create checkpoint with " + std::to_string(num_votes) +
           " votes with only " + std::to_string(quorum.validators.size()) + " validators"};
 
   oxen_blockchain_entry const &entry = db_.blocks[block_height];
@@ -1110,7 +1110,7 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
     else if (entry.block_weight < target_block_weight)
     {
       if (blk.major_version >= hf::hf21_eth)
-        throw oxen::traced<std::runtime_error>{"target_block_weight is not supported with HF21+ blocks"};
+        throw std::runtime_error{"target_block_weight is not supported with HF21+ blocks"};
       size_t delta = target_block_weight - entry.block_weight;
       blk.miner_tx->extra.resize(blk.miner_tx->extra.size() + delta, 0);
       entry.block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
@@ -1297,7 +1297,7 @@ void test_generator::get_block_chain(std::vector<block_info>& blockchain, const 
     auto it = m_blocks_info.find(curr);
     if (m_blocks_info.end() == it)
     {
-      throw oxen::traced<std::runtime_error>("block hash wasn't found");
+      throw std::runtime_error("block hash wasn't found");
     }
 
     blockchain.push_back(it->second);
@@ -1318,7 +1318,7 @@ void test_generator::get_block_chain(std::vector<cryptonote::block> &blockchain,
     auto it = m_blocks_info.find(curr);
     if (m_blocks_info.end() == it)
     {
-      throw oxen::traced<std::runtime_error>("block hash wasn't found");
+      throw std::runtime_error("block hash wasn't found");
     }
 
     blockchain.push_back(it->second.block);
@@ -1342,7 +1342,7 @@ uint64_t test_generator::get_already_generated_coins(const crypto::hash& blk_id)
 {
   auto it = m_blocks_info.find(blk_id);
   if (it == m_blocks_info.end())
-    throw oxen::traced<std::runtime_error>("block hash wasn't found");
+    throw std::runtime_error("block hash wasn't found");
 
   return it->second.already_generated_coins;
 }
@@ -1727,7 +1727,7 @@ bool init_output_indices(std::vector<output_index>& outs, std::vector<size_t>& o
         for(const crypto::hash &h : blk.tx_hashes) {
             const auto cit = mtx.find(h);
             if (mtx.end() == cit)
-                throw oxen::traced<std::runtime_error>("block contains an unknown tx hash");
+                throw std::runtime_error("block contains an unknown tx hash");
 
             vtx.push_back(cit->second);
         }
@@ -1975,14 +1975,14 @@ void fill_tx_sources_and_multi_destinations(const std::vector<test_event_entry>&
 
   if (!fill_tx_sources(sources, events, blk_head, from, total_amount, nmix))
   {
-    throw oxen::traced<std::runtime_error>("couldn't fill transaction sources");
+    throw std::runtime_error("couldn't fill transaction sources");
   }
 
   for (int i = 0; i < num_amounts; ++i)
   {
     cryptonote::tx_destination_entry de;
     if (!fill_tx_destination(de, to, amount[i]))
-      throw oxen::traced<std::runtime_error>("couldn't fill transaction destination");
+      throw std::runtime_error("couldn't fill transaction destination");
     destinations.push_back(de);
   }
 
@@ -1991,7 +1991,7 @@ void fill_tx_sources_and_multi_destinations(const std::vector<test_event_entry>&
   if (0 < cash_back || always_add_change_ouput)
   {
     if (!fill_tx_destination(de_change, from.get_keys().m_account_address, cash_back))
-      throw oxen::traced<std::runtime_error>("couldn't fill transaction cache back destination");
+      throw std::runtime_error("couldn't fill transaction cache back destination");
     destinations.push_back(de_change);
   }
 
@@ -2224,7 +2224,7 @@ cryptonote::account_public_address get_address(const var_addr_t& inp)
   } else if (std::holds_alternative<cryptonote::tx_destination_entry>(inp)){
     return std::get<cryptonote::tx_destination_entry>(inp).addr;
   } else {
-    throw oxen::traced<std::runtime_error>("Unexpected type");
+    throw std::runtime_error("Unexpected type");
   }
 }
 
@@ -2264,7 +2264,7 @@ void fill_tx_destinations(const var_addr_t& from, const std::vector<cryptonote::
 
   if (cash_back > 0 || always_change) {
     if (!fill_tx_destination(de_change, get_address(from), cash_back <= 0 ? 0 : cash_back))
-      throw oxen::traced<std::runtime_error>("couldn't fill transaction cache back destination");
+      throw std::runtime_error("couldn't fill transaction cache back destination");
     destinations.push_back(de_change);
   }
 }
@@ -2280,7 +2280,7 @@ void fill_tx_destinations(const var_addr_t& from, const cryptonote::account_publ
 
   cryptonote::tx_destination_entry de;
   if (!fill_tx_destination(de, to, amount))
-    throw oxen::traced<std::runtime_error>("couldn't fill transaction destination");
+    throw std::runtime_error("couldn't fill transaction destination");
   destinations.push_back(de);
   destinations_pure.push_back(de);
 
@@ -2289,7 +2289,7 @@ void fill_tx_destinations(const var_addr_t& from, const cryptonote::account_publ
 
   if (cash_back > 0 || always_change) {
     if (!fill_tx_destination(de_change, get_address(from), cash_back <= 0 ? 0 : cash_back))
-      throw oxen::traced<std::runtime_error>("couldn't fill transaction cache back destination");
+      throw std::runtime_error("couldn't fill transaction cache back destination");
     destinations.push_back(de_change);
   }
 }
@@ -2361,7 +2361,7 @@ bool construct_tx_to_key(const std::vector<test_event_entry>& events, cryptonote
 
   if (!fill_tx_sources(sources, events, blk_head, from, amount + fee, nmix))
   {
-    throw oxen::traced<std::runtime_error>("couldn't fill transaction sources");
+    throw std::runtime_error("couldn't fill transaction sources");
   }
 
   fill_tx_destinations(from, destinations, fee, sources, destinations_all, true);
@@ -2568,7 +2568,7 @@ cryptonote::block get_head_block(const std::vector<test_event_entry>& events)
     }
   }
 
-  throw oxen::traced<std::runtime_error>("No block event");
+  throw std::runtime_error("No block event");
 }
 
 bool find_block_chain(const std::vector<test_event_entry> &events, std::vector<cryptonote::block> &blockchain, map_hash2tx_t &mtx, const crypto::hash &head)

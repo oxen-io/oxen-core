@@ -252,7 +252,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             // NOTE: Decode fee and that it is within acceptable range
             item.fee = tools::decode_integer_be(fee256);
             if (item.fee > cryptonote::STAKING_FEE_BASIS)
-                throw oxen::traced<std::invalid_argument>{
+                throw std::invalid_argument{
                         "Invalid NewServiceNodeV2 data: fee must be in [0, {}]"_format(
                                 cryptonote::STAKING_FEE_BASIS)};
 
@@ -260,20 +260,19 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             // within maximum range
             uint64_t num_contributors = tools::decode_integer_be(c_len);
             if (num_contributors > oxen::MAX_CONTRIBUTORS_HF19) {
-                throw oxen::traced<std::invalid_argument>(
-                        "Invalid NewServiceNodeV2 data: {}\n{}"_format(
-                                log_more_contributors_than_allowed(
-                                        num_contributors,
-                                        oxen::MAX_CONTRIBUTORS_HF19,
-                                        item.bls_pubkey,
-                                        log.blockNumber,
-                                        /*index*/ std::optional<uint64_t>()),
-                                log_new_service_node_v2_tx(item, log.data)));
+                throw std::invalid_argument("Invalid NewServiceNodeV2 data: {}\n{}"_format(
+                        log_more_contributors_than_allowed(
+                                num_contributors,
+                                oxen::MAX_CONTRIBUTORS_HF19,
+                                item.bls_pubkey,
+                                log.blockNumber,
+                                /*index*/ std::optional<uint64_t>()),
+                        log_new_service_node_v2_tx(item, log.data)));
             }
 
             // NOTE: Verify that there's atleast one contributor
             if (num_contributors <= 0) {
-                throw oxen::traced<std::invalid_argument>(
+                throw std::invalid_argument(
                         "Invalid NewServiceNodeV2 data: There must be atleast one contributor, "
                         "received 0\n{}"
                         ""_format(log_new_service_node_v2_tx(item, log.data)));
@@ -286,7 +285,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
             const uint64_t expected_c_offset_value = 32 /*ID*/ + 32 /*recipient*/ + 64 /*BLS Key*/ +
                                                      32 /*SN Key*/ + 64 /*SN Sig*/ + 32 /*Fee*/;
             if (c_offset_value != expected_c_offset_value) {
-                throw oxen::traced<std::invalid_argument>(
+                throw std::invalid_argument(
                         "Invalid NewServiceNodeV2 data: The offset to the contributor payload ({} "
                         "bytes) did not match the offset we derived {}\n{}"
                         ""_format(
@@ -300,7 +299,7 @@ event::StateChangeVariant get_log_event(const uint64_t chain_id, const ethyl::Lo
                     2 /*hex*/ * num_contributors *
                     (/*address*/ 32 + /*beneficiary*/ 32 + /*amount*/ 32);
             if (contrib_hex.size() != expected_contrib_hex_size) {
-                throw oxen::traced<std::invalid_argument>{
+                throw std::invalid_argument{
                         "Invalid NewServiceNodeV2 data: The hex payload length ({}) derived for "
                         "{} contributors did not match the size we derived of {} hex characters\n"
                         "{}"_format(
@@ -443,18 +442,18 @@ ServiceNodeIDs RewardsContract::parse_all_service_node_ids(std::string_view call
 
     // NOTE: Validate args
     if (num_keys != num_ids)
-        throw oxen::traced<std::invalid_argument>{
+        throw std::invalid_argument{
                 "The number of ids ({}) and bls public keys ({}) returned do not match"_format(
                         num_ids, num_keys)};
 
     if (ids_payload.size() != (num_ids * ID_SIZE_IN_HEX))
-        throw oxen::traced<std::invalid_argument>{
+        throw std::invalid_argument{
                 "The number of ids ({}) specified when retrieving all SN BLS ids did not "
                 "match the size ({} bytes) of the response"_format(
                         num_ids, ids_payload.size() / 2)};
 
     if (keys_payload.size() != (num_keys * KEY_SIZE_IN_HEX))
-        throw oxen::traced<std::invalid_argument>{
+        throw std::invalid_argument{
                 "The number of keys ({}) specified when retrieving all SN BLS pubkeys did not "
                 "match the size ({} bytes) of the response"_format(
                         num_keys, keys_payload.size() / 2)};

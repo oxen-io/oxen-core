@@ -31,7 +31,6 @@
 #endif
 
 #include <common/command_line.h>
-#include <common/exception.h>
 #include <common/signal_handler.h>
 #include <common/unordered_containers_boost_serialization.h>
 #include <fmt/std.h>
@@ -103,7 +102,7 @@ struct tx_data_t {
                             cryptonote::relative_output_offsets_to_absolute(txin->key_offsets)));
                 else {
                     log::warning(logcat, "Bad vin type in txid {}", get_transaction_hash(tx));
-                    throw oxen::traced<std::runtime_error>("Bad vin type");
+                    throw std::runtime_error("Bad vin type");
                 }
             }
         }
@@ -113,7 +112,7 @@ struct tx_data_t {
                 vout.push_back(txout->key);
             } else {
                 log::warning(logcat, "Bad vout type in txid {}", get_transaction_hash(tx));
-                throw oxen::traced<std::runtime_error>("Bad vout type");
+                throw std::runtime_error("Bad vout type");
             }
         }
     }
@@ -210,7 +209,7 @@ static std::unordered_set<ancestor> get_ancestry(
             ancestry.find(txid);
     if (i == ancestry.end()) {
         // log::error(logcat, "txid ancestry not found: {}", txid);
-        // throw oxen::traced<std::runtime_error>("txid ancestry not found");
+        // throw std::runtime_error("txid ancestry not found");
         return std::unordered_set<ancestor>();
     }
     return i->second;

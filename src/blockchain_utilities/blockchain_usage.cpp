@@ -28,7 +28,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <common/command_line.h>
-#include <common/exception.h>
 #include <fmt/std.h>
 
 #include "blockchain_db/blockchain_db.h"
@@ -76,8 +75,6 @@ struct reference {
 };
 
 int main(int argc, char* argv[]) try {
-    oxen::set_terminate_handler();
-
     tools::on_startup();
     auto opt_size = command_line::boost_option_sizes();
 
