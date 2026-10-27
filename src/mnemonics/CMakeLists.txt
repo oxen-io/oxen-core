@@ -32,7 +32,6 @@ oxen_add_library(mnemonics
 
 target_link_libraries(mnemonics
   PRIVATE
-    $<$<CONFIG:Debug>:cpptrace::cpptrace>
     cncrypto
     epee
     logging

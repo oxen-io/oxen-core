@@ -36,7 +36,6 @@
  */
 #pragma once
 
-#include <common/exception.h>
 #include <common/meta.h>
 
 #include <variant>
@@ -113,7 +112,7 @@ namespace detail {
         auto obj = ar.begin_object();
         ar.read_variant_tag(tag);
         if (!(... || read_variant_impl_one<I>(ar, v, tag)))
-            throw oxen::traced<std::runtime_error>("failed to read variant");
+            throw std::runtime_error("failed to read variant");
     }
 
     template <

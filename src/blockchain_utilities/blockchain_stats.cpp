@@ -27,7 +27,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <common/command_line.h>
-#include <common/exception.h>
 #include <common/signal_handler.h>
 #include <common/varint.h>
 #include <date/date.h>
@@ -48,8 +47,6 @@ static bool stop_requested = false;
 static auto logcat = log::Cat("bcutil");
 
 int main(int argc, char* argv[]) try {
-    oxen::set_terminate_handler();
-
     uint64_t block_start = 0;
     uint64_t block_stop = 0;
     tools::on_startup();
@@ -258,10 +255,10 @@ int main(int argc, char* argv[]) try {
         currsz += bd.size();
         for (const auto& tx_id : blk.tx_hashes) {
             if (!tx_id) {
-                throw oxen::traced<std::runtime_error>("Aborting: null txid");
+                throw std::runtime_error("Aborting: null txid");
             }
             if (!db.get_pruned_tx_blob(tx_id, bd)) {
-                throw oxen::traced<std::runtime_error>("Aborting: tx not found");
+                throw std::runtime_error("Aborting: tx not found");
             }
             transaction tx;
             if (!parse_and_validate_tx_base_from_blob(bd, tx)) {

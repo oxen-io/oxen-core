@@ -1,6 +1,5 @@
 #pragma once
 
-#include <common/exception.h>
 #include <oxenc/common.h>
 
 #include <nlohmann/json.hpp>
@@ -165,8 +164,7 @@ struct adl_serializer<T> {
     static_assert(std::is_trivially_copyable_v<T> && std::has_unique_object_representations_v<T>);
 
     static void to_json(json&, const T&) {
-        throw oxen::traced<std::logic_error>{
-                "Internal error: binary types are not directly serializable"};
+        throw std::logic_error{"Internal error: binary types are not directly serializable"};
     }
     static void from_json(const json& j, T& val) {
         tools::load_binary_parameter(j.get<std::string_view>(), false /*no raw*/, val);

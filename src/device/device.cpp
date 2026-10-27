@@ -29,7 +29,6 @@
 
 #include "device.hpp"
 
-#include "common/exception.h"
 #include "device_default.hpp"
 #include "logging/oxen_logger.h"
 #ifdef WITH_DEVICE_LEDGER
@@ -90,7 +89,7 @@ device& device_registry::get_device(const std::string& device_descriptor) {
                 logcat, "Device not found in registry: '{}'. Known devices: ", device_descriptor);
         for (const auto& sm_pair : registry)
             log::error(logcat, " - {}", sm_pair.first);
-        throw oxen::traced<std::runtime_error>("device not found: " + device_descriptor);
+        throw std::runtime_error("device not found: " + device_descriptor);
     }
     return *device->second;
 }

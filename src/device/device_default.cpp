@@ -31,7 +31,6 @@
 
 #include <sodium/crypto_generichash.h>
 
-#include "common/exception.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/subaddress_index.h"
@@ -97,10 +96,10 @@ bool device_default::generate_chacha_key(
     return true;
 }
 bool device_default::get_public_address(cryptonote::account_public_address& pubkey) {
-    throw oxen::traced<std::runtime_error>{"device function not supported: get_public_address"};
+    throw std::runtime_error{"device function not supported: get_public_address"};
 }
 bool device_default::get_secret_keys(crypto::secret_key& viewkey, crypto::secret_key& spendkey) {
-    throw oxen::traced<std::runtime_error>{"device function not supported: get_secret_keys"};
+    throw std::runtime_error{"device function not supported: get_secret_keys"};
 }
 /* ======================================================================= */
 /*                               SUB ADDRESS                               */

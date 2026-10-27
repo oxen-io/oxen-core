@@ -32,7 +32,6 @@
 #include <fmt/std.h>
 
 #include "bootstrap_serialization.h"
-#include "common/exception.h"
 #include "serialization/binary_utils.h"  // dump_binary(), parse_binary()
 
 using namespace cryptonote;
@@ -113,8 +112,7 @@ bool BootstrapFile::initialize_file() {
     try {
         blob = serialization::dump_binary(file_magic);
     } catch (const std::exception& e) {
-        throw oxen::traced<std::runtime_error>(
-                "Error in serialization of file magic: "s + e.what());
+        throw std::runtime_error("Error in serialization of file magic: "s + e.what());
     }
     *m_raw_data_file << blob;
 
@@ -141,7 +139,7 @@ bool BootstrapFile::initialize_file() {
     try {
         blob = serialization::dump_binary(bd_size);
     } catch (const std::exception& e) {
-        throw oxen::traced<std::runtime_error>(
+        throw std::runtime_error(
                 "Error in serialization of bootstrap::file_info size: "s + e.what());
     }
     output_stream_header << blob;
@@ -154,7 +152,7 @@ bool BootstrapFile::initialize_file() {
     try {
         blob = serialization::dump_binary(bd_size);
     } catch (const std::exception& e) {
-        throw oxen::traced<std::runtime_error>(
+        throw std::runtime_error(
                 "Error in serialization of bootstrap::blocks_info size: "s + e.what());
     }
     output_stream_header << blob;
@@ -182,8 +180,7 @@ void BootstrapFile::flush_chunk() {
     try {
         blob = serialization::dump_binary(chunk_size);
     } catch (const std::exception& e) {
-        throw oxen::traced<std::runtime_error>(
-                "Error in serialization of chunk size: "s + e.what());
+        throw std::runtime_error("Error in serialization of chunk size: "s + e.what());
     }
     *m_raw_data_file << blob;
 
@@ -202,7 +199,7 @@ void BootstrapFile::flush_chunk() {
                 m_cur_height,
                 chunk_size,
                 num_chars_written);
-        throw oxen::traced<std::runtime_error>("Error writing chunk");
+        throw std::runtime_error("Error writing chunk");
     }
 
     m_buffer.clear();
@@ -224,7 +221,7 @@ void BootstrapFile::write_block(block& block) {
     // now add all regular transactions
     for (const auto& tx_id : block.tx_hashes) {
         if (!tx_id) {
-            throw oxen::traced<std::runtime_error>("Aborting: null txid");
+            throw std::runtime_error("Aborting: null txid");
         }
         transaction tx = m_blockchain_storage->db().get_tx(tx_id);
 
@@ -334,19 +331,18 @@ uint64_t BootstrapFile::seek_to_first_chunk(std::ifstream& import_file) {
     char buf1[2048];
     import_file.read(buf1, sizeof(file_magic));
     if (!import_file)
-        throw oxen::traced<std::runtime_error>("Error reading expected number of bytes");
+        throw std::runtime_error("Error reading expected number of bytes");
     str1.assign(buf1, sizeof(file_magic));
 
     try {
         serialization::parse_binary(str1, file_magic);
     } catch (const std::exception& e) {
-        throw oxen::traced<std::runtime_error>(
-                "Error in deserialization of file_magic: "s + e.what());
+        throw std::runtime_error("Error in deserialization of file_magic: "s + e.what());
     }
 
     if (file_magic != blockchain_raw_magic) {
         log::error(logcat, "bootstrap file not recognized");
-        throw oxen::traced<std::runtime_error>("Aborting");
+        throw std::runtime_error("Aborting");
     } else
         log::info(logcat, "bootstrap file recognized");
 
@@ -355,28 +351,25 @@ uint64_t BootstrapFile::seek_to_first_chunk(std::ifstream& import_file) {
     import_file.read(buf1, sizeof(buflen_file_info));
     str1.assign(buf1, sizeof(buflen_file_info));
     if (!import_file)
-        throw oxen::traced<std::runtime_error>("Error reading expected number of bytes");
+        throw std::runtime_error("Error reading expected number of bytes");
     try {
         serialization::parse_binary(str1, buflen_file_info);
     } catch (const std::exception& e) {
-        throw oxen::traced<std::runtime_error>(
-                "Error in deserialization of buflen_file_info: "s + e.what());
+        throw std::runtime_error("Error in deserialization of buflen_file_info: "s + e.what());
     }
     log::info(logcat, "bootstrap::file_info size: {}", buflen_file_info);
 
     if (buflen_file_info > sizeof(buf1))
-        throw oxen::traced<std::runtime_error>(
-                "Error: bootstrap::file_info size exceeds buffer size");
+        throw std::runtime_error("Error: bootstrap::file_info size exceeds buffer size");
     import_file.read(buf1, buflen_file_info);
     if (!import_file)
-        throw oxen::traced<std::runtime_error>("Error reading expected number of bytes");
+        throw std::runtime_error("Error reading expected number of bytes");
     str1.assign(buf1, buflen_file_info);
     bootstrap::file_info bfi;
     try {
         serialization::parse_binary(str1, bfi);
     } catch (const std::exception& e) {
-        throw oxen::traced<std::runtime_error>(
-                "Error in deserialization of bootstrap::file_info: "s + e.what());
+        throw std::runtime_error("Error in deserialization of bootstrap::file_info: "s + e.what());
     }
     log::info(
             logcat,
@@ -412,8 +405,7 @@ uint64_t BootstrapFile::count_bytes(
         try {
             serialization::parse_binary(str1, chunk_size);
         } catch (const std::exception& e) {
-            throw oxen::traced<std::runtime_error>(
-                    "Error in deserialization of chunk_size: "s + e.what());
+            throw std::runtime_error("Error in deserialization of chunk_size: "s + e.what());
         }
         log::debug(logcat, "chunk_size: {}", chunk_size);
 
@@ -426,7 +418,7 @@ uint64_t BootstrapFile::count_bytes(
                     BUFFER_SIZE,
                     h - 1,
                     bytes_read);
-            throw oxen::traced<std::runtime_error>("Aborting: chunk size exceeds buffer size");
+            throw std::runtime_error("Aborting: chunk size exceeds buffer size");
         }
         if (chunk_size > CHUNK_SIZE_WARNING_THRESHOLD) {
             std::cout << refresh_string;
@@ -445,7 +437,7 @@ uint64_t BootstrapFile::count_bytes(
                     chunk_size,
                     h - 1,
                     bytes_read);
-            throw oxen::traced<std::runtime_error>("Aborting");
+            throw std::runtime_error("Aborting");
         }
         // skip to next expected block size value
         import_file.seekg(chunk_size, std::ios_base::cur);
@@ -456,7 +448,7 @@ uint64_t BootstrapFile::count_bytes(
                     "ERROR: unexpected end of file: bytes read before error: {} of chunk_size {}",
                     import_file.gcount(),
                     chunk_size);
-            throw oxen::traced<std::runtime_error>("Aborting");
+            throw std::runtime_error("Aborting");
         }
         bytes_read += chunk_size;
         h += NUM_BLOCKS_PER_CHUNK;
@@ -479,7 +471,7 @@ uint64_t BootstrapFile::count_blocks(
         const fs::path& import_file_path, std::streampos& start_pos, uint64_t& seek_height) {
     if (std::error_code ec; !fs::exists(import_file_path, ec)) {
         log::error(logcat, "bootstrap file not found: {}", import_file_path);
-        throw oxen::traced<std::runtime_error>("Aborting");
+        throw std::runtime_error("Aborting");
     }
     std::ifstream import_file{import_file_path, std::ios::binary};
 
@@ -487,7 +479,7 @@ uint64_t BootstrapFile::count_blocks(
     uint64_t h = 0;
     if (import_file.fail()) {
         log::error(logcat, "import_file.open() fail");
-        throw oxen::traced<std::runtime_error>("Aborting");
+        throw std::runtime_error("Aborting");
     }
 
     uint64_t full_header_size;  // 4 byte magic + length of header structures

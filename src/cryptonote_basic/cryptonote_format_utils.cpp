@@ -31,7 +31,6 @@
 
 #include "cryptonote_format_utils.h"
 
-#include <common/exception.h>
 #include <common/i18n.h>
 #include <common/meta.h>
 #include <oxenc/hex.h>
@@ -58,12 +57,12 @@
 
 using namespace crypto;
 
-#define CHECK_AND_ASSERT_THROW_MES_L1(expr, frmt, ...)                              \
-    {                                                                               \
-        if (!(expr)) {                                                              \
-            log::warning(logcat, frmt, __VA_ARGS__);                                \
-            throw oxen::traced<std::runtime_error>(fmt::format(frmt, __VA_ARGS__)); \
-        }                                                                           \
+#define CHECK_AND_ASSERT_THROW_MES_L1(expr, frmt, ...)                \
+    {                                                                 \
+        if (!(expr)) {                                                \
+            log::warning(logcat, frmt, __VA_ARGS__);                  \
+            throw std::runtime_error(fmt::format(frmt, __VA_ARGS__)); \
+        }                                                             \
     }
 
 namespace cryptonote {
@@ -280,7 +279,7 @@ bool parse_and_validate_tx_from_blob(
 bool is_v1_tx(const std::string_view tx_blob) {
     uint64_t version;
     if (tools::read_varint(tx_blob, version) <= 0)
-        throw oxen::traced<std::runtime_error>("Internal error getting transaction version");
+        throw std::runtime_error("Internal error getting transaction version");
     return version <= 1;
 }
 //---------------------------------------------------------------
@@ -1503,7 +1502,7 @@ crypto::hash get_pruned_transaction_hash(
         const transaction& t, const crypto::hash& pruned_data_hash) {
     // v1 transactions hash the entire blob
     if (t.version < txversion::v2_ringct)
-        throw oxen::traced<std::runtime_error>("Hash for pruned v1 tx cannot be calculated");
+        throw std::runtime_error("Hash for pruned v1 tx cannot be calculated");
 
     // v2 transactions hash different parts together, than hash the set of those hashes
     crypto::hash hashes[3];

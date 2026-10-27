@@ -40,7 +40,6 @@
 #include <string_view>
 #include <type_traits>
 
-#include "common/exception.h"
 #include "common/ipv4.h"
 #include "common/tracy_shim.h"
 #include "common/util.h"
@@ -100,7 +99,7 @@ struct rescan_context {
 // the rest of the network's; restoring from a stored state instead (see
 // service_node_list::restore_stored_state), which comes with the quorums before it, and replaying
 // from there has the quorum.
-struct missing_quorum : oxen::traced<std::runtime_error> {
+struct missing_quorum : std::runtime_error {
     crypto::hash tx_hash;
     uint64_t block_height;
     uint64_t quorum_height;

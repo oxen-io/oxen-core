@@ -29,7 +29,6 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
-#include <common/exception.h>
 
 #include <boost/serialization/utility.hpp>
 #include <boost/serialization/vector.hpp>
@@ -222,7 +221,7 @@ struct tx_source_entry {
         field(ar, "multisig_kLRki", multisig_kLRki);
 
         if (real_output >= outputs.size())
-            throw oxen::traced<std::invalid_argument>{"invalid real_output size"};
+            throw std::invalid_argument{"invalid real_output size"};
     }
 };
 

@@ -2,7 +2,6 @@
 
 #include <blockchain_db/sqlite/rewards_db.h>
 #include <common/bigint.h>
-#include <common/exception.h>
 #include <common/guts.h>
 #include <common/string_util.h>
 #include <common/tracy_shim.h>
@@ -850,7 +849,7 @@ void bls_aggregator::rewards_request(
     ZoneScoped;
     auto maybe_wallet_info = core.blockchain.rewards_db().get_accrued_rewards(addr, height);
     if (!maybe_wallet_info)
-        throw oxen::traced<std::invalid_argument>(fmt::format(
+        throw std::invalid_argument(fmt::format(
                 "Aggregating a rewards request for '{}' at height {} is invalid because "
                 "reward data is not available for that height. Request rejected.",
                 addr,
@@ -867,7 +866,7 @@ void bls_aggregator::rewards_request(
 
     // NOTE: Validate the arguments
     if (!addr) {
-        throw oxen::traced<std::invalid_argument>(
+        throw std::invalid_argument(
                 "Aggregating a rewards request for the zero address for {} SESH at height {} is "
                 "invalid. Request rejected"_format(
                         addr,
@@ -877,7 +876,7 @@ void bls_aggregator::rewards_request(
     }
 
     if (wallet_info.amount.to_coin() == 0) {
-        throw oxen::traced<std::invalid_argument>(
+        throw std::invalid_argument(
                 "Aggregating a rewards request for '{}' for 0 SESH at height {} is invalid because "
                 "no rewards are available. Request rejected."_format(addr, height));
     }
@@ -1120,14 +1119,14 @@ void bls_aggregator::exit_liquidation_request(
     else if (!bls_pubkey || type == bls_exit_type::normal)
         // Either a normal exit or a liquidate by SN pubkey, and we did not find the requested
         // pubkey
-        throw oxen::traced<std::invalid_argument>(
+        throw std::invalid_argument(
                 "{} request for {} at height {} is invalid, node is not in the list of recently"
                 " exited nodes. Request rejected"_format(
                         type, format_pk(), core.blockchain.get_current_blockchain_height()));
 
     // NOTE: Validate the arguments
     if (!*bls_pubkey) {
-        throw oxen::traced<std::invalid_argument>(
+        throw std::invalid_argument(
                 "{} request for SN {} w/ the zero BLS pkey at height {} is invalid. Request "
                 "rejected"_format(
                         type, format_pk(), core.blockchain.get_current_blockchain_height()));
@@ -1175,7 +1174,7 @@ void bls_aggregator::exit_liquidation_request(
     }
 
     if (!removable) {
-        throw oxen::traced<std::invalid_argument>(
+        throw std::invalid_argument(
                 "{} request for {} at height {} is invalid: node is not currently eligible to be "
                 "removed. Request rejected"_format(
                         type, format_pk(), core.blockchain.get_current_blockchain_height()));

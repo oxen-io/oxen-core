@@ -51,7 +51,6 @@ extern "C" {
 #include "bls/bls_crypto.h"
 #include "checkpoints/checkpoints.h"
 #include "common/command_line.h"
-#include "common/exception.h"
 #include "common/file.h"
 #include "common/guts.h"
 #include "common/ipv4.h"
@@ -246,7 +245,7 @@ static const command_line::arg_descriptor<std::vector<std::string>> arg_force_un
 // Loads stubs that fail if invoked.  The stubs are replaced in the
 // cryptonote_protocol/quorumnet.cpp glue code.
 [[noreturn]] static void need_core_init(std::string_view stub_name) {
-    throw oxen::traced<std::logic_error>(
+    throw std::logic_error(
             "Internal error: core callback initialization was not performed for "s +
             std::string(stub_name));
 }
@@ -1307,9 +1306,9 @@ bool core::init_service_keys() {
     if (m_service_node) {
         keys.key = crypto::ed25519_to_monero_secret_key(keys.key_ed25519);
         if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
-            throw oxen::traced<std::runtime_error>{"Failed to derive primary key from ed25519 key"};
+            throw std::runtime_error{"Failed to derive primary key from ed25519 key"};
         if (std::memcmp(keys.pub.data(), keys.pub_ed25519.data(), 32))
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Internal error: unexpected primary pubkey and ed25519 pubkey mismatch"};
     } else {
         keys.key.zero();
@@ -2413,11 +2412,11 @@ bool core::handle_uptime_proof(
         // else they should be non-zero.
         if (!get_config(m_nettype).HAVE_STORAGE_SERVER) {
             if (proof->storage_omq_port != 0 || proof->storage_https_port != 0)
-                throw oxen::traced<std::runtime_error>{
+                throw std::runtime_error{
                         "Invalid storage port(s) in proof: devnet storage ports must be 0"};
         } else {
             if (proof->storage_omq_port == 0 || proof->storage_https_port == 0)
-                throw oxen::traced<std::runtime_error>{
+                throw std::runtime_error{
                         "Invalid storage port(s) in proof: storage ports cannot be 0"};
         }
 

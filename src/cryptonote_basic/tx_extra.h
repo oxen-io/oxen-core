@@ -30,7 +30,6 @@
 
 #pragma once
 
-#include "common/exception.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
 #include "cryptonote_basic.h"
@@ -202,15 +201,14 @@ void serialize_value(Archive& ar, tx_extra_padding& pad) {
                                    // tag part of the padding
 
     if (remaining > TX_EXTRA_PADDING_MAX_COUNT - 1)  // - 1 as above.
-        throw oxen::traced<std::invalid_argument>{
-                "tx_extra_padding size is larger than maximum allowed"};
+        throw std::invalid_argument{"tx_extra_padding size is larger than maximum allowed"};
 
     char buf[TX_EXTRA_PADDING_MAX_COUNT - 1] = {};
     ar.serialize_blob(buf, remaining);
 
     if (Archive::is_deserializer) {
         if (std::string_view{buf, remaining}.find_first_not_of('\0') != std::string::npos)
-            throw oxen::traced<std::invalid_argument>{"Invalid non-0 padding byte"};
+            throw std::invalid_argument{"Invalid non-0 padding byte"};
         pad.size = remaining + 1;
     }
 }
@@ -231,7 +229,7 @@ struct tx_extra_nonce {
     void serialize_object(Archive& ar) {
         field(ar, "nonce", nonce);
         if (TX_EXTRA_NONCE_MAX_COUNT < nonce.size())
-            throw oxen::traced<std::invalid_argument>{"invalid extra nonce: too long"};
+            throw std::invalid_argument{"invalid extra nonce: too long"};
     }
 };
 

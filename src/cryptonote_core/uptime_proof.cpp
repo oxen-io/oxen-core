@@ -1,6 +1,5 @@
 #include "uptime_proof.h"
 
-#include <common/exception.h>
 #include <common/guts.h>
 #include <crypto/crypto.h>
 #include <cryptonote_config.h>
@@ -91,20 +90,20 @@ Proof::Proof(
             version_tag = proof.consume_string();
         }
         if (version_tag.size() > 100)
-            throw oxen::traced<std::runtime_error>{"version tag too long"};
+            throw std::runtime_error{"version tag too long"};
     }
 
     try {
         public_ip = oxen::quic::ipv4{proof.require<std::string>("ip")};
     } catch (const std::invalid_argument&) {
-        throw oxen::traced<std::runtime_error>{"Invalid IP address in proof"};
+        throw std::runtime_error{"Invalid IP address in proof"};
     }
     if (public_ip == oxen::quic::ipv4{})
-        throw oxen::traced<std::runtime_error>{"Invalid IP address in proof"};
+        throw std::runtime_error{"Invalid IP address in proof"};
 
     l2_height = proof.require<uint64_t>("l2");
     if (l2_height == 0)
-        throw oxen::traced<std::runtime_error>{"Invalid L2 height in proof"};
+        throw std::runtime_error{"Invalid L2 height in proof"};
 
     lokinet_version =
             proof.maybe<std::array<uint16_t, 3>>("lv").value_or(std::array<uint16_t, 3>{0, 0, 0});
@@ -114,7 +113,7 @@ Proof::Proof(
 
     qnet_port = proof.require<uint16_t>("q");
     if (qnet_port == 0)
-        throw oxen::traced<std::runtime_error>{"Invalid omq port in proof"};
+        throw std::runtime_error{"Invalid omq port in proof"};
 
     // Unlike qnet_port, these *can* be zero (on devnet); but this is checked elsewhere.
     storage_https_port = proof.require<uint16_t>("shp");

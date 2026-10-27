@@ -28,7 +28,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <common/command_line.h>
-#include <common/exception.h>
 #include <fmt/std.h>
 
 #include "blockchain_objects.h"
@@ -43,7 +42,6 @@ using namespace blockchain_utils;
 static auto logcat = log::Cat("bcutil");
 
 int main(int argc, char* argv[]) try {
-    oxen::set_terminate_handler();
     using namespace oxen;
 
     uint64_t block_stop = 0;

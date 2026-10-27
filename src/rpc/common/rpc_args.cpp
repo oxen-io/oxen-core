@@ -28,8 +28,6 @@
 //
 #include "rpc_args.h"
 
-#include <common/exception.h>
-
 #include <boost/asio/ip/address.hpp>
 #include <boost/version.hpp>
 
@@ -93,10 +91,10 @@ static void check_ip(const std::string& ip, bool allow_external, const std::stri
             boost::asio::ip::address::from_string(ip, ec);
 #endif
     if (ec)
-        throw oxen::traced<std::runtime_error>{tr("Invalid IP address given for --") + option_name};
+        throw std::runtime_error{tr("Invalid IP address given for --") + option_name};
 
     if (!parsed_ip.is_loopback() && !allow_external)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "--" + option_name +
                 tr(" permits inbound unencrypted external connections. Consider SSH tunnel or SSL "
                    "proxy instead. Override with --confirm-external-bind")};
@@ -138,7 +136,7 @@ rpc_args rpc_args::process(const boost::program_options::variables_map& vm) {
         config.login = tools::login::parse(env_rpc_login, true, verify);
 
     if (config.login && config.login->username.empty())
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 tr("Username specified with --") + std::string{arg.rpc_login.name} +
                 " cannot be empty"};
 
@@ -146,7 +144,7 @@ rpc_args rpc_args::process(const boost::program_options::variables_map& vm) {
     if (!access_control_origins_input.empty()) {
         // FIXME: this requirement makes no sense.
         if (!config.login)
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "--"s + arg.rpc_access_control_origins.name +
                     tr(" requires RPC server password --") + arg.rpc_login.name +
                     tr(" cannot be empty")};

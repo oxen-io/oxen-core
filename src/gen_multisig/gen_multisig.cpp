@@ -172,8 +172,6 @@ static bool generate_multisig(
 }
 
 int main(int argc, char* argv[]) try {
-    oxen::set_terminate_handler();
-
     po::options_description desc_params(wallet_args::tr("Wallet options"));
     command_line::add_arg(desc_params, arg_filename_base);
     command_line::add_arg(desc_params, arg_scheme);

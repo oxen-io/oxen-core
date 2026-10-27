@@ -10061,8 +10061,6 @@ void simple_wallet::commit_or_save(
 
 //----------------------------------------------------------------------------------------------------
 int main(int argc, char* argv[]) try {
-    oxen::set_terminate_handler();
-
     setlocale(LC_CTYPE, "");
 
     auto opt_size = command_line::boost_option_sizes();

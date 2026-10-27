@@ -61,7 +61,6 @@ class size_logger {
 #define SL(type) sl.add(#type, sizeof(type))
 
 int main(int argc, char* argv[]) {
-    oxen::set_terminate_handler();
     size_logger sl;
 
     tools::on_startup();

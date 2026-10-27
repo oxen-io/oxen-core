@@ -48,7 +48,6 @@
 
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/sqlite/rewards_db.h"
-#include "common/exception.h"
 #include "common/guts.h"
 #include "common/lock.h"
 #include "common/median.h"
@@ -896,7 +895,7 @@ bool Blockchain::init(
     m_nettype = test_options != NULL ? network_type::FAKECHAIN : nettype;
 
     if (!m_checkpoints.init(m_nettype, m_db.get()))
-        throw oxen::traced<std::runtime_error>("Failed to initialize checkpoints");
+        throw std::runtime_error("Failed to initialize checkpoints");
 
     m_l2_tracker = l2_tracker;
 
@@ -908,7 +907,7 @@ bool Blockchain::init(
         m_rewards_db.reset(rewards_db);
     } else {
         if (m_nettype != network_type::FAKECHAIN)
-            throw oxen::traced<std::logic_error>("Blockchain missing rewards database");
+            throw std::logic_error("Blockchain missing rewards database");
     }
 
     // if the blockchain is new, add the genesis block
@@ -1400,8 +1399,7 @@ bool Blockchain::get_block_by_hash(
         if (m_db->get_alt_block(h, &data, &blob, nullptr /*checkpoint*/)) {
             if (!cryptonote::parse_and_validate_block_from_blob(blob, blk)) {
                 log::error(logcat, "Found block {} in alt chain, but failed to parse it", h);
-                throw oxen::traced<std::runtime_error>(
-                        "Found block in alt chain, but failed to parse it");
+                throw std::runtime_error("Found block in alt chain, but failed to parse it");
             }
             if (size)
                 *size = blob.size();
@@ -1975,7 +1973,7 @@ bool Blockchain::validate_block_rewards(
             batched_sn_payments = m_rewards_db->get_sn_payments(height);
     } else {
         if (m_nettype != network_type::FAKECHAIN)
-            throw oxen::traced<std::logic_error>("Blockchain missing SQLite Database");
+            throw std::logic_error("Blockchain missing SQLite Database");
     }
     miner_tx_info hook_data{b, reward_parts, batched_sn_payments};
     for (const auto& hook : m_validate_miner_tx_hooks) {
@@ -2092,7 +2090,7 @@ uint64_t Blockchain::eth_consensus_reward(uint64_t height) const {
             });
     if (!okay || count != L2_REWARD_CONSENSUS_BLOCKS ||
         min_l2_reward == std::numeric_limits<uint64_t>::max())
-        throw oxen::traced<std::out_of_range>{
+        throw std::out_of_range{
                 "Invalid height for eth_consensus_reward: preceeding blocks not found in "
                 "blockchain db"};
 
@@ -2214,8 +2212,7 @@ bool Blockchain::create_block_template_internal(
     auto hf_version = b.major_version;
 
     if (!m_l2_tracker && hf_version >= cryptonote::feature::ETH_BLS)
-        throw oxen::traced<std::logic_error>{
-                "Cannot create a block template without a configured L2 provider"};
+        throw std::logic_error{"Cannot create a block template without a configured L2 provider"};
 
     std::unique_lock pool_lock{tx_pool, std::defer_lock};
     std::unique_lock bc_lock{*this, std::defer_lock};
@@ -3631,7 +3628,7 @@ size_t get_transaction_version(const std::string& bd) {
     const char* end = begin + bd.size();
     int read = tools::read_varint(begin, end, version);
     if (read <= 0)
-        throw oxen::traced<std::runtime_error>("Internal error getting transaction version");
+        throw std::runtime_error("Internal error getting transaction version");
     return version;
 }
 //------------------------------------------------------------------

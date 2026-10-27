@@ -1,6 +1,5 @@
 #include "accrued_history.h"
 
-#include <common/exception.h>
 #include <common/format.h>
 #include <common/guts.h>
 
@@ -47,9 +46,8 @@ void accrued_history::reset(uint64_t height, const accrued_rows& rows) {
 
 void accrued_history::advance(uint64_t height, const accrued_changes& changes) {
     if (nothing_held || height != current + 1)
-        throw oxen::traced<std::logic_error>{
-                "Internal error: rewards history at {} cannot advance to {}"_format(
-                        current, height)};
+        throw std::logic_error{"Internal error: rewards history at {} cannot advance to {}"_format(
+                current, height)};
 
     const auto prev = slot(current), next = slot(height);
     for (auto& [addr, w] : wallets) {
@@ -156,12 +154,12 @@ void accrued_history::for_each(
         uint64_t height,
         const std::function<void(const rewards_address&, const accrued_row&)>& f) const {
     if (!contains(height))
-        throw oxen::traced<std::logic_error>{
+        throw std::logic_error{
                 "Internal error: rewards history doesn't hold height {}"_format(height)};
     for (const auto& [addr, w] : wallets) {
         auto r = row_at(addr, w, height);
         if (!r.known)
-            throw oxen::traced<std::logic_error>{
+            throw std::logic_error{
                     "Internal error: invalid rewards history slot for height {}"_format(height)};
         if (r.row)
             f(addr, *r.row);

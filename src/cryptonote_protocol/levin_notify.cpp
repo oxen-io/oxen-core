@@ -30,7 +30,6 @@
 
 #include <algorithm>
 
-#include "common/exception.h"
 #include "common/varint.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
@@ -79,7 +78,7 @@ namespace {
 
         std::string fullBlob;
         if (!epee::serialization::store_t_to_binary(request, fullBlob))
-            throw oxen::traced<std::runtime_error>{"Failed to serialize to epee binary format"};
+            throw std::runtime_error{"Failed to serialize to epee binary format"};
 
         return fullBlob;
     }
@@ -138,8 +137,7 @@ namespace {
 notify::notify(boost::asio::io_service& service, std::shared_ptr<connections> p2p) :
         zone_(std::make_shared<detail::zone>(service, std::move(p2p))) {
     if (!zone_->p2p)
-        throw oxen::traced<std::logic_error>{
-                "cryptonote::levin::notify cannot have nullptr p2p argument"};
+        throw std::logic_error{"cryptonote::levin::notify cannot have nullptr p2p argument"};
 }
 
 notify::~notify() noexcept {}
