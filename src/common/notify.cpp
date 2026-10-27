@@ -30,7 +30,6 @@
 
 #include <fmt/std.h>
 
-#include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
 #include "spawn.h"
 #include "string_util.h"

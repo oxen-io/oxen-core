@@ -33,10 +33,10 @@
 #ifndef MULTIEXP_H
 #define MULTIEXP_H
 
+#include <oxen/log.hpp>
 #include <vector>
 
 #include "crypto/crypto.h"
-#include "epee/misc_log_ex.h"
 #include "rctTypes.h"
 
 namespace rct {

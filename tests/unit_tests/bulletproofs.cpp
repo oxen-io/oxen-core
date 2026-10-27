@@ -36,7 +36,6 @@
 #include "ringct/bulletproofs.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "device/device.hpp"
-#include "epee/misc_log_ex.h"
 
 TEST(bulletproofs, valid_zero)
 {

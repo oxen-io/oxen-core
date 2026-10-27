@@ -7,7 +7,6 @@
 #include <stdexcept>
 
 #include "common/oxen.h"
-#include "epee/misc_log_ex.h"
 #include "log.hpp"
 #include "logging/oxen_logger.h"
 

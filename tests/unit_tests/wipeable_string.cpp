@@ -30,7 +30,6 @@
 #include <optional>
 #include "gtest/gtest.h"
 
-#include "epee/misc_log_ex.h"
 #include "epee/wipeable_string.h"
 
 TEST(wipeable_string, ctor)

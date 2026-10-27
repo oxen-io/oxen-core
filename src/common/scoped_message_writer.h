@@ -32,7 +32,6 @@
 
 #include <iostream>
 
-#include "epee/misc_log_ex.h"
 #include "epee/readline_suspend.h"
 #include "logging/oxen_logger.h"
 

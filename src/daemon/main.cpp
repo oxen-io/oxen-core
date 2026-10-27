@@ -42,7 +42,6 @@
 #include "daemon.h"
 #include "daemon/command_line_args.h"
 #include "daemonizer/daemonizer.h"
-#include "epee/misc_log_ex.h"
 #include "fmt/color.h"
 #include "logging/oxen_logger.h"
 #include "p2p/net_node.h"

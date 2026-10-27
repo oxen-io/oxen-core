@@ -59,17 +59,4 @@ inline auto logcat = oxen::log::Cat("epee");
   return return_val; \
 }
 
-enum console_colors
-{
-  console_color_default,
-  console_color_white,
-  console_color_red,
-  console_color_green,
-  console_color_blue,
-  console_color_cyan,
-  console_color_magenta,
-  console_color_yellow
-};
-
-bool is_stdout_a_tty();
 }

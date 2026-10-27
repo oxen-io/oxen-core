@@ -34,7 +34,6 @@
 
 #include "common/file.h"
 #include "cryptonote_config.h"
-#include "epee/misc_log_ex.h"
 #include "wallet_errors.h"
 
 #define V1TAG ((uint64_t)798237759845202)

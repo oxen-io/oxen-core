@@ -1857,8 +1857,6 @@ static void append_printable_service_node_list_entry(
     if (is_funded)  // Print service node tests
     {
         auto proof_time = entry.value("last_uptime_proof", uint64_t{0});
-        epee::console_colors uptime_proof_color =
-                proof_time ? epee::console_color_red : epee::console_color_green;
 
         stream << indent2 << "Last Uptime Proof Received: "
                << (proof_time == 0 ? "(Awaiting confirmation from network)"

@@ -30,7 +30,6 @@
 
 #include "gtest/gtest.h"
 #include "common/file.h"
-#include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
 #include <oxen/log.hpp>
 #include <spdlog/sinks/basic_file_sink.h>

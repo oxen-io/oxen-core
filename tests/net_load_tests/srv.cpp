@@ -31,7 +31,6 @@
 #include <thread>
 #include <memory>
 
-#include "epee/misc_log_ex.h"
 #include "epee/net/net_utils_base.h"
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "common/util.h"

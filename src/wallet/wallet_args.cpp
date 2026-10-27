@@ -37,7 +37,6 @@
 #include "common/file.h"
 #include "common/i18n.h"
 #include "common/util.h"
-#include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
 #include "version.h"
 
