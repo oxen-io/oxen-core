@@ -1,0 +1,84 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Tue, 27 Oct 2026 10:32:23 -0300
+Subject: Add a session router unreachable decommission reason
+
+Reason bits are informational only (they are not part of the signed vote
+hash and are not validated), so adding a new bit is not a consensus
+change; older nodes simply won't name it.
+
+Also documents the existing l2 and hf21_transition reasons, which were
+missing from the RPC docs.
+---
+ src/cryptonote_basic/tx_extra.cpp       | 4 ++++
+ src/cryptonote_basic/tx_extra.h         | 1 +
+ src/rpc/core_rpc_server_commands_defs.h | 9 +++++++++
+ 3 files changed, 14 insertions(+)
+
+diff --git a/src/cryptonote_basic/tx_extra.cpp b/src/cryptonote_basic/tx_extra.cpp
+index 8cd649b..12abb6b 100644
+--- a/src/cryptonote_basic/tx_extra.cpp
++++ b/src/cryptonote_basic/tx_extra.cpp
+@@ -93,6 +93,8 @@ std::vector<std::string> readable_reasons(uint16_t decomm_reason) {
+         results.push_back("L2 Out of Sync");
+     if (decomm_reason & failed_transition)
+         results.push_back("Did not transition at HF21");
++    if (decomm_reason & session_router_unreachable)
++        results.push_back("Session Router Unreachable");
+     return results;
+ }
+ 
+@@ -116,6 +118,8 @@ std::vector<std::string> coded_reasons(uint16_t decomm_reason) {
+         results.push_back("l2");
+     if (decomm_reason & failed_transition)
+         results.push_back("hf21_transition");
++    if (decomm_reason & session_router_unreachable)
++        results.push_back("session_router");
+     return results;
+ }
+ 
+diff --git a/src/cryptonote_basic/tx_extra.h b/src/cryptonote_basic/tx_extra.h
+index 07fc72c..37c4e33 100644
+--- a/src/cryptonote_basic/tx_extra.h
++++ b/src/cryptonote_basic/tx_extra.h
+@@ -461,6 +461,7 @@ enum Decommission_Reason : uint16_t {
+     lokinet_unreachable = 1 << 6,
+     l2_height_out_of_sync = 1 << 7,
+     failed_transition = 1 << 8,
++    session_router_unreachable = 1 << 9,
+ };
+ 
+ // Returns human-readable reason strings (e.g. "Missed Uptime Proofs") for the given reason bits
+diff --git a/src/rpc/core_rpc_server_commands_defs.h b/src/rpc/core_rpc_server_commands_defs.h
+index a4cc6ab..105c0d6 100644
+--- a/src/rpc/core_rpc_server_commands_defs.h
++++ b/src/rpc/core_rpc_server_commands_defs.h
+@@ -249,6 +249,9 @@ struct GET_HEIGHT : PUBLIC, LEGACY, NO_ARGS {
+ ///           time synchronization checks.  (This generally means oxend's quorumnet port is not
+ ///           reachable).
+ ///         - `"timesync"` -- the service node's clock was too far out of sync
++///         - `"l2"` -- the service node's L2 height was too far behind
++///         - `"hf21_transition"` -- the service node did not transition at HF21
++///         - `"session_router"` -- the service node's session router was unreachable for too long
+ ///         The list is omitted entirely if there are no reasons at all or if there are no reasons
+ ///         that were agreed upon by all voting service nodes.
+ ///       - `reasons_maybe` list of reported reasons that some but not all service nodes provided
+@@ -1948,6 +1951,9 @@ struct GET_SERVICE_PRIVKEYS : NO_ARGS {
+ ///     - `0x10` - oxend quorumnet unreachable for timesync checks
+ ///     - `0x20` - oxend system clock is too far off
+ ///     - `0x40` - Lokinet unreachable
++///     - `0x80` - L2 height too far behind
++///     - `0x100` - Did not transition at HF21
++///     - `0x200` - Session router unreachable
+ ///     - other bit values are reserved for future use.
+ ///   - `last_decommission_reason_consensus_any` -- The reason for the last decommission as voted
+ ///     by *any* SNs.  Reasons are set here if *any* quorum member gave a reason, even if not all
+@@ -1967,6 +1973,9 @@ struct GET_SERVICE_PRIVKEYS : NO_ARGS {
+ ///     - `"timecheck"`
+ ///     - `"timesync"`
+ ///     - `"lokinet"`
++///     - `"l2"`
++///     - `"hf21_transition"`
++///     - `"session_router"`
+ ///     - other values are reserved for future use.
+ ///   - `last_ip_change_height` -- The last height at which the network applied an IP change penalty
+ ///     to this service node.  Omitted if an IP change penalty has never been applied.
