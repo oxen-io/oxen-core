@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <nlohmann/json.hpp>
 #include <vector>
 
 #include "blockchain_db/blockchain_db.h"
@@ -43,8 +44,6 @@
 #include "common/oxen.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/service_node_rules.h"
-#include "epee/serialization/keyvalue_serialization.h"
-#include "epee/storages/portable_storage_template_helper.h"  // epee json include
 
 namespace cryptonote {
 
@@ -101,14 +100,21 @@ bool load_checkpoints_from_json(
         return true;
     }
 
-    height_to_hash_json hashes;
-    if (std::string contents; !tools::slurp_file(json_hashfile_fullpath, contents) ||
-                              !epee::serialization::load_t_from_json(hashes, contents)) {
-        log::error(logcat, "Error loading checkpoints from {}", json_hashfile_fullpath);
+    std::vector<height_to_hash> hashes;
+    try {
+        std::string contents;
+        if (!tools::slurp_file(json_hashfile_fullpath, contents))
+            throw std::runtime_error{"unable to read file"};
+        for (const auto& line : nlohmann::json::parse(contents).at("hashlines"))
+            hashes.push_back(
+                    {line.at("height").get<uint64_t>(), line.at("hash").get<std::string>()});
+    } catch (const std::exception& e) {
+        log::error(
+                logcat, "Error loading checkpoints from {}: {}", json_hashfile_fullpath, e.what());
         return false;
     }
 
-    checkpoint_hashes = std::move(hashes.hashlines);
+    checkpoint_hashes = std::move(hashes);
     return true;
 }
 

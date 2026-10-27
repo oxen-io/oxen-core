@@ -9,7 +9,7 @@
 #include "common/string_util.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "epee/net/jsonrpc_structs.h"
+#include "epee/storages/portable_storage_template_helper.h"
 #include "rpc/common/rpc_args.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "version.h"

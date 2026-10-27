@@ -42,7 +42,6 @@
 #include "common/string_util.h"
 #include "common/util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
-#include "epee/storages/portable_storage_template_helper.h"
 
 #define AUTODETECT_WINDOW 10             // seconds
 #define AUTODETECT_GAIN_THRESHOLD 1.02f  // 2%

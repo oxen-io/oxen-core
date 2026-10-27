@@ -38,7 +38,6 @@
 #include "cryptonote_basic/miner.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
 #include "cryptonote_protocol/quorumnet.h"
-#include "epee/storages/portable_storage_template_helper.h"
 #include "pulse.h"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
