@@ -1,0 +1,102 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Tue, 27 Oct 2026 10:32:16 -0300
+Subject: Fix ipv4_network_subnet masking for non-octet prefixes
+
+The address is stored in network byte order, but the mask was built as
+if it were in host order, so on little-endian systems it kept the low
+bits of the final partial octet instead of the high bits: 1.2.3.4/23
+matched 1.2.3.x and 1.2.131.x rather than 1.2.2.0-1.2.3.255.
+Octet-aligned masks (/8, /16, /24, /32) were unaffected, which is all the
+existing tests covered.
+
+Also adds a matches(uint32_t) overload for callers that have a raw IP.
+---
+ contrib/epee/include/epee/net/net_utils_base.h | 12 ++++++++++--
+ contrib/epee/src/net_utils_base.cpp            |  4 ----
+ tests/unit_tests/net.cpp                       | 20 ++++++++++++++++++++
+ 3 files changed, 30 insertions(+), 6 deletions(-)
+
+diff --git a/contrib/epee/include/epee/net/net_utils_base.h b/contrib/epee/include/epee/net/net_utils_base.h
+index f3ef2fc..1bb066c 100644
+--- a/contrib/epee/include/epee/net/net_utils_base.h
++++ b/contrib/epee/include/epee/net/net_utils_base.h
+@@ -39,6 +39,7 @@
+ #include "../serialization/keyvalue_serialization.h"
+ #include "../int-util.h"
+ #include <fmt/core.h>
++#include <oxenc/endian.h>
+ 
+ #undef OXEN_DEFAULT_LOG_CATEGORY
+ #define OXEN_DEFAULT_LOG_CATEGORY "net"
+@@ -134,6 +135,11 @@ namespace net_utils
+ 		uint32_t m_ip;
+ 		uint8_t m_mask;
+ 
++		// m_ip is in network byte order, so the mask has to be built in host order (where the
++		// network prefix is the high bits) and then converted.
++		constexpr uint32_t netmask() const noexcept
++		{ return oxenc::host_to_big(static_cast<uint32_t>(0xffffffffull << (32 - m_mask))); }
++
+ 	public:
+ 		constexpr ipv4_network_subnet() noexcept
+ 			: ipv4_network_subnet(0, 0)
+@@ -146,9 +152,11 @@ namespace net_utils
+ 		bool less(const ipv4_network_subnet& other) const noexcept;
+ 		constexpr bool is_same_host(const ipv4_network_subnet& other) const noexcept
+ 		{ return subnet() == other.subnet(); }
+-                bool matches(const ipv4_network_address &address) const;
++		// `ip` is in network byte order, as with ipv4_network_address::ip().
++		constexpr bool matches(uint32_t ip) const noexcept { return (ip & netmask()) == subnet(); }
++		constexpr bool matches(const ipv4_network_address &address) const noexcept { return matches(address.ip()); }
+ 
+-		constexpr uint32_t subnet() const noexcept { return m_ip & ~(0xffffffffull << m_mask); }
++		constexpr uint32_t subnet() const noexcept { return m_ip & netmask(); }
+ 		std::string str() const;
+ 		std::string host_str() const;
+ 		bool is_loopback() const;
+diff --git a/contrib/epee/src/net_utils_base.cpp b/contrib/epee/src/net_utils_base.cpp
+index c087785..95ae8f1 100644
+--- a/contrib/epee/src/net_utils_base.cpp
++++ b/contrib/epee/src/net_utils_base.cpp
+@@ -49,10 +49,6 @@ namespace epee::net_utils
+ 	std::string ipv4_network_subnet::host_str() const { return string_tools::get_ip_string_from_int32(subnet()) + "/" + std::to_string(m_mask); }
+ 	bool ipv4_network_subnet::is_loopback() const { return net_utils::is_ip_loopback(subnet()); }
+ 	bool ipv4_network_subnet::is_local() const { return net_utils::is_ip_local(subnet()); }
+-	bool ipv4_network_subnet::matches(const ipv4_network_address &address) const
+-	{
+-		return (address.ip() & ~(0xffffffffull << m_mask)) == subnet();
+-	}
+ 
+ 	bool network_address::equal(const network_address& other) const
+ 	{
+diff --git a/tests/unit_tests/net.cpp b/tests/unit_tests/net.cpp
+index 18b18c6..4e15add 100644
+--- a/tests/unit_tests/net.cpp
++++ b/tests/unit_tests/net.cpp
+@@ -926,6 +926,26 @@ TEST(get_network_address, ipv4subnet)
+ 
+     address = net::get_ipv4_subnet_address("12.34.56.78/16");
+     EXPECT_STREQ("12.34.0.0/16", address->str().c_str());
++
++    address = net::get_ipv4_subnet_address("1.2.3.4/23");
++    EXPECT_STREQ("1.2.2.0/23", address->str().c_str());
++    EXPECT_FALSE(address->matches(MAKE_IP(1,2,1,255)));
++    EXPECT_TRUE(address->matches(MAKE_IP(1,2,2,0)));
++    EXPECT_TRUE(address->matches(MAKE_IP(1,2,3,255)));
++    EXPECT_FALSE(address->matches(MAKE_IP(1,2,4,0)));
++    EXPECT_FALSE(address->matches(MAKE_IP(1,2,131,4)));
++
++    address = net::get_ipv4_subnet_address("10.20.30.40/1");
++    EXPECT_STREQ("0.0.0.0/1", address->str().c_str());
++    EXPECT_TRUE(address->matches(MAKE_IP(127,255,255,255)));
++    EXPECT_FALSE(address->matches(MAKE_IP(128,0,0,0)));
++
++    address = net::get_ipv4_subnet_address("5.6.7.8", true);
++    EXPECT_TRUE(address->matches(MAKE_IP(5,6,7,8)));
++    EXPECT_FALSE(address->matches(MAKE_IP(5,6,7,9)));
++
++    address = net::get_ipv4_subnet_address("5.6.7.8/0");
++    EXPECT_TRUE(address->matches(MAKE_IP(255,255,255,255)));
+ }
+ 
+ TEST(dandelionpp_map, traits)
