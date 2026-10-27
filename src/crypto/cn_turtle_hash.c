@@ -12,8 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "epee/int-util.h"
 #include "hash-ops.h"
+#include "int-util.h"
 #include "oaes_lib_expand.h"
 #include "variant2_int_sqrt.h"
 

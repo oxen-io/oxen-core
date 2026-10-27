@@ -39,6 +39,7 @@
 #include <fstream>
 
 #include "common/guts.h"
+#include "crypto/int-util.h"
 #include "common/string_util.h"
 #include "common/varint.h"
 #include "common/median.h"

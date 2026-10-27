@@ -30,7 +30,6 @@
 #include <algorithm>
 #include <cstring>
 
-#include "epee/int-util.h"
 
 using namespace std::literals;
 
@@ -41,13 +40,13 @@ namespace levin
   bucket_head2 make_header(uint32_t command, uint64_t msg_size, uint32_t flags, bool expect_response) noexcept
   {
     bucket_head2 head = {0};
-    head.m_signature = SWAP64LE(LEVIN_SIGNATURE);
+    head.m_signature = LEVIN_SIGNATURE;
     head.m_have_to_return_data = expect_response;
-    head.m_cb = SWAP64LE(msg_size);
+    head.m_cb = msg_size;
 
-    head.m_command = SWAP32LE(command);
-    head.m_protocol_version = SWAP32LE(LEVIN_PROTOCOL_VER_1);
-    head.m_flags = SWAP32LE(flags);
+    head.m_command = command;
+    head.m_protocol_version = LEVIN_PROTOCOL_VER_1;
+    head.m_flags = flags;
     return head;
   }
 

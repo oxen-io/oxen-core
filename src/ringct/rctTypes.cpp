@@ -32,8 +32,8 @@
 
 #include <logging/oxen_logger.h>
 
+#include "crypto/int-util.h"
 #include "cryptonote_config.h"
-#include "epee/int-util.h"
 #include "epee/misc_log_ex.h"
 
 using namespace crypto;

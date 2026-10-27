@@ -61,6 +61,7 @@
 #include "common/threadpool.h"
 #include "common/util.h"
 #include "crypto/crypto.h"
+#include "crypto/int-util.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"

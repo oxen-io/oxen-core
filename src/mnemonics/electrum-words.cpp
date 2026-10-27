@@ -48,10 +48,10 @@
 
 #include "chinese_simplified.h"
 #include "common/oxen.h"
+#include "crypto/int-util.h"
 #include "dutch.h"
 #include "english.h"
 #include "english_old.h"
-#include "epee/int-util.h"
 #include "epee/wipeable_string.h"
 #include "esperanto.h"
 #include "french.h"

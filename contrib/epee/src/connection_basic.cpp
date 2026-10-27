@@ -38,7 +38,6 @@
 #include "epee/misc_log_ex.h"
 #include <thread>
 #include <chrono>
-#include "epee/pragma_comp_defs.h"
 #include <iomanip>
 
 #include <boost/asio/basic_socket.hpp>

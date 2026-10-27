@@ -30,7 +30,6 @@
 #define _LEVIN_PROTOCOL_HANDLER_H_
 
 #include "levin_base.h"
-#include "../int-util.h"
 
 namespace epee
 {
@@ -99,7 +98,7 @@ namespace levin
 			case conn_state_reading_head:
 				if(m_cach_in_buffer.size() < sizeof(bucket_head))
 				{
-					if(m_cach_in_buffer.size() >= sizeof(uint64_t) && *((uint64_t*)m_cach_in_buffer.data()) != SWAP64LE(LEVIN_SIGNATURE))
+					if(m_cach_in_buffer.size() >= sizeof(uint64_t) && *((uint64_t*)m_cach_in_buffer.data()) != LEVIN_SIGNATURE)
 					{
 						return false;
 					}
@@ -107,17 +106,7 @@ namespace levin
 					break;
 				}
 				{
-#if BYTE_ORDER == LITTLE_ENDIAN
 					bucket_head &phead = *(bucket_head*)m_cach_in_buffer.data();
-#else
-					bucket_head phead = *(bucket_head*)m_cach_in_buffer.data();
-					phead.m_signature = SWAP64LE(phead.m_signature);
-					phead.m_cb = SWAP64LE(phead.m_cb);
-					phead.m_command = SWAP32LE(phead.m_command);
-					phead.m_return_code = SWAP32LE(phead.m_return_code);
-					phead.m_reservedA = SWAP32LE(phead.m_reservedA);
-					phead.m_reservedB = SWAP32LE(phead.m_reservedB);
-#endif
 					if(LEVIN_SIGNATURE != phead.m_signature)
 					{
 						return false;

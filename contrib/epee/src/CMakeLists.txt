@@ -30,7 +30,6 @@ oxen_add_library(epee
     buffer.cpp
     connection_basic.cpp
     levin_base.cpp
-    int-util.c
     net_utils_base.cpp
     network_throttle.cpp
     network_throttle-detail.cpp
