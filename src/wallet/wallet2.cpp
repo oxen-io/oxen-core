@@ -33,6 +33,7 @@
 
 #include <common/exception.h>
 #include <cpr/parameters.h>
+#include <fmt/color.h>
 #include <fmt/core.h>
 #include <fmt/std.h>
 #include <oxenc/base64.h>
@@ -54,6 +55,7 @@
 #include "common/guts.h"
 #include "common/i18n.h"
 #include "common/notify.h"
+#include "common/oxen.h"
 #include "common/password.h"
 #include "common/rules.h"
 #include "common/string_util.h"
@@ -66,10 +68,14 @@
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/oxen_name_system.h"
+#include "cryptonote_core/service_node_list.h"
+#include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/tx_sanity_check.h"
 #include "device/device_cold.hpp"
+#include "logging/oxen_logger.h"
 #include "mnemonics/electrum-words.h"
 #include "multisig/multisig.h"
+#include "oxen_economy.h"
 #include "rapidjson/document.h"
 #include "rapidjson/stringbuffer.h"
 #include "rapidjson/writer.h"
@@ -80,17 +86,6 @@
 #include "serialization/boost_std_variant.h"
 #include "serialization/string.h"
 #include "wallet/wallet_errors.h"
-#ifdef DEVICE_TREZOR_READY
-#include "device_trezor/device_trezor.hpp"
-#endif
-
-#include <fmt/color.h>
-
-#include "common/oxen.h"
-#include "cryptonote_core/service_node_list.h"
-#include "cryptonote_core/service_node_rules.h"
-#include "logging/oxen_logger.h"
-#include "oxen_economy.h"
 
 extern "C" {
 #include <sodium.h>
@@ -1322,7 +1317,6 @@ wallet2::wallet2(network_type nettype, uint64_t kdf_rounds, bool unattended) :
         m_encrypt_keys_after_refresh(std::nullopt),
         m_decrypt_keys_lockers(0),
         m_unattended(unattended),
-        m_devices_registered(false),
         m_device_last_key_image_sync(0),
         m_offline(false),
         m_rpc_version(0) {}
@@ -1619,7 +1613,7 @@ bool wallet2::get_multisig_seed(
 //----------------------------------------------------------------------------------------------------
 bool wallet2::reconnect_device() {
     bool r = true;
-    hw::device& hwdev = lookup_device(m_device_name);
+    hw::device& hwdev = hw::get_device(m_device_name);
     hwdev.set_name(m_device_name);
     hwdev.set_address(m_device_address);
     hwdev.set_network_type(m_nettype);
@@ -5074,10 +5068,9 @@ bool wallet2::load_keys_buf(
 
     bool r = epee::serialization::load_t_from_binary(m_account, account_data);
     THROW_WALLET_EXCEPTION_IF(!r, error::invalid_password);
-    if (m_key_device_type == hw::device::type::LEDGER ||
-        m_key_device_type == hw::device::type::TREZOR) {
+    if (m_key_device_type == hw::device::type::LEDGER) {
         log::warning(logcat, "Account on device. Initing device...");
-        hw::device& hwdev = lookup_device(m_device_name);
+        hw::device& hwdev = hw::get_device(m_device_name);
         THROW_WALLET_EXCEPTION_IF(
                 !hwdev.set_name(m_device_name),
                 error::wallet_internal_error,
@@ -5661,7 +5654,7 @@ void wallet2::restore_from_device(
                 fs::exists(m_keys_file, ignored_ec), error::file_exists, m_keys_file);
     }
 
-    auto& hwdev = lookup_device(device_name);
+    auto& hwdev = hw::get_device(device_name);
     hwdev.set_name(device_name);
     hwdev.set_network_type(m_nettype);
     hwdev.set_derivation_path(m_device_derivation_path);
@@ -8815,21 +8808,6 @@ crypto::chacha_key wallet2::get_ringdb_key() {
         m_ringdb_key = key;
     }
     return *m_ringdb_key;
-}
-
-void wallet2::register_devices() {
-#ifdef DEVICE_TREZOR_READY
-    hw::trezor::register_all();
-#endif
-}
-
-hw::device& wallet2::lookup_device(const std::string& device_descriptor) {
-    if (!m_devices_registered) {
-        m_devices_registered = true;
-        register_devices();
-    }
-
-    return hw::get_device(device_descriptor);
 }
 
 bool wallet2::add_rings(const crypto::chacha_key& key, const cryptonote::transaction_prefix& tx) {
