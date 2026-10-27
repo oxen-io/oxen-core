@@ -210,32 +210,17 @@ inline uint64_t mul128_div64(uint64_t a, uint64_t b, uint64_t c) {
 static_assert(false, "BYTE_ORDER is undefined. Perhaps, GNU extensions are not enabled");
 #endif
 
-#if BYTE_ORDER == LITTLE_ENDIAN
+#if BYTE_ORDER != LITTLE_ENDIAN
+#error "Only little-endian platforms are supported"
+#endif
 
 #define SWAP64LE(x) ((uint64_t) (x))
 #define SWAP64BE epee_int_utils_bswap_64
 #define SWAP32LE(x) ((uint32_t) (x))
-#define SWAP32BE(x) epee_int_utils_bswap_32
 
 inline void memcpy_swap64le(void *dst, const void *src, size_t n) {
   memcpy(dst, src, 8 * n);
 }
-
-#else
-
-#define SWAP64BE(x) ((uint64_t) (x))
-#define SWAP64LE epee_int_utils_bswap_64
-#define SWAP32BE(x) ((uint32_t) (x))
-#define SWAP32LE(x) epee_int_utils_bswap_32
-
-inline void memcpy_swap64le(void *dst, const void *src, size_t n) {
-  size_t i;
-  for (i = 0; i < n; i++) {
-    ((uint64_t *) dst)[i] = swap64(((const uint64_t *) src)[i]);
-  }
-}
-
-#endif
 
 #ifdef __cplusplus
 }  // extern "C"

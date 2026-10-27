@@ -41,7 +41,6 @@
 #include <string_view>
 #include <type_traits>
 #include <boost/lexical_cast.hpp>
-#include <boost/algorithm/string/predicate.hpp>
 #include "storages/parserse_base_utils.h"
 #include "mlocker.h"
 #include "warnings.h"
@@ -91,24 +90,6 @@ DISABLE_GCC_WARNING(maybe-uninitialized)
   }
 POP_WARNINGS
 
-	//----------------------------------------------------------------------------
-	template<typename T>
-	inline std::string to_string_hex(const T &val)
-	{
-		static_assert(std::is_arithmetic<T>::value, "only arithmetic types");
-		std::stringstream ss;
-		ss << std::hex << val;
-		std::string s;
-		ss >> s;
-		return s;
-	}
-	//----------------------------------------------------------------------------
-	
-	inline bool compare_no_case(const std::string& str1, const std::string& str2)
-	{
-		
-		return !boost::iequals(str1, str2);
-	}
 	//----------------------------------------------------------------------------
 	inline std::string& get_current_module_name()
 	{
