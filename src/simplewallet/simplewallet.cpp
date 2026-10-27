@@ -10060,9 +10060,8 @@ void simple_wallet::commit_or_save(
 }  // namespace cryptonote
 
 //----------------------------------------------------------------------------------------------------
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
     oxen::set_terminate_handler();
-    TRY_ENTRY();
 
     setlocale(LC_CTYPE, "");
 
@@ -10162,7 +10161,9 @@ int main(int argc, char* argv[]) {
 
     w.deinit();
     return 0;
-    CATCH_ENTRY("main", 1);
+} catch (const std::exception& e) {
+    oxen::log::error(logcat, "Exception in main: {}", e.what());
+    return 1;
 }
 
 #ifdef WALLET_ENABLE_MMS

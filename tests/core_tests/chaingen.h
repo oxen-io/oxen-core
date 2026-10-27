@@ -945,8 +945,7 @@ private:
 //--------------------------------------------------------------------------
 template<class t_test_class>
 inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::vector<test_event_entry>& events, t_test_class& validator, bool reinit=true)
-{
-  TRY_ENTRY();
+try {
   // start with a clean pool
   std::vector<crypto::hash> pool_txs;
   cr.mempool.get_transaction_hashes(pool_txs);
@@ -970,8 +969,9 @@ inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::ve
   }
 
   return r;
-
-  CATCH_ENTRY("replay_events_through_core", false);
+} catch (const std::exception& e) {
+  oxen::log::error(logcat, "Exception in replay_events_through_core: {}", e.what());
+  return false;
 }
 //--------------------------------------------------------------------------
 template<typename t_test_class>

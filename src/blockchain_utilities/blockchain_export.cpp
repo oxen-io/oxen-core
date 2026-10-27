@@ -40,12 +40,11 @@
 namespace po = boost::program_options;
 using namespace blockchain_utils;
 
-int main(int argc, char* argv[]) {
+static auto logcat = log::Cat("bcutil");
+
+int main(int argc, char* argv[]) try {
     oxen::set_terminate_handler();
     using namespace oxen;
-    auto logcat = log::Cat("bcutil");
-
-    TRY_ENTRY();
 
     uint64_t block_stop = 0;
     tools::on_startup();
@@ -146,6 +145,7 @@ int main(int argc, char* argv[]) {
     }
     log::warning(logcat, "Blockchain raw data exported OK");
     return 0;
-
-    CATCH_ENTRY("Export error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Export error: {}", e.what());
+    return 1;
 }

@@ -44,10 +44,7 @@ static int __AFL_LOOP(int)
 #endif
 
 int run_fuzzer(int argc, const char **argv, Fuzzer &fuzzer)
-{
-  auto logcat = oxen::log::Cat("fuzz");
-  TRY_ENTRY();
-
+try {
   if (argc < 2)
   {
     std::cout << "usage: " << argv[0] << " " << "<filename>" << std::endl;
@@ -71,6 +68,7 @@ int run_fuzzer(int argc, const char **argv, Fuzzer &fuzzer)
   }
 
   return 0;
-
-  CATCH_ENTRY("run_fuzzer", 1);
+} catch (const std::exception& e) {
+  oxen::log::error(oxen::log::Cat("fuzz"), "Exception in run_fuzzer: {}", e.what());
+  return 1;
 }

@@ -2608,9 +2608,8 @@ bool core::handle_incoming_block(
         const block* b,
         block_verification_context& bvc,
         checkpoint_t* checkpoint,
-        bool update_miner_blocktemplate) {
+        bool update_miner_blocktemplate) try {
     ZoneScoped;
-    TRY_ENTRY();
     bvc = {};
 
     // note: we assume block weight is always >= block blob size, so we check incoming
@@ -2653,8 +2652,9 @@ bool core::handle_incoming_block(
     if (update_miner_blocktemplate && bvc.m_added_to_main_chain)
         miner.on_block_chain_update();
     return true;
-
-    CATCH_ENTRY("core::handle_incoming_block()", false);
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in core::handle_incoming_block(): {}", e.what());
+    return false;
 }
 
 void core::update_omq_sns() {

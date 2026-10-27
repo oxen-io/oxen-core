@@ -317,8 +317,7 @@ static bool get_output_txid(
     return false;
 }
 
-int main(int argc, char* argv[]) {
-    TRY_ENTRY();
+int main(int argc, char* argv[]) try {
 
     tools::on_startup();
 
@@ -679,6 +678,7 @@ done:
                 std::to_string(cached_outputs * 100. / total_outputs));
 
     return 0;
-
-    CATCH_ENTRY("Depth query error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Ancestry query error: {}", e.what());
+    return 1;
 }

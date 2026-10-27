@@ -45,8 +45,7 @@ namespace
 }
 
 int main(int argc, char* argv[])
-{
-  TRY_ENTRY();
+try {
   tools::on_startup();
 
   // Bypass tx version checks for core tests:
@@ -338,6 +337,7 @@ int main(int argc, char* argv[])
   }
 
   return failed_tests.empty() ? 0 : 1;
-
-  CATCH_ENTRY("main", 1);
+} catch (const std::exception& e) {
+  oxen::log::error(logcat, "Exception in main: {}", e.what());
+  return 1;
 }

@@ -620,14 +620,14 @@ TEST_F(net_load_test_clt, permament_open_and_close_and_connections_closed_by_ser
 }
 
 int main(int argc, char** argv)
-{
-  auto logcat = oxen::log::Cat("net_load_tests");
-  TRY_ENTRY();
+try {
   tools::on_startup();
   //set up logging options
   oxen::logging::init("net_load_tests_clt.log", "*=debug");
 
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
-  CATCH_ENTRY("main", 1);
+} catch (const std::exception& e) {
+  oxen::log::error(oxen::log::Cat("net_load_tests"), "Exception in main: {}", e.what());
+  return 1;
 }

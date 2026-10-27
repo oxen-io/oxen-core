@@ -75,9 +75,8 @@ struct reference {
     reference(uint64_t h, uint64_t rs, uint64_t p) : height(h), ring_size(rs), position(p) {}
 };
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) try {
     oxen::set_terminate_handler();
-    TRY_ENTRY();
 
     tools::on_startup();
     auto opt_size = command_line::boost_option_sizes();
@@ -224,6 +223,7 @@ int main(int argc, char* argv[]) {
 
     log::warning(logcat, "Blockchain usage exported OK");
     return 0;
-
-    CATCH_ENTRY("Export error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Usage export error: {}", e.what());
+    return 1;
 }

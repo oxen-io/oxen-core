@@ -217,9 +217,7 @@ namespace
 }
 
 int main(int argc, char** argv)
-{
-  auto logcat = oxen::log::Cat("net_load_tests");
-  TRY_ENTRY();
+try {
   tools::on_startup();
   //set up logging options
   oxen::logging::init("net_load_tests_srv.log", "*=debug");
@@ -238,5 +236,7 @@ int main(int argc, char** argv)
   if (!tcp_server.run_server(thread_count, true))
     return 2;
   return 0;
-  CATCH_ENTRY("main", 1);
+} catch (const std::exception& e) {
+  oxen::log::error(oxen::log::Cat("net_load_tests"), "Exception in main: {}", e.what());
+  return 1;
 }

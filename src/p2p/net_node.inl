@@ -126,16 +126,17 @@ fs::path node_server<t_payload_net_handler>::get_peerlist_file() const {
 
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
-bool node_server<t_payload_net_handler>::init_config() {
-    TRY_ENTRY();
+bool node_server<t_payload_net_handler>::init_config() try {
     auto storage = peerlist_storage::open(get_peerlist_file());
     if (storage)
         m_peerlist_storage = std::move(*storage);
 
     m_first_connection_maker_call = true;
 
-    CATCH_ENTRY("node_server::init_config", false);
     return true;
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in node_server::init_config: {}", e.what());
+    return false;
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
@@ -801,9 +802,7 @@ bool node_server<t_payload_net_handler>::deinit() {
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
-bool node_server<t_payload_net_handler>::store_config() {
-    TRY_ENTRY();
-
+bool node_server<t_payload_net_handler>::store_config() try {
     std::error_code ec;
     if (fs::create_directories(m_config_folder); ec) {
         log::warning(logcat, "Failed to create data directory {}", m_config_folder);
@@ -819,8 +818,10 @@ bool node_server<t_payload_net_handler>::store_config() {
         log::warning(logcat, "Failed to save config to file {}", state_file_path);
         return false;
     }
-    CATCH_ENTRY("node_server::store", false);
     return true;
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in node_server::store_config: {}", e.what());
+    return false;
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>

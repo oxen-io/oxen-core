@@ -3742,9 +3742,8 @@ void wallet_rpc_server::stop() {
 
 }  // namespace tools
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv) try {
     oxen::set_terminate_handler();
-    TRY_ENTRY();
 
     namespace po = boost::program_options;
 
@@ -3791,6 +3790,7 @@ int main(int argc, char** argv) {
                    "Wallet RPC Daemon", argc, const_cast<const char**>(argv), std::move(*vm))
                  ? 0
                  : 1;
-
-    CATCH_ENTRY("main", 1);
+} catch (const std::exception& e) {
+    oxen::log::error(logcat, "Exception in main: {}", e.what());
+    return 1;
 }
