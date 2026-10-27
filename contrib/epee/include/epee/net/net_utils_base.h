@@ -221,21 +221,8 @@ namespace net_utils
 		bool is_blockable() const { return self ? self->is_blockable() : false; }
 		template<typename Type> const Type &as() const { return as_mutable<const Type>(); }
 
-        // This serialization is unspeakably disgusting: someone (in Monero PR #5091) decided to add
-        // code outside of epee but then put a circular dependency inside this serialization code so
-        // that the code won't even compile unless epee links to code outside epee.  But because it
-        // was all hidden in templated code (with a template type that NEVER CHANGES) compilation
-        // got deferred -- but would fail if anything tried to access this serialization code
-        // *without* the external tor/i2p dependencies.  To deal with this unspeakably disgusting
-        // hack, this serialization implementation is outside of epee, in
-        // src/net/epee_network_address.cpp.
-        //
-        // They left this comment in the serialization code, which I preserve here as a HUGE red
-        // flag that the code stinks, and yet it was still approved by upstream Monero without even
-        // a comment about this garbage:
-        //
-        // // need to `#include "net/[i2p|tor]_address.h"` when serializing `network_address`
-        //
+        // Implemented outside epee, in src/net/epee_network_address_hack.cpp, because it has to know
+        // about net::ipv4_address.
         KV_MAP_SERIALIZABLE
 	};
 

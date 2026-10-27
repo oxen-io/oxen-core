@@ -180,16 +180,6 @@ constexpr int64_t BATCH_REWARD_FACTOR = 1000;
 // (2min).
 inline constexpr auto REACHABLE_MAX_FAILURE_VALIDITY = 5min;
 
-// see src/cryptonote_protocol/levin_notify.cpp
-inline constexpr auto NOISE_MIN_EPOCH = 5min;
-inline constexpr auto NOISE_EPOCH_RANGE = 30s;
-inline constexpr auto NOISE_MIN_DELAY = 10s;
-inline constexpr auto NOISE_DELAY_RANGE = 5s;
-inline constexpr uint64_t NOISE_BYTES = 3 * 1024;  // 3 kiB
-inline constexpr size_t NOISE_CHANNELS = 2;
-// ~20 * NOISE_BYTES max payload size for covert/noise send:
-inline constexpr size_t MAX_FRAGMENTS = 20;
-
 // p2p-specific constants:
 namespace p2p {
 
@@ -202,7 +192,6 @@ namespace p2p {
     inline constexpr uint32_t DEFAULT_PACKET_MAX_SIZE = 50000000;
     inline constexpr uint32_t DEFAULT_PEERS_IN_HANDSHAKE = 250;
     inline constexpr auto DEFAULT_CONNECTION_TIMEOUT = 5s;
-    inline constexpr auto DEFAULT_SOCKS_CONNECT_TIMEOUT = 45s;
     inline constexpr auto DEFAULT_PING_CONNECTION_TIMEOUT = 2s;
     inline constexpr auto DEFAULT_INVOKE_TIMEOUT = 2min;
     inline constexpr auto DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5s;

@@ -63,25 +63,15 @@ namespace detail {
 
 using connections = epee::levin::async_protocol_handler_config<detail::p2p_context>;
 
-//! Provides tx notification privacy
+//! Relays transactions to peers
 class notify {
     std::shared_ptr<detail::zone> zone_;
 
   public:
-    struct status {
-        bool has_noise;
-        bool connections_filled;
-    };
-
     //! Construct an instance that cannot notify.
     notify() noexcept : zone_(nullptr) {}
 
-    //! Construct an instance with available notification `zones`.
-    explicit notify(
-            boost::asio::io_service& service,
-            std::shared_ptr<connections> p2p,
-            epee::shared_sv noise,
-            bool is_public);
+    explicit notify(boost::asio::io_service& service, std::shared_ptr<connections> p2p);
 
     notify(const notify&) = delete;
     notify(notify&&) = default;
@@ -91,34 +81,13 @@ class notify {
     notify& operator=(const notify&) = delete;
     notify& operator=(notify&&) = default;
 
-    //! \return Status information for zone selection.
-    status get_status() const noexcept;
-
-    //! Probe for new outbound connection - skips if not needed.
-    void new_out_connection();
-
-    //! Run the logic for the next epoch immediately. Only use in testing.
-    void run_epoch();
-
-    //! Run the logic for the next stem timeout imemdiately. Only use in  testing.
-    void run_stems();
-
-    /*! Send txs using `cryptonote_protocol_defs.h` payload format wrapped in a
-        levin header. The message will be sent in a "discreet" manner if
-        enabled - if `!noise.empty()` then the `command`/`payload` will be
-        queued to send at the next available noise interval. Otherwise, a
-        standard Monero flood notification will be used.
-
-        \note Eventually Dandelion++ stem sending will be used here when
-          enabled.
+    /*! Send txs using `cryptonote_protocol_defs.h` payload format wrapped in a levin header,
+        flooded to every connection other than `source`.
 
         \param txs The transactions that need to be serialized and relayed.
-        \param source The source of the notification. `is_nil()` indicates this
-          node is the source. Dandelion++ will use this to map a source to a
-          particular stem.
-        \param pad_txs A request to pad txs to help conceal origin via
-          statistical analysis. Ignored if noise was enabled during
-          construction.
+        \param source The connection the transactions came from (which they are not sent back
+          to); `is_nil()` indicates this node is the source.
+        \param pad_txs A request to pad txs to help conceal origin via statistical analysis.
 
       \return True iff the notification is queued for sending. */
     bool send_txs(std::vector<std::string> txs, const epee::connection_id_t& source, bool pad_txs);

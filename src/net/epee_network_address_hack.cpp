@@ -1,14 +1,10 @@
 #include "epee/net/net_utils_base.h"
 #include "epee/storages/portable_storage.h"
-#include "i2p_address.h"
 #include "ipv4_address.h"
 #include "logging/oxen_logger.h"
-#include "tor_address.h"
 
-// This unholy hack of defining epee implementation outside of epee is here because of Monero's lack
-// of quality code review that allowed someone to add circular dependencies between src/net/ and
-// epee/net_utils_base.cpp.  See the comment in epee/include/net/net_utils_base.h for the sordid
-// details.
+// This epee serialization code lives outside epee because it has to know about net::ipv4_address,
+// which is not part of epee.
 //
 // TODO: epee needs to die.
 
@@ -27,10 +23,6 @@ switch (address_type(type)) {
         return this_ref.template serialize_addr<net::ipv4_address>(stg, parent_section);
     case address_type::ipv6:
         return this_ref.template serialize_addr<ipv6_network_address>(stg, parent_section);
-    case address_type::tor:
-        return this_ref.template serialize_addr<net::tor_address>(stg, parent_section);
-    case address_type::i2p:
-        return this_ref.template serialize_addr<net::i2p_address>(stg, parent_section);
     default:
         oxen::log::error(logcat, "Unsupported network address type: {}", (unsigned)type);
         return false;

@@ -28,58 +28,21 @@
 
 #include "levin_notify.h"
 
-#include <boost/asio/steady_timer.hpp>
-#include <boost/system/system_error.hpp>
-#include <chrono>
-#include <deque>
+#include <algorithm>
 
 #include "common/exception.h"
 #include "common/varint.h"
-#include "crypto/random.h"
 #include "cryptonote_basic/connection_context.h"
-#include "cryptonote_config.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "epee/byte_span.h"
-#include "net/dandelionpp.h"
 #include "p2p/net_node.h"
 
 namespace cryptonote::levin {
-static auto logcat = log::Cat("net.p2p.tx");
 
 using epee::connection_id_t;
 
 namespace {
     constexpr std::size_t connection_id_reserve_size = 100;
-
-    /*! Select a randomized duration from 0 to `range`. The precision will be to
-        the systems `steady_clock`. As an example, supplying 3 seconds to this
-        function will select a duration from [0, 3] seconds, and the increments
-        for the selection will be determined by the `steady_clock` precision
-        (typically nanoseconds).
-
-        \return A randomized duration from 0 to `range`. */
-    std::chrono::steady_clock::duration random_duration(std::chrono::steady_clock::duration range) {
-        using rep = std::chrono::steady_clock::rep;
-        return std::chrono::steady_clock::duration{crypto::rand_range(rep(0), range.count())};
-    }
-
-    //! \return All outgoing connections supporting fragments in `connections`.
-    std::vector<connection_id_t> get_out_connections(connections& p2p) {
-        std::vector<connection_id_t> outs;
-        outs.reserve(connection_id_reserve_size);
-
-        /* The foreach call is serialized with a lock, but should be quick due to
-           the reserve call so a strand is not used. Investigate if there is lots
-           of waiting in here. */
-
-        p2p.foreach_connection([&outs](detail::p2p_context& context) {
-            if (!context.m_is_income)
-                outs.emplace_back(context.m_connection_id);
-            return true;
-        });
-
-        return outs;
-    }
 
     std::string make_tx_payload(std::vector<std::string>&& txs, const bool pad) {
         NOTIFY_NEW_TRANSACTIONS::request request{};
@@ -120,124 +83,21 @@ namespace {
 
         return fullBlob;
     }
-
-    /* The current design uses `asio::strand`s. The documentation isn't as clear
-       as it should be - a `strand` has an internal `mutex` and `bool`. The
-       `mutex` synchronizes thread access and the `bool` is set when a thread is
-       executing something "in the strand". Therefore, if a callback has lots of
-       work to do in a `strand`, asio can switch to some other task instead of
-       blocking 1+ threads to wait for the original thread to complete the task
-       (as is the case when client code has a `mutex` inside the callback). The
-       downside is that asio _always_ allocates for the callback, even if it can
-       be immediately executed. So if all work in a strand is minimal, a lock
-       may be better.
-
-       This code uses a strand per "zone" and a strand per "channel in a zone".
-       `dispatch` is used heavily, which means "execute immediately in _this_
-       thread if the strand is not in use, otherwise queue the callback to be
-       executed immediately after the strand completes its current task".
-       `post` is used where deferred execution to an `asio::io_service::run`
-       thread is preferred.
-
-       The strand per "zone" is useful because the levin
-       `foreach_connection` is blocked with a mutex anyway. So this primarily
-       helps with reducing blocking of a thread attempting a "flood"
-       notification. Updating/merging the outgoing connections in the
-       Dandelion++ map is also somewhat expensive.
-
-       The strand per "channel" may need a re-visit. The most "expensive" code
-       is figuring out the noise/notification to send. If levin code is
-       optimized further, it might be better to just use standard locks per
-       channel. */
-
-    //! A queue of levin messages for a noise i2p/tor link
-    struct noise_channel {
-        explicit noise_channel(boost::asio::io_service& io_service) :
-                queue(), strand(io_service), next_noise(io_service), connection{} {}
-
-        // `asio::io_service::strand` cannot be copied or moved
-        noise_channel(const noise_channel&) = delete;
-        noise_channel& operator=(const noise_channel&) = delete;
-
-        // Only read/write these values "inside the strand"
-
-        epee::shared_sv active;
-        std::deque<epee::shared_sv> queue;
-        boost::asio::io_service::strand strand;
-        boost::asio::steady_timer next_noise;
-        connection_id_t connection;
-    };
 }  // namespace
 
 namespace detail {
     struct zone {
-        explicit zone(
-                boost::asio::io_service& io_service,
-                std::shared_ptr<connections> p2p,
-                epee::shared_sv noise_in,
-                bool is_public) :
-                p2p(std::move(p2p)),
-                noise(std::move(noise_in)),
-                next_epoch(io_service),
-                strand(io_service),
-                map(),
-                channels(),
-                connection_count(0),
-                is_public(is_public) {
-            for (std::size_t count = 0; !noise.view.empty() && count < NOISE_CHANNELS; ++count)
-                channels.emplace_back(io_service);
-        }
+        zone(boost::asio::io_service& io_service, std::shared_ptr<connections> p2p) :
+                p2p(std::move(p2p)), strand(io_service) {}
 
         const std::shared_ptr<connections> p2p;
-        const epee::shared_sv noise;  //!< `!empty()` means zone is using noise channels
-        boost::asio::steady_timer next_epoch;
+        // The levin `foreach_connection` is serialized with a mutex, so flood notifications go
+        // through a strand rather than having threads contend for it.
         boost::asio::io_service::strand strand;
-        net::dandelionpp::connection_map
-                map;  //!< Tracks outgoing uuid's for noise channels or Dandelion++ stems
-        std::deque<noise_channel> channels;  //!< Never touch after init; only update elements on
-                                             //!< `noise_channel.strand`
-        std::atomic<std::size_t>
-                connection_count;  //!< Only update in strand, can be read at any time
-        const bool is_public;      //!< Zone is public ipv4/ipv6 connections
     };
 }  // namespace detail
 
 namespace {
-    //! Adds a message to the sending queue of the channel.
-    class queue_covert_notify {
-        std::shared_ptr<detail::zone> zone_;
-        epee::shared_sv message_;  // Requires manual copy constructor
-        const std::size_t destination_;
-
-      public:
-        queue_covert_notify(
-                std::shared_ptr<detail::zone> zone,
-                epee::shared_sv message,
-                std::size_t destination) :
-                zone_(std::move(zone)), message_(std::move(message)), destination_(destination) {}
-
-        queue_covert_notify(queue_covert_notify&&) = default;
-        queue_covert_notify(const queue_covert_notify& source) :
-                zone_(source.zone_), message_(source.message_), destination_(source.destination_) {}
-
-        //! \pre Called within `zone_->channels[destionation_].strand`.
-        void operator()() {
-            if (!zone_)
-                return;
-
-            noise_channel& channel = zone_->channels.at(destination_);
-            assert(channel.strand.running_in_this_thread());
-
-            if (!channel.connection.is_nil())
-                channel.queue.push_back(std::move(message_));
-            else if (destination_ == 0 && zone_->connection_count == 0)
-                log::warning(
-                        logcat,
-                        "Unable to send transaction(s) over anonymity network - no available "
-                        "outbound connections");
-        }
-    };
-
     //! Sends a message to every active connection
     class flood_notify {
         std::shared_ptr<detail::zone> zone_;
@@ -261,20 +121,10 @@ namespace {
 
             assert(zone_->strand.running_in_this_thread());
 
-            /* The foreach should be quick, but then it iterates and acquires the
-               same lock for every connection. So do in a strand because two threads
-               will ping-pong each other with cacheline invalidations. Revisit if
-               algorithm changes or the locking strategy within the levin config
-               class changes. */
-
             std::vector<connection_id_t> connections;
             connections.reserve(connection_id_reserve_size);
             zone_->p2p->foreach_connection([this, &connections](detail::p2p_context& context) {
-                /* Only send to outgoing connections when "flooding" over i2p/tor.
-                   Otherwise this makes the tx linkable to a hidden service address,
-                   making things linkable across connections. */
-                if (this->source_ != context.m_connection_id &&
-                    (this->zone_->is_public || !context.m_is_income))
+                if (this->source_ != context.m_connection_id)
                     connections.emplace_back(context.m_connection_id);
                 return true;
             });
@@ -283,278 +133,29 @@ namespace {
                 zone_->p2p->send(message_, connection);
         }
     };
-
-    //! Updates the connection for a channel.
-    struct update_channel {
-        std::shared_ptr<detail::zone> zone_;
-        const std::size_t channel_;
-        const connection_id_t connection_;
-
-        //! \pre Called within `stem_.strand`.
-        void operator()() const {
-            if (!zone_)
-                return;
-
-            noise_channel& channel = zone_->channels.at(channel_);
-            assert(channel.strand.running_in_this_thread());
-            static_assert(
-                    MAX_FRAGMENTS <=
-                            static_cast<size_t>(
-                                    NOISE_MIN_EPOCH / (NOISE_MIN_DELAY + NOISE_DELAY_RANGE)),
-                    "Max fragments more than the max that can be sent in an epoch");
-
-            /* This clears the active message so that a message "in-flight" is
-               restarted. DO NOT try to send the remainder of the fragments, this
-               additional send time can leak that this node was sending out a real
-               notify (tx) instead of dummy noise. */
-
-            channel.connection = connection_;
-            channel.active = {};
-
-            if (connection_.is_nil())
-                channel.queue.clear();
-        }
-    };
-
-    //! Merges `out_connections_` into the existing `zone_->map`.
-    struct update_channels {
-        std::shared_ptr<detail::zone> zone_;
-        std::vector<connection_id_t> out_connections_;
-
-        //! \pre Called within `zone->strand`.
-        static void post(std::shared_ptr<detail::zone> zone) {
-            if (!zone)
-                return;
-
-            assert(zone->strand.running_in_this_thread());
-
-            zone->connection_count = zone->map.size();
-            for (auto id = zone->map.begin(); id != zone->map.end(); ++id) {
-                const std::size_t i = id - zone->map.begin();
-                zone->channels[i].strand.post(update_channel{zone, i, *id}, std::allocator<void>{});
-            }
-        }
-
-        //! \pre Called within `zone_->strand`.
-        void operator()() {
-            if (!zone_)
-                return;
-
-            assert(zone_->strand.running_in_this_thread());
-            if (zone_->map.update(std::move(out_connections_)))
-                post(std::move(zone_));
-        }
-    };
-
-    //! Swaps out noise channels entirely; new epoch start.
-    class change_channels {
-        std::shared_ptr<detail::zone> zone_;
-        net::dandelionpp::connection_map map_;  // Requires manual copy constructor
-
-      public:
-        explicit change_channels(
-                std::shared_ptr<detail::zone> zone, net::dandelionpp::connection_map map) :
-                zone_(std::move(zone)), map_(std::move(map)) {}
-
-        change_channels(change_channels&&) = default;
-        change_channels(const change_channels& source) :
-                zone_(source.zone_), map_(source.map_.clone()) {}
-
-        //! \pre Called within `zone_->strand`.
-        void operator()() {
-            if (!zone_)
-                return
-
-                        assert(zone_->strand.running_in_this_thread());
-
-            zone_->map = std::move(map_);
-            update_channels::post(std::move(zone_));
-        }
-    };
-
-    //! Sends a noise packet or real notification and sets timer for next call.
-    struct send_noise {
-        std::shared_ptr<detail::zone> zone_;
-        const std::size_t channel_;
-
-        static void wait(
-                const std::chrono::steady_clock::time_point start,
-                std::shared_ptr<detail::zone> zone,
-                const std::size_t index) {
-            if (!zone)
-                return;
-
-            noise_channel& channel = zone->channels.at(index);
-            channel.next_noise.expires_at(
-                    start + NOISE_MIN_DELAY + random_duration(NOISE_DELAY_RANGE));
-            channel.next_noise.async_wait(channel.strand.wrap(send_noise{std::move(zone), index}));
-        }
-
-        //! \pre Called within `zone_->channels[channel_].strand`.
-        void operator()(boost::system::error_code error) {
-            if (!zone_ || !zone_->p2p || zone_->noise.view.empty())
-                return;
-
-            if (error && error != boost::system::errc::operation_canceled)
-                throw boost::system::system_error{error, "send_noise timer failed"};
-
-            assert(zone_->channels.at(channel_).strand.running_in_this_thread());
-
-            const auto start = std::chrono::steady_clock::now();
-            noise_channel& channel = zone_->channels.at(channel_);
-
-            if (!channel.connection.is_nil()) {
-                epee::shared_sv message;
-                if (!channel.active.view.empty())
-                    message = channel.active.extract_prefix(zone_->noise.size());
-                else if (!channel.queue.empty()) {
-                    channel.active = channel.queue.front();
-                    message = channel.active.extract_prefix(zone_->noise.size());
-                } else
-                    message = zone_->noise;
-
-                if (zone_->p2p->send(std::move(message), channel.connection)) {
-                    if (!channel.queue.empty() && channel.active.view.empty())
-                        channel.queue.pop_front();
-                } else {
-                    channel.active = {};
-                    channel.connection = {};
-
-                    auto connections = get_out_connections(*zone_->p2p);
-                    if (connections.empty())
-                        log::warning(
-                                logcat,
-                                "Lost all outbound connections to anonymity network - currently "
-                                "unable to send transaction(s)");
-
-                    zone_->strand.post(
-                            update_channels{zone_, std::move(connections)}, std::allocator<void>{});
-                }
-            }
-
-            wait(start, std::move(zone_), channel_);
-        }
-    };
-
-    //! Prepares connections for new channel epoch and sets timer for next epoch
-    struct start_epoch {
-        // Variables allow for Dandelion++ extension
-        std::shared_ptr<detail::zone> zone_;
-        std::chrono::seconds min_epoch_;
-        std::chrono::seconds epoch_range_;
-        std::size_t count_;
-
-        //! \pre Should not be invoked within any strand to prevent blocking.
-        void operator()(const boost::system::error_code error = {}) {
-            if (!zone_ || !zone_->p2p)
-                return;
-
-            if (error && error != boost::system::errc::operation_canceled)
-                throw boost::system::system_error{error, "start_epoch timer failed"};
-
-            const auto start = std::chrono::steady_clock::now();
-            zone_->strand.dispatch(
-                    change_channels{
-                            zone_,
-                            net::dandelionpp::connection_map{
-                                    get_out_connections(*(zone_->p2p)), count_}},
-                    std::allocator<void>{});
-
-            detail::zone& alias = *zone_;
-            alias.next_epoch.expires_at(start + min_epoch_ + random_duration(epoch_range_));
-            alias.next_epoch.async_wait(start_epoch{std::move(*this)});
-        }
-    };
 }  // namespace
 
-notify::notify(
-        boost::asio::io_service& service,
-        std::shared_ptr<connections> p2p,
-        epee::shared_sv noise,
-        bool is_public) :
-        zone_(std::make_shared<detail::zone>(
-                service, std::move(p2p), std::move(noise), is_public)) {
+notify::notify(boost::asio::io_service& service, std::shared_ptr<connections> p2p) :
+        zone_(std::make_shared<detail::zone>(service, std::move(p2p))) {
     if (!zone_->p2p)
         throw oxen::traced<std::logic_error>{
                 "cryptonote::levin::notify cannot have nullptr p2p argument"};
-
-    if (!zone_->noise.view.empty()) {
-        const auto now = std::chrono::steady_clock::now();
-        start_epoch{zone_, NOISE_MIN_EPOCH, NOISE_EPOCH_RANGE, NOISE_CHANNELS}();
-        for (std::size_t channel = 0; channel < zone_->channels.size(); ++channel)
-            send_noise::wait(now, zone_, channel);
-    }
 }
 
 notify::~notify() noexcept {}
-
-notify::status notify::get_status() const noexcept {
-    if (!zone_)
-        return {false, false};
-
-    return {!zone_->noise.view.empty(), NOISE_CHANNELS <= zone_->connection_count};
-}
-
-void notify::new_out_connection() {
-    if (!zone_ || zone_->noise.view.empty() || NOISE_CHANNELS <= zone_->connection_count)
-        return;
-
-    zone_->strand.dispatch(
-            update_channels{zone_, get_out_connections(*(zone_->p2p))}, std::allocator<void>{});
-}
-
-void notify::run_epoch() {
-    if (!zone_)
-        return;
-    zone_->next_epoch.cancel();
-}
-
-void notify::run_stems() {
-    if (!zone_)
-        return;
-
-    for (noise_channel& channel : zone_->channels)
-        channel.next_noise.cancel();
-}
 
 bool notify::send_txs(
         std::vector<std::string> txs, const connection_id_t& source, const bool pad_txs) {
     if (!zone_)
         return false;
 
-    if (zone_->is_public)
-        std::sort(txs.begin(), txs.end());  // don't leak receive order
+    std::sort(txs.begin(), txs.end());  // don't leak receive order
 
-    if (!zone_->noise.view.empty() && !zone_->channels.empty()) {
-        // covert send in "noise" channel
-        static_assert(
-                MAX_FRAGMENTS * NOISE_BYTES <= LEVIN_DEFAULT_MAX_PACKET_SIZE,
-                "most nodes will reject this fragment setting");
+    const std::string payload = make_tx_payload(std::move(txs), pad_txs);
+    epee::shared_sv message{epee::levin::make_notify(
+            NOTIFY_NEW_TRANSACTIONS::ID, epee::strspan<std::uint8_t>(payload))};
 
-        // padding is not useful when using noise mode
-        const std::string payload = make_tx_payload(std::move(txs), false);
-        epee::shared_sv message{epee::levin::make_fragmented_notify(
-                zone_->noise.view,
-                NOTIFY_NEW_TRANSACTIONS::ID,
-                epee::strspan<std::uint8_t>(payload))};
-        if (MAX_FRAGMENTS * zone_->noise.size() < message.size()) {
-            log::error(logcat, "notify::send_txs provided message exceeding covert fragment size");
-            return false;
-        }
-
-        for (std::size_t channel = 0; channel < zone_->channels.size(); ++channel) {
-            zone_->channels[channel].strand.dispatch(
-                    queue_covert_notify{zone_, message, channel}, std::allocator<void>{});
-        }
-    } else {
-        const std::string payload = make_tx_payload(std::move(txs), pad_txs);
-        epee::shared_sv message{epee::levin::make_notify(
-                NOTIFY_NEW_TRANSACTIONS::ID, epee::strspan<std::uint8_t>(payload))};
-
-        // traditional monero send technique
-        zone_->strand.dispatch(
-                flood_notify{zone_, std::move(message), source}, std::allocator<void>{});
-    }
+    zone_->strand.dispatch(flood_notify{zone_, std::move(message), source}, std::allocator<void>{});
 
     return true;
 }

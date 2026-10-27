@@ -31,9 +31,8 @@
 #include <boost/version.hpp>
 
 #include "common/string_util.h"
-#include "net/i2p_address.h"
+#include "net/error.h"
 #include "net/ipv4_address.h"
-#include "net/tor_address.h"
 
 namespace net {
 std::pair<std::string_view, std::string_view> get_network_address_host_and_port(
@@ -63,10 +62,6 @@ expect<epee::net_utils::network_address> get_network_address(
 
     if (host_str.empty())
         return make_error_code(net::error::invalid_host);
-    if (host_str.ends_with(".onion"))
-        return tor_address::make(address, default_port);
-    if (host_str.ends_with(".i2p"))
-        return i2p_address::make(address, default_port);
 
     boost::system::error_code ec;
 #if BOOST_VERSION >= 106600

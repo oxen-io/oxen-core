@@ -31,15 +31,12 @@
 #pragma once
 
 #include <common/exception.h>
-#include <common/expect.h>
 
-#include <cstring>
+#include <boost/mpl/bool.hpp>
 
 #include "common/ipv4.h"
 #include "epee/net/net_utils_base.h"
-#include "net/i2p_address.h"
 #include "net/ipv4_address.h"
-#include "net/tor_address.h"
 #include "p2p/p2p_protocol_defs.h"
 
 BOOST_CLASS_VERSION(nodetool::peerlist_entry, 6)
@@ -72,12 +69,6 @@ inline void serialize(Archive& a, epee::net_utils::network_address& na, const ve
             break;
         case epee::net_utils::ipv6_network_address::get_type_id():
             do_serialize<epee::net_utils::ipv6_network_address>(is_saving, a, na);
-            break;
-        case net::tor_address::get_type_id():
-            do_serialize<net::tor_address>(is_saving, a, na);
-            break;
-        case net::i2p_address::get_type_id():
-            do_serialize<net::i2p_address>(is_saving, a, na);
             break;
         case epee::net_utils::address_type::invalid:
         default: throw oxen::traced<std::runtime_error>("Unsupported network address type");
@@ -115,84 +106,6 @@ inline void serialize(Archive& a, epee::net_utils::ipv6_network_address& na, con
     a & port;
     if (!typename Archive::is_saving())
         na = epee::net_utils::ipv6_network_address{ip, port};
-}
-
-template <class Archive, class ver_type>
-inline void save(Archive& a, const net::tor_address& na, const ver_type) {
-    const size_t length = std::strlen(na.host_str());
-    if (length > 255)
-        MONERO_THROW(net::error::invalid_tor_address, "Tor address too long");
-
-    const uint16_t port{na.port()};
-    const uint8_t len = length;
-    a & port;
-    a & len;
-    a.save_binary(na.host_str(), length);
-}
-
-template <class Archive, class ver_type>
-inline void save(Archive& a, const net::i2p_address& na, const ver_type) {
-    const size_t length = std::strlen(na.host_str());
-    if (length > 255)
-        MONERO_THROW(net::error::invalid_i2p_address, "i2p address too long");
-
-    const uint16_t port{na.port()};
-    const uint8_t len = length;
-    a & port;
-    a & len;
-    a.save_binary(na.host_str(), length);
-}
-
-template <class Archive, class ver_type>
-inline void load(Archive& a, net::tor_address& na, const ver_type) {
-    uint16_t port = 0;
-    uint8_t length = 0;
-    a & port;
-    a & length;
-
-    const size_t buffer_size = net::tor_address::buffer_size();
-    if (length > buffer_size)
-        MONERO_THROW(net::error::invalid_tor_address, "Tor address too long");
-
-    char host[buffer_size] = {0};
-    a.load_binary(host, length);
-    host[sizeof(host) - 1] = 0;
-
-    if (std::strcmp(host, net::tor_address::unknown_str()) == 0)
-        na = net::tor_address::unknown();
-    else
-        na = MONERO_UNWRAP(net::tor_address::make(host, port));
-}
-
-template <class Archive, class ver_type>
-inline void load(Archive& a, net::i2p_address& na, const ver_type) {
-    uint16_t port = 0;
-    uint8_t length = 0;
-    a & port;
-    a & length;
-
-    const size_t buffer_size = net::i2p_address::buffer_size();
-    if (length > buffer_size)
-        MONERO_THROW(net::error::invalid_i2p_address, "i2p address too long");
-
-    char host[buffer_size] = {0};
-    a.load_binary(host, length);
-    host[sizeof(host) - 1] = 0;
-
-    if (std::strcmp(host, net::i2p_address::unknown_str()) == 0)
-        na = net::i2p_address::unknown();
-    else
-        na = MONERO_UNWRAP(net::i2p_address::make(host, port));
-}
-
-template <class Archive, class ver_type>
-inline void serialize(Archive& a, net::tor_address& na, const ver_type ver) {
-    boost::serialization::split_free(a, na, ver);
-}
-
-template <class Archive, class ver_type>
-inline void serialize(Archive& a, net::i2p_address& na, const ver_type ver) {
-    boost::serialization::split_free(a, na, ver);
 }
 
 template <class Archive, class ver_type>

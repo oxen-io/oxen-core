@@ -39,16 +39,15 @@ std::pair<std::string_view, std::string_view> get_network_address_host_and_port(
         const std::string_view address);
 
 /*!
-  Identifies onion, i2p and IPv4 addresses and returns them as a generic
+  Identifies IPv4 and IPv6 addresses and returns them as a generic
   `network_address`. If the type is unsupported, it might be a hostname,
-  and `error() == net::error::kUnsupportedAddress` is returned.
+  and `error() == net::error::unsupported_address` is returned.
 
-  \param address An onion address, i2p address, ipv4 address or hostname. Hostname
-      will return an error.
+  \param address An IPv4 address, IPv6 address or hostname. Hostname will return an error.
   \param default_port If `address` does not specify a port, this value
       will be used.
 
-  \return A tor or IPv4 address, else error.
+  \return An IPv4 or IPv6 address, else error.
 */
 expect<epee::net_utils::network_address> get_network_address(
         std::string_view address, std::uint16_t default_port);
