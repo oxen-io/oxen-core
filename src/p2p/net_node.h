@@ -299,10 +299,6 @@ class node_server
     virtual bool is_remote_host_allowed(
             const epee::net_utils::network_address& address, time_t* t = NULL);
     //-----------------------------------------------------------------------------------------------
-    bool parse_peer_from_string(
-            epee::net_utils::network_address& pe,
-            const std::string& node_addr,
-            uint16_t default_port = 0);
     bool handle_command_line(const boost::program_options::variables_map& vm);
     bool idle_worker();
     bool handle_remote_peerlist(
