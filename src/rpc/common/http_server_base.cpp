@@ -5,13 +5,9 @@
 #include <oxenc/endian.h>
 #include <oxenc/hex.h>
 
-#include "common/string_util.h"
-
-// epee:
 #include <nlohmann/json.hpp>
 
-#include "epee/net/jsonrpc_structs.h"
-#include "epee/storages/portable_storage_template_helper.h"
+#include "common/string_util.h"
 
 namespace cryptonote::rpc {
 
