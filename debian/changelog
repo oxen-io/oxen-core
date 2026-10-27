@@ -1,3 +1,9 @@
+oxen (11.7.0-3~ubuntu2610) stonking; urgency=medium
+
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Tue, 27 Oct 2026 12:03:56 -0300
+
 oxen (11.7.0-2~ubuntu2610) stonking; urgency=medium
 
   * Build dbgsym packages
