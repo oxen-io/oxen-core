@@ -53,3 +53,6 @@
 [submodule "external/session-sqlite"]
 	path = external/session-sqlite
 	url = https://github.com/session-foundation/session-sqlite.git
+[submodule "external/libquic"]
+	path = external/libquic
+	url = https://github.com/session-foundation/libquic.git
