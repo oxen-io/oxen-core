@@ -59,20 +59,6 @@ inline auto logcat = oxen::log::Cat("epee");
   return return_val; \
 }
 
-#define ASSERT_MES_AND_THROW(...) do { \
-    auto msg = fmt::format(__VA_ARGS__); \
-    oxen::log::error(logcat, "{}", msg); \
-    throw std::runtime_error{msg}; } while(0)
-#define CHECK_AND_ASSERT_THROW_MES(expr, ...) do {if(!(expr)) ASSERT_MES_AND_THROW(__VA_ARGS__);} while(0)
-
-#ifndef CHECK_AND_ASSERT
-#define CHECK_AND_ASSERT(expr, fail_ret_val)   do{if(!(expr)){return fail_ret_val;};}while(0)
-#endif
-
-#ifndef CHECK_AND_ASSERT_MES
-#define CHECK_AND_ASSERT_MES(expr, fail_ret_val, ...)   do{if(!(expr)) {oxen::log::error(logcat, __VA_ARGS__); return fail_ret_val;};}while(0)
-#endif
-
 enum console_colors
 {
   console_color_default,

@@ -41,7 +41,10 @@ namespace epee
 {
   namespace serialization
   {
-#define ASSERT_AND_THROW_WRONG_CONVERSION() ASSERT_MES_AND_THROW("WRONG DATA CONVERSION: {} to {}", typeid(from).name(), typeid(to).name())
+#define ASSERT_AND_THROW_WRONG_CONVERSION() do { \
+      auto msg = fmt::format("WRONG DATA CONVERSION: {} to {}", typeid(from).name(), typeid(to).name()); \
+      oxen::log::error(logcat, "{}", msg); \
+      throw std::runtime_error{msg}; } while (0)
 
     template<typename From, typename To, typename SFINAE = void>
     struct converter

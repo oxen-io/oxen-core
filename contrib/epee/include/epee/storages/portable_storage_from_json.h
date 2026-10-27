@@ -40,7 +40,7 @@ namespace epee
   {
     namespace json
     {
-#define CHECK_ISSPACE()  if(!epee::misc_utils::parse::isspace(*it)){ ASSERT_MES_AND_THROW("Wrong JSON character at: {}", std::string(it, buf_end));}
+#define CHECK_ISSPACE()  if(!epee::misc_utils::parse::isspace(*it)){ auto msg = fmt::format("Wrong JSON character at: {}", std::string(it, buf_end)); oxen::log::error(logcat, "{}", msg); throw std::runtime_error{msg}; }
 
       template <typename T>
       T parse_number(const std::string_view str)
