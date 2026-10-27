@@ -120,11 +120,6 @@ namespace cryptonote
   bool t_cryptonote_protocol_handler<t_core>::on_callback(cryptonote_connection_context& context)
   {
     log::debug(logcat, "callback fired");
-    if (context.m_callback_request_count <= 0) {
-      log::error(logcat, "{}: false callback fired, but context.m_callback_request_count={}", context, context.m_callback_request_count.load());
-      return false;
-    }
-    --context.m_callback_request_count;
 
     // More than one callback can be queued for a connection: e.g. the standby checker's, plus the one
     // that the peer's sync data requests when it moves a standby connection to synchronizing.
@@ -500,7 +495,6 @@ namespace cryptonote
       log::debug(logcat, "{}Remote blockchain height: {}, id: {}", context, hshd.current_height, hshd.top_id);
       //let the socket to send response to handshake, but request callback, to let send request data after response
       log::debug(logcat, "requesting callback");
-      ++context.m_callback_request_count;
       m_p2p->request_callback(context);
       log::debug(logcat, "{}state: {} in state {}", context, "requesting callback", cryptonote::get_protocol_state_string(context.m_state));
     }
@@ -1669,7 +1663,6 @@ skip:
           context.m_requested_objects.clear();
           context.m_chain_requested = false;
           context.m_state = cryptonote_connection_context::state_standby; // we'll go back to adding, then (if we can't), download
-          ++context.m_callback_request_count;
           m_p2p->request_callback(context);
         }
       }
@@ -1727,7 +1720,6 @@ skip:
       if (context.m_state == cryptonote_connection_context::state_standby)
       {
         log::debug(logcat, "requesting callback");
-        ++context.m_callback_request_count;
         m_p2p->request_callback(context);
       }
       return true;
@@ -1938,7 +1930,6 @@ skip:
             log::debug(logcat, "{}No other thread is adding blocks, and next span needed is ready, resuming", context);
             log::debug(logcat, "{}state: {} in state {}", context, "resuming", cryptonote::get_protocol_state_string(context.m_state));
             context.m_state = cryptonote_connection_context::state_standby;
-            ++context.m_callback_request_count;
             m_p2p->request_callback(context);
             return true;
           }
@@ -2116,7 +2107,6 @@ skip:
           log::debug(logcat, "{}No other thread is adding blocks, resuming", context);
           log::debug(logcat, "{}state: {} in state {}", context, "will try to add blocks next", cryptonote::get_protocol_state_string(context.m_state));
           context.m_state = cryptonote_connection_context::state_standby;
-          ++context.m_callback_request_count;
           m_p2p->request_callback(context);
           return true;
         }
