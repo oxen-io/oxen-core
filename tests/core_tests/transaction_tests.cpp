@@ -106,7 +106,10 @@ bool test_transaction_generation_and_ring_signature()
 
   transaction tx_rc1;
   bool r = construct_tx(miner_acc2.get_keys(), sources, destinations, std::nullopt, std::vector<uint8_t>(), tx_rc1, 0);
-  CHECK_AND_ASSERT_MES(r, false, "failed to construct transaction");
+  if (!r) {
+    oxen::log::error(logcat, "failed to construct transaction");
+    return false;
+  }
 
   crypto::hash pref_hash = get_transaction_prefix_hash(tx_rc1);
   std::vector<const crypto::public_key *> output_keys;
@@ -117,18 +120,33 @@ bool test_transaction_generation_and_ring_signature()
   output_keys.push_back(&std::get<txout_to_key>(tx_mine_5.vout[0].target).key);
   output_keys.push_back(&std::get<txout_to_key>(tx_mine_6.vout[0].target).key);
   r = crypto::check_ring_signature(pref_hash, std::get<txin_to_key>(tx_rc1.vin[0]).k_image, output_keys, &tx_rc1.signatures[0][0]);
-  CHECK_AND_ASSERT_MES(r, false, "failed to check ring signature");
+  if (!r) {
+    oxen::log::error(logcat, "failed to check ring signature");
+    return false;
+  }
 
   std::vector<size_t> outs;
   uint64_t money = 0;
 
   r = lookup_acc_outs(rv_acc.get_keys(), tx_rc1, get_tx_pub_key_from_extra(tx_rc1), get_additional_tx_pub_keys_from_extra(tx_rc1), outs,  money);
-  CHECK_AND_ASSERT_MES(r, false, "failed to lookup_acc_outs");
-  CHECK_AND_ASSERT_MES(td.amount == money, false, "wrong money amount in new transaction");
+  if (!r) {
+    oxen::log::error(logcat, "failed to lookup_acc_outs");
+    return false;
+  }
+  if (td.amount != money) {
+    oxen::log::error(logcat, "wrong money amount in new transaction");
+    return false;
+  }
   money = 0;
   r = lookup_acc_outs(rv_acc2.get_keys(), tx_rc1, get_tx_pub_key_from_extra(tx_rc1), get_additional_tx_pub_keys_from_extra(tx_rc1), outs,  money);
-  CHECK_AND_ASSERT_MES(r, false, "failed to lookup_acc_outs");
-  CHECK_AND_ASSERT_MES(0 == money, false, "wrong money amount in new transaction");
+  if (!r) {
+    oxen::log::error(logcat, "failed to lookup_acc_outs");
+    return false;
+  }
+  if (0 != money) {
+    oxen::log::error(logcat, "wrong money amount in new transaction");
+    return false;
+  }
   return true;
 }
 
@@ -138,7 +156,10 @@ bool test_block_creation()
   std::vector<uint64_t> szs(&vszs[0], &vszs[90]);
   address_parse_info info;
   bool r = get_account_address_from_str(info, network_type::MAINNET, "0099be99c70ef10fd534c43c88e9d13d1c8853213df7e362afbec0e4ee6fec4948d0c190b58f4b356cd7feaf8d9d0a76e7c7e5a9a0a497a6b1faf7a765882dd08ac2");
-  CHECK_AND_ASSERT_MES(r, false, "failed to import");
+  if (!r) {
+    oxen::log::error(logcat, "failed to import");
+    return false;
+  }
   block b;
   uint64_t block_rewards = 0;
   std::tie(r, block_rewards) = construct_miner_tx(90, tools::median(std::move(szs)), 3553616528562147, 33094, 10000000, b.miner_tx.emplace(), cryptonote::oxen_miner_tx_context::miner_block(network_type::FAKECHAIN, info.address), {}, {}, hf_max);

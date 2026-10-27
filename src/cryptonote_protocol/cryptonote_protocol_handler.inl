@@ -2125,7 +2125,10 @@ skip:
 
       NOTIFY_REQUEST_CHAIN::request r{};
       m_core.blockchain.get_short_chain_history(r.block_ids);
-      CHECK_AND_ASSERT_MES(!r.block_ids.empty(), false, "Short chain history is empty");
+      if (r.block_ids.empty()) {
+        log::error(logcat, "Short chain history is empty");
+        return false;
+      }
 
       if (!start_from_current_chain)
       {
@@ -2141,20 +2144,17 @@ skip:
       log::debug(logcat, "{}state: {} in state {}", context, "requesting chain", cryptonote::get_protocol_state_string(context.m_state));
     }else
     {
-      CHECK_AND_ASSERT_MES(context.m_last_response_height == context.m_remote_blockchain_height-1
+      if (!(context.m_last_response_height == context.m_remote_blockchain_height-1
                            && !context.m_needed_objects.size()
-                           && !context.m_requested_objects.size(), false,
-                           "request_missing_blocks final condition failed!"
+                           && !context.m_requested_objects.size())) {
+        log::error(logcat, "request_missing_blocks final condition failed!"
                            "\nm_last_response_height={}"
                            "\nm_remote_blockchain_height="
                            "\nm_needed_objects.size()="
                            "\nm_requested_objects.size()="
-                           "\non connection [{}]",
-                           context.m_last_response_height,
-                           context.m_remote_blockchain_height,
-                           context.m_needed_objects.size(),
-                           context.m_requested_objects.size(),
-                           epee::net_utils::print_connection_context_short(context));
+                           "\non connection [{}]", context.m_last_response_height, context.m_remote_blockchain_height, context.m_needed_objects.size(), context.m_requested_objects.size(), epee::net_utils::print_connection_context_short(context));
+        return false;
+      }
 
       context.m_state = cryptonote_connection_context::state_normal;
       if (context.m_remote_blockchain_height >= m_core.get_target_blockchain_height())

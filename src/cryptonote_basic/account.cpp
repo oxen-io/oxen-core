@@ -204,14 +204,23 @@ void account_base::create_from_device(const std::string& device_name) {
 void account_base::create_from_device(hw::device& hwdev) {
     m_keys.set_device(hwdev);
     log::debug(log::Cat("device"), "device type: {}", tools::type_name(typeid(hwdev)));
-    CHECK_AND_ASSERT_THROW_MES(hwdev.init(), "Device init failed");
-    CHECK_AND_ASSERT_THROW_MES(hwdev.connect(), "Device connect failed");
+    if (!hwdev.init()) {
+        log::error(logcat, "Device init failed");
+        throw std::runtime_error{"Device init failed"};
+    }
+    if (!hwdev.connect()) {
+        log::error(logcat, "Device connect failed");
+        throw std::runtime_error{"Device connect failed"};
+    }
     try {
-        CHECK_AND_ASSERT_THROW_MES(
-                hwdev.get_public_address(m_keys.m_account_address), "Cannot get a device address");
-        CHECK_AND_ASSERT_THROW_MES(
-                hwdev.get_secret_keys(m_keys.m_view_secret_key, m_keys.m_spend_secret_key),
-                "Cannot get device secret");
+        if (!hwdev.get_public_address(m_keys.m_account_address)) {
+            log::error(logcat, "Cannot get a device address");
+            throw std::runtime_error{"Cannot get a device address"};
+        }
+        if (!hwdev.get_secret_keys(m_keys.m_view_secret_key, m_keys.m_spend_secret_key)) {
+            log::error(logcat, "Cannot get device secret");
+            throw std::runtime_error{"Cannot get device secret"};
+        }
     } catch (const std::exception& e) {
         hwdev.disconnect();
         throw;

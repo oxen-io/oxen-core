@@ -56,13 +56,20 @@ namespace epee
         detail::pack_varint(strm, PORTABLE_RAW_SIZE_MARK_30BIT, static_cast<uint32_t>(val));
       else if (val < (1ULL << 62))
         detail::pack_varint(strm, PORTABLE_RAW_SIZE_MARK_62BIT, val);
-      else
-        ASSERT_MES_AND_THROW("failed to pack varint -- integer value too large: {} >= 2^62", val);
+      else {
+        auto msg = fmt::format("failed to pack varint -- integer value too large: {} >= 2^62", val);
+        oxen::log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+      }
     }
 
     inline void pack_entry_to_buff(std::ostream& strm, const std::string& v)
     {
-      CHECK_AND_ASSERT_THROW_MES(v.size() < MAX_STRING_LEN_POSSIBLE, "string to store is too large: {}", v.size());
+      if (v.size() >= MAX_STRING_LEN_POSSIBLE) {
+        auto msg = fmt::format("string to store is too large: {}", v.size());
+        oxen::log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+      }
       pack_varint(strm, v.size());
       if (!v.empty())
         strm.write(v.data(), v.size());
@@ -125,7 +132,11 @@ namespace epee
       pack_varint(strm, sec.m_entries.size());
       for(const section_pair& se: sec.m_entries)
       {
-        CHECK_AND_ASSERT_THROW_MES(se.first.size() < std::numeric_limits<uint8_t>::max(), "storage_entry_name is too long: {}, val: {}", se.first.size(), se.first);
+        if (!(se.first.size() < std::numeric_limits<uint8_t>::max())) {
+          auto msg = fmt::format("storage_entry_name is too long: {}, val: {}", se.first.size(), se.first);
+          oxen::log::error(logcat, "{}", msg);
+          throw std::runtime_error{msg};
+        }
         uint8_t len = static_cast<uint8_t>(se.first.size());
         strm.write((const char*)&len, sizeof(len));
         strm.write(se.first.data(), size_t(len));

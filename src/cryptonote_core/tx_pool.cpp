@@ -912,20 +912,22 @@ bool tx_memory_pool::insert_key_images(
     for (const auto& in : tx.vin) {
         CHECKED_GET_SPECIFIC_VARIANT(in, txin_to_key, txin, false);
         std::unordered_set<crypto::hash>& kei_image_set = m_spent_key_images[txin.k_image];
-        CHECK_AND_ASSERT_MES(
-                kept_by_block || kei_image_set.size() == 0,
-                false,
-                "internal error: kept_by_block={}, "
-                "kei_image_set.size()={}\ntxin.k_image={}\ntx_id={}",
-                kept_by_block,
-                kei_image_set.size(),
-                txin.k_image,
-                id);
+        if (!(kept_by_block || kei_image_set.size() == 0)) {
+            log::error(
+                    logcat,
+                    "internal error: kept_by_block={}, "
+                    "kei_image_set.size()={}\ntxin.k_image={}\ntx_id={}",
+                    kept_by_block,
+                    kei_image_set.size(),
+                    txin.k_image,
+                    id);
+            return false;
+        }
         auto ins_res = kei_image_set.insert(id);
-        CHECK_AND_ASSERT_MES(
-                ins_res.second,
-                false,
-                "internal error: try to insert duplicate iterator in key_image set");
+        if (!ins_res.second) {
+            log::error(logcat, "internal error: try to insert duplicate iterator in key_image set");
+            return false;
+        }
     }
     ++m_cookie;
     return true;
@@ -942,27 +944,29 @@ bool tx_memory_pool::remove_transaction_keyimages(
     for (const txin_v& vi : tx.vin) {
         CHECKED_GET_SPECIFIC_VARIANT(vi, txin_to_key, txin, false);
         auto it = m_spent_key_images.find(txin.k_image);
-        CHECK_AND_ASSERT_MES(
-                it != m_spent_key_images.end(),
-                false,
-                "failed to find transaction input in key images. img={}, txid={}",
-                txin.k_image,
-                actual_hash);
+        if (it == m_spent_key_images.end()) {
+            log::error(
+                    logcat,
+                    "failed to find transaction input in key images. img={}, txid={}",
+                    txin.k_image,
+                    actual_hash);
+            return false;
+        }
         std::unordered_set<crypto::hash>& key_image_set = it->second;
-        CHECK_AND_ASSERT_MES(
-                key_image_set.size(),
-                false,
-                "empty key_image set, img={}, txid={}",
-                txin.k_image,
-                actual_hash);
+        if (!key_image_set.size()) {
+            log::error(logcat, "empty key_image set, img={}, txid={}", txin.k_image, actual_hash);
+            return false;
+        }
 
         auto it_in_set = key_image_set.find(actual_hash);
-        CHECK_AND_ASSERT_MES(
-                it_in_set != key_image_set.end(),
-                false,
-                "transaction id not found in key_image set, img={}, txid={}",
-                txin.k_image,
-                actual_hash);
+        if (it_in_set == key_image_set.end()) {
+            log::error(
+                    logcat,
+                    "transaction id not found in key_image set, img={}, txid={}",
+                    txin.k_image,
+                    actual_hash);
+            return false;
+        }
         key_image_set.erase(it_in_set);
         if (!key_image_set.size()) {
             // it is now empty hash container for this key_image
@@ -1813,11 +1817,13 @@ static bool append_key_images(
     for (size_t i = 0; i != tx.vin.size(); i++) {
         CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], txin_to_key, itk, false);
         auto i_res = k_images.insert(itk.k_image);
-        CHECK_AND_ASSERT_MES(
-                i_res.second,
-                false,
-                "internal error: key images pool cache - inserted duplicate image in set: {}",
-                itk.k_image);
+        if (!i_res.second) {
+            log::error(
+                    logcat,
+                    "internal error: key images pool cache - inserted duplicate image in set: {}",
+                    itk.k_image);
+            return false;
+        }
     }
     return true;
 }

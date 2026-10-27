@@ -134,7 +134,10 @@ crypto::public_key device_default::get_subaddress_spend_public_key(
 
 std::vector<crypto::public_key> device_default::get_subaddress_spend_public_keys(
         const cryptonote::account_keys& keys, uint32_t account, uint32_t begin, uint32_t end) {
-    CHECK_AND_ASSERT_THROW_MES(begin <= end, "begin > end");
+    if (begin > end) {
+        oxen::log::error(logcat, "begin > end");
+        throw std::runtime_error{"begin > end"};
+    }
 
     std::vector<crypto::public_key> pkeys;
     pkeys.reserve(end - begin);
@@ -142,9 +145,10 @@ std::vector<crypto::public_key> device_default::get_subaddress_spend_public_keys
 
     ge_p3 p3;
     ge_cached cached;
-    CHECK_AND_ASSERT_THROW_MES(
-            ge_frombytes_vartime(&p3, keys.m_account_address.m_spend_public_key.data()) == 0,
-            "ge_frombytes_vartime failed to convert spend public key");
+    if (ge_frombytes_vartime(&p3, keys.m_account_address.m_spend_public_key.data()) != 0) {
+        oxen::log::error(logcat, "ge_frombytes_vartime failed to convert spend public key");
+        throw std::runtime_error{"ge_frombytes_vartime failed to convert spend public key"};
+    }
     ge_p3_to_cached(&cached, &p3);
 
     for (uint32_t idx = begin; idx < end; ++idx) {
@@ -403,12 +407,14 @@ bool device_default::generate_output_ephemeral_keys(
         found_change = true;
         // sending change to yourself; derivation = a*R
         r = generate_key_derivation(txkey_pub, sender_account_keys.m_view_secret_key, derivation);
-        CHECK_AND_ASSERT_MES(
-                r,
-                false,
-                "at creation outs: failed to generate_key_derivation({}, {})",
-                txkey_pub,
-                tools::hex_guts(sender_account_keys.m_view_secret_key));
+        if (!r) {
+            oxen::log::error(
+                    logcat,
+                    "at creation outs: failed to generate_key_derivation({}, {})",
+                    txkey_pub,
+                    tools::hex_guts(sender_account_keys.m_view_secret_key));
+            return false;
+        }
 
     } else {
         // sending to the recipient; derivation = r*A (or s*C in the subaddress scheme)
@@ -416,14 +422,16 @@ bool device_default::generate_output_ephemeral_keys(
                 dst_entr.addr.m_view_public_key,
                 dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec : tx_key,
                 derivation);
-        CHECK_AND_ASSERT_MES(
-                r,
-                false,
-                "at creation outs: failed to generate_key_derivation({}, {})",
-                dst_entr.addr.m_view_public_key,
-                tools::hex_guts(
-                        dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec
-                                                                         : tx_key));
+        if (!r) {
+            oxen::log::error(
+                    logcat,
+                    "at creation outs: failed to generate_key_derivation({}, {})",
+                    dst_entr.addr.m_view_public_key,
+                    tools::hex_guts(
+                            dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec
+                                                                             : tx_key));
+            return false;
+        }
     }
 
     if (need_additional_txkeys) {
@@ -438,13 +446,15 @@ bool device_default::generate_output_ephemeral_keys(
 
     r = derive_public_key(
             derivation, output_index, dst_entr.addr.m_spend_public_key, out_eph_public_key);
-    CHECK_AND_ASSERT_MES(
-            r,
-            false,
-            "at creation outs: failed to derive_public_key({}, {}, {})",
-            derivation,
-            output_index,
-            dst_entr.addr.m_spend_public_key);
+    if (!r) {
+        oxen::log::error(
+                logcat,
+                "at creation outs: failed to derive_public_key({}, {}, {})",
+                derivation,
+                output_index,
+                dst_entr.addr.m_spend_public_key);
+        return false;
+    }
     return r;
 }
 

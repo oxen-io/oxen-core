@@ -62,7 +62,10 @@ void block_queue::add_blocks(
         uint64_t nblocks,
         const connection_id_t& connection_id,
         std::chrono::steady_clock::time_point time) {
-    CHECK_AND_ASSERT_THROW_MES(nblocks > 0, "Empty span");
+    if (nblocks <= 0) {
+        log::error(logcat, "Empty span");
+        throw std::runtime_error{"Empty span"};
+    }
     std::unique_lock lock{mutex};
     blocks.insert(span(height, nblocks, connection_id, time));
 }
@@ -79,7 +82,10 @@ void block_queue::flush_spans(const connection_id_t& connection_id, bool all) {
 }
 
 void block_queue::erase_block(block_map::iterator j) {
-    CHECK_AND_ASSERT_THROW_MES(j != blocks.end(), "Invalid iterator");
+    if (j == blocks.end()) {
+        log::error(logcat, "Invalid iterator");
+        throw std::runtime_error{"Invalid iterator"};
+    }
     for (const crypto::hash& h : j->hashes) {
         requested_hashes.erase(h);
         have_blocks.erase(h);
@@ -292,10 +298,19 @@ std::pair<uint64_t, uint64_t> block_queue::get_next_span_if_scheduled(
 
 void block_queue::reset_next_span_time() {
     std::unique_lock lock{mutex};
-    CHECK_AND_ASSERT_THROW_MES(!blocks.empty(), "No next span to reset time");
+    if (blocks.empty()) {
+        log::error(logcat, "No next span to reset time");
+        throw std::runtime_error{"No next span to reset time"};
+    }
     block_map::iterator i = blocks.begin();
-    CHECK_AND_ASSERT_THROW_MES(i != blocks.end(), "No next span to reset time");
-    CHECK_AND_ASSERT_THROW_MES(i->blocks.empty(), "Next span is not empty");
+    if (i == blocks.end()) {
+        log::error(logcat, "No next span to reset time");
+        throw std::runtime_error{"No next span to reset time"};
+    }
+    if (!i->blocks.empty()) {
+        log::error(logcat, "Next span is not empty");
+        throw std::runtime_error{"Next span is not empty"};
+    }
     const_cast<std::chrono::steady_clock::time_point&>(i->time)  // time doesn't influence sorting
             = std::chrono::steady_clock::now();
 }

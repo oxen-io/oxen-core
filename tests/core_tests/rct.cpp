@@ -57,11 +57,13 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
   cryptonote::block blocks[4];
   for (size_t n = 0; n < 4; ++n) {
     miner_accounts[n].generate();
-    CHECK_AND_ASSERT_MES(generator.construct_block_manually(blocks[n], *prev_block, miner_accounts[n],
+    if (!generator.construct_block_manually(blocks[n], *prev_block, miner_accounts[n],
         test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
         cryptonote::hf::hf7, 2, prev_block->timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
-          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
-        false, "Failed to generate block");
+          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0)) {
+      oxen::log::error(logcat, "Failed to generate block");
+      return false;
+    }
     events.push_back(blocks[n]);
     prev_block = blocks + n;
   }
@@ -73,11 +75,13 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     for (size_t i = 0; i < MINED_MONEY_UNLOCK_WINDOW; ++i)
     {
       cryptonote::block blk;
-      CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk, blk_last, miner_account,
+      if (!generator.construct_block_manually(blk, blk_last, miner_account,
           test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
           cryptonote::hf::hf7, 2, blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
-          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
-          false, "Failed to generate block");
+          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0)) {
+        oxen::log::error(logcat, "Failed to generate block");
+        return false;
+      }
       events.push_back(blk);
       blk_last = blk;
     }
@@ -124,7 +128,10 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     oxen_construct_tx_params tx_params;
     tx_params.hf_version = cryptonote::hf::hf8;
     bool r = construct_tx_and_get_tx_key(miner_accounts[n].get_keys(), subaddresses, sources, destinations, cryptonote::tx_destination_entry{}, std::vector<uint8_t>(), rct_txes[n], 0, tx_key, additional_tx_keys, {}, nullptr, tx_params);
-    CHECK_AND_ASSERT_MES(r, false, "failed to construct transaction");
+    if (!r) {
+      oxen::log::error(logcat, "failed to construct transaction");
+      return false;
+    }
     events.push_back(rct_txes[n]);
     starting_rct_tx_hashes.push_back(get_transaction_hash(rct_txes[n]));
 
@@ -132,7 +139,10 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     {
       crypto::key_derivation derivation;
       bool r = crypto::generate_key_derivation(destinations[o].addr.m_view_public_key, tx_key, derivation);
-      CHECK_AND_ASSERT_MES(r, false, "Failed to generate key derivation");
+      if (!r) {
+        oxen::log::error(logcat, "Failed to generate key derivation");
+        return false;
+      }
       crypto::secret_key amount_key;
       crypto::derivation_to_scalar(derivation, o, amount_key);
       const auto type = rct_txes[n].rct_signatures.type;
@@ -142,11 +152,13 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
         rct::decodeRct(rct_txes[n].rct_signatures, rct::sk2rct(amount_key), o, rct_tx_masks[o+n*4], hw::get_device("default"));
     }
 
-    CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk_txes[n], blk_last, miner_account,
+    if (!generator.construct_block_manually(blk_txes[n], blk_last, miner_account,
         test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_tx_hashes | test_generator::bf_hf_version,
         cryptonote::hf::hf7, 4, blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
-        crypto::hash(), 0, transaction(), starting_rct_tx_hashes, 0),
-        false, "Failed to generate block");
+        crypto::hash(), 0, transaction(), starting_rct_tx_hashes, 0)) {
+      oxen::log::error(logcat, "Failed to generate block");
+      return false;
+    }
     events.push_back(blk_txes[n]);
     blk_last = blk_txes[n];
   }
@@ -156,11 +168,13 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
     for (size_t i = 0; i < second_rewind; ++i)
     {
       cryptonote::block blk;
-      CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk, blk_last, miner_account,
+      if (!generator.construct_block_manually(blk, blk_last, miner_account,
           test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
           last_version, static_cast<uint8_t>(last_version), blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
-          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
-          false, "Failed to generate block");
+          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0)) {
+        oxen::log::error(logcat, "Failed to generate block");
+        return false;
+      }
       events.push_back(blk);
       blk_last = blk;
     }
@@ -230,7 +244,10 @@ bool gen_rct_tx_validation_base::generate_with_full(std::vector<test_event_entry
   oxen_construct_tx_params tx_params;
   tx_params.hf_version = cryptonote::hf::hf8;
   bool r = construct_tx_and_get_tx_key(miner_accounts[0].get_keys(), subaddresses, sources, destinations, cryptonote::tx_destination_entry{}, std::vector<uint8_t>(), tx, 0, tx_key, additional_tx_keys, rct_config, nullptr, tx_params);
-  CHECK_AND_ASSERT_MES(r, false, "failed to construct transaction");
+  if (!r) {
+    oxen::log::error(logcat, "failed to construct transaction");
+    return false;
+  }
 
   if (post_tx)
     post_tx(tx);

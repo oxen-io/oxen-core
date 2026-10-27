@@ -124,7 +124,10 @@ static inline rct::key div2(const rct::key &k)
 
 static inline rct::key pow2(size_t n)
 {
-  CHECK_AND_ASSERT_THROW_MES(n < 256, "Invalid pow2 argument");
+  if (n >= 256) {
+    oxen::log::error(logcat, "Invalid pow2 argument");
+    throw std::runtime_error{"Invalid pow2 argument"};
+  }
   rct::key res = rct::zero();
   res[n >> 3] |= 1<<(n&7);
   return res;
@@ -153,7 +156,10 @@ static inline void add(ge_p3 &p3, const ge_p3 &other)
 rct::key bos_coster_heap_conv(std::vector<MultiexpData> data)
 {
   size_t points = data.size();
-  CHECK_AND_ASSERT_THROW_MES(points > 1, "Not enough points");
+  if (points <= 1) {
+    oxen::log::error(logcat, "Not enough points");
+    throw std::runtime_error{"Not enough points"};
+  }
   std::vector<size_t> heap(points);
   for (size_t n = 0; n < points; ++n)
     heap[n] = n;
@@ -202,7 +208,10 @@ rct::key bos_coster_heap_conv(std::vector<MultiexpData> data)
 rct::key bos_coster_heap_conv_robust(std::vector<MultiexpData> data)
 {
   size_t points = data.size();
-  CHECK_AND_ASSERT_THROW_MES(points > 0, "Not enough points");
+  if (points <= 0) {
+    oxen::log::error(logcat, "Not enough points");
+    throw std::runtime_error{"Not enough points"};
+  }
   std::vector<size_t> heap;
   heap.reserve(points);
   for (size_t n = 0; n < points; ++n)
@@ -319,7 +328,10 @@ std::shared_ptr<straus_cached_data> straus_init_cache(const std::vector<Multiexp
 {
   if (N == 0)
     N = data.size();
-  CHECK_AND_ASSERT_THROW_MES(N <= data.size(), "Bad cache base data");
+  if (N > data.size()) {
+    oxen::log::error(logcat, "Bad cache base data");
+    throw std::runtime_error{"Bad cache base data"};
+  }
   ge_cached cached;
   ge_p1p1 p1;
   ge_p3 p3;
@@ -328,7 +340,10 @@ std::shared_ptr<straus_cached_data> straus_init_cache(const std::vector<Multiexp
 #ifdef RAW_MEMORY_BLOCK
   const size_t offset = cache->size;
   cache->multiples = (ge_cached*)aligned_realloc(cache->multiples, sizeof(ge_cached) * ((1<<STRAUS_C)-1) * std::max(offset, N), 4096);
-  CHECK_AND_ASSERT_THROW_MES(cache->multiples, "Out of memory");
+  if (!cache->multiples) {
+    oxen::log::error(logcat, "Out of memory");
+    throw std::runtime_error{"Out of memory"};
+  }
   cache->size = N;
   for (size_t j=offset;j<N;++j)
   {
@@ -392,7 +407,10 @@ size_t straus_get_cache_size(const std::shared_ptr<straus_cached_data> &cache)
 
 rct::key straus(const std::vector<MultiexpData> &data, const std::shared_ptr<straus_cached_data> &cache, size_t STEP)
 {
-  CHECK_AND_ASSERT_THROW_MES(cache == NULL || cache->size >= data.size(), "Cache is too small");
+  if (!(cache == NULL || cache->size >= data.size())) {
+    oxen::log::error(logcat, "Cache is too small");
+    throw std::runtime_error{"Cache is too small"};
+  }
   STEP = STEP ? STEP : 192;
 
   static constexpr unsigned int mask = (1<<STRAUS_C)-1;
@@ -522,16 +540,25 @@ struct pippenger_cached_data
 
 std::shared_ptr<pippenger_cached_data> pippenger_init_cache(const std::vector<MultiexpData> &data, size_t start_offset, size_t N)
 {
-  CHECK_AND_ASSERT_THROW_MES(start_offset <= data.size(), "Bad cache base data");
+  if (start_offset > data.size()) {
+    oxen::log::error(logcat, "Bad cache base data");
+    throw std::runtime_error{"Bad cache base data"};
+  }
   if (N == 0)
     N = data.size() - start_offset;
-  CHECK_AND_ASSERT_THROW_MES(N <= data.size() - start_offset, "Bad cache base data");
+  if (N > data.size() - start_offset) {
+    oxen::log::error(logcat, "Bad cache base data");
+    throw std::runtime_error{"Bad cache base data"};
+  }
   ge_cached cached;
   std::shared_ptr<pippenger_cached_data> cache(new pippenger_cached_data());
 
   cache->size = N;
   cache->cached = (ge_cached*)aligned_realloc(cache->cached, N * sizeof(ge_cached), 4096);
-  CHECK_AND_ASSERT_THROW_MES(cache->cached, "Out of memory");
+  if (!cache->cached) {
+    oxen::log::error(logcat, "Out of memory");
+    throw std::runtime_error{"Out of memory"};
+  }
   for (size_t i = 0; i < N; ++i)
     ge_p3_to_cached(&cache->cached[i], &data[i+start_offset].point);
 
@@ -547,10 +574,16 @@ rct::key pippenger(const std::vector<MultiexpData> &data, const std::shared_ptr<
 {
   if (cache != NULL && cache_size == 0)
     cache_size = cache->size;
-  CHECK_AND_ASSERT_THROW_MES(cache == NULL || cache_size <= cache->size, "Cache is too small");
+  if (!(cache == NULL || cache_size <= cache->size)) {
+    oxen::log::error(logcat, "Cache is too small");
+    throw std::runtime_error{"Cache is too small"};
+  }
   if (c == 0)
     c = get_pippenger_c(data.size());
-  CHECK_AND_ASSERT_THROW_MES(c <= 9, "c is too large");
+  if (c > 9) {
+    oxen::log::error(logcat, "c is too large");
+    throw std::runtime_error{"c is too large"};
+  }
 
   ge_p3 result = ge_p3_identity;
   bool result_init = false;
@@ -597,7 +630,10 @@ rct::key pippenger(const std::vector<MultiexpData> &data, const std::shared_ptr<
           bucket |= 1<<j;
       if (bucket == 0)
         continue;
-      CHECK_AND_ASSERT_THROW_MES(bucket < (1u<<c), "bucket overflow");
+      if (bucket >= (1u<<c)) {
+        oxen::log::error(logcat, "bucket overflow");
+        throw std::runtime_error{"bucket overflow"};
+      }
       if (buckets_init[bucket])
       {
         if (i < cache_size)

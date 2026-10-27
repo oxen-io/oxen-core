@@ -39,7 +39,10 @@ bool transactions_generation_from_blockchain(std::string& blockchain_folder_path
   tx_memory_pool pool;
   blockchain_storage bchs(pool);
   bool r = bchs.init(blockchain_folder_path);
-  CHECK_AND_ASSERT_MES(r, false, "failed to load blockchain");
+  if (!r) {
+    oxen::log::error(logcat, "failed to load blockchain");
+    return false;
+  }
 
   //amount = 3000000000000
   //key_offsets = 1,2,3,4,5,10,12,27,31,33,34
@@ -121,7 +124,10 @@ bool make_tx(blockchain_storage& bch)
     //lets make last output to odd money
     dsts.resize(dsts.size()+1);
     cryptonote::tx_destination_entry& destination = dsts.back();
-    CHECK_AND_ASSERT_MES(found_money > needed_money, false, "internal error found_money=" << found_money << " !> needed_money=" << needed_money);
+    if (found_money <= needed_money) {
+      oxen::log::error(logcat, "internal error found_money=" << found_money << " !> needed_money=" << needed_money);
+      return false;
+    }
     destination.amount = found_money - needed_money;
   }
 
@@ -137,7 +143,10 @@ bool make_tx(blockchain_storage& bch)
   req.tx_as_hex = oxenc::to_hex(tx_to_blob(tx));
   rpc::SEND_RAW_TX::response daemon_send_resp;
   r = net_utils::http::invoke_http_json_remote_command(m_daemon_address + "/sendrawtransaction", req, daemon_send_resp, m_http_client);
-  CHECK_AND_ASSERT_MES(r, false, "failed to send transaction");
+  if (!r) {
+    oxen::log::error(logcat, "failed to send transaction");
+    return false;
+  }
   if(daemon_send_resp.status != rpc::STATUS_OK)
   {
     std::cout << "daemon failed to accept generated transaction" << std::endl;

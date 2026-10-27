@@ -182,7 +182,10 @@ protected:
     {
       block bl;
       std::string bd = h2b(i);
-      CHECK_AND_ASSERT_THROW_MES(parse_and_validate_block_from_blob(bd, bl), "Invalid block");
+      if (!parse_and_validate_block_from_blob(bd, bl)) {
+        oxen::log::error(logcat, "Invalid block");
+        throw std::runtime_error{"Invalid block"};
+      }
       m_blocks.push_back(std::make_pair(bl, bd));
     }
     for (auto& i : t_transactions)
@@ -192,7 +195,10 @@ protected:
       {
         transaction tx;
         std::string bd = h2b(j);
-        CHECK_AND_ASSERT_THROW_MES(parse_and_validate_tx_from_blob(bd, tx), "Invalid transaction");
+        if (!parse_and_validate_tx_from_blob(bd, tx)) {
+          oxen::log::error(logcat, "Invalid transaction");
+          throw std::runtime_error{"Invalid transaction"};
+        }
         txs.push_back(std::make_pair(tx, bd));
       }
       m_txs.push_back(txs);

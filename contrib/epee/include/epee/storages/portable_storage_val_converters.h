@@ -59,12 +59,11 @@ namespace epee
     {
       void operator()(const From& from, To& to)
       {
-        CHECK_AND_ASSERT_THROW_MES(std::in_range<To>(from),
-            "int value overflow: cannot convert value {} to integer type with range [{}, {}]",
-            +from,
-            +std::numeric_limits<To>::min(),
-            +std::numeric_limits<To>::max()
-            );
+        if (!(std::in_range<To>(from))) {
+          auto msg = fmt::format("int value overflow: cannot convert value {} to integer type with range [{}, {}]", +from, +std::numeric_limits<To>::min(), +std::numeric_limits<To>::max());
+          oxen::log::error(logcat, "{}", msg);
+          throw std::runtime_error{msg};
+        }
         to = static_cast<To>(from);
       }
     };

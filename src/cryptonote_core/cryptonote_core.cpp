@@ -619,13 +619,19 @@ bool core::init(
     bool r = handle_command_line(vm);
     /// Currently terminating before blockchain is initialized results in a crash
     /// during deinitialization... TODO: fix that
-    CHECK_AND_ASSERT_MES(r, false, "Failed to apply command line options.");
+    if (!r) {
+        log::error(logcat, "Failed to apply command line options.");
+        return false;
+    }
 
     size_t max_txpool_weight = command_line::get_arg(vm, arg_max_txpool_weight);
     bool keep_alt_blocks = command_line::get_arg(vm, arg_keep_alt_blocks);
 
     r = init_service_keys();
-    CHECK_AND_ASSERT_MES(r, false, "Failed to create or load service keys");
+    if (!r) {
+        log::error(logcat, "Failed to create or load service keys");
+        return false;
+    }
     if (m_service_node) {
         // Only use our service keys for our service node if we are running in SN mode:
         service_node_list.set_my_service_node_keys(&m_service_keys);
@@ -948,10 +954,16 @@ bool core::init(
             command_line::get_arg(vm, arg_fixed_difficulty),
             get_checkpoints,
             abort);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
+    if (!r) {
+        log::error(logcat, "Failed to initialize blockchain storage");
+        return false;
+    }
 
     r = mempool.init(max_txpool_weight);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to initialize memory pool");
+    if (!r) {
+        log::error(logcat, "Failed to initialize memory pool");
+        return false;
+    }
 
     // now that we have a valid `blockchain`, we can clean out any
     // transactions in the pool that do not conform to the current fork
@@ -968,13 +980,18 @@ bool core::init(
                 BLOCKS_SYNCHRONIZING_MAX_COUNT);
 
     log::info(globallogcat, "Loading checkpoints");
-    CHECK_AND_ASSERT_MES(
-            update_checkpoints_from_json_file(),
-            false,
-            "One or more checkpoints loaded from json conflicted with existing checkpoints.");
+    if (!update_checkpoints_from_json_file()) {
+        log::error(
+                logcat,
+                "One or more checkpoints loaded from json conflicted with existing checkpoints.");
+        return false;
+    }
 
     r = miner.init(vm, m_nettype);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to initialize miner instance");
+    if (!r) {
+        log::error(logcat, "Failed to initialize miner instance");
+        return false;
+    }
 
     if (!keep_alt_blocks && !blockchain.db().is_read_only())
         blockchain.db().drop_alt_blocks();
@@ -1161,7 +1178,10 @@ bool init_key(
     if (fs::exists(keypath, ec)) {
         std::string keystr;
         bool r = tools::slurp_file(keypath, keystr);
-        CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from {}", keypath);
+        if (!r) {
+            log::error(logcat, "failed to load service node key from {}", keypath);
+            return false;
+        }
 
         OXEN_DEFER {
             sodium_memzero(keystr.data(), keystr.size());
@@ -1186,7 +1206,10 @@ bool init_key(
         }
 
         r = get_pubkey(privkey, pubkey, extra...);
-        CHECK_AND_ASSERT_MES(r, false, "failed to generate pubkey from secret key");
+        if (!r) {
+            log::error(logcat, "failed to generate pubkey from secret key");
+            return false;
+        }
     } else {
         try {
             generate_pair(privkey, pubkey, extra...);
@@ -1205,7 +1228,10 @@ bool init_key(
         oxenc::to_hex(guts.begin(), guts.end(), std::back_inserter(privkey_hex));
         privkey_hex += '\n';
         bool r = tools::dump_file(keypath, privkey_hex);
-        CHECK_AND_ASSERT_MES(r, false, "failed to save service node key to {}", keypath);
+        if (!r) {
+            log::error(logcat, "failed to save service node key to {}", keypath);
+            return false;
+        }
 
         fs::permissions(keypath, fs::perms::owner_read, ec);
     }
@@ -1242,7 +1268,10 @@ bool core::init_service_keys() {
     // Standard x25519 keys generated from the ed25519 keypair, used for encrypted communication
     // between SNs
     int rc = crypto_sign_ed25519_pk_to_curve25519(keys.pub_x25519.data(), keys.pub_ed25519.data());
-    CHECK_AND_ASSERT_MES(rc == 0, false, "failed to convert ed25519 pubkey to x25519");
+    if (rc != 0) {
+        log::error(logcat, "failed to convert ed25519 pubkey to x25519");
+        return false;
+    }
     crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519.data(), keys.key_ed25519.data());
 
     // BLS pubkey, used by service nodes when interacting with the Ethereum smart contract
@@ -2511,15 +2540,17 @@ bool core::handle_block_found(block& b, block_verification_context& bvc) {
                     "this block");
             return true;
         }
-        CHECK_AND_ASSERT_MES(
-                txs.size() == b.tx_hashes.size() && !missed_txs.size(),
-                false,
-                "can't find some transactions in found block:{} txs.size()={}, "
-                "b.tx_hashes.size()={}, missed_txs.size()={}",
-                get_block_hash(b),
-                txs.size(),
-                b.tx_hashes.size(),
-                missed_txs.size());
+        if (!(txs.size() == b.tx_hashes.size() && !missed_txs.size())) {
+            log::error(
+                    logcat,
+                    "can't find some transactions in found block:{} txs.size()={}, "
+                    "b.tx_hashes.size()={}, missed_txs.size()={}",
+                    get_block_hash(b),
+                    txs.size(),
+                    b.tx_hashes.size(),
+                    missed_txs.size());
+            return false;
+        }
 
         cryptonote_connection_context exclude_context{};
         NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
@@ -2600,10 +2631,12 @@ bool core::handle_incoming_block(
         log::warning(
                 logcat, "This block's size is {}, closing on the 32 bit limit", block_blob.size());
 
-    CHECK_AND_ASSERT_MES(
-            update_checkpoints_from_json_file(),
-            false,
-            "One or more checkpoints loaded from json conflicted with existing checkpoints.");
+    if (!update_checkpoints_from_json_file()) {
+        log::error(
+                logcat,
+                "One or more checkpoints loaded from json conflicted with existing checkpoints.");
+        return false;
+    }
 
     block lb;
     if (!b) {

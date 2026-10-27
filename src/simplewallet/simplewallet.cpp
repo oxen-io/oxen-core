@@ -3689,7 +3689,10 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             }
 
             auto r = new_wallet(vm, info.address, std::nullopt, viewkey);
-            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
+            if (!r) {
+                log::error(logcat, "{}", tr("account creation failed"));
+                return false;
+            }
             password = *r;
             welcome = true;
         } else if (!m_generate_from_spend_key.empty()) {
@@ -3707,7 +3710,10 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                 return false;
             }
             auto r = new_wallet(vm, m_recovery_key, true, false, "");
-            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
+            if (!r) {
+                log::error(logcat, "{}", tr("account creation failed"));
+                return false;
+            }
             password = *r;
             welcome = true;
         } else if (!m_generate_from_keys.empty()) {
@@ -3779,7 +3785,10 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                 return false;
             }
             auto r = new_wallet(vm, info.address, spendkey, viewkey);
-            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
+            if (!r) {
+                log::error(logcat, "{}", tr("account creation failed"));
+                return false;
+            }
             password = *r;
             welcome = true;
         }
@@ -3906,7 +3915,10 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
 
             // create wallet
             auto r = new_wallet(vm, info.address, spendkey, viewkey);
-            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
+            if (!r) {
+                log::error(logcat, "{}", tr("account creation failed"));
+                return false;
+            }
             password = *r;
             welcome = true;
         }
@@ -3928,7 +3940,10 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             m_wallet_file = m_generate_from_device;
             // create wallet
             auto r = new_device_wallet(vm);
-            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
+            if (!r) {
+                log::error(logcat, "{}", tr("account creation failed"));
+                return false;
+            }
             password = *r;
             welcome = true;
             default_restore_value = "curr";
@@ -3949,7 +3964,10 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                         m_restore_deterministic_wallet,
                         m_non_deterministic,
                         old_language);
-            CHECK_AND_ASSERT_MES(r, false, "{}", tr("account creation failed"));
+            if (!r) {
+                log::error(logcat, "{}", tr("account creation failed"));
+                return false;
+            }
             password = *r;
             welcome = true;
         }
@@ -4048,7 +4066,10 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             return false;
         }
         auto r = open_wallet(vm);
-        CHECK_AND_ASSERT_MES(r, false, "{}", tr("failed to open account"));
+        if (!r) {
+            log::error(logcat, "{}", tr("failed to open account"));
+            return false;
+        }
         password = *r;
     }
     if (!m_wallet) {
@@ -10107,7 +10128,10 @@ int main(int argc, char* argv[]) {
 
     cryptonote::simple_wallet w;
     const bool r = w.init(*vm);
-    CHECK_AND_ASSERT_MES(r, 1, "{}", sw::tr("Failed to initialize wallet"));
+    if (!r) {
+        log::error(logcat, "{}", sw::tr("Failed to initialize wallet"));
+        return 1;
+    }
 
     std::vector<std::string> command = command_line::get_arg(*vm, arg_command);
     if (!command.empty()) {

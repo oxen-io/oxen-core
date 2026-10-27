@@ -109,8 +109,10 @@ namespace epee
       std::string blob;
       if(!stg.get_value(pname, blob, parent_section))
         return false;
-      CHECK_AND_ASSERT_MES(blob.size() == sizeof(d), false, "unserialize_t_val_as_blob: size of {} = {}, but stored blob size = {}, value name = {}",
-              typeid(t_type).name(), sizeof(t_type), blob.size(), pname);
+      if (blob.size() != sizeof(d)) {
+        oxen::log::error(logcat, "unserialize_t_val_as_blob: size of {} = {}, but stored blob size = {}, value name = {}", typeid(t_type).name(), sizeof(t_type), blob.size(), pname);
+        return false;
+      }
       d = *(const t_type*)blob.data();
       return true;
     } 
@@ -119,7 +121,10 @@ namespace epee
     bool serialize_t_obj(const serializible_type& obj, t_storage& stg, section* parent_section, const char* pname)
     {
       section* child_section = stg.open_section(pname, parent_section, true);
-      CHECK_AND_ASSERT_MES(child_section, false, "serialize_t_obj: failed to open/create section {}", pname);
+      if (!child_section) {
+        oxen::log::error(logcat, "serialize_t_obj: failed to open/create section {}", pname);
+        return false;
+      }
       return obj.store(stg, child_section);
     }
     //-------------------------------------------------------------------------------------------------------------------
@@ -137,7 +142,10 @@ namespace epee
       using T = typename stl_container::value_type;
       if(!container.size()) return true;
       auto *arr = stg.template make_array_t<T>(pname, parent_section);
-      CHECK_AND_ASSERT_MES(arr, false, "failed to create array in storage");
+      if (!arr) {
+        oxen::log::error(logcat, "failed to create array in storage");
+        return false;
+      }
       for (auto& elem : container)
         arr->push_back(elem);
       return true;
@@ -165,10 +173,16 @@ namespace epee
       size_t next_i = 0;
       try {
         for (auto [it, end] = stg.template converting_array_range<T>(pname, parent_section); it != end; ++it) {
-          CHECK_AND_ASSERT_MES(next_i < array.size(), false, "too many values to deserialize into fixed size std::array");
+          if (next_i >= array.size()) {
+            oxen::log::error(logcat, "too many values to deserialize into fixed size std::array");
+            return false;
+          }
           array[next_i++] = *it;
         }
-        CHECK_AND_ASSERT_MES(next_i == array.size(), false, "not enough values to deserialize into fixed size std::array");
+        if (next_i != array.size()) {
+          oxen::log::error(logcat, "not enough values to deserialize into fixed size std::array");
+          return false;
+        }
       } catch (const std::out_of_range&) { return false; }
       return true;
     }
@@ -203,10 +217,10 @@ namespace epee
       if (!stg.get_value(pname, buff, parent_section))
         return false;
 
-      CHECK_AND_ASSERT_MES(buff.size() % sizeof(T) == 0,
-        false, 
-        "size in blob {} not have not zero modulo for sizeof(value_type) = {}, type {}",
-        buff.size(), sizeof(T), typeid(T).name());
+      if (buff.size() % sizeof(T) != 0) {
+        oxen::log::error(logcat, "size in blob {} not have not zero modulo for sizeof(value_type) = {}, type {}", buff.size(), sizeof(T), typeid(T).name());
+        return false;
+      }
       if constexpr (is_std_vector<stl_container>)
       {
         container.resize(buff.size() / sizeof(T));
@@ -228,7 +242,10 @@ namespace epee
     {
       if (container.empty()) return true;
       auto* sec_array = stg.template make_array_t<section>(pname, parent_section);
-      CHECK_AND_ASSERT_MES(sec_array, false, "failed to insert first section with section name {}", pname);
+      if (!sec_array) {
+        oxen::log::error(logcat, "failed to insert first section with section name {}", pname);
+        return false;
+      }
 
       for (auto& elem : container)
         if (!elem.store(stg, &sec_array->emplace_back()))
@@ -254,7 +271,10 @@ namespace epee
       static_assert(Size > 0, "cannot deserialize empty std::array");
       auto* arr = stg.template get_array<section>(pname, parent_section);
       if (!arr) return false;
-      CHECK_AND_ASSERT_MES(arr->size() != Size, false, "incorrect number of values to deserialize into fixed size std::array");
+      if (arr->size() == Size) {
+        oxen::log::error(logcat, "incorrect number of values to deserialize into fixed size std::array");
+        return false;
+      }
       auto it = out.begin();
       for (auto& child_section : *arr)
         if (!(it++)->_load(stg, &child_section))

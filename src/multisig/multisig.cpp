@@ -69,9 +69,10 @@ void generate_multisig_N_N(
     multisig_keys.clear();
     const crypto::secret_key spend_secret_key =
             get_multisig_blinded_secret_key(keys.m_spend_secret_key);
-    CHECK_AND_ASSERT_THROW_MES(
-            crypto::secret_key_to_public_key(spend_secret_key, (crypto::public_key&)spend_pkey),
-            "Failed to derive public key");
+    if (!crypto::secret_key_to_public_key(spend_secret_key, (crypto::public_key&)spend_pkey)) {
+        oxen::log::error(logcat, "Failed to derive public key");
+        throw std::runtime_error{"Failed to derive public key"};
+    }
     for (const auto& k : spend_keys)
         rct::addKeys(spend_pkey, spend_pkey, rct::pk2rct(k));
     multisig_keys.push_back(spend_secret_key);
@@ -209,8 +210,10 @@ bool generate_multisig_composite_key_image(
 }
 //-----------------------------------------------------------------
 uint32_t multisig_rounds_required(uint32_t participants, uint32_t threshold) {
-    CHECK_AND_ASSERT_THROW_MES(
-            participants >= threshold, "participants must be greater or equal than threshold");
+    if (participants < threshold) {
+        oxen::log::error(logcat, "participants must be greater or equal than threshold");
+        throw std::runtime_error{"participants must be greater or equal than threshold"};
+    }
     return participants - threshold + 1;
 }
 }  // namespace cryptonote

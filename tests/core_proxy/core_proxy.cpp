@@ -108,18 +108,27 @@ int main(int argc, char* argv[])
 
   oxen::log::info(logcat, "Initializing p2p server...");
   bool res = p2psrv.init(vm);
-  CHECK_AND_ASSERT_MES(res, 1, "Failed to initialize p2p server.");
+  if (!res) {
+    oxen::log::error(logcat, "Failed to initialize p2p server.");
+    return 1;
+  }
   oxen::log::info(logcat, "P2p server initialized OK");
 
   oxen::log::info(logcat, "Initializing cryptonote protocol...");
   res = cprotocol.init(vm);
-  CHECK_AND_ASSERT_MES(res, 1, "Failed to initialize cryptonote protocol.");
+  if (!res) {
+    oxen::log::error(logcat, "Failed to initialize cryptonote protocol.");
+    return 1;
+  }
   oxen::log::info(logcat, "Cryptonote protocol initialized OK");
 
   //initialize core here
   oxen::log::info(logcat, "Initializing proxy core...");
   res = pr_core.init(vm);
-  CHECK_AND_ASSERT_MES(res, 1, "Failed to initialize core");  
+  if (!res) {
+    oxen::log::error(logcat, "Failed to initialize core");
+    return 1;
+  }  
   oxen::log::info(logcat, "Core initialized OK");
 
   oxen::log::info(logcat, "Starting p2p net loop...");

@@ -171,9 +171,10 @@ namespace {
             const crypto::secret_key& signer_secret_key) {
         std::string data;
         crypto::public_key signer;
-        CHECK_AND_ASSERT_THROW_MES(
-                crypto::secret_key_to_public_key(signer_secret_key, signer),
-                "Failed to derive public spend key");
+        if (!crypto::secret_key_to_public_key(signer_secret_key, signer)) {
+            log::error(logcat, "Failed to derive public spend key");
+            throw std::runtime_error{"Failed to derive public spend key"};
+        }
         data += std::string((const char*)&signer, sizeof(crypto::public_key));
 
         for (const auto& key : keys) {
@@ -202,9 +203,10 @@ namespace {
                 std::back_inserter(public_keys),
                 [](const crypto::secret_key& k) -> crypto::public_key {
                     crypto::public_key p;
-                    CHECK_AND_ASSERT_THROW_MES(
-                            crypto::secret_key_to_public_key(k, p),
-                            "Failed to derive public spend key");
+                    if (!crypto::secret_key_to_public_key(k, p)) {
+                        log::error(logcat, "Failed to derive public spend key");
+                        throw std::runtime_error{"Failed to derive public spend key"};
+                    }
                     return p;
                 });
 
@@ -1075,44 +1077,51 @@ namespace {
                 hex_blob =
                         entry["pruned"].get<std::string>() + entry["prunable"].get<std::string>();
 
-            CHECK_AND_ASSERT_MES(oxenc::is_hex(hex_blob), false, "Invalid tx data");
+            if (!oxenc::is_hex(hex_blob)) {
+                log::error(logcat, "Invalid tx data");
+                return false;
+            }
             bd = oxenc::from_hex(hex_blob);
-            CHECK_AND_ASSERT_MES(
-                    cryptonote::parse_and_validate_tx_from_blob(bd, tx), false, "Invalid tx data");
+            if (!cryptonote::parse_and_validate_tx_from_blob(bd, tx)) {
+                log::error(logcat, "Invalid tx data");
+                return false;
+            }
             tx_hash = cryptonote::get_transaction_hash(tx);
             // if the hash was given, check it matches
             auto tx_hash = entry.value("tx_hash", ""sv);
-            CHECK_AND_ASSERT_MES(
-                    tx_hash.empty() || tools::hex_guts(tx_hash) == tx_hash,
-                    false,
-                    "Response claims a different hash than the data yields");
+            if (!(tx_hash.empty() || tools::hex_guts(tx_hash) == tx_hash)) {
+                log::error(logcat, "Response claims a different hash than the data yields");
+                return false;
+            }
             return true;
         }
         // case of a pruned tx with its prunable data hash
         if (entry.contains("pruned") && entry.contains("prunable_hash")) {
             crypto::hash ph;
-            CHECK_AND_ASSERT_MES(
-                    tools::try_load_from_hex_guts(
-                            entry["prunable_hash"].get<std::string_view>(), ph),
-                    false,
-                    "Failed to parse prunable hash");
-            CHECK_AND_ASSERT_MES(
-                    oxenc::is_hex(entry["pruned"].get<std::string_view>()),
-                    false,
-                    "Invalid pruned tx entry");
+            if (!tools::try_load_from_hex_guts(
+                        entry["prunable_hash"].get<std::string_view>(), ph)) {
+                log::error(logcat, "Failed to parse prunable hash");
+                return false;
+            }
+            if (!oxenc::is_hex(entry["pruned"].get<std::string_view>())) {
+                log::error(logcat, "Invalid pruned tx entry");
+                return false;
+            }
             bd = oxenc::from_hex(entry["pruned"].get<std::string_view>());
-            CHECK_AND_ASSERT_MES(
-                    parse_and_validate_tx_base_from_blob(bd, tx), false, "Invalid base tx data");
+            if (!parse_and_validate_tx_base_from_blob(bd, tx)) {
+                log::error(logcat, "Invalid base tx data");
+                return false;
+            }
             // only v2 txes can calculate their txid after pruned
             if (bd[0] > 1) {
                 tx_hash = cryptonote::get_pruned_transaction_hash(tx, ph);
             } else {
                 // for v1, we trust the dameon
-                CHECK_AND_ASSERT_MES(
-                        tools::try_load_from_hex_guts(
-                                entry["tx_hash"].get<std::string_view>(), tx_hash),
-                        false,
-                        "Failed to parse tx hash");
+                if (!tools::try_load_from_hex_guts(
+                            entry["tx_hash"].get<std::string_view>(), tx_hash)) {
+                    log::error(logcat, "Failed to parse tx hash");
+                    return false;
+                }
             }
             return true;
         }
@@ -1790,7 +1799,10 @@ bool wallet2::is_deprecated() const {
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::set_spent(size_t idx, uint64_t height) {
-    CHECK_AND_ASSERT_THROW_MES(idx < m_transfers.size(), "Invalid index");
+    if (idx >= m_transfers.size()) {
+        log::error(logcat, "Invalid index");
+        throw std::runtime_error{"Invalid index"};
+    }
     transfer_details& td = m_transfers[idx];
     log::debug(
             logcat,
@@ -1803,7 +1815,10 @@ void wallet2::set_spent(size_t idx, uint64_t height) {
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::set_unspent(size_t idx) {
-    CHECK_AND_ASSERT_THROW_MES(idx < m_transfers.size(), "Invalid index");
+    if (idx >= m_transfers.size()) {
+        log::error(logcat, "Invalid index");
+        throw std::runtime_error{"Invalid index"};
+    }
     transfer_details& td = m_transfers[idx];
     log::debug(
             logcat, "Setting UNSPENT: ki {}, amount {}", td.m_key_image, print_money(td.m_amount));
@@ -1820,25 +1835,37 @@ bool wallet2::is_spent(const transfer_details& td, bool strict) const {
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::is_spent(size_t idx, bool strict) const {
-    CHECK_AND_ASSERT_THROW_MES(idx < m_transfers.size(), "Invalid index");
+    if (idx >= m_transfers.size()) {
+        log::error(logcat, "Invalid index");
+        throw std::runtime_error{"Invalid index"};
+    }
     const transfer_details& td = m_transfers[idx];
     return is_spent(td, strict);
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::freeze(size_t idx) {
-    CHECK_AND_ASSERT_THROW_MES(idx < m_transfers.size(), "Invalid transfer_details index");
+    if (idx >= m_transfers.size()) {
+        log::error(logcat, "Invalid transfer_details index");
+        throw std::runtime_error{"Invalid transfer_details index"};
+    }
     transfer_details& td = m_transfers[idx];
     td.m_frozen = true;
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::thaw(size_t idx) {
-    CHECK_AND_ASSERT_THROW_MES(idx < m_transfers.size(), "Invalid transfer_details index");
+    if (idx >= m_transfers.size()) {
+        log::error(logcat, "Invalid transfer_details index");
+        throw std::runtime_error{"Invalid transfer_details index"};
+    }
     transfer_details& td = m_transfers[idx];
     td.m_frozen = false;
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::frozen(size_t idx) const {
-    CHECK_AND_ASSERT_THROW_MES(idx < m_transfers.size(), "Invalid transfer_details index");
+    if (idx >= m_transfers.size()) {
+        log::error(logcat, "Invalid transfer_details index");
+        throw std::runtime_error{"Invalid transfer_details index"};
+    }
     const transfer_details& td = m_transfers[idx];
     return td.m_frozen;
 }
@@ -1861,7 +1888,8 @@ size_t wallet2::get_transfer_details(const crypto::key_image& ki) const {
         if (td.m_key_image_known && td.m_key_image == ki)
             return idx;
     }
-    CHECK_AND_ASSERT_THROW_MES(false, "Key image not found");
+    log::error(logcat, "Key image not found");
+    throw std::runtime_error{"Key image not found"};
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::frozen(const transfer_details& td) const {
@@ -4462,7 +4490,10 @@ bool wallet2::store_keys(
         const fs::path& keys_file_name, const epee::wipeable_string& password, bool watch_only) {
     std::optional<wallet2::keys_file_data> keys_file_data =
             get_keys_file_data(password, watch_only);
-    CHECK_AND_ASSERT_MES(keys_file_data, false, "failed to generate wallet keys data");
+    if (!keys_file_data) {
+        log::error(logcat, "failed to generate wallet keys data");
+        return false;
+    }
 
     fs::path tmp_file_name = keys_file_name;
     tmp_file_name += ".new";
@@ -4473,7 +4504,10 @@ bool wallet2::store_keys(
         r = tools::dump_file(tmp_file_name, buf);
     } catch (...) {
     }
-    CHECK_AND_ASSERT_MES(r, false, "failed to generate wallet keys file {}", tmp_file_name);
+    if (!r) {
+        log::error(logcat, "failed to generate wallet keys file {}", tmp_file_name);
+        return false;
+    }
 
     unlock_keys_file();
     std::error_code e;
@@ -4514,7 +4548,10 @@ std::optional<wallet2::keys_file_data> wallet2::get_keys_file_data(
     account.encrypt_keys(key);
 
     bool r = epee::serialization::store_t_to_binary(account, account_data);
-    CHECK_AND_ASSERT_MES(r, std::nullopt, "failed to serialize wallet keys");
+    if (!r) {
+        log::error(logcat, "failed to serialize wallet keys");
+        return std::nullopt;
+    }
     std::optional<wallet2::keys_file_data> keys_file_data = (wallet2::keys_file_data){};
 
     // Create a JSON object with "key_data" and "seed_language" as keys.
@@ -5695,11 +5732,18 @@ std::string wallet2::make_multisig(
         const std::vector<crypto::secret_key>& view_keys,
         const std::vector<crypto::public_key>& spend_keys,
         uint32_t threshold) {
-    CHECK_AND_ASSERT_THROW_MES(!view_keys.empty(), "empty view keys");
-    CHECK_AND_ASSERT_THROW_MES(
-            view_keys.size() == spend_keys.size(), "Mismatched view/spend key sizes");
-    CHECK_AND_ASSERT_THROW_MES(
-            threshold > 1 && threshold <= spend_keys.size() + 1, "Invalid threshold");
+    if (view_keys.empty()) {
+        log::error(logcat, "empty view keys");
+        throw std::runtime_error{"empty view keys"};
+    }
+    if (view_keys.size() != spend_keys.size()) {
+        log::error(logcat, "Mismatched view/spend key sizes");
+        throw std::runtime_error{"Mismatched view/spend key sizes"};
+    }
+    if (!(threshold > 1 && threshold <= spend_keys.size() + 1)) {
+        log::error(logcat, "Invalid threshold");
+        throw std::runtime_error{"Invalid threshold"};
+    }
 
     std::string extra_multisig_info;
     std::vector<crypto::secret_key> multisig_keys;
@@ -5822,10 +5866,11 @@ std::string wallet2::make_multisig(
             get_account().get_keys().m_view_secret_key, view_keys);
 
     log::info(logcat, "Creating multisig address...");
-    CHECK_AND_ASSERT_THROW_MES(
-            m_account.make_multisig(
-                    view_skey, rct::rct2sk(spend_skey), rct::rct2pk(spend_pkey), multisig_keys),
-            "Failed to create multisig wallet due to bad keys");
+    if (!m_account.make_multisig(
+                view_skey, rct::rct2sk(spend_skey), rct::rct2pk(spend_pkey), multisig_keys)) {
+        log::error(logcat, "Failed to create multisig wallet due to bad keys");
+        throw std::runtime_error{"Failed to create multisig wallet due to bad keys"};
+    }
     sodium_memzero(&spend_skey, sizeof(rct::key));
 
     init_type(hw::device::type::SOFTWARE);
@@ -5875,13 +5920,24 @@ std::string wallet2::exchange_multisig_keys(
         const epee::wipeable_string& password,
         std::unordered_set<crypto::public_key> derivations,
         std::vector<crypto::public_key> signers) {
-    CHECK_AND_ASSERT_THROW_MES(!derivations.empty(), "empty pkeys");
-    CHECK_AND_ASSERT_THROW_MES(!signers.empty(), "empty signers");
+    if (derivations.empty()) {
+        log::error(logcat, "empty pkeys");
+        throw std::runtime_error{"empty pkeys"};
+    }
+    if (signers.empty()) {
+        log::error(logcat, "empty signers");
+        throw std::runtime_error{"empty signers"};
+    }
 
     bool ready = false;
-    CHECK_AND_ASSERT_THROW_MES(multisig(&ready), "The wallet is not multisig");
-    CHECK_AND_ASSERT_THROW_MES(
-            !ready, "Multisig wallet creation process has already been finished");
+    if (!multisig(&ready)) {
+        log::error(logcat, "The wallet is not multisig");
+        throw std::runtime_error{"The wallet is not multisig"};
+    }
+    if (ready) {
+        log::error(logcat, "Multisig wallet creation process has already been finished");
+        throw std::runtime_error{"Multisig wallet creation process has already been finished"};
+    }
 
     // keys are decrypted
     bool reencrypt = false;
@@ -5912,7 +5968,10 @@ std::string wallet2::exchange_multisig_keys(
             }
         }
 
-        CHECK_AND_ASSERT_THROW_MES(signers.size() == m_multisig_signers.size(), "Bad signers size");
+        if (signers.size() != m_multisig_signers.size()) {
+            log::error(logcat, "Bad signers size");
+            throw std::runtime_error{"Bad signers size"};
+        }
 
         // Summing all of unique public multisig keys to calculate common public spend key
         crypto::public_key spend_public_key = cryptonote::generate_multisig_M_N_spend_public_key(
@@ -7448,8 +7507,10 @@ void wallet2::rescan_spent() {
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::rescan_blockchain(bool hard, bool refresh, bool keep_key_images) {
-    CHECK_AND_ASSERT_THROW_MES(
-            !hard || !keep_key_images, "Cannot preserve key images on hard rescan");
+    if (!(!hard || !keep_key_images)) {
+        log::error(logcat, "Cannot preserve key images on hard rescan");
+        throw std::runtime_error{"Cannot preserve key images on hard rescan"};
+    }
     const size_t transfers_cnt = m_transfers.size();
     crypto::hash transfers_hash{};
 
@@ -7577,8 +7638,14 @@ bool wallet2::is_tx_spendtime_unlocked(uint64_t unlock_time, uint64_t block_heig
 namespace {
     template <typename T>
     T pop_index(std::vector<T>& vec, size_t idx) {
-        CHECK_AND_ASSERT_MES(!vec.empty(), T(), "Vector must be non-empty");
-        CHECK_AND_ASSERT_MES(idx < vec.size(), T(), "idx out of bounds");
+        if (vec.empty()) {
+            log::error(logcat, "Vector must be non-empty");
+            return T();
+        }
+        if (idx >= vec.size()) {
+            log::error(logcat, "idx out of bounds");
+            return T();
+        }
 
         T res = vec[idx];
         if (idx + 1 != vec.size()) {
@@ -7591,7 +7658,10 @@ namespace {
 
     template <typename T>
     T pop_random_value(std::vector<T>& vec) {
-        CHECK_AND_ASSERT_MES(!vec.empty(), T(), "Vector must be non-empty");
+        if (vec.empty()) {
+            log::error(logcat, "Vector must be non-empty");
+            return T();
+        }
 
         size_t idx = crypto::rand_idx(vec.size());
         return pop_index(vec, idx);
@@ -7599,7 +7669,10 @@ namespace {
 
     template <typename T>
     T pop_back(std::vector<T>& vec) {
-        CHECK_AND_ASSERT_MES(!vec.empty(), T(), "Vector must be non-empty");
+        if (vec.empty()) {
+            log::error(logcat, "Vector must be non-empty");
+            return T();
+        }
 
         T res = vec.back();
         vec.pop_back();
@@ -8429,22 +8502,30 @@ bool wallet2::parse_multisig_tx_from_str(
 
     // sanity checks
     for (const auto& ptx : exported_txs.m_ptx) {
-        CHECK_AND_ASSERT_MES(
-                ptx.selected_transfers.size() == ptx.tx.vin.size(),
-                false,
-                "Mismatched selected_transfers/vin sizes");
-        for (size_t idx : ptx.selected_transfers)
-            CHECK_AND_ASSERT_MES(idx < m_transfers.size(), false, "Transfer index out of range");
-        CHECK_AND_ASSERT_MES(
-                ptx.construction_data.selected_transfers.size() == ptx.tx.vin.size(),
-                false,
-                "Mismatched cd selected_transfers/vin sizes");
-        for (size_t idx : ptx.construction_data.selected_transfers)
-            CHECK_AND_ASSERT_MES(idx < m_transfers.size(), false, "Transfer index out of range");
-        CHECK_AND_ASSERT_MES(
-                ptx.construction_data.sources.size() == ptx.tx.vin.size(),
-                false,
-                "Mismatched sources/vin sizes");
+        if (ptx.selected_transfers.size() != ptx.tx.vin.size()) {
+            log::error(logcat, "Mismatched selected_transfers/vin sizes");
+            return false;
+        }
+        for (size_t idx : ptx.selected_transfers) {
+            if (idx >= m_transfers.size()) {
+                log::error(logcat, "Transfer index out of range");
+                return false;
+            }
+        }
+        if (ptx.construction_data.selected_transfers.size() != ptx.tx.vin.size()) {
+            log::error(logcat, "Mismatched cd selected_transfers/vin sizes");
+            return false;
+        }
+        for (size_t idx : ptx.construction_data.selected_transfers) {
+            if (idx >= m_transfers.size()) {
+                log::error(logcat, "Transfer index out of range");
+                return false;
+            }
+        }
+        if (ptx.construction_data.sources.size() != ptx.tx.vin.size()) {
+            log::error(logcat, "Mismatched sources/vin sizes");
+            return false;
+        }
     }
 
     return true;
@@ -10110,7 +10191,10 @@ bool wallet2::tx_add_fake_output(
     if (global_index == real_index)  // don't re-add real one
         return false;
     auto item = std::make_tuple(global_index, output_public_key, mask);
-    CHECK_AND_ASSERT_MES(!outs.empty(), false, "internal error: outs is empty");
+    if (outs.empty()) {
+        log::error(logcat, "internal error: outs is empty");
+        return false;
+    }
     if (std::find(outs.back().begin(), outs.back().end(), item) !=
         outs.back().end())  // don't add duplicates
         return false;
@@ -12159,29 +12243,35 @@ bool wallet2::light_wallet_key_image_is_ours(
     const account_keys& ack = get_account().get_keys();
     crypto::key_derivation derivation;
     bool r = crypto::generate_key_derivation(tx_public_key, ack.m_view_secret_key, derivation);
-    CHECK_AND_ASSERT_MES(
-            r,
-            false,
-            "failed to generate_key_derivation(" << tx_public_key << ", " << ack.m_view_secret_key
-                                                 << ")");
+    if (!r) {
+        log::error(
+                logcat,
+                "failed to generate_key_derivation(" << tx_public_key << ", "
+                                                     << ack.m_view_secret_key << ")");
+        return false;
+    }
 
     r = crypto::derive_public_key(
             derivation, out_index, ack.m_account_address.m_spend_public_key, in_ephemeral.pub);
-    CHECK_AND_ASSERT_MES(
-            r,
-            false,
-            "failed to derive_public_key (" << derivation << ", " << out_index << ", "
-                                            << ack.m_account_address.m_spend_public_key << ")");
+    if (!r) {
+        log::error(
+                logcat,
+                "failed to derive_public_key (" << derivation << ", " << out_index << ", "
+                                                << ack.m_account_address.m_spend_public_key << ")");
+        return false;
+    }
 
     crypto::derive_secret_key(derivation, out_index, ack.m_spend_secret_key, in_ephemeral.sec);
     crypto::public_key out_pkey_test;
     r = crypto::secret_key_to_public_key(in_ephemeral.sec, out_pkey_test);
-    CHECK_AND_ASSERT_MES(
-            r, false, "failed to secret_key_to_public_key(" << in_ephemeral.sec << ")");
-    CHECK_AND_ASSERT_MES(
-            in_ephemeral.pub == out_pkey_test,
-            false,
-            "derived secret key doesn't match derived public key");
+    if (!r) {
+        log::error(logcat, "failed to secret_key_to_public_key(" << in_ephemeral.sec << ")");
+        return false;
+    }
+    if (in_ephemeral.pub != out_pkey_test) {
+        log::error(logcat, "derived secret key doesn't match derived public key");
+        return false;
+    }
 
     crypto::generate_key_image(in_ephemeral.pub, in_ephemeral.sec, calculated_key_image);
 
@@ -13546,7 +13636,10 @@ std::vector<wallet2::pending_tx> wallet2::create_transactions_from(
 //----------------------------------------------------------------------------------------------------
 void wallet2::cold_tx_aux_import(
         const std::vector<pending_tx>& ptx, const std::vector<std::string>& tx_device_aux) {
-    CHECK_AND_ASSERT_THROW_MES(ptx.size() == tx_device_aux.size(), "TX aux has invalid size");
+    if (ptx.size() != tx_device_aux.size()) {
+        log::error(logcat, "TX aux has invalid size");
+        throw std::runtime_error{"TX aux has invalid size"};
+    }
     for (size_t i = 0; i < ptx.size(); ++i) {
         crypto::hash txid;
         txid = get_transaction_hash(ptx[i].tx);
@@ -13572,7 +13665,10 @@ void wallet2::cold_sign_tx(
     txs.transfers = std::make_pair(0, m_transfers);
 
     auto dev_cold = dynamic_cast<::hw::device_cold*>(&hwdev);
-    CHECK_AND_ASSERT_THROW_MES(dev_cold, "Device does not implement cold signing interface");
+    if (!dev_cold) {
+        log::error(logcat, "Device does not implement cold signing interface");
+        throw std::runtime_error{"Device does not implement cold signing interface"};
+    }
 
     hw::tx_aux_data aux_data;
     hw::wallet_shim wallet_shim;
@@ -13580,7 +13676,10 @@ void wallet2::cold_sign_tx(
     aux_data.tx_recipients = dsts_info;
     aux_data.bp_version = use_fork_rules(feature::CLSAG, 0) ? 3 : 2;
     auto hf_version = get_hard_fork_version();
-    CHECK_AND_ASSERT_THROW_MES(hf_version, "Failed to query hard fork");
+    if (!hf_version) {
+        log::error(logcat, "Failed to query hard fork");
+        throw std::runtime_error{"Failed to query hard fork"};
+    }
     aux_data.hard_fork = static_cast<uint8_t>(*hf_version);
     dev_cold->tx_sign(&wallet_shim, txs, exported_txs, aux_data);
     tx_device_aux = aux_data.tx_device_aux;
@@ -13592,11 +13691,16 @@ void wallet2::cold_sign_tx(
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::cold_key_image_sync(uint64_t& spent, uint64_t& unspent) {
     auto& hwdev = get_account().get_device();
-    CHECK_AND_ASSERT_THROW_MES(
-            hwdev.has_ki_cold_sync(), "Device does not support cold ki sync protocol");
+    if (!hwdev.has_ki_cold_sync()) {
+        log::error(logcat, "Device does not support cold ki sync protocol");
+        throw std::runtime_error{"Device does not support cold ki sync protocol"};
+    }
 
     auto dev_cold = dynamic_cast<::hw::device_cold*>(&hwdev);
-    CHECK_AND_ASSERT_THROW_MES(dev_cold, "Device does not implement cold signing interface");
+    if (!dev_cold) {
+        log::error(logcat, "Device does not implement cold signing interface");
+        throw std::runtime_error{"Device does not implement cold signing interface"};
+    }
 
     std::vector<std::pair<crypto::key_image, crypto::signature>> ski;
     hw::wallet_shim wallet_shim;
@@ -13852,7 +13956,10 @@ bool wallet2::get_tx_key(
     }
 
     auto dev_cold = dynamic_cast<::hw::device_cold*>(&hwdev);
-    CHECK_AND_ASSERT_THROW_MES(dev_cold, "Device does not implement cold signing interface");
+    if (!dev_cold) {
+        log::error(logcat, "Device does not implement cold signing interface");
+        throw std::runtime_error{"Device does not implement cold signing interface"};
+    }
     if (!dev_cold->is_get_tx_key_supported()) {
         log::debug(logcat, "get_tx_key not supported by the device");
         return false;
@@ -15358,7 +15465,10 @@ bool wallet2::verify(
 }
 
 std::string wallet2::sign_multisig_participant(std::string_view data) const {
-    CHECK_AND_ASSERT_THROW_MES(m_multisig, "Wallet is not multisig");
+    if (!m_multisig) {
+        log::error(logcat, "Wallet is not multisig");
+        throw std::runtime_error{"Wallet is not multisig"};
+    }
 
     crypto::hash hash;
     crypto::cn_fast_hash(data.data(), data.size(), hash);
@@ -16252,33 +16362,52 @@ crypto::public_key wallet2::get_multisig_signer_public_key(
 }
 //----------------------------------------------------------------------------------------------------
 crypto::public_key wallet2::get_multisig_signer_public_key() const {
-    CHECK_AND_ASSERT_THROW_MES(m_multisig, "Wallet is not multisig");
+    if (!m_multisig) {
+        log::error(logcat, "Wallet is not multisig");
+        throw std::runtime_error{"Wallet is not multisig"};
+    }
     crypto::public_key signer;
-    CHECK_AND_ASSERT_THROW_MES(
-            crypto::secret_key_to_public_key(get_account().get_keys().m_spend_secret_key, signer),
-            "Failed to generate signer public key");
+    if (!crypto::secret_key_to_public_key(get_account().get_keys().m_spend_secret_key, signer)) {
+        log::error(logcat, "Failed to generate signer public key");
+        throw std::runtime_error{"Failed to generate signer public key"};
+    }
     return signer;
 }
 //----------------------------------------------------------------------------------------------------
 crypto::public_key wallet2::get_multisig_signing_public_key(const crypto::secret_key& msk) const {
-    CHECK_AND_ASSERT_THROW_MES(m_multisig, "Wallet is not multisig");
+    if (!m_multisig) {
+        log::error(logcat, "Wallet is not multisig");
+        throw std::runtime_error{"Wallet is not multisig"};
+    }
     crypto::public_key pkey;
-    CHECK_AND_ASSERT_THROW_MES(
-            crypto::secret_key_to_public_key(msk, pkey), "Failed to derive public key");
+    if (!crypto::secret_key_to_public_key(msk, pkey)) {
+        log::error(logcat, "Failed to derive public key");
+        throw std::runtime_error{"Failed to derive public key"};
+    }
     return pkey;
 }
 //----------------------------------------------------------------------------------------------------
 crypto::public_key wallet2::get_multisig_signing_public_key(size_t idx) const {
-    CHECK_AND_ASSERT_THROW_MES(m_multisig, "Wallet is not multisig");
-    CHECK_AND_ASSERT_THROW_MES(
-            idx < get_account().get_multisig_keys().size(),
-            "Multisig signing key index out of range");
+    if (!m_multisig) {
+        log::error(logcat, "Wallet is not multisig");
+        throw std::runtime_error{"Wallet is not multisig"};
+    }
+    if (idx >= get_account().get_multisig_keys().size()) {
+        log::error(logcat, "Multisig signing key index out of range");
+        throw std::runtime_error{"Multisig signing key index out of range"};
+    }
     return get_multisig_signing_public_key(get_account().get_multisig_keys()[idx]);
 }
 //----------------------------------------------------------------------------------------------------
 rct::key wallet2::get_multisig_k(size_t idx, const std::unordered_set<rct::key>& used_L) const {
-    CHECK_AND_ASSERT_THROW_MES(m_multisig, "Wallet is not multisig");
-    CHECK_AND_ASSERT_THROW_MES(idx < m_transfers.size(), "idx out of range");
+    if (!m_multisig) {
+        log::error(logcat, "Wallet is not multisig");
+        throw std::runtime_error{"Wallet is not multisig"};
+    }
+    if (idx >= m_transfers.size()) {
+        log::error(logcat, "idx out of range");
+        throw std::runtime_error{"idx out of range"};
+    }
     for (const auto& k : m_transfers[idx].m_multisig_k) {
         rct::key L;
         rct::scalarmultBase(L, k);
@@ -16290,7 +16419,10 @@ rct::key wallet2::get_multisig_k(size_t idx, const std::unordered_set<rct::key>&
 }
 //----------------------------------------------------------------------------------------------------
 rct::multisig_kLRki wallet2::get_multisig_kLRki(size_t n, const rct::key& k) const {
-    CHECK_AND_ASSERT_THROW_MES(n < m_transfers.size(), "Bad m_transfers index");
+    if (n >= m_transfers.size()) {
+        log::error(logcat, "Bad m_transfers index");
+        throw std::runtime_error{"Bad m_transfers index"};
+    }
     rct::multisig_kLRki kLRki;
     kLRki.k = k;
     cryptonote::generate_multisig_LR(
@@ -16307,7 +16439,10 @@ rct::multisig_kLRki wallet2::get_multisig_composite_kLRki(
         const std::unordered_set<crypto::public_key>& ignore_set,
         std::unordered_set<rct::key>& used_L,
         std::unordered_set<rct::key>& new_used_L) const {
-    CHECK_AND_ASSERT_THROW_MES(n < m_transfers.size(), "Bad transfer index");
+    if (n >= m_transfers.size()) {
+        log::error(logcat, "Bad transfer index");
+        throw std::runtime_error{"Bad transfer index"};
+    }
 
     const transfer_details& td = m_transfers[n];
     rct::multisig_kLRki kLRki = get_multisig_kLRki(n, rct::skGen());
@@ -16329,14 +16464,19 @@ rct::multisig_kLRki wallet2::get_multisig_composite_kLRki(
             break;
         }
     }
-    CHECK_AND_ASSERT_THROW_MES(
-            n_signers_used >= m_multisig_threshold, "LR not found for enough participants");
+    if (n_signers_used < m_multisig_threshold) {
+        log::error(logcat, "LR not found for enough participants");
+        throw std::runtime_error{"LR not found for enough participants"};
+    }
 
     return kLRki;
 }
 //----------------------------------------------------------------------------------------------------
 crypto::key_image wallet2::get_multisig_composite_key_image(size_t n) const {
-    CHECK_AND_ASSERT_THROW_MES(n < m_transfers.size(), "Bad output index");
+    if (n >= m_transfers.size()) {
+        log::error(logcat, "Bad output index");
+        throw std::runtime_error{"Bad output index"};
+    }
 
     const transfer_details& td = m_transfers[n];
     crypto::public_key tx_key;
@@ -16385,7 +16525,10 @@ std::string wallet2::export_multisig() {
             // td.m_key_image
             bool r = generate_multisig_key_image(
                     get_account().get_keys(), m, td.get_public_key(), ki);
-            CHECK_AND_ASSERT_THROW_MES(r, "Failed to generate key image");
+            if (!r) {
+                log::error(logcat, "Failed to generate key image");
+                throw std::runtime_error{"Failed to generate key image"};
+            }
             info[n].m_partial_key_images.push_back(ki);
         }
 
@@ -16423,15 +16566,23 @@ void wallet2::update_multisig_rescan_info(
         const std::vector<std::vector<rct::key>>& multisig_k,
         const std::vector<std::vector<wallet::multisig_info>>& info,
         size_t n) {
-    CHECK_AND_ASSERT_THROW_MES(n < m_transfers.size(), "Bad index in update_multisig_info");
-    CHECK_AND_ASSERT_THROW_MES(
-            multisig_k.size() >= m_transfers.size(), "Mismatched sizes of multisig_k and info");
+    if (n >= m_transfers.size()) {
+        log::error(logcat, "Bad index in update_multisig_info");
+        throw std::runtime_error{"Bad index in update_multisig_info"};
+    }
+    if (multisig_k.size() < m_transfers.size()) {
+        log::error(logcat, "Mismatched sizes of multisig_k and info");
+        throw std::runtime_error{"Mismatched sizes of multisig_k and info"};
+    }
 
     log::debug(logcat, "update_multisig_rescan_info: updating index {}", n);
     transfer_details& td = m_transfers[n];
     td.m_multisig_info.clear();
     for (const auto& pi : info) {
-        CHECK_AND_ASSERT_THROW_MES(n < pi.size(), "Bad pi size");
+        if (n >= pi.size()) {
+            log::error(logcat, "Bad pi size");
+            throw std::runtime_error{"Bad pi size"};
+        }
         td.m_multisig_info.push_back(pi[n]);
     }
     m_key_images.erase(td.m_key_image);
@@ -16444,7 +16595,10 @@ void wallet2::update_multisig_rescan_info(
 }
 //----------------------------------------------------------------------------------------------------
 size_t wallet2::import_multisig(std::vector<std::string> blobs) {
-    CHECK_AND_ASSERT_THROW_MES(m_multisig, "Wallet is not multisig");
+    if (!m_multisig) {
+        log::error(logcat, "Wallet is not multisig");
+        throw std::runtime_error{"Wallet is not multisig"};
+    }
 
     std::vector<std::vector<wallet::multisig_info>> info;
     std::unordered_set<crypto::public_key> seen;
@@ -16494,9 +16648,11 @@ size_t wallet2::import_multisig(std::vector<std::string> blobs) {
         info.push_back(std::move(i));
     }
 
-    CHECK_AND_ASSERT_THROW_MES(
-            info.size() + 1 <= m_multisig_signers.size() && info.size() + 1 >= m_multisig_threshold,
-            "Wrong number of multisig sources");
+    if (!(info.size() + 1 <= m_multisig_signers.size() &&
+          info.size() + 1 >= m_multisig_threshold)) {
+        log::error(logcat, "Wrong number of multisig sources");
+        throw std::runtime_error{"Wrong number of multisig sources"};
+    }
 
     std::vector<std::vector<rct::key>> k;
     OXEN_DEFER {
@@ -16518,14 +16674,17 @@ size_t wallet2::import_multisig(std::vector<std::string> blobs) {
 
     // check signers are consistent
     for (const auto& pi : info) {
-        CHECK_AND_ASSERT_THROW_MES(
-                std::find(m_multisig_signers.begin(), m_multisig_signers.end(), pi[0].m_signer) !=
-                        m_multisig_signers.end(),
-                "Signer is not a member of this multisig wallet");
-        for (size_t n = 1; n < n_outputs; ++n)
-            CHECK_AND_ASSERT_THROW_MES(
-                    pi[n].m_signer == pi[0].m_signer,
-                    "Mismatched signers in imported multisig info");
+        if (std::find(m_multisig_signers.begin(), m_multisig_signers.end(), pi[0].m_signer) ==
+            m_multisig_signers.end()) {
+            log::error(logcat, "Signer is not a member of this multisig wallet");
+            throw std::runtime_error{"Signer is not a member of this multisig wallet"};
+        }
+        for (size_t n = 1; n < n_outputs; ++n) {
+            if (pi[n].m_signer != pi[0].m_signer) {
+                log::error(logcat, "Mismatched signers in imported multisig info");
+                throw std::runtime_error{"Mismatched signers in imported multisig info"};
+            }
+        }
     }
 
     // trim data we don't have info for from all participants
@@ -17012,9 +17171,10 @@ std::string wallet2::get_rpc_status(std::string_view s) const {
 }
 //----------------------------------------------------------------------------------------------------
 uint64_t wallet2::hash_m_transfers(int64_t transfer_height, crypto::hash& hash) const {
-    CHECK_AND_ASSERT_THROW_MES(
-            transfer_height > (int64_t)m_transfers.size(),
-            "Hash height is greater than number of transfers");
+    if (transfer_height <= (int64_t)m_transfers.size()) {
+        log::error(logcat, "Hash height is greater than number of transfers");
+        throw std::runtime_error{"Hash height is greater than number of transfers"};
+    }
 
     KECCAK_CTX state;
     crypto::hash tmp_hash{};

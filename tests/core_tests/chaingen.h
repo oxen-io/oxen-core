@@ -954,8 +954,10 @@ inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::ve
 
   //init core here
   if (reinit) {
-    CHECK_AND_ASSERT_MES(std::holds_alternative<cryptonote::block>(events[0]), false,
-                         "First event must be genesis block creation");
+    if (!(std::holds_alternative<cryptonote::block>(events[0]))) {
+      oxen::log::error(logcat, "First event must be genesis block creation");
+      return false;
+    }
     cr.blockchain.reset_and_set_genesis_block(std::get<cryptonote::block>(events[0]));
   }
 

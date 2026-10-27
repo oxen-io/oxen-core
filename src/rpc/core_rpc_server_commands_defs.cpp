@@ -130,7 +130,10 @@ namespace {
         std::vector<T> v;
         for (auto it = s.begin(); it < s.end();) {
             int read = tools::read_varint(it, s.end(), v.emplace_back());
-            CHECK_AND_ASSERT_THROW_MES(read > 0, "Error decompressing data");
+            if (read <= 0) {
+                oxen::log::error(logcat, "Error decompressing data");
+                throw std::runtime_error{"Error decompressing data"};
+            }
         }
         return v;
     }

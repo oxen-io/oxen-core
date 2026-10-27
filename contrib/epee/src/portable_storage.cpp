@@ -151,7 +151,8 @@ namespace epee {
           return nullptr;
         return insert_new_section(section_name, parent_section);
       }
-      CHECK_AND_ASSERT(pentry , nullptr);
+      if (!pentry)
+        return nullptr;
       //check that section_entry we find is real "CSSection"
       if (!std::holds_alternative<section>(*pentry))
       {
@@ -180,7 +181,8 @@ namespace epee {
     storage_entry* portable_storage::find_storage_entry(const std::string& pentry_name, section* psection)
     {
       TRY_ENTRY();
-      CHECK_AND_ASSERT(psection, nullptr);
+      if (!psection)
+        return nullptr;
       auto it = psection->m_entries.find(pentry_name);
       if(it == psection->m_entries.end())
         return nullptr;

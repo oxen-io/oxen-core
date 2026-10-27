@@ -3705,8 +3705,13 @@ bool wallet_rpc_server::run(bool) {
     if (wal)
         m_wallet = std::move(wal);
     bool r = init();
-    CHECK_AND_ASSERT_MES(
-            r, false, "{}", tools::wallet_rpc_server::tr("Failed to initialize wallet RPC server"));
+    if (!r) {
+        log::error(
+                logcat,
+                "{}",
+                tools::wallet_rpc_server::tr("Failed to initialize wallet RPC server"));
+        return false;
+    }
     tools::signal_handler::install([this](int) {
         log::warning(logcat, "Shutting down...");
         m_stop = true;

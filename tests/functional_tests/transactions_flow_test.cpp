@@ -56,7 +56,10 @@ inline uint64_t random(const uint64_t max_value) {
 
 bool do_send_money(tools::wallet2& w1, tools::wallet2& w2, size_t mix_in_factor, uint64_t amount_to_transfer, transaction& tx, size_t parts=1)
 {
-  CHECK_AND_ASSERT_MES(parts > 0, false, "parts must be > 0");
+  if (parts <= 0) {
+    oxen::log::error(logcat, "parts must be > 0");
+    return false;
+  }
 
   std::vector<cryptonote::tx_destination_entry> dsts;
   dsts.reserve(parts);
@@ -165,15 +168,24 @@ bool transactions_flow_test(std::string& working_folder,
   rpc::STOP_MINING::request daemon1_req{};
   rpc::STOP_MINING::response daemon1_rsp{};
   bool r = http_client.set_server(daemon_addr_a, std::nullopt) && epee::net_utils::invoke_http_json("/stop_mine", daemon1_req, daemon1_rsp, http_client, std::chrono::seconds(10));
-  CHECK_AND_ASSERT_MES(r, false, "failed to stop mining");
+  if (!r) {
+    oxen::log::error(logcat, "failed to stop mining");
+    return false;
+  }
 
   rpc::START_MINING::request daemon_req{};
   rpc::START_MINING::response daemon_rsp{};
   daemon_req.miner_address = w1.get_account().get_public_address_str(MAINNET);
   daemon_req.threads_count = 9;
   r = epee::net_utils::invoke_http_json("/start_mining", daemon_req, daemon_rsp, http_client, std::chrono::seconds(10));
-  CHECK_AND_ASSERT_MES(r, false, "failed to start mining getrandom_outs");
-  CHECK_AND_ASSERT_MES(daemon_rsp.status == rpc::STATUS_OK, false, "failed to start mining");
+  if (!r) {
+    oxen::log::error(logcat, "failed to start mining getrandom_outs");
+    return false;
+  }
+  if (daemon_rsp.status != rpc::STATUS_OK) {
+    oxen::log::error(logcat, "failed to start mining");
+    return false;
+  }
 
   //wait for money, until balance will have enough money
   w1.refresh(true, blocks_fetched, received_money, ok);
@@ -198,7 +210,10 @@ bool transactions_flow_test(std::string& working_folder,
       {
         cryptonote::transaction tx_s;
         bool r = do_send_money(w1, w1, 0, td.m_tx.vout[td.m_internal_output_index].amount - TEST_FEE, tx_s, 50);
-        CHECK_AND_ASSERT_MES(r, false, "Failed to send starter tx " << get_transaction_hash(tx_s));
+        if (!r) {
+          oxen::log::error(logcat, "Failed to send starter tx " << get_transaction_hash(tx_s));
+          return false;
+        }
         oxen::log::info(logcat, fmt::format(fg(fmt::terminal_color::green), "Starter transaction sent " << get_transaction_hash(tx_s));
         if(++count >= FIRST_N_TRANSFERS)
           break;
@@ -287,7 +302,10 @@ bool transactions_flow_test(std::string& working_folder,
     for (auto& td : tc)
     {
       auto it = txs.find(td.m_txid);
-      CHECK_AND_ASSERT_MES(it != txs.end(), false, "transaction not found in local cache");
+      if (it == txs.end()) {
+        oxen::log::error(logcat, "transaction not found in local cache");
+        return false;
+      }
       it->second.m_received_count += 1;
     }
 
