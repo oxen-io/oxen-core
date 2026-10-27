@@ -13761,7 +13761,7 @@ bool wallet2::use_fork_rules(hf version, uint64_t early_blocks) const {
 uint64_t wallet2::get_upper_transaction_weight_limit() const {
     if (m_upper_transaction_weight_limit > 0)
         return m_upper_transaction_weight_limit;
-    return BLOCK_GRANTED_FULL_REWARD_ZONE_V5 / 2 - COINBASE_BLOB_RESERVED_SIZE;
+    return BLOCK_GRANTED_FULL_REWARD_ZONE / 2 - COINBASE_BLOB_RESERVED_SIZE;
 }
 //----------------------------------------------------------------------------------------------------
 std::vector<size_t> wallet2::select_available_outputs(

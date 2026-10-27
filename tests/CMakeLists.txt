@@ -58,7 +58,6 @@ add_subdirectory(crypto)
 add_subdirectory(core_proxy)
 add_subdirectory(unit_tests)
 add_subdirectory(difficulty)
-add_subdirectory(block_weight)
 add_subdirectory(hash)
 add_subdirectory(net_load_tests)
 add_subdirectory(network_tests)
@@ -85,7 +84,6 @@ add_test(
 set(enabled_tests
     core_tests
     difficulty
-    block_weight
     hash
     core_proxy
     fuzz

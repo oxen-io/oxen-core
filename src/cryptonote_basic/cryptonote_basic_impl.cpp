@@ -63,10 +63,6 @@ struct integrated_address {
 /* Cryptonote helper functions                                          */
 /************************************************************************/
 //-----------------------------------------------------------------------------------------------
-size_t get_min_block_weight(hf /*version*/) {
-    return BLOCK_GRANTED_FULL_REWARD_ZONE_V5;
-}
-//-----------------------------------------------------------------------------------------------
 // TODO(oxen): Move into oxen_economy, this will require access to oxen::exp2
 uint64_t block_reward_unpenalized_formula_v7(
         uint64_t already_generated_coins, uint64_t /*height*/) {
@@ -90,7 +86,6 @@ uint64_t block_reward_unpenalized_formula_v8(uint64_t height) {
 }
 
 bool get_base_block_reward(
-        size_t median_weight,
         size_t current_block_weight,
         uint64_t already_generated_coins,
         uint64_t& reward,
@@ -110,41 +105,32 @@ bool get_base_block_reward(
                                                    : block_reward_unpenalized_formula_v7(
                                                         already_generated_coins, height);
 
-    uint64_t full_reward_zone = get_min_block_weight(version);
-
-    // make it soft
-    if (median_weight < full_reward_zone) {
-        median_weight = full_reward_zone;
-    }
+    constexpr uint64_t median_weight = BLOCK_GRANTED_FULL_REWARD_ZONE;
 
     if (current_block_weight <= median_weight) {
         reward = reward_unpenalized = base_reward;
         return true;
     }
 
-    if (current_block_weight > 2 * median_weight) {
+    if (current_block_weight > BLOCK_WEIGHT_LIMIT) {
         log::error(
                 logcat,
                 "Block cumulative weight is too big: {}, expected less than {}",
                 current_block_weight,
-                2 * median_weight);
+                BLOCK_WEIGHT_LIMIT);
         return false;
     }
 
-    assert(median_weight < std::numeric_limits<uint32_t>::max());
-    assert(current_block_weight < std::numeric_limits<uint32_t>::max());
-
     uint64_t product_hi;
-    // BUGFIX: 32-bit saturation bug (e.g. ARM7), the result was being
-    // treated as 32-bit by default.
-    uint64_t multiplicand = 2 * median_weight - current_block_weight;
-    multiplicand *= current_block_weight;
-    uint64_t product_lo = mul128(base_reward, multiplicand, &product_hi);
+    uint64_t product_lo =
+            mul128(base_reward,
+                   (BLOCK_WEIGHT_LIMIT - current_block_weight) * current_block_weight,
+                   &product_hi);
 
     uint64_t reward_hi;
     uint64_t reward_lo;
-    div128_32(product_hi, product_lo, static_cast<uint32_t>(median_weight), &reward_hi, &reward_lo);
-    div128_32(reward_hi, reward_lo, static_cast<uint32_t>(median_weight), &reward_hi, &reward_lo);
+    div128_32(product_hi, product_lo, median_weight, &reward_hi, &reward_lo);
+    div128_32(reward_hi, reward_lo, median_weight, &reward_hi, &reward_lo);
     assert(0 == reward_hi);
     assert(reward_lo < base_reward);
 

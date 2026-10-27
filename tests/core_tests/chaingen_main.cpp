@@ -261,7 +261,6 @@ try {
 
       // Double spend
 
-      GENERATE_AND_PLAY(gen_block_reward);
       GENERATE_AND_PLAY(gen_uint_overflow_2);
 
       GENERATE_AND_PLAY(gen_v2_tx_mixable_0_mixin);

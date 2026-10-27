@@ -422,12 +422,10 @@ int import_from_file(
                     coins_generated = bp.coins_generated;
 
                     try {
-                        uint64_t long_term_block_weight =
-                                core.blockchain.get_next_long_term_block_weight(block_weight);
                         core.blockchain.db().add_block(
                                 std::make_pair(b, block_to_blob(b)),
                                 block_weight,
-                                long_term_block_weight,
+                                0,
                                 cumulative_difficulty,
                                 coins_generated,
                                 txs);

@@ -953,7 +953,7 @@ bool oxen_core_fee_burning::generate(std::vector<test_event_entry>& events)
     ctx.height = gen.blocks().back().block.get_height();
     ctx.fee = send_fee_burn[0][1] + send_fee_burn[1][1] - send_fee_burn[0][2] - send_fee_burn[1][2];
     block_reward_parts reward_parts;
-    cryptonote::get_oxen_block_reward(0, 0, 1 /*already generated, needs to be >0 to avoid premine*/, newest_hf, reward_parts, ctx);
+    cryptonote::get_oxen_block_reward(0, 1 /*already generated, needs to be >0 to avoid premine*/, newest_hf, reward_parts, ctx);
     good_miner_reward = reward_parts.miner_fee + reward_parts.base_miner + reward_parts.service_node_total;
   }
 

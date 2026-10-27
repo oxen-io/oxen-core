@@ -5426,7 +5426,7 @@ void BlockchainLMDB::migrate_3_4() {
             uint64_t long_term_block_weight;
             if (past_long_term_weight) {
                 uint64_t long_term_effective_block_median_weight = std::max<uint64_t>(
-                        BLOCK_GRANTED_FULL_REWARD_ZONE_V5,
+                        BLOCK_GRANTED_FULL_REWARD_ZONE,
                         tools::median(std::vector<uint64_t>{
                                 long_term_block_weights.begin(), long_term_block_weights.end()}));
                 long_term_block_weight = std::min<uint64_t>(

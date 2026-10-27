@@ -55,16 +55,17 @@ inline constexpr uint64_t DEFAULT_DUST_THRESHOLD = 2'000'000'000;  // 2 * pow(10
 
 inline constexpr uint64_t BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW = 11;
 
-inline constexpr uint64_t REWARD_BLOCKS_WINDOW = 100;
 // NOTE(oxen): For testing suite, size of block (bytes) after which reward for block calculated
 // using block size - before first fork:
 inline constexpr uint64_t BLOCK_GRANTED_FULL_REWARD_ZONE_V1 = 20000;
-// size of block (bytes) after which reward for block calculated using block size -
-// second change, from v5
-inline constexpr uint64_t BLOCK_GRANTED_FULL_REWARD_ZONE_V5 = 300000;
+// Block weight (bytes) above which the (pre-HF21) block reward is penalized, and half of the
+// maximum block weight.  In Monero this tracks the median weight of recent blocks, but that is
+// clamped to never go below this value, and Oxen's median has never risen above it: on mainnet the
+// largest 100-block median ever was 299022.  It is therefore simply a constant.
+inline constexpr uint64_t BLOCK_GRANTED_FULL_REWARD_ZONE = 300000;
+inline constexpr uint64_t BLOCK_WEIGHT_LIMIT = 2 * BLOCK_GRANTED_FULL_REWARD_ZONE;
 // size in blocks of the long term block weight median window
 inline constexpr uint64_t LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE = 100000;
-inline constexpr uint64_t SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR = 50;
 inline constexpr uint64_t COINBASE_BLOB_RESERVED_SIZE = 600;
 
 inline constexpr uint64_t LOCKED_TX_ALLOWED_DELTA_BLOCKS = 1;
@@ -275,7 +276,6 @@ namespace feature {
     constexpr auto MIN_2_OUTPUTS = hf::hf16_pulse;
     constexpr auto REJECT_SIGS_IN_COINBASE = hf::hf16_pulse;
     constexpr auto ENFORCE_MIN_AGE = hf::hf16_pulse;
-    constexpr auto EFFECTIVE_SHORT_TERM_MEDIAN_IN_PENALTY = hf::hf16_pulse;
     constexpr auto PULSE = hf::hf16_pulse;
     constexpr auto CLSAG = hf::hf16_pulse;
     constexpr auto PROOF_BTENC = hf::hf18;

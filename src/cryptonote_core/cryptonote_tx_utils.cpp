@@ -277,7 +277,6 @@ static uint64_t calculate_sum_of_portions(
 
 std::pair<bool, uint64_t> construct_miner_tx(
         size_t height,
-        size_t median_weight,
         uint64_t already_generated_coins,
         size_t current_block_weight,
         uint64_t fee,
@@ -324,7 +323,6 @@ std::pair<bool, uint64_t> construct_miner_tx(
 
     block_reward_parts reward_parts{};
     if (!get_oxen_block_reward(
-                median_weight,
                 current_block_weight,
                 already_generated_coins,
                 hard_fork_version,
@@ -610,7 +608,6 @@ std::pair<bool, uint64_t> construct_miner_tx(
 }
 
 bool get_oxen_block_reward(
-        size_t median_weight,
         size_t current_block_weight,
         uint64_t already_generated_coins,
         hf hard_fork_version,
@@ -623,7 +620,6 @@ bool get_oxen_block_reward(
     result = {};
     uint64_t base_reward, base_reward_unpenalized;
     if (!get_base_block_reward(
-                median_weight,
                 current_block_weight,
                 already_generated_coins,
                 base_reward,
