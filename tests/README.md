@@ -92,23 +92,6 @@ To run the same tests on a release build, replace `debug` with `release`.
 
 [TODO]
 
-# Performance tests
-
-Performance tests are located in `tests/performance_tests`, and test features for performance metrics on the host machine.
-
-To run only Monero's performance tests (after building):
-
-```bash
-cd build/debug/tests/performance_tests
-./performance_tests
-```
-
-The path may be build/Linux/master/debug (adapt as necessary for your platform).
-
-If the `performance_tests` binary does not exist, try running `make` in the `build/debug/tests/performance_tests` directory.
-
-To run the same tests on a release build, replace `debug` with `release`.
-
 # Unit tests
 
 Unit tests are defined under the `tests/unit_tests` directory. Independent components are tested individually to ensure they work properly on their own.
