@@ -198,12 +198,12 @@ bool node_server<t_payload_net_handler>::is_remote_host_allowed(
         std::map<epee::net_utils::ipv4_network_subnet, time_t>::iterator it;
         for (it = m_blocked_subnets.begin(); it != m_blocked_subnets.end();) {
             if (now >= it->second) {
-                it = m_blocked_subnets.erase(it);
                 log::info(
                         logcat,
                         fg(fmt::terminal_color::cyan),
                         "Subnet {} unblocked",
                         it->first.host_str());
+                it = m_blocked_subnets.erase(it);
                 continue;
             }
             if (it->first.matches(ipv4_address)) {
@@ -318,7 +318,7 @@ bool node_server<t_payload_net_handler>::unblock_subnet(
     if (i == m_blocked_subnets.end())
         return false;
     m_blocked_subnets.erase(i);
-    log::info(logcat, fg(fmt::terminal_color::cyan), "Subnet {}", subnet.host_str());
+    log::info(logcat, fg(fmt::terminal_color::cyan), "Subnet {} unblocked.", subnet.host_str());
     return true;
 }
 //-----------------------------------------------------------------------------------
