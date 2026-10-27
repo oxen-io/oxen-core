@@ -55,7 +55,6 @@ add_subdirectory(fuzz)
 add_subdirectory(crypto)
 # Still expects to find monero daemon/wallet; disable for now.
 #add_subdirectory(functional_tests)
-#add_subdirectory(performance_tests)
 add_subdirectory(core_proxy)
 add_subdirectory(unit_tests)
 add_subdirectory(difficulty)
