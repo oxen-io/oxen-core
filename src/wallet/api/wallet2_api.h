@@ -397,7 +397,7 @@ struct WalletListener {
  * @brief Interface for wallet operations.
  */
 struct Wallet {
-    enum Device { Device_Software = 0, Device_Ledger = 1, Device_Trezor = 2 };
+    enum Device { Device_Software = 0, Device_Ledger = 1 };
 
     enum Status { Status_Ok, Status_Error, Status_Critical };
 

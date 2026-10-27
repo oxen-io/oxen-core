@@ -98,7 +98,7 @@ class device {
 
     virtual bool is_hardware_device() const = 0;
     enum class mode { NONE, TRANSACTION_CREATE_REAL, TRANSACTION_CREATE_FAKE, TRANSACTION_PARSE };
-    enum class type { SOFTWARE = 0, LEDGER = 1, TREZOR = 2 };
+    enum class type { SOFTWARE = 0, LEDGER = 1 };
 
     enum class protocol {
         DEFAULT,

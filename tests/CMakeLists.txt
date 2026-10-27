@@ -68,10 +68,6 @@ if (ANDROID)
 #  add_subdirectory(libwallet_api_tests)
 endif()
 
-if (TREZOR_DEBUG)
-  add_subdirectory(trezor)
-endif()
-
 # add_subdirectory(daemon_tests)
 
 add_executable(hash-target-tests

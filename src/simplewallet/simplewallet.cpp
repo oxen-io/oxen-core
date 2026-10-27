@@ -7951,8 +7951,7 @@ bool simple_wallet::submit_transfer(const std::vector<std::string>& args_) {
 bool simple_wallet::get_tx_key(const std::vector<std::string>& args_) {
     std::vector<std::string> local_args = args_;
 
-    if (m_wallet->key_on_device() &&
-        m_wallet->get_account().get_device().get_type() != hw::device::type::TREZOR) {
+    if (m_wallet->key_on_device()) {
         fail_msg_writer() << tr("command not supported by HW wallet");
         return true;
     }

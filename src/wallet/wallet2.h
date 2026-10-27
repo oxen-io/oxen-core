@@ -2152,9 +2152,6 @@ class wallet2 {
     void setup_keys(const epee::wipeable_string& password);
     size_t get_transfer_details(const crypto::key_image& ki) const;
 
-    void register_devices();
-    hw::device& lookup_device(const std::string& device_descriptor);
-
     bool get_rct_distribution(uint64_t& start_height, std::vector<uint64_t>& distribution);
     bool get_output_blacklist(std::vector<uint64_t>& blacklist);
 
@@ -2329,7 +2326,6 @@ class wallet2 {
     unsigned int m_decrypt_keys_lockers;
 
     bool m_unattended;
-    bool m_devices_registered;
 
     std::shared_ptr<tools::Notify> m_tx_notify;
     std::unique_ptr<wallet_device_callback> m_device_callback;
