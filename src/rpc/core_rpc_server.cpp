@@ -3118,6 +3118,7 @@ void core_rpc_server::fill_sn_response_entry(
         auto steady_now = std::chrono::steady_clock::now();
         set_if_requested(reqed, entry, "last_uptime_proof", proof.timestamp);
         if (m_core.service_node()) {
+            bool forced_unreachable = m_core.is_forced_unreachable(proof.proof->public_ip);
             auto set_reach_info = [&](std::string_view key_prefix,
                                       const service_nodes::proof_info::reachable_stats& reachable) {
                 set_if_requested(
@@ -3126,7 +3127,9 @@ void core_rpc_server::fill_sn_response_entry(
                         "{}_reachable"_format(key_prefix),
                         !reachable.unreachable_for(
                                 netconf.UPTIME_PROOF_VALIDITY - netconf.UPTIME_PROOF_FREQUENCY,
-                                steady_now));
+                                steady_now),
+                        "{}_forced_unreachable"_format(key_prefix),
+                        forced_unreachable);
 
                 if (auto k = "{}_first_unreachable"_format(key_prefix);
                     reachable.first_unreachable != service_nodes::NEVER && requested(reqed, k))
