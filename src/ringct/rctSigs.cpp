@@ -39,7 +39,6 @@
 #include "common/util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
-#include "epee/misc_log_ex.h"
 
 namespace rct {
 static auto logcat = log::Cat("ringct");

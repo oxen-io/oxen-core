@@ -34,7 +34,6 @@
 #ifdef WITH_DEVICE_LEDGER
 #include "device_ledger.hpp"
 #endif
-#include "epee/misc_log_ex.h"
 
 namespace hw {
 

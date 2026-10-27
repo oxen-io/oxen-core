@@ -36,7 +36,6 @@
 #include <sys/wait.h>
 #endif
 
-#include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
 #include "oxen.h"
 #include "spawn.h"

@@ -27,7 +27,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gtest/gtest.h"
-#include "epee/misc_log_ex.h"
 #include "rpc/core_rpc_server.h"
 #include "blockchain_db/blockchain_db.h"
 #include "cryptonote_core/cryptonote_core.h"

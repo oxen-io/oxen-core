@@ -54,7 +54,6 @@
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "epee/misc_log_ex.h"
 #include "epee/net/net_utils_base.h"
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "net/error.h"

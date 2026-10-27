@@ -40,7 +40,6 @@
 #include "cryptonote_basic/verification_context.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
-#include "epee/misc_log_ex.h"
 #include "service_node_list.h"
 
 using cryptonote::hf;

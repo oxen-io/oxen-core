@@ -28,7 +28,6 @@
 //
 // Adapted from Python code by Sarang Noether
 
-#include "epee/misc_log_ex.h"
 #include <logging/oxen_logger.h>
 extern "C"
 {

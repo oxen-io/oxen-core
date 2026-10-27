@@ -32,8 +32,6 @@
 
 #include <oxenc/hex.h>
 
-#include "epee/misc_log_ex.h"
-
 namespace hw {
 
 static auto logcat = log::Cat("device");

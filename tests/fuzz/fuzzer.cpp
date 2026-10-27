@@ -27,7 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <boost/program_options.hpp>
-#include "epee/misc_log_ex.h"
+#include <iostream>
 #include "common/command_line.h"
 #include "common/util.h"
 #include "fuzzer.h"

@@ -39,7 +39,6 @@
 
 #include "common/guts.h"
 #include "common/string_util.h"
-#include "epee/misc_log_ex.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "crypto-tests.h"

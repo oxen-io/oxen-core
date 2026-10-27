@@ -30,7 +30,6 @@
 // Paper references are to https://eprint.iacr.org/2017/1066 (revision 1 July 2018)
 
 #include <stdlib.h>
-#include "epee/misc_log_ex.h"
 #include <logging/oxen_logger.h>
 #include <span>
 #include "common/varint.h"

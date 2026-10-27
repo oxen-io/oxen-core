@@ -38,7 +38,6 @@
 #include "epee/net/net_utils_base.h"
 #include "gtest/gtest.h"
 
-#include "epee/misc_log_ex.h"
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "logging/oxen_logger.h"
 #include "common/util.h"
