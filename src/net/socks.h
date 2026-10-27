@@ -45,9 +45,9 @@ namespace boost::asio {
 using io_service = io_context;
 }
 
-namespace epee::net_utils {
-class ipv4_network_address;
-}  // namespace epee::net_utils
+namespace net {
+class ipv4_address;
+}  // namespace net
 
 namespace net::socks {
 //! Supported socks variants.
@@ -137,7 +137,7 @@ class client {
     void clear_command() noexcept { buffer_size_ = 0; }
 
     //! Try to set `address` as remote connection request.
-    bool set_connect_command(const epee::net_utils::ipv4_network_address& address);
+    bool set_connect_command(const net::ipv4_address& address);
 
     //! Try to set `domain` + `port` as remote connection request.
     bool set_connect_command(std::string_view domain, std::uint16_t port);

@@ -35,8 +35,10 @@
 
 #include <cstring>
 
+#include "common/ipv4.h"
 #include "epee/net/net_utils_base.h"
 #include "net/i2p_address.h"
+#include "net/ipv4_address.h"
 #include "net/tor_address.h"
 #include "p2p/p2p_protocol_defs.h"
 
@@ -65,8 +67,8 @@ inline void serialize(Archive& a, epee::net_utils::network_address& na, const ve
         type = uint8_t(na.get_type_id());
     a & type;
     switch (epee::net_utils::address_type(type)) {
-        case epee::net_utils::ipv4_network_address::get_type_id():
-            do_serialize<epee::net_utils::ipv4_network_address>(is_saving, a, na);
+        case net::ipv4_address::get_type_id():
+            do_serialize<net::ipv4_address>(is_saving, a, na);
             break;
         case epee::net_utils::ipv6_network_address::get_type_id():
             do_serialize<epee::net_utils::ipv6_network_address>(is_saving, a, na);
@@ -82,15 +84,13 @@ inline void serialize(Archive& a, epee::net_utils::network_address& na, const ve
     }
 }
 template <class Archive, class ver_type>
-inline void serialize(Archive& a, epee::net_utils::ipv4_network_address& na, const ver_type ver) {
-    uint32_t ip{na.ip()};
+inline void serialize(Archive& a, net::ipv4_address& na, const ver_type ver) {
+    uint32_t ip = tools::ipv4_to_legacy_int(na.ip());
     uint16_t port{na.port()};
-    ip = SWAP32LE(ip);
     a & ip;
-    ip = SWAP32LE(ip);
     a & port;
     if (!typename Archive::is_saving())
-        na = epee::net_utils::ipv4_network_address{ip, port};
+        na = net::ipv4_address{tools::ipv4_from_legacy_int(ip), port};
 }
 
 template <class Archive, class ver_type>

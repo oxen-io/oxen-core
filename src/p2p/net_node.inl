@@ -55,7 +55,6 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "epee/misc_log_ex.h"
-#include "epee/net/local_ip.h"
 #include "epee/net/net_utils_base.h"
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "epee/string_tools.h"
@@ -64,9 +63,6 @@
 #include "net_node.h"
 #include "p2p_protocol_defs.h"
 #include "version.h"
-
-#define NET_MAKE_IP(b1, b2, b3, b4) \
-    ((LPARAM)(((DWORD)(b1) << 24) + ((DWORD)(b2) << 16) + ((DWORD)(b3) << 8) + ((DWORD)(b4))))
 
 #define MIN_WANTED_SEED_NODES 12
 
@@ -193,20 +189,15 @@ bool node_server<t_payload_net_handler>::is_remote_host_allowed(
     }
 
     // manually loop in subnets
-    if (address.get_type_id() == epee::net_utils::address_type::ipv4) {
-        auto ipv4_address = address.template as<epee::net_utils::ipv4_network_address>();
-        std::map<epee::net_utils::ipv4_network_subnet, time_t>::iterator it;
-        for (it = m_blocked_subnets.begin(); it != m_blocked_subnets.end();) {
+    if (address.get_type_id() == net::ipv4_address::get_type_id()) {
+        const auto& ip = address.template as<net::ipv4_address>().ip();
+        for (auto it = m_blocked_subnets.begin(); it != m_blocked_subnets.end();) {
             if (now >= it->second) {
-                log::info(
-                        logcat,
-                        fg(fmt::terminal_color::cyan),
-                        "Subnet {} unblocked",
-                        it->first.host_str());
+                log::info(logcat, fg(fmt::terminal_color::cyan), "Subnet {} unblocked", it->first);
                 it = m_blocked_subnets.erase(it);
                 continue;
             }
-            if (it->first.matches(ipv4_address)) {
+            if (it->first.contains(ip)) {
                 if (t)
                     *t = it->second - now;
                 return false;
@@ -271,7 +262,7 @@ bool node_server<t_payload_net_handler>::unblock_host(
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::block_subnet(
-        const epee::net_utils::ipv4_network_subnet& subnet, time_t seconds) {
+        const oxen::quic::ipv4_range& subnet, time_t seconds) {
     const time_t now = time(nullptr);
 
     std::unique_lock lock{m_blocked_hosts_lock};
@@ -289,15 +280,10 @@ bool node_server<t_payload_net_handler>::block_subnet(
     for (auto& zone : m_network_zones) {
         zone.second.m_net_server.get_config_object().foreach_connection(
                 [&](const p2p_connection_context& cntxt) {
-                    if (cntxt.m_remote_address.get_type_id() !=
-                        epee::net_utils::ipv4_network_address::get_type_id())
-                        return true;
-                    auto ipv4_address =
-                            cntxt.m_remote_address
-                                    .template as<epee::net_utils::ipv4_network_address>();
-                    if (subnet.matches(ipv4_address)) {
+                    if (cntxt.m_remote_address.get_type_id() == net::ipv4_address::get_type_id() &&
+                        subnet.contains(
+                                cntxt.m_remote_address.template as<net::ipv4_address>().ip()))
                         conns.push_back(cntxt.m_connection_id);
-                    }
                     return true;
                 });
         for (const auto& c : conns)
@@ -306,19 +292,18 @@ bool node_server<t_payload_net_handler>::block_subnet(
         conns.clear();
     }
 
-    log::info(logcat, fg(fmt::terminal_color::cyan), "Subnet {} blocked.", subnet.host_str());
+    log::info(logcat, fg(fmt::terminal_color::cyan), "Subnet {} blocked.", subnet);
     return true;
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
-bool node_server<t_payload_net_handler>::unblock_subnet(
-        const epee::net_utils::ipv4_network_subnet& subnet) {
+bool node_server<t_payload_net_handler>::unblock_subnet(const oxen::quic::ipv4_range& subnet) {
     std::unique_lock lock{m_blocked_hosts_lock};
     auto i = m_blocked_subnets.find(subnet);
     if (i == m_blocked_subnets.end())
         return false;
     m_blocked_subnets.erase(i);
-    log::info(logcat, fg(fmt::terminal_color::cyan), "Subnet {} unblocked.", subnet.host_str());
+    log::info(logcat, fg(fmt::terminal_color::cyan), "Subnet {} unblocked.", subnet);
     return true;
 }
 //-----------------------------------------------------------------------------------
@@ -556,10 +541,8 @@ static bool append_net_address(
     for (; i != iend; ++i) {
         ip::tcp::endpoint endpoint = *i;
         if (endpoint.address().is_v4()) {
-            epee::net_utils::network_address na{epee::net_utils::ipv4_network_address{
-                    boost::asio::detail::socket_ops::host_to_network_long(
-                            endpoint.address().to_v4().to_uint()),
-                    endpoint.port()}};
+            epee::net_utils::network_address na{net::ipv4_address{
+                    oxen::quic::ipv4{endpoint.address().to_v4().to_uint()}, endpoint.port()}};
             seed_nodes.push_back(na);
             log::info(logcat, "Added node: {}", na.str());
         } else {
@@ -1406,25 +1389,15 @@ std::vector<size_t> node_server<t_payload_net_handler>::connectable_peers(
         network_zone& zone,
         bool use_white_list,
         const std::optional<cryptonote::sync_need>& need) {
-    constexpr auto ipv4_type_id = epee::net_utils::ipv4_network_address::get_type_id();
-
-    // build a set of all the /16s, IPs, peer_ids that we're connected to so that we can prefer
-    // and/or filter them out from our potential peer selection below.
+    // build a set of all the addresses and peer_ids that we're connected to so that we can filter
+    // them out from our potential peer selection below.
     struct {
-        std::unordered_set<uint32_t> net;
         std::set<epee::net_utils::network_address> addr;
         std::unordered_set<peerid_type> peer;
     } seen;
     if (&zone == &m_network_zones.at(epee::net_utils::zone::public_))
         zone.m_net_server.get_config_object().foreach_connection(
                 [&](const p2p_connection_context& cntxt) {
-                    if (cntxt.m_remote_address.get_type_id() == ipv4_type_id) {
-                        seen.net.insert(
-                                cntxt.m_remote_address
-                                        .template as<const epee::net_utils::ipv4_network_address>()
-                                        .ip() &
-                                0x0000ffff);
-                    }
                     seen.addr.insert(cntxt.m_remote_address);
                     seen.peer.insert(cntxt.peer_id);
                     return true;
@@ -2012,11 +1985,10 @@ bool node_server<t_payload_net_handler>::sanitize_peerlist(
         epee::net_utils::network_address& na = be.adr;
         if (na.is_loopback() || na.is_local()) {
             ignore = true;
-        } else if (be.adr.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id()) {
-            const epee::net_utils::ipv4_network_address& ipv4 =
-                    na.as<const epee::net_utils::ipv4_network_address>();
-            if (ipv4.ip() == 0)
-                ignore = true;
+        } else if (
+                be.adr.get_type_id() == net::ipv4_address::get_type_id() &&
+                na.as<const net::ipv4_address>().ip() == oxen::quic::ipv4{}) {
+            ignore = true;
         }
         if (ignore) {
             log::debug(logcat, "Ignoring {}", be.adr.str());
@@ -2223,19 +2195,18 @@ bool node_server<t_payload_net_handler>::try_ping(
         return false;
 
     bool address_ok =
-            (context.m_remote_address.get_type_id() ==
-                     epee::net_utils::ipv4_network_address::get_type_id() ||
+            (context.m_remote_address.get_type_id() == net::ipv4_address::get_type_id() ||
              context.m_remote_address.get_type_id() ==
                      epee::net_utils::ipv6_network_address::get_type_id());
     CHECK_AND_ASSERT_MES(address_ok, false, "Only IPv4 or IPv6 addresses are supported here");
 
     const epee::net_utils::network_address na = context.m_remote_address;
     std::string ip;
-    std::optional<uint32_t> ipv4_addr;
+    std::optional<oxen::quic::ipv4> ipv4_addr;
     boost::asio::ip::address_v6 ipv6_addr;
-    if (na.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id()) {
-        ipv4_addr = na.as<const epee::net_utils::ipv4_network_address>().ip();
-        ip = epee::string_tools::get_ip_string_from_int32(*ipv4_addr);
+    if (na.get_type_id() == net::ipv4_address::get_type_id()) {
+        ipv4_addr = na.as<const net::ipv4_address>().ip();
+        ip = ipv4_addr->to_string();
     } else {
         ipv6_addr = na.as<const epee::net_utils::ipv6_network_address>().ip();
         ip = ipv6_addr.to_string();
@@ -2249,8 +2220,8 @@ bool node_server<t_payload_net_handler>::try_ping(
 
     epee::net_utils::network_address address;
     if (ipv4_addr) {
-        address = epee::net_utils::network_address{
-                epee::net_utils::ipv4_network_address(*ipv4_addr, node_data.my_port)};
+        address =
+                epee::net_utils::network_address{net::ipv4_address{*ipv4_addr, node_data.my_port}};
     } else {
         address = epee::net_utils::network_address{
                 epee::net_utils::ipv6_network_address(ipv6_addr, node_data.my_port)};
@@ -2483,8 +2454,7 @@ int node_server<t_payload_net_handler>::handle_handshake(
         // try ping to be sure that we can add this peer to peer_list
         try_ping(arg.node_data, context, [peer_id_l, port_l, context, this]() {
             CHECK_AND_ASSERT_MES(
-                    (context.m_remote_address.get_type_id() ==
-                             epee::net_utils::ipv4_network_address::get_type_id() ||
+                    (context.m_remote_address.get_type_id() == net::ipv4_address::get_type_id() ||
                      context.m_remote_address.get_type_id() ==
                              epee::net_utils::ipv6_network_address::get_type_id()),
                     /*void*/,
@@ -2492,10 +2462,8 @@ int node_server<t_payload_net_handler>::handle_handshake(
             // called only(!) if success pinged, update local peerlist
             peerlist_entry pe;
             const epee::net_utils::network_address na = context.m_remote_address;
-            if (context.m_remote_address.get_type_id() ==
-                epee::net_utils::ipv4_network_address::get_type_id()) {
-                pe.adr = epee::net_utils::ipv4_network_address(
-                        na.as<epee::net_utils::ipv4_network_address>().ip(), port_l);
+            if (context.m_remote_address.get_type_id() == net::ipv4_address::get_type_id()) {
+                pe.adr = net::ipv4_address{na.as<net::ipv4_address>().ip(), port_l};
             } else {
                 pe.adr = epee::net_utils::ipv6_network_address(
                         na.as<epee::net_utils::ipv6_network_address>().ip(), port_l);
@@ -2867,7 +2835,7 @@ template <typename t_payload_net_handler>
 std::optional<p2p_connection_context_t<typename t_payload_net_handler::connection_context>>
 node_server<t_payload_net_handler>::public_connect(
         network_zone& zone, epee::net_utils::network_address const& na) {
-    bool is_ipv4 = na.get_type_id() == epee::net_utils::ipv4_network_address::get_type_id();
+    bool is_ipv4 = na.get_type_id() == net::ipv4_address::get_type_id();
     bool is_ipv6 = na.get_type_id() == epee::net_utils::ipv6_network_address::get_type_id();
     CHECK_AND_ASSERT_MES(
             is_ipv4 || is_ipv6, std::nullopt, "Only IPv4 or IPv6 addresses are supported here");
@@ -2876,9 +2844,8 @@ node_server<t_payload_net_handler>::public_connect(
     std::string port;
 
     if (is_ipv4) {
-        const epee::net_utils::ipv4_network_address& ipv4 =
-                na.as<const epee::net_utils::ipv4_network_address>();
-        address = epee::string_tools::get_ip_string_from_int32(ipv4.ip());
+        const auto& ipv4 = na.as<const net::ipv4_address>();
+        address = ipv4.host_str();
         port = std::to_string(ipv4.port());
     } else {
         const epee::net_utils::ipv6_network_address& ipv6 =

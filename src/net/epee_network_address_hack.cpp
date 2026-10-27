@@ -1,6 +1,7 @@
 #include "epee/net/net_utils_base.h"
 #include "epee/storages/portable_storage.h"
 #include "i2p_address.h"
+#include "ipv4_address.h"
 #include "logging/oxen_logger.h"
 #include "tor_address.h"
 
@@ -23,7 +24,7 @@ if (!epee::serialization::perform_serialize<is_store>(type, stg, parent_section,
 
 switch (address_type(type)) {
     case address_type::ipv4:
-        return this_ref.template serialize_addr<ipv4_network_address>(stg, parent_section);
+        return this_ref.template serialize_addr<net::ipv4_address>(stg, parent_section);
     case address_type::ipv6:
         return this_ref.template serialize_addr<ipv6_network_address>(stg, parent_section);
     case address_type::tor:

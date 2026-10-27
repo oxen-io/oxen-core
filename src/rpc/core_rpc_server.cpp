@@ -48,6 +48,7 @@
 #include "bls/bls_crypto.h"
 #include "common/command_line.h"
 #include "common/guts.h"
+#include "common/ipv4.h"
 #include "common/json_binary_proxy.h"
 #include "common/oxen.h"
 #include "common/random.h"
@@ -1939,16 +1940,11 @@ void core_rpc_server::invoke(GET_BANS& get_bans, rpc_context) {
             get_bans.response["bans"].push_back(b);
         }
     }
-    std::map<epee::net_utils::ipv4_network_subnet, time_t> blocked_subnets =
-            m_p2p.get_blocked_subnets();
-    for (std::map<epee::net_utils::ipv4_network_subnet, time_t>::const_iterator i =
-                 blocked_subnets.begin();
-         i != blocked_subnets.end();
-         ++i) {
-        if (i->second > now) {
+    for (const auto& [subnet, expiry] : m_p2p.get_blocked_subnets()) {
+        if (expiry > now) {
             ban b;
-            b.host = i->first.host_str();
-            b.seconds = i->second - now;
+            b.host = subnet.to_string();
+            b.seconds = expiry - now;
             get_bans.response["bans"].push_back(b);
         }
     }
@@ -1977,7 +1973,7 @@ void core_rpc_server::invoke(BANNED& banned, rpc_context) {
 void core_rpc_server::invoke(SET_BANS& set_bans, rpc_context) {
     epee::net_utils::network_address na;
     // try subnet first
-    auto ns_parsed = net::get_ipv4_subnet_address(set_bans.request.host);
+    auto ns_parsed = tools::parse_ipv4_range(set_bans.request.host, false);
     if (ns_parsed) {
         if (set_bans.request.ban)
             m_p2p.block_subnet(*ns_parsed, set_bans.request.seconds);

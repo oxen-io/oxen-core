@@ -42,6 +42,7 @@
 
 #include "epee/net/net_utils_base.h"
 #include "net/i2p_address.h"
+#include "net/ipv4_address.h"
 #include "net/tor_address.h"
 
 namespace net::socks {
@@ -210,7 +211,7 @@ client::client(stream_type::socket&& proxy, socks::version ver) :
 
 client::~client() {}
 
-bool client::set_connect_command(const epee::net_utils::ipv4_network_address& address) {
+bool client::set_connect_command(const net::ipv4_address& address) {
     switch (socks_version()) {
         case version::v4:
         case version::v4a:
@@ -226,7 +227,7 @@ bool client::set_connect_command(const epee::net_utils::ipv4_network_address& ad
             4,
             v4_connect_command,
             oxenc::host_to_big(address.port()),
-            oxenc::host_to_big(address.ip())};
+            oxenc::host_to_big(address.ip().addr)};
     std::memcpy(std::addressof(buffer_), std::addressof(temp), sizeof(temp));
     buffer_[sizeof(temp)] = 0;
     buffer_size_ = sizeof(temp) + 1;

@@ -30,6 +30,16 @@ TEST(ipv4, parse_range) {
     ASSERT_TRUE(r);
     EXPECT_TRUE(r->contains(ipv4{255, 255, 255, 255}));
 
+    r = tools::parse_ipv4_range("10.20.30.40/1", false);
+    ASSERT_TRUE(r);
+    EXPECT_EQ(r->to_string(), "0.0.0.0/1");
+    EXPECT_TRUE(r->contains(ipv4{127, 255, 255, 255}));
+    EXPECT_FALSE(r->contains(ipv4{128, 0, 0, 0}));
+
+    r = tools::parse_ipv4_range("12.34.56.78/16", false);
+    ASSERT_TRUE(r);
+    EXPECT_EQ(r->to_string(), "12.34.0.0/16");
+
     EXPECT_FALSE(tools::parse_ipv4_range("5.6.7.8/33", true));
     EXPECT_FALSE(tools::parse_ipv4_range("5.6.7.8/", true));
     EXPECT_FALSE(tools::parse_ipv4_range("5.6.7/24", true));

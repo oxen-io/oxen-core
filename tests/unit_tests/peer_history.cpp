@@ -6,6 +6,7 @@
 #include "cryptonote_protocol/peer_history.h"
 #include "epee/serialization/keyvalue_serialization.h"
 #include "epee/storages/portable_storage_template_helper.h"
+#include "net/ipv4_address.h"
 #include "p2p/net_peerlist.h"
 #include "p2p/p2p_protocol_defs.h"
 
@@ -16,7 +17,7 @@ using cryptonote::PEER_HISTORY_MARGIN;
 namespace {
 
 epee::net_utils::network_address addr(uint32_t ip, uint16_t port = 22022) {
-    return epee::net_utils::ipv4_network_address{ip, port};
+    return net::ipv4_address{oxen::quic::ipv4{ip}, port};
 }
 
 // CORE_SYNC_DATA and peerlist_entry as peers that predate the history field have them.

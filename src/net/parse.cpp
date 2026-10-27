@@ -31,8 +31,8 @@
 #include <boost/version.hpp>
 
 #include "common/string_util.h"
-#include "epee/string_tools.h"
 #include "net/i2p_address.h"
+#include "net/ipv4_address.h"
 #include "net/tor_address.h"
 
 namespace net {
@@ -82,31 +82,13 @@ expect<epee::net_utils::network_address> get_network_address(
             return make_error_code(net::error::invalid_port);
     }
 
-    if (ipv6) {
+    if (ipv6)
         return {epee::net_utils::ipv6_network_address{v6, port}};
-    } else {
-        std::uint32_t ip = 0;
-        if (epee::string_tools::get_ip_int32_from_string(ip, std::string{host_str}))
-            return {epee::net_utils::ipv4_network_address{ip, port}};
+
+    try {
+        return {ipv4_address{oxen::quic::ipv4{std::string{host_str}}, port}};
+    } catch (const std::invalid_argument&) {
+        return make_error_code(net::error::unsupported_address);
     }
-
-    return make_error_code(net::error::unsupported_address);
-}
-
-expect<epee::net_utils::ipv4_network_subnet> get_ipv4_subnet_address(
-        std::string_view address, bool allow_implicit_32) {
-    std::uint8_t mask = 32;
-    auto slash = address.find_first_of('/');
-    if (slash != std::string_view::npos) {
-        if (!tools::parse_int(address.substr(slash + 1), mask) || mask > 32)
-            return make_error_code(net::error::invalid_mask);
-    } else if (!allow_implicit_32)
-        return make_error_code(net::error::invalid_mask);
-
-    std::uint32_t ip = 0;
-    if (!epee::string_tools::get_ip_int32_from_string(ip, std::string{address.substr(0, slash)}))
-        return make_error_code(net::error::invalid_host);
-
-    return {epee::net_utils::ipv4_network_subnet{ip, (uint8_t)mask}};
 }
 }  // namespace net

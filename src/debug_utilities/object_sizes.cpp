@@ -36,6 +36,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "epee/net/connection_basic.hpp"
+#include "net/ipv4_address.h"
 #include "p2p/net_node.h"
 #include "p2p/net_peerlist.h"
 #include "p2p/p2p_protocol_defs.h"
@@ -83,7 +84,7 @@ int main(int argc, char* argv[]) {
 
     SL(cryptonote::txpool_tx_meta_t);
 
-    SL(epee::net_utils::ipv4_network_address);
+    SL(net::ipv4_address);
     SL(epee::net_utils::network_address);
     SL(epee::net_utils::connection_context_base);
     SL(epee::net_utils::connection_basic);

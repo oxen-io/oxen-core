@@ -33,12 +33,13 @@
 #include "common/util.h"
 #include "p2p/net_peerlist.h"
 #include "epee/net/net_utils_base.h"
+#include "net/ipv4_address.h"
 
 TEST(peer_list, peer_list_general)
 {
   nodetool::peerlist_manager plm;
   plm.init(nodetool::peerlist_types{}, false);
-#define MAKE_IPV4_ADDRESS(a,b,c,d,e) epee::net_utils::ipv4_network_address{MAKE_IP(a,b,c,d),e}
+#define MAKE_IPV4_ADDRESS(a,b,c,d,e) net::ipv4_address{oxen::quic::ipv4(a,b,c,d),e}
 #define ADD_GRAY_NODE(addr_, id_, last_seen_) {  nodetool::peerlist_entry ple; ple.last_seen=last_seen_;ple.adr = addr_; ple.id = id_;plm.append_with_peer_gray(ple);}  
 #define ADD_WHITE_NODE(addr_, id_, last_seen_) {  nodetool::peerlist_entry ple;ple.last_seen=last_seen_; ple.adr = addr_; ple.id = id_;plm.append_with_peer_white(ple);}  
 
@@ -111,11 +112,11 @@ TEST(peerlist_storage, store)
   std::string buffer{};
   {
     nodetool::peerlist_types types{};
-    types.white.push_back({epee::net_utils::ipv4_network_address{1000, 10}, 44, 55});
+    types.white.push_back({net::ipv4_address{oxen::quic::ipv4{1000}, 10}, 44, 55});
     types.white.push_back({net::tor_address::unknown(), 64, 75});
     types.gray.push_back({net::tor_address::unknown(), 99, 88});
-    types.gray.push_back({epee::net_utils::ipv4_network_address{2000, 20}, 84, 45});
-    types.anchor.push_back({epee::net_utils::ipv4_network_address{999, 654}, 444, 555});
+    types.gray.push_back({net::ipv4_address{oxen::quic::ipv4{2000}, 20}, 84, 45});
+    types.anchor.push_back({net::ipv4_address{oxen::quic::ipv4{999}, 654}, 444, 555});
     types.anchor.push_back({net::tor_address::unknown(), 14, 33});
     types.anchor.push_back({net::tor_address::unknown(), 24, 22});
 
@@ -138,22 +139,22 @@ TEST(peerlist_storage, store)
 
   ASSERT_EQ(1u, types.white.size());
   ASSERT_EQ(address_type::ipv4, types.white[0].adr.get_type_id());
-  EXPECT_EQ(1000u, types.white[0].adr.template as<epee::net_utils::ipv4_network_address>().ip());
-  EXPECT_EQ(10u, types.white[0].adr.template as<epee::net_utils::ipv4_network_address>().port());
+  EXPECT_EQ(oxen::quic::ipv4{1000}, types.white[0].adr.template as<net::ipv4_address>().ip());
+  EXPECT_EQ(10u, types.white[0].adr.template as<net::ipv4_address>().port());
   EXPECT_EQ(44u, types.white[0].id);
   EXPECT_EQ(55u, types.white[0].last_seen);
 
   ASSERT_EQ(1u, types.gray.size());
   ASSERT_EQ(address_type::ipv4, types.gray[0].adr.get_type_id());
-  EXPECT_EQ(2000u, types.gray[0].adr.template as<epee::net_utils::ipv4_network_address>().ip());
-  EXPECT_EQ(20u, types.gray[0].adr.template as<epee::net_utils::ipv4_network_address>().port());
+  EXPECT_EQ(oxen::quic::ipv4{2000}, types.gray[0].adr.template as<net::ipv4_address>().ip());
+  EXPECT_EQ(20u, types.gray[0].adr.template as<net::ipv4_address>().port());
   EXPECT_EQ(84u, types.gray[0].id);
   EXPECT_EQ(45u, types.gray[0].last_seen);
 
   ASSERT_EQ(1u, types.anchor.size());
   ASSERT_EQ(address_type::ipv4, types.anchor[0].adr.get_type_id());
-  EXPECT_EQ(999u, types.anchor[0].adr.template as<epee::net_utils::ipv4_network_address>().ip());
-  EXPECT_EQ(654u, types.anchor[0].adr.template as<epee::net_utils::ipv4_network_address>().port());
+  EXPECT_EQ(oxen::quic::ipv4{999}, types.anchor[0].adr.template as<net::ipv4_address>().ip());
+  EXPECT_EQ(654u, types.anchor[0].adr.template as<net::ipv4_address>().port());
   EXPECT_EQ(444u, types.anchor[0].id);
   EXPECT_EQ(555u, types.anchor[0].first_seen);
   {
@@ -206,22 +207,22 @@ TEST(peerlist_storage, store)
 
   ASSERT_EQ(1u, types.white.size());
   ASSERT_EQ(address_type::ipv4, types.white[0].adr.get_type_id());
-  EXPECT_EQ(1000u, types.white[0].adr.template as<epee::net_utils::ipv4_network_address>().ip());
-  EXPECT_EQ(10u, types.white[0].adr.template as<epee::net_utils::ipv4_network_address>().port());
+  EXPECT_EQ(oxen::quic::ipv4{1000}, types.white[0].adr.template as<net::ipv4_address>().ip());
+  EXPECT_EQ(10u, types.white[0].adr.template as<net::ipv4_address>().port());
   EXPECT_EQ(44u, types.white[0].id);
   EXPECT_EQ(55u, types.white[0].last_seen);
 
   ASSERT_EQ(1u, types.gray.size());
   ASSERT_EQ(address_type::ipv4, types.gray[0].adr.get_type_id());
-  EXPECT_EQ(2000u, types.gray[0].adr.template as<epee::net_utils::ipv4_network_address>().ip());
-  EXPECT_EQ(20u, types.gray[0].adr.template as<epee::net_utils::ipv4_network_address>().port());
+  EXPECT_EQ(oxen::quic::ipv4{2000}, types.gray[0].adr.template as<net::ipv4_address>().ip());
+  EXPECT_EQ(20u, types.gray[0].adr.template as<net::ipv4_address>().port());
   EXPECT_EQ(84u, types.gray[0].id);
   EXPECT_EQ(45u, types.gray[0].last_seen);
 
   ASSERT_EQ(1u, types.anchor.size());
   ASSERT_EQ(address_type::ipv4, types.anchor[0].adr.get_type_id());
-  EXPECT_EQ(999u, types.anchor[0].adr.template as<epee::net_utils::ipv4_network_address>().ip());
-  EXPECT_EQ(654u, types.anchor[0].adr.template as<epee::net_utils::ipv4_network_address>().port());
+  EXPECT_EQ(oxen::quic::ipv4{999}, types.anchor[0].adr.template as<net::ipv4_address>().ip());
+  EXPECT_EQ(654u, types.anchor[0].adr.template as<net::ipv4_address>().port());
   EXPECT_EQ(444u, types.anchor[0].id);
   EXPECT_EQ(555u, types.anchor[0].first_seen);
 

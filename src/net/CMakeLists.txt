@@ -30,12 +30,16 @@ oxen_add_library(net
   dandelionpp.cpp
   error.cpp
   i2p_address.cpp
+  ipv4_address.cpp
   parse.cpp
   socks.cpp
   tor_address.cpp
   epee_network_address_hack.cpp
   )
-target_link_libraries(net PRIVATE
+target_link_libraries(net
+  PUBLIC
+  oxen::quic-utils
+  PRIVATE
   common
   epee
   extra

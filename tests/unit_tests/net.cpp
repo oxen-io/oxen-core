@@ -51,6 +51,7 @@
 #include "net/dandelionpp.h"
 #include "net/error.h"
 #include "net/i2p_address.h"
+#include "net/ipv4_address.h"
 #include "epee/net/net_utils_base.h"
 #include "net/parse.h"
 #include "net/tor_address.h"
@@ -205,7 +206,7 @@ TEST(tor_address, generic_network_address)
 {
     const epee::net_utils::network_address tor1{MONERO_UNWRAP(net::tor_address::make(v3_onion, 8080))};
     const epee::net_utils::network_address tor2{MONERO_UNWRAP(net::tor_address::make(v3_onion, 8080))};
-    const epee::net_utils::network_address ip{epee::net_utils::ipv4_network_address{100, 200}};
+    const epee::net_utils::network_address ip{net::ipv4_address{oxen::quic::ipv4{100}, 200}};
 
     EXPECT_EQ(tor1, tor2);
     EXPECT_NE(ip, tor1);
@@ -660,7 +661,7 @@ TEST(i2p_address, generic_network_address)
 {
     const epee::net_utils::network_address i2p1{MONERO_UNWRAP(net::i2p_address::make(b32_i2p, 8080))};
     const epee::net_utils::network_address i2p2{MONERO_UNWRAP(net::i2p_address::make(b32_i2p, 8080))};
-    const epee::net_utils::network_address ip{epee::net_utils::ipv4_network_address{100, 200}};
+    const epee::net_utils::network_address ip{net::ipv4_address{oxen::quic::ipv4{100}, 200}};
 
     EXPECT_EQ(i2p1, i2p2);
     EXPECT_NE(ip, i2p1);
@@ -908,44 +909,6 @@ TEST(get_network_address, ipv4)
     EXPECT_EQ(epee::net_utils::address_type::ipv4, address->get_type_id());
     EXPECT_STREQ("23.0.0.254", address->host_str().c_str());
     EXPECT_STREQ("23.0.0.254:2000", address->str().c_str());
-}
-
-TEST(get_network_address, ipv4subnet)
-{
-    expect<epee::net_utils::ipv4_network_subnet> address = net::get_ipv4_subnet_address("0.0.0.0", true);
-    EXPECT_STREQ("0.0.0.0/32", address->str().c_str());
-
-    address = net::get_ipv4_subnet_address("0.0.0.0");
-    EXPECT_TRUE(!address);
-
-    address = net::get_ipv4_subnet_address("0.0.0.0/32");
-    EXPECT_STREQ("0.0.0.0/32", address->str().c_str());
-
-    address = net::get_ipv4_subnet_address("0.0.0.0/0");
-    EXPECT_STREQ("0.0.0.0/0", address->str().c_str());
-
-    address = net::get_ipv4_subnet_address("12.34.56.78/16");
-    EXPECT_STREQ("12.34.0.0/16", address->str().c_str());
-
-    address = net::get_ipv4_subnet_address("1.2.3.4/23");
-    EXPECT_STREQ("1.2.2.0/23", address->str().c_str());
-    EXPECT_FALSE(address->matches(MAKE_IP(1,2,1,255)));
-    EXPECT_TRUE(address->matches(MAKE_IP(1,2,2,0)));
-    EXPECT_TRUE(address->matches(MAKE_IP(1,2,3,255)));
-    EXPECT_FALSE(address->matches(MAKE_IP(1,2,4,0)));
-    EXPECT_FALSE(address->matches(MAKE_IP(1,2,131,4)));
-
-    address = net::get_ipv4_subnet_address("10.20.30.40/1");
-    EXPECT_STREQ("0.0.0.0/1", address->str().c_str());
-    EXPECT_TRUE(address->matches(MAKE_IP(127,255,255,255)));
-    EXPECT_FALSE(address->matches(MAKE_IP(128,0,0,0)));
-
-    address = net::get_ipv4_subnet_address("5.6.7.8", true);
-    EXPECT_TRUE(address->matches(MAKE_IP(5,6,7,8)));
-    EXPECT_FALSE(address->matches(MAKE_IP(5,6,7,9)));
-
-    address = net::get_ipv4_subnet_address("5.6.7.8/0");
-    EXPECT_TRUE(address->matches(MAKE_IP(255,255,255,255)));
 }
 
 TEST(dandelionpp_map, traits)

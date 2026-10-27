@@ -58,6 +58,7 @@
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "epee/warnings.h"
 #include "net/fwd.h"
+#include "net/ipv4_address.h"
 #include "net_node_common.h"
 #include "net_peerlist.h"
 #include "p2p_protocol_defs.h"
@@ -266,9 +267,9 @@ class node_server
             time_t seconds = tools::to_seconds(cryptonote::p2p::IP_BLOCK_TIME));
     virtual bool unblock_host(const epee::net_utils::network_address& address);
     virtual bool block_subnet(
-            const epee::net_utils::ipv4_network_subnet& subnet,
+            const oxen::quic::ipv4_range& subnet,
             time_t seconds = tools::to_seconds(cryptonote::p2p::IP_BLOCK_TIME));
-    virtual bool unblock_subnet(const epee::net_utils::ipv4_network_subnet& subnet);
+    virtual bool unblock_subnet(const oxen::quic::ipv4_range& subnet);
     virtual bool is_host_blocked(const epee::net_utils::network_address& address, time_t* seconds) {
         return !is_remote_host_allowed(address, seconds);
     }
@@ -276,7 +277,7 @@ class node_server
         std::shared_lock lock{m_blocked_hosts_lock};
         return m_blocked_hosts;
     }
-    virtual std::map<epee::net_utils::ipv4_network_subnet, time_t> get_blocked_subnets() {
+    virtual std::map<oxen::quic::ipv4_range, time_t> get_blocked_subnets() {
         std::shared_lock lock{m_blocked_hosts_lock};
         return m_blocked_subnets;
     }
@@ -553,7 +554,7 @@ class node_server
 
     std::shared_mutex m_blocked_hosts_lock;  // for both hosts and subnets
     std::map<std::string, time_t> m_blocked_hosts;
-    std::map<epee::net_utils::ipv4_network_subnet, time_t> m_blocked_subnets;
+    std::map<oxen::quic::ipv4_range, time_t> m_blocked_subnets;
 
     std::mutex m_host_fails_score_lock;
     std::map<std::string, uint64_t> m_host_fails_score;
