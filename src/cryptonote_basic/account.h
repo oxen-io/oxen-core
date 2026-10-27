@@ -38,8 +38,8 @@ namespace cryptonote {
 
 struct account_keys {
     account_public_address m_account_address;
-    crypto::secret_key m_spend_secret_key;
-    crypto::secret_key m_view_secret_key;
+    crypto::secret_key m_spend_secret_key{};
+    crypto::secret_key m_view_secret_key{};
     std::vector<crypto::secret_key> m_multisig_keys;
     hw::device* m_device = &hw::get_device("default");
     crypto::chacha_iv m_encryption_iv;

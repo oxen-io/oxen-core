@@ -68,7 +68,6 @@
 #include "cryptonote_core/oxen_name_system.h"
 #include "cryptonote_core/tx_sanity_check.h"
 #include "device/device_cold.hpp"
-#include "epee/memwipe.h"
 #include "mnemonics/electrum-words.h"
 #include "multisig/multisig.h"
 #include "rapidjson/document.h"
@@ -4701,7 +4700,7 @@ void wallet2::setup_keys(const epee::wipeable_string& password) {
 
     static_assert(
             HASH_SIZE == sizeof(crypto::chacha_key), "Mismatched sizes of hash and chacha key");
-    epee::mlocked<tools::scrubbed_arr<char, HASH_SIZE + 1>> cache_key_data;
+    crypto::cleared_array<char, HASH_SIZE + 1> cache_key_data;
     memcpy(cache_key_data.data(), &key, HASH_SIZE);
     cache_key_data[HASH_SIZE] = hashkey::WALLET_CACHE;
     cn_fast_hash(cache_key_data.data(), HASH_SIZE + 1, (crypto::hash&)m_cache_key);
@@ -5456,7 +5455,7 @@ void wallet2::generate(
         sc_add(skey.bytes, skey.bytes, rct::sk2rct(msk).bytes);
     THROW_WALLET_EXCEPTION_IF(
             !(rct::rct2sk(skey) == spend_secret_key), error::invalid_multisig_seed);
-    memwipe(&skey, sizeof(rct::key));
+    sodium_memzero(&skey, sizeof(rct::key));
 
     m_account.make_multisig(view_secret_key, spend_secret_key, spend_public_key, multisig_keys);
     m_account.finalize_multisig(spend_public_key);
@@ -5714,7 +5713,7 @@ std::string wallet2::make_multisig(
     rct::key spend_pkey = rct::identity();
     rct::key spend_skey;
     OXEN_DEFER {
-        memwipe(&spend_skey, sizeof(spend_skey));
+        sodium_memzero(&spend_skey, sizeof(spend_skey));
     };
     std::vector<crypto::public_key> multisig_signers;
 
@@ -5834,7 +5833,7 @@ std::string wallet2::make_multisig(
             m_account.make_multisig(
                     view_skey, rct::rct2sk(spend_skey), rct::rct2pk(spend_pkey), multisig_keys),
             "Failed to create multisig wallet due to bad keys");
-    memwipe(&spend_skey, sizeof(rct::key));
+    sodium_memzero(&spend_skey, sizeof(rct::key));
 
     init_type(hw::device::type::SOFTWARE);
     m_original_keys_available = true;
@@ -7883,7 +7882,8 @@ void wallet2::commit_tx(pending_tx& ptx, bool blink) {
 
     // tx generated, get rid of used k values
     for (size_t idx : ptx.selected_transfers)
-        memwipe(m_transfers[idx].m_multisig_k.data(),
+        sodium_memzero(
+                m_transfers[idx].m_multisig_k.data(),
                 m_transfers[idx].m_multisig_k.size() * sizeof(m_transfers[idx].m_multisig_k[0]));
 
     // fee includes dust if dust policy specified it.
@@ -8346,14 +8346,15 @@ std::string wallet2::save_multisig_tx(multisig_tx_set txs) {
     // txes generated, get rid of used k values
     for (size_t n = 0; n < txs.m_ptx.size(); ++n)
         for (size_t idx : txs.m_ptx[n].construction_data.selected_transfers)
-            memwipe(m_transfers[idx].m_multisig_k.data(),
+            sodium_memzero(
+                    m_transfers[idx].m_multisig_k.data(),
                     m_transfers[idx].m_multisig_k.size() *
                             sizeof(m_transfers[idx].m_multisig_k[0]));
 
     // zero out some data we don't want to share
     for (auto& ptx : txs.m_ptx) {
         for (auto& e : ptx.construction_data.sources)
-            memwipe(&e.multisig_kLRki.k, sizeof(e.multisig_kLRki.k));
+            sodium_memzero(&e.multisig_kLRki.k, sizeof(e.multisig_kLRki.k));
     }
 
     for (auto& ptx : txs.m_ptx) {
@@ -8598,8 +8599,8 @@ bool wallet2::sign_multisig_tx(multisig_tx_set& exported_txs, std::vector<crypto
                 rct::keyV k;
                 rct::key skey = rct::zero();
                 OXEN_DEFER {
-                    memwipe(k.data(), k.size() * sizeof(rct::key));
-                    memwipe(&skey, sizeof(skey));
+                    sodium_memzero(k.data(), k.size() * sizeof(rct::key));
+                    sodium_memzero(&skey, sizeof(skey));
                 };
 
                 k.reserve(sd.selected_transfers.size());
@@ -8656,7 +8657,8 @@ bool wallet2::sign_multisig_tx(multisig_tx_set& exported_txs, std::vector<crypto
     // txes generated, get rid of used k values
     for (size_t n = 0; n < exported_txs.m_ptx.size(); ++n)
         for (size_t idx : exported_txs.m_ptx[n].construction_data.selected_transfers)
-            memwipe(m_transfers[idx].m_multisig_k.data(),
+            sodium_memzero(
+                    m_transfers[idx].m_multisig_k.data(),
                     m_transfers[idx].m_multisig_k.size() *
                             sizeof(m_transfers[idx].m_multisig_k[0]));
 
@@ -16396,7 +16398,7 @@ std::string wallet2::export_multisig() {
     for (size_t n = 0; n < m_transfers.size(); ++n) {
         transfer_details& td = m_transfers[n];
         crypto::key_image ki;
-        memwipe(td.m_multisig_k.data(), td.m_multisig_k.size() * sizeof(td.m_multisig_k[0]));
+        sodium_memzero(td.m_multisig_k.data(), td.m_multisig_k.size() * sizeof(td.m_multisig_k[0]));
         info[n].m_LR.clear();
         info[n].m_partial_key_images.clear();
 
@@ -16521,7 +16523,7 @@ size_t wallet2::import_multisig(std::vector<std::string> blobs) {
     std::vector<std::vector<rct::key>> k;
     OXEN_DEFER {
         for (auto& kv : k)
-            memwipe(kv.data(), kv.size() * sizeof(rct::key));
+            sodium_memzero(kv.data(), kv.size() * sizeof(rct::key));
     };
     k.reserve(m_transfers.size());
     for (const auto& td : m_transfers)

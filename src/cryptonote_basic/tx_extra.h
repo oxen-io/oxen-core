@@ -513,7 +513,7 @@ struct tx_extra_service_node_deregister_old {
 };
 
 struct tx_extra_tx_secret_key {
-    crypto::secret_key key;
+    crypto::secret_key key{};
 
     template <class Archive>
     void serialize_object(Archive& ar) {

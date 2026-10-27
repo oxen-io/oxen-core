@@ -30,6 +30,8 @@
 
 #include "rctSigs.h"
 
+#include <sodium/utils.h>
+
 #include <span>
 
 #include "bulletproofs.h"
@@ -303,7 +305,7 @@ clsag CLSAG_Gen(
 
     // Compute final scalar
     hwdev.clsag_sign(c, a, p, z, mu_P, mu_C, sig.s[l]);
-    memwipe(&a, sizeof(key));
+    sodium_memzero(&a, sizeof(key));
 
     if (mscout)
         *mscout = c;
@@ -549,7 +551,7 @@ clsag proveRctCLSAGSimple(
     sc_sub(sk[1].bytes, inSk.mask.bytes, a.bytes);
     clsag result = CLSAG_Gen(
             message, P, sk[0], C, sk[1], C_nonzero, Cout, index, kLRki, mscout, mspout, hwdev);
-    memwipe(sk.data(), sk.size() * sizeof(key));
+    sodium_memzero(sk.data(), sk.size() * sizeof(key));
     return result;
 }
 

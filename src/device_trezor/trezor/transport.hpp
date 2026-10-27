@@ -31,6 +31,7 @@
 #define MONERO_TRANSPORT_H
 
 #include <cpr/session.h>
+#include <sodium/utils.h>
 
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
@@ -171,7 +172,7 @@ class BridgeTransport : public Transport {
         std::string res;
         OXEN_DEFER {
             if (!res.empty())
-                memwipe(res.data(), res.size());
+                sodium_memzero(res.data(), res.size());
         };
 
         try {

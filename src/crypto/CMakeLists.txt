@@ -32,6 +32,7 @@ oxen_add_library(cncrypto
   blake256.c
   chacha.c
   chacha.cpp
+  cleared.cpp
   crypto-ops-data.c
   crypto-ops.c
   crypto.cpp

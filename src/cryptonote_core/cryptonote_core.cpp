@@ -64,7 +64,6 @@ extern "C" {
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
-#include "epee/memwipe.h"
 #include "epee/warnings.h"
 #include "logging/oxen_logger.h"
 #include "network_config/mocknet.h"
@@ -1168,12 +1167,12 @@ bool init_key(
         CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from {}", keypath);
 
         OXEN_DEFER {
-            memwipe(keystr.data(), keystr.size());
+            sodium_memzero(keystr.data(), keystr.size());
         };
 
         if (keystr.size() == sizeof(privkey))
             // raw bytes:
-            memcpy(&unwrap(unwrap(privkey)), keystr.data(), sizeof(privkey));
+            memcpy(privkey.data(), keystr.data(), sizeof(privkey));
         else {
             // Try to load as hex with a 0x prefix and optional \n suffix
             std::string_view keyv{keystr};
@@ -1201,7 +1200,7 @@ bool init_key(
 
         std::string privkey_hex;
         OXEN_DEFER {
-            memwipe(privkey_hex.data(), privkey_hex.size());
+            sodium_memzero(privkey_hex.data(), privkey_hex.size());
         };
         privkey_hex.reserve(2 * sizeof(privkey) + 3);
         privkey_hex += "0x";

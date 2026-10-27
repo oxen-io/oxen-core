@@ -2693,7 +2693,7 @@ GENERATE_FROM_KEYS::response wallet_rpc_server::invoke(GENERATE_FROM_KEYS::reque
     epee::wipeable_string password = rc.second.password();
     epee::wipeable_string viewkey_string = req.viewkey;
     crypto::secret_key viewkey;
-    if (!viewkey_string.hex_to_pod(unwrap(unwrap(viewkey))))
+    if (!tools::try_load_from_hex_guts(viewkey_string.view(), viewkey))
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to parse view key secret key"};
 
     close_wallet(req.autosave_current);
@@ -2702,7 +2702,7 @@ GENERATE_FROM_KEYS::response wallet_rpc_server::invoke(GENERATE_FROM_KEYS::reque
         if (!req.spendkey.empty()) {
             epee::wipeable_string spendkey_string = req.spendkey;
             crypto::secret_key spendkey;
-            if (!spendkey_string.hex_to_pod(unwrap(unwrap(spendkey))))
+            if (!tools::try_load_from_hex_guts(spendkey_string.view(), spendkey))
                 throw wallet_rpc_error{
                         error_code::UNKNOWN_ERROR, "Failed to parse spend key secret key"};
             wal->generate(

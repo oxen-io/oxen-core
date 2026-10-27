@@ -65,7 +65,7 @@ static void derive_key(const crypto::chacha_key& base_key, crypto::chacha_key& k
     static_assert(
             sizeof(base_key) == sizeof(crypto::hash),
             "chacha key and hash should be the same size");
-    epee::mlocked<tools::scrubbed_arr<char, sizeof(base_key) + 1>> data;
+    crypto::cleared_array<char, sizeof(base_key) + 1> data;
     memcpy(data.data(), &base_key, sizeof(base_key));
     data[sizeof(base_key)] = cryptonote::hashkey::MEMORY;
     crypto::generate_chacha_key(data.data(), sizeof(data), key, 1);
@@ -225,9 +225,7 @@ void account_base::create_from_device(hw::device& hwdev) {
 //-----------------------------------------------------------------
 void account_base::create_from_viewkey(
         const cryptonote::account_public_address& address, const crypto::secret_key& viewkey) {
-    crypto::secret_key fake;
-    memset(&unwrap(unwrap(fake)), 0, sizeof(fake));
-    create_from_keys(address, fake, viewkey);
+    create_from_keys(address, crypto::secret_key{}, viewkey);
 }
 //-----------------------------------------------------------------
 bool account_base::make_multisig(

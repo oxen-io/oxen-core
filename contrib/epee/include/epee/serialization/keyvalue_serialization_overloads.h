@@ -35,7 +35,7 @@
 #include <array>
 #include <optional>
 #include <cstring>
-#include "../byte_span.h"
+#include "crypto/cleared.h"
 #include "../storages/portable_storage_base.h"
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
@@ -74,11 +74,11 @@ namespace epee
     template <typename T, size_t S> constexpr bool is_serialize_stl_container<std::array<T, S>> = true;
 
     // static_asserts that the type is suitable for binary serialization: by default, this means it
-    // has no padding and is trivially copyable.  Types that are safe but don't satisfy these
-    // requirements can specialize is_byte_spannable.
+    // has no padding and is trivially copyable, but crypto's cleared wrappers (used for secret keys
+    // stored in wallet key files) are also allowed.
     template <typename T>
     constexpr void assert_blob_serializable() {
-      static_assert(is_byte_spannable<T>, "Type is not acceptable for blob serialization");
+      static_assert(crypto::is_byte_spannable<T>, "Type is not acceptable for blob serialization");
     }
 
     //-------------------------------------------------------------------------------------------------------------------

@@ -13,7 +13,6 @@
 #include <string_view>
 
 #include "common/meta.h"
-#include "epee/memwipe.h"
 #include "epee/net/jsonrpc_structs.h"
 #include "epee/storages/portable_storage_template_helper.h"
 #include "version.h"

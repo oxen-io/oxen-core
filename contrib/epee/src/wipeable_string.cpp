@@ -34,7 +34,7 @@
 #include <utility>
 #include <vector>
 #include <cstring>
-#include "epee/memwipe.h"
+#include <sodium/utils.h>
 #include "epee/misc_log_ex.h"
 #include "epee/wipeable_string.h"
 #include <limits>
@@ -80,7 +80,7 @@ wipeable_string::wipeable_string(std::string &&other)
     memcpy(buffer.data(), other.c_str(), size());
   if (!other.empty())
   {
-    memwipe(&other[0], other.size()); // we're kinda left with this again aren't we
+    sodium_memzero(&other[0], other.size()); // we're kinda left with this again aren't we
     other = std::string();
   }
 }
@@ -106,7 +106,7 @@ wipeable_string::~wipeable_string()
 void wipeable_string::wipe()
 {
   if (!buffer.empty())
-    memwipe(buffer.data(), buffer.size() * sizeof(char));
+    sodium_memzero(buffer.data(), buffer.size() * sizeof(char));
 }
 
 void wipeable_string::grow(size_t sz, size_t reserved)
@@ -116,7 +116,7 @@ void wipeable_string::grow(size_t sz, size_t reserved)
   if (reserved <= buffer.capacity())
   {
     if (sz < buffer.size())
-      memwipe(buffer.data() + sz, buffer.size() - sz);
+      sodium_memzero(buffer.data() + sz, buffer.size() - sz);
     buffer.resize(sz);
     return;
   }
@@ -125,14 +125,14 @@ void wipeable_string::grow(size_t sz, size_t reserved)
   if (old_sz > 0)
   {
     memcpy(tmp.get(), buffer.data(), old_sz * sizeof(char));
-    memwipe(buffer.data(), old_sz * sizeof(char));
+    sodium_memzero(buffer.data(), old_sz * sizeof(char));
   }
   buffer.reserve(reserved);
   buffer.resize(sz);
   if (old_sz > 0)
   {
     memcpy(buffer.data(), tmp.get(), old_sz * sizeof(char));
-    memwipe(tmp.get(), old_sz * sizeof(char));
+    sodium_memzero(tmp.get(), old_sz * sizeof(char));
   }
 }
 

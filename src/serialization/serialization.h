@@ -166,7 +166,7 @@
 
 #include "base.h"
 #include "common/exception.h"
-#include "epee/byte_span.h"  // for detecting epee-wrapped byte spannable objects
+#include "crypto/cleared.h"
 
 namespace serialization {
 
@@ -224,9 +224,7 @@ void value(Archive& ar, T& v) {
 template <class Archive, typename T>
     requires T::binary_serializable || binary_serializable<T>
 void value(Archive& ar, T& v) {
-    static_assert(
-            std::has_unique_object_representations_v<T> || epee::is_byte_spannable<T>,
-            "Type is not safe for binary serialization");
+    static_assert(crypto::is_byte_spannable<T>, "Type is not safe for binary serialization");
     ar.serialize_blob(&v, sizeof(v));
 }
 

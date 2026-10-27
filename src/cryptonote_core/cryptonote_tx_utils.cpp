@@ -30,6 +30,8 @@
 
 #include "cryptonote_tx_utils.h"
 
+#include <sodium/utils.h>
+
 #include <random>
 #include <unordered_set>
 
@@ -1104,7 +1106,7 @@ bool construct_tx_with_tx_key(
         ctkey.dest = rct::sk2rct(in_contexts[i].in_ephemeral.sec);
         ctkey.mask = sources[i].mask;
         inSk.push_back(ctkey);
-        memwipe(&ctkey, sizeof(rct::ctkey));
+        sodium_memzero(&ctkey, sizeof(rct::ctkey));
         // inPk: (public key, commitment)
         // will be done when filling in mixRing
         if (msout) {
@@ -1170,7 +1172,7 @@ bool construct_tx_with_tx_key(
             outSk,
             rct_config,
             hwdev);
-    memwipe(inSk.data(), inSk.size() * sizeof(rct::ctkey));
+    sodium_memzero(inSk.data(), inSk.size() * sizeof(rct::ctkey));
 
     CHECK_AND_ASSERT_MES(tx.vout.size() == outSk.size(), false, "outSk size does not match vout");
 

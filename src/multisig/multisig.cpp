@@ -29,6 +29,8 @@
 
 #include "multisig.h"
 
+#include <sodium/utils.h>
+
 #include <unordered_set>
 
 #include "crypto/crypto.h"
@@ -53,7 +55,7 @@ crypto::secret_key get_multisig_blinded_secret_key(const crypto::secret_key& key
     data.push_back(rct::sk2rct(key));
     data.push_back(multisig_salt);
     crypto::secret_key result = rct::rct2sk(rct::hash_to_scalar(data));
-    memwipe(&data[0], sizeof(rct::key));
+    sodium_memzero(&data[0], sizeof(rct::key));
     return result;
 }
 //-----------------------------------------------------------------
@@ -91,7 +93,7 @@ void generate_multisig_N1_N(
     for (const auto& k : spend_keys) {
         rct::key sk = rct::scalarmultKey(rct::pk2rct(k), rct::sk2rct(blinded_skey));
         crypto::secret_key msk = get_multisig_blinded_secret_key(rct::rct2sk(sk));
-        memwipe(&sk, sizeof(sk));
+        sodium_memzero(&sk, sizeof(sk));
         multisig_keys.push_back(msk);
         sc_add(spend_skey.bytes, spend_skey.bytes, msk.data());
     }

@@ -31,8 +31,6 @@ oxen_add_library(epee
     connection_basic.cpp
     levin_base.cpp
     int-util.c
-    memwipe.c
-    mlocker.cpp
     net_utils_base.cpp
     network_throttle.cpp
     network_throttle-detail.cpp
@@ -46,8 +44,6 @@ if (TARGET readline)
   target_sources(epee PRIVATE readline_buffer.cpp)
   target_link_libraries(epee PUBLIC readline)
 endif()
-
-set_property(SOURCE memwipe.c PROPERTY C_STANDARD 11)
 
 # Build and install libepee if we're building for GUI
 if (BUILD_GUI_DEPS)
@@ -68,6 +64,7 @@ target_link_libraries(epee
   PRIVATE
     Boost::thread
     oxen::logging
+    sessiondep::libsodium
     extra)
 
 # Force boost 1.76-ish to use std::invoke_result instead of the removed-from-C++20 std::result_of

@@ -404,7 +404,7 @@ namespace tx {
 
         hmac_keccak_hash(hash, (const uint8_t*)salt.data(), salt.size(), hash, sizeof(hash));
         memcpy(res.data, hash, sizeof(hash));
-        memwipe(hash, sizeof(hash));
+        sodium_memzero(hash, sizeof(hash));
         return res;
     }
 
@@ -1246,7 +1246,7 @@ namespace tx {
         for (unsigned i = 0; i < keys_len / 32; ++i) {
             memcpy(tx_keys[i].data, plaintext.get() + 32 * i, 32);
         }
-        memwipe(plaintext.get(), keys_len);
+        sodium_memzero(plaintext.get(), keys_len);
     }
 
 }  // namespace tx

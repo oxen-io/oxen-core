@@ -134,7 +134,7 @@ class wallet_keys_unlocker {
   private:
     wallet2& w;
     bool locked;
-    crypto::chacha_key key;
+    crypto::chacha_key key{};
     static std::mutex lockers_mutex;
     static unsigned int lockers;
 };
@@ -2321,9 +2321,9 @@ class wallet2 {
 #endif
     bool m_original_keys_available;
     cryptonote::account_public_address m_original_address;
-    crypto::secret_key m_original_view_secret_key;
+    crypto::secret_key m_original_view_secret_key{};
 
-    crypto::chacha_key m_cache_key;
+    crypto::chacha_key m_cache_key{};
     std::optional<epee::wipeable_string> m_encrypt_keys_after_refresh;
     std::mutex m_decrypt_keys_mutex;
     unsigned int m_decrypt_keys_lockers;
