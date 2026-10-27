@@ -869,15 +869,15 @@ bool Blockchain::init(
     ZoneScoped;
     log::trace(logcat, "Blockchain::{}", __func__);
 
-    CHECK_AND_ASSERT_MES(
-            nettype != network_type::FAKECHAIN || test_options,
-            false,
-            "fakechain network initialization cannot be used without test options");
+    if (!(nettype != network_type::FAKECHAIN || test_options)) {
+        log::error(logcat, "fakechain network initialization cannot be used without test options");
+        return false;
+    }
 
-    CHECK_AND_ASSERT_MES(
-            nettype == network_type::FAKECHAIN || !test_options,
-            false,
-            "non-fakechain network initialization cannot use test options");
+    if (!(nettype == network_type::FAKECHAIN || !test_options)) {
+        log::error(logcat, "non-fakechain network initialization cannot use test options");
+        return false;
+    }
 
     auto lock = tools::unique_locks(tx_pool, *this);
 
@@ -922,8 +922,10 @@ bool Blockchain::init(
         generate_genesis_block(bl, m_nettype);
         db_wtxn_guard wtxn_guard{*m_db};
         add_new_block(bl, bvc, nullptr /*checkpoint*/);
-        CHECK_AND_ASSERT_MES(
-                !bvc.m_verifivation_failed, false, "Failed to add genesis block to blockchain");
+        if (bvc.m_verifivation_failed) {
+            log::error(logcat, "Failed to add genesis block to blockchain");
+            return false;
+        }
     }
     // TODO: if blockchain load successful, verify blockchain against both
     //       hard-coded and runtime-loaded (and enforced) checkpoints.
@@ -1247,7 +1249,10 @@ block Blockchain::pop_block_from_db() {
     block popped_block;
     std::vector<transaction> popped_txs;
 
-    CHECK_AND_ASSERT_THROW_MES(m_db->height() > 1, "Cannot pop the genesis block");
+    if (m_db->height() <= 1) {
+        log::error(logcat, "Cannot pop the genesis block");
+        throw std::runtime_error{"Cannot pop the genesis block"};
+    }
 
     try {
         m_db->pop_block(popped_block, popped_txs);
@@ -1292,8 +1297,10 @@ block Blockchain::pop_block_from_db() {
     m_scan_table.clear();
     m_blocks_txs_check.clear();
 
-    CHECK_AND_ASSERT_THROW_MES(
-            update_next_cumulative_weight_limit(), "Error updating next cumulative weight limit");
+    if (!update_next_cumulative_weight_limit()) {
+        log::error(logcat, "Error updating next cumulative weight limit");
+        throw std::runtime_error{"Error updating next cumulative weight limit"};
+    }
     tx_pool.on_blockchain_dec();
     invalidate_block_template_cache();
     return popped_block;
@@ -1519,10 +1526,13 @@ bool Blockchain::rollback_blockchain_switching(
                 bvc,
                 entry.checkpointed ? &entry.checkpoint : nullptr,
                 false);
-        CHECK_AND_ASSERT_MES(
-                r && bvc.m_added_to_main_chain,
-                false,
-                "PANIC! failed to add (again) block while chain switching during the rollback!");
+        if (!(r && bvc.m_added_to_main_chain)) {
+            log::error(
+                    logcat,
+                    "PANIC! failed to add (again) block while chain switching during the "
+                    "rollback!");
+            return false;
+        }
     }
 
     log::info(logcat, "Rollback to height {} was successful.", rollback_height);
@@ -1557,8 +1567,10 @@ bool Blockchain::switch_to_alternative_blockchain(
     m_cache.m_timestamps_and_difficulties_height = 0;
 
     // if empty alt chain passed (not sure how that could happen), return false
-    CHECK_AND_ASSERT_MES(
-            alt_chain.size(), false, "switch_to_alternative_blockchain: empty chain passed");
+    if (!alt_chain.size()) {
+        log::error(logcat, "switch_to_alternative_blockchain: empty chain passed");
+        return false;
+    }
 
     // verify that main chain has front of alt chain's parent block
     if (!m_db->block_exists(alt_chain.front().bl.prev_id)) {
@@ -1720,14 +1732,17 @@ difficulty_type Blockchain::get_difficulty_for_alternative_chain(
         }
 
         // make sure we haven't accidentally grabbed too many blocks...maybe don't need this check?
-        CHECK_AND_ASSERT_MES(
-                (alt_chain.size() + timestamps.size()) <= block_count,
-                false,
-                "Internal error, alt_chain.size()[{}] + timestamps.size()[{}] NOT <= BLOCK COUNT "
-                "{}",
-                alt_chain.size(),
-                timestamps.size(),
-                block_count);
+        if ((alt_chain.size() + timestamps.size()) > block_count) {
+            log::error(
+                    logcat,
+                    "Internal error, alt_chain.size()[{}] + timestamps.size()[{}] NOT <= BLOCK "
+                    "COUNT "
+                    "{}",
+                    alt_chain.size(),
+                    timestamps.size(),
+                    block_count);
+            return false;
+        }
 
         for (const auto& bei : alt_chain) {
             timestamps.push_back(bei.bl.timestamp);
@@ -1782,10 +1797,14 @@ bool Blockchain::prevalidate_block_rewards(const block& b, uint64_t height, hf h
 
     auto& miner_tx = *b.miner_tx;
 
-    CHECK_AND_ASSERT_MES(
-            miner_tx.vin.size() == 1, false, "coinbase transaction in the block has no inputs");
-    CHECK_AND_ASSERT_MES(
-            miner_tx.is_miner_tx(), false, "coinbase transaction in the block has the wrong type");
+    if (miner_tx.vin.size() != 1) {
+        log::error(logcat, "coinbase transaction in the block has no inputs");
+        return false;
+    }
+    if (!miner_tx.is_miner_tx()) {
+        log::error(logcat, "coinbase transaction in the block has the wrong type");
+        return false;
+    }
     if (b.get_height() != height) {
         log::warning(
                 logcat, "The block has invalid height: {}, expected: {}", b.get_height(), height);
@@ -1802,12 +1821,14 @@ bool Blockchain::prevalidate_block_rewards(const block& b, uint64_t height, hf h
         return false;
     }
     log::debug(logcat, "Miner tx hash: {}", get_transaction_hash(miner_tx));
-    CHECK_AND_ASSERT_MES(
-            miner_tx.unlock_time == height + MINED_MONEY_UNLOCK_WINDOW,
-            false,
-            "coinbase transaction transaction has the wrong unlock time={}, expected {}",
-            miner_tx.unlock_time,
-            height + MINED_MONEY_UNLOCK_WINDOW);
+    if (miner_tx.unlock_time != height + MINED_MONEY_UNLOCK_WINDOW) {
+        log::error(
+                logcat,
+                "coinbase transaction transaction has the wrong unlock time={}, expected {}",
+                miner_tx.unlock_time,
+                height + MINED_MONEY_UNLOCK_WINDOW);
+        return false;
+    }
 
     if (hf_version >= hf::hf12_checkpointing) {
         if (miner_tx.type != txtype::standard) {
@@ -2027,8 +2048,10 @@ bool Blockchain::validate_block_rewards(
     }
 
     if (version < hf::hf19_reward_batching) {
-        CHECK_AND_ASSERT_MES(
-                money_in_use >= reward_parts.miner_fee, false, "base reward calculation bug");
+        if (money_in_use < reward_parts.miner_fee) {
+            log::error(logcat, "base reward calculation bug");
+            return false;
+        }
         base_reward = money_in_use - reward_parts.miner_fee;
 
     } else {  // HF19-20
@@ -2111,7 +2134,10 @@ uint64_t Blockchain::get_long_term_block_weight_median(uint64_t start_height, si
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};
 
-    CHECK_AND_ASSERT_THROW_MES(count > 0, "count == 0");
+    if (count <= 0) {
+        log::error(logcat, "count == 0");
+        throw std::runtime_error{"count == 0"};
+    }
 
     bool cached = false;
     uint64_t blockchain_height = m_db->height();
@@ -2240,7 +2266,10 @@ bool Blockchain::create_block_template_internal(
         b.timestamp = median_ts;
     }
 
-    CHECK_AND_ASSERT_MES(diffic, false, "difficulty overhead.");
+    if (!diffic) {
+        log::error(logcat, "difficulty overhead.");
+        return false;
+    }
 
     size_t txs_weight;
     uint64_t fee;
@@ -2350,7 +2379,10 @@ bool Blockchain::create_block_template_internal(
             ex_nonce,
             hf_version);
 
-    CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, first chance");
+    if (!r) {
+        log::error(logcat, "Failed to construct miner tx, first chance");
+        return false;
+    }
     size_t cumulative_weight = txs_weight + get_transaction_weight(b.miner_tx);
     for (size_t try_count = 0; try_count != 10; ++try_count) {
         std::tie(r, block_rewards) = construct_miner_tx(
@@ -2365,7 +2397,10 @@ bool Blockchain::create_block_template_internal(
                 ex_nonce,
                 hf_version);
 
-        CHECK_AND_ASSERT_MES(r, false, "Failed to construct miner tx, second chance");
+        if (!r) {
+            log::error(logcat, "Failed to construct miner tx, second chance");
+            return false;
+        }
         size_t coinbase_weight = get_transaction_weight(b.miner_tx);
         if (coinbase_weight > cumulative_weight - txs_weight) {
             cumulative_weight = txs_weight + coinbase_weight;
@@ -2378,14 +2413,16 @@ bool Blockchain::create_block_template_internal(
             // here  could be 1 byte difference, because of extra field counter is varint, and it
             // can become from 1-byte len to 2-bytes len.
             if (cumulative_weight != txs_weight + get_transaction_weight(b.miner_tx)) {
-                CHECK_AND_ASSERT_MES(
-                        cumulative_weight + 1 == txs_weight + get_transaction_weight(b.miner_tx),
-                        false,
-                        "unexpected case: cumulative_weight={} + 1 does not equal "
-                        "txs_cumulative_weight={} + get_transaction_weight(b.miner_tx)={}",
-                        cumulative_weight,
-                        txs_weight,
-                        get_transaction_weight(b.miner_tx));
+                if (cumulative_weight + 1 != txs_weight + get_transaction_weight(b.miner_tx)) {
+                    log::error(
+                            logcat,
+                            "unexpected case: cumulative_weight={} + 1 does not equal "
+                            "txs_cumulative_weight={} + get_transaction_weight(b.miner_tx)={}",
+                            cumulative_weight,
+                            txs_weight,
+                            get_transaction_weight(b.miner_tx));
+                    return false;
+                }
                 b.miner_tx->extra.resize(b.miner_tx->extra.size() - 1);
                 if (cumulative_weight != txs_weight + get_transaction_weight(b.miner_tx)) {
                     // fuck, not lucky, -1 makes varint-counter size smaller, in that case we
@@ -2405,14 +2442,17 @@ bool Blockchain::create_block_template_internal(
                         try_count);
             }
         }
-        CHECK_AND_ASSERT_MES(
-                cumulative_weight == txs_weight + get_transaction_weight(b.miner_tx),
-                false,
-                "unexpected case: cumulative_weight={} does not equal txs_cumulative_weight={} + "
-                "get_transaction_weight(b.miner_tx)={}",
-                cumulative_weight,
-                txs_weight,
-                get_transaction_weight(b.miner_tx));
+        if (cumulative_weight != txs_weight + get_transaction_weight(b.miner_tx)) {
+            log::error(
+                    logcat,
+                    "unexpected case: cumulative_weight={} does not equal txs_cumulative_weight={} "
+                    "+ "
+                    "get_transaction_weight(b.miner_tx)={}",
+                    cumulative_weight,
+                    txs_weight,
+                    get_transaction_weight(b.miner_tx));
+            return false;
+        }
 
         cache_block_template(
                 b, info.miner_address, ex_nonce, diffic, height, expected_reward, pool_cookie);
@@ -2475,12 +2515,14 @@ bool Blockchain::complete_timestamps_vector(
 
     std::unique_lock lock{*this};
     size_t need_elements = BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW - timestamps.size();
-    CHECK_AND_ASSERT_MES(
-            start_top_height < m_db->height(),
-            false,
-            "internal error: passed start_height not < m_db->height() -- {} >= {}",
-            start_top_height,
-            m_db->height());
+    if (start_top_height >= m_db->height()) {
+        log::error(
+                logcat,
+                "internal error: passed start_height not < m_db->height() -- {} >= {}",
+                start_top_height,
+                m_db->height());
+        return false;
+    }
     size_t stop_offset = start_top_height > need_elements ? start_top_height - need_elements : 0;
     timestamps.reserve(timestamps.size() + start_top_height - stop_offset);
     while (start_top_height != stop_offset) {
@@ -2509,16 +2551,16 @@ bool Blockchain::build_alt_chain(
     std::string checkpoint_blob;
     for (bool found = m_db->get_alt_block(prev_id, &data, &blob, &checkpoint_blob); found;
          found = m_db->get_alt_block(prev_hash, &data, &blob, &checkpoint_blob)) {
-        CHECK_AND_ASSERT_MES(
-                cryptonote::parse_and_validate_block_from_blob(blob, bei.bl),
-                false,
-                "Failed to parse alt block");
+        if (!cryptonote::parse_and_validate_block_from_blob(blob, bei.bl)) {
+            log::error(logcat, "Failed to parse alt block");
+            return false;
+        }
         if (data.checkpointed)  // Take checkpoint from blob stored alongside alt block
         {
-            CHECK_AND_ASSERT_MES(
-                    t_serializable_object_from_blob(bei.checkpoint, checkpoint_blob),
-                    false,
-                    "Failed to parse alt checkpoint from blob");
+            if (!t_serializable_object_from_blob(bei.checkpoint, checkpoint_blob)) {
+                log::error(logcat, "Failed to parse alt checkpoint from blob");
+                return false;
+            }
             alt_checkpoint_count++;
         }
 
@@ -2538,10 +2580,13 @@ bool Blockchain::build_alt_chain(
             if (alt_block_matches_checkpoint) {
                 if (!data.checkpointed) {
                     data.checkpointed = true;
-                    CHECK_AND_ASSERT_MES(
-                            get_checkpoint(data.height, bei.checkpoint),
-                            false,
-                            "Unexpected failure to retrieve checkpoint after checking it existed");
+                    if (!get_checkpoint(data.height, bei.checkpoint)) {
+                        log::error(
+                                logcat,
+                                "Unexpected failure to retrieve checkpoint after checking it "
+                                "existed");
+                        return false;
+                    }
                     alt_checkpoint_count++;
                 }
             } else
@@ -2627,10 +2672,10 @@ bool Blockchain::build_alt_chain(
         // if block parent is not part of main chain or an alternate chain,
         // we ignore it
         bool parent_in_main = m_db->block_exists(prev_id);
-        CHECK_AND_ASSERT_MES(
-                parent_in_main,
-                false,
-                "internal error: broken imperative condition: parent_in_main");
+        if (!parent_in_main) {
+            log::error(logcat, "internal error: broken imperative condition: parent_in_main");
+            return false;
+        }
 
         complete_timestamps_vector(m_db->get_block_height(prev_id), timestamps);
     }
@@ -2757,10 +2802,10 @@ bool Blockchain::handle_alternative_block(
 
     // NOTE: Add alt block to DB storage and alt chain
     {
-        CHECK_AND_ASSERT_MES(
-                !m_db->get_alt_block(id, NULL, NULL, NULL),
-                false,
-                "insertion of new alternative block returned as it already exists");
+        if (m_db->get_alt_block(id, NULL, NULL, NULL)) {
+            log::error(logcat, "insertion of new alternative block returned as it already exists");
+            return false;
+        }
 
         std::string checkpoint_blob;
         if (checkpoint) {
@@ -3094,10 +3139,10 @@ bool Blockchain::get_blocks(
         for (const auto& blk : blocks) {
             std::unordered_set<crypto::hash> missed_ids;
             get_transactions_blobs(blk.tx_hashes, *txs, &missed_ids);
-            CHECK_AND_ASSERT_MES(
-                    !missed_ids.size(),
-                    false,
-                    "has missed transactions in own block in main blockchain");
+            if (missed_ids.size()) {
+                log::error(logcat, "has missed transactions in own block in main blockchain");
+                return false;
+            }
         }
     }
 
@@ -3122,10 +3167,10 @@ bool Blockchain::get_blocks(
     for (const auto& blk : blocks) {
         std::unordered_set<crypto::hash> missed_ids;
         get_transactions_blobs(blk.second.tx_hashes, txs, &missed_ids);
-        CHECK_AND_ASSERT_MES(
-                !missed_ids.size(),
-                false,
-                "has missed transactions in own block in main blockchain");
+        if (missed_ids.size()) {
+            log::error(logcat, "has missed transactions in own block in main blockchain");
+            return false;
+        }
     }
 
     return true;
@@ -3759,31 +3804,35 @@ bool Blockchain::find_blockchain_supplement(
         auto& bd = blocks.emplace_back();
         bd.block_blob = m_db->get_block_blob_from_height(i);
         block b;
-        CHECK_AND_ASSERT_MES(
-                parse_and_validate_block_from_blob(bd.block_blob, b),
-                false,
-                "internal error, invalid block");
+        if (!parse_and_validate_block_from_blob(bd.block_blob, b)) {
+            log::error(logcat, "internal error, invalid block");
+            return false;
+        }
         bd.miner_tx_hash = get_miner_tx_hash && b.miner_tx
                                  ? cryptonote::get_transaction_hash(*b.miner_tx)
                                  : crypto::null<crypto::hash>;
         std::vector<std::string> txs;
         if (pruned) {
-            CHECK_AND_ASSERT_MES(
-                    m_db->get_pruned_tx_blobs_from(b.tx_hashes.front(), b.tx_hashes.size(), txs),
-                    false,
-                    "Failed to retrieve all transactions needed");
+            if (!m_db->get_pruned_tx_blobs_from(b.tx_hashes.front(), b.tx_hashes.size(), txs)) {
+                log::error(logcat, "Failed to retrieve all transactions needed");
+                return false;
+            }
         } else {
             std::unordered_set<crypto::hash> mis;
             get_transactions_blobs(b.tx_hashes, txs, &mis, pruned);
-            CHECK_AND_ASSERT_MES(
-                    mis.empty(), false, "internal error, transaction from block not found");
+            if (!mis.empty()) {
+                log::error(logcat, "internal error, transaction from block not found");
+                return false;
+            }
         }
         size += bd.block_blob.size();
         for (const auto& t : txs)
             size += t.size();
 
-        CHECK_AND_ASSERT_MES(
-                txs.size() == b.tx_hashes.size(), false, "mismatched sizes of b.tx_hashes and txs");
+        if (txs.size() != b.tx_hashes.size()) {
+            log::error(logcat, "mismatched sizes of b.tx_hashes and txs");
+            return false;
+        }
         bd.txs.reserve(txs.size());
         for (size_t i = 0; i < txs.size(); ++i)
             bd.txs.emplace_back(b.tx_hashes[i], std::move(txs[i]));
@@ -3795,7 +3844,10 @@ bool Blockchain::add_block_as_invalid(cryptonote::block const& block) {
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};
     auto i_res = m_invalid_blocks.insert(get_block_hash(block));
-    CHECK_AND_ASSERT_MES(i_res.second, false, "at insertion invalid block returned status failed");
+    if (!i_res.second) {
+        log::error(logcat, "at insertion invalid block returned status failed");
+        return false;
+    }
     log::info(
             logcat,
             "BLOCK ADDED AS INVALID: {}\n, prev_id={}, m_invalid_blocks count={}",
@@ -4095,7 +4147,10 @@ bool Blockchain::get_tx_outputs_gindexs(
         return false;
     }
     indexs = m_db->get_tx_amount_output_indices(tx_index, n_txes);
-    CHECK_AND_ASSERT_MES(n_txes == indexs.size(), false, "Wrong indexs size");
+    if (n_txes != indexs.size()) {
+        log::error(logcat, "Wrong indexs size");
+        return false;
+    }
 
     return true;
 }
@@ -4111,7 +4166,10 @@ bool Blockchain::get_tx_outputs_gindexs(
         return false;
     }
     std::vector<std::vector<uint64_t>> indices = m_db->get_tx_amount_output_indices(tx_index, 1);
-    CHECK_AND_ASSERT_MES(indices.size() == 1, false, "Wrong indices size");
+    if (indices.size() != 1) {
+        log::error(logcat, "Wrong indices size");
+        return false;
+    }
     indexs = indices.front();
     return true;
 }
@@ -4187,12 +4245,14 @@ bool Blockchain::check_tx_inputs(
     if (!res)
         return false;
 
-    CHECK_AND_ASSERT_MES(
-            max_used_block_height < m_db->height(),
-            false,
-            "internal error: max used block index={} is not less than blockchain size={}",
-            max_used_block_height,
-            m_db->height());
+    if (max_used_block_height >= m_db->height()) {
+        log::error(
+                logcat,
+                "internal error: max used block index={} is not less than blockchain size={}",
+                max_used_block_height,
+                m_db->height());
+        return false;
+    }
     max_used_block_id = max_used_block_height
                               ? m_db->get_block_hash_from_height(max_used_block_height)
                               : crypto::null<hash>;
@@ -4321,8 +4381,10 @@ bool Blockchain::expand_transaction_2(
         transaction& tx,
         const crypto::hash& tx_prefix_hash,
         const std::vector<std::vector<rct::ctkey>>& pubkeys) const {
-    CHECK_AND_ASSERT_MES(
-            tx.version >= txversion::v2_ringct, false, "Transaction version is not 2 or greater");
+    if (tx.version < txversion::v2_ringct) {
+        log::error(logcat, "Transaction version is not 2 or greater");
+        return false;
+    }
 
     rct::rctSig& rv = tx.rct_signatures;
 
@@ -4331,13 +4393,18 @@ bool Blockchain::expand_transaction_2(
 
     // mixRing - full and simple store it in opposite ways
     if (rv.type == rct::RCTType::Full) {
-        CHECK_AND_ASSERT_MES(!pubkeys.empty() && !pubkeys[0].empty(), false, "empty pubkeys");
+        if (!(!pubkeys.empty() && !pubkeys[0].empty())) {
+            log::error(logcat, "empty pubkeys");
+            return false;
+        }
         rv.mixRing.resize(pubkeys[0].size());
         for (size_t m = 0; m < pubkeys[0].size(); ++m)
             rv.mixRing[m].clear();
         for (size_t n = 0; n < pubkeys.size(); ++n) {
-            CHECK_AND_ASSERT_MES(
-                    pubkeys[n].size() <= pubkeys[0].size(), false, "More inputs that first ring");
+            if (pubkeys[n].size() > pubkeys[0].size()) {
+                log::error(logcat, "More inputs that first ring");
+                return false;
+            }
             for (size_t m = 0; m < pubkeys[n].size(); ++m) {
                 rv.mixRing[m].push_back(pubkeys[n][m]);
             }
@@ -4348,7 +4415,10 @@ bool Blockchain::expand_transaction_2(
                        rct::RCTType::Bulletproof,
                        rct::RCTType::Bulletproof2,
                        rct::RCTType::CLSAG)) {
-        CHECK_AND_ASSERT_MES(!pubkeys.empty() && !pubkeys[0].empty(), false, "empty pubkeys");
+        if (!(!pubkeys.empty() && !pubkeys[0].empty())) {
+            log::error(logcat, "empty pubkeys");
+            return false;
+        }
         rv.mixRing.resize(pubkeys.size());
         for (size_t n = 0; n < pubkeys.size(); ++n) {
             rv.mixRing[n].clear();
@@ -4357,11 +4427,11 @@ bool Blockchain::expand_transaction_2(
             }
         }
     } else {
-        CHECK_AND_ASSERT_MES(
-                false,
-                false,
+        log::error(
+                logcat,
                 "Unsupported rct tx type: {}",
                 std::underlying_type_t<rct::RCTType>(rv.type));
+        return false;
     }
 
     // II
@@ -4375,24 +4445,30 @@ bool Blockchain::expand_transaction_2(
                        rct::RCTType::Simple,
                        rct::RCTType::Bulletproof,
                        rct::RCTType::Bulletproof2)) {
-        CHECK_AND_ASSERT_MES(rv.p.MGs.size() == tx.vin.size(), false, "Bad MGs size");
+        if (rv.p.MGs.size() != tx.vin.size()) {
+            log::error(logcat, "Bad MGs size");
+            return false;
+        }
         for (size_t n = 0; n < tx.vin.size(); ++n) {
             rv.p.MGs[n].II.resize(1);
             rv.p.MGs[n].II[0] = rct::ki2rct(std::get<txin_to_key>(tx.vin[n]).k_image);
         }
     } else if (rv.type == rct::RCTType::CLSAG) {
         if (!tx.pruned) {
-            CHECK_AND_ASSERT_MES(rv.p.CLSAGs.size() == tx.vin.size(), false, "Bad CLSAGs size");
+            if (rv.p.CLSAGs.size() != tx.vin.size()) {
+                log::error(logcat, "Bad CLSAGs size");
+                return false;
+            }
             for (size_t n = 0; n < tx.vin.size(); ++n) {
                 rv.p.CLSAGs[n].I = rct::ki2rct(std::get<txin_to_key>(tx.vin[n]).k_image);
             }
         }
     } else {
-        CHECK_AND_ASSERT_MES(
-                false,
-                false,
+        log::error(
+                logcat,
                 "Unsupported rct tx type: {}",
                 static_cast<std::underlying_type_t<rct::RCTType>>(rv.type));
+        return false;
     }
 
     // outPk was already done by handle_incoming_tx
@@ -4478,18 +4554,20 @@ bool Blockchain::check_tx_inputs(
             //
             // make sure output being spent is of type txin_to_key, rather than e.g.  txin_gen,
             // which is only used for miner transactions
-            CHECK_AND_ASSERT_MES(
-                    std::holds_alternative<txin_to_key>(txin),
-                    false,
-                    "wrong type id in tx input at Blockchain::check_tx_inputs");
+            if (!(std::holds_alternative<txin_to_key>(txin))) {
+                log::error(logcat, "wrong type id in tx input at Blockchain::check_tx_inputs");
+                return false;
+            }
             const txin_to_key& in_to_key = std::get<txin_to_key>(txin);
             {
                 // make sure tx output has key offset(s) (is signed to be used)
-                CHECK_AND_ASSERT_MES(
-                        in_to_key.key_offsets.size(),
-                        false,
-                        "empty in_to_key.key_offsets in transaction with id {}",
-                        get_transaction_hash(tx));
+                if (!in_to_key.key_offsets.size()) {
+                    log::error(
+                            logcat,
+                            "empty in_to_key.key_offsets in transaction with id {}",
+                            get_transaction_hash(tx));
+                    return false;
+                }
 
                 // Mixin Check, from hard fork 7, we require mixin at least 9, always.
                 if (in_to_key.key_offsets.size() - 1 != cryptonote::TX_OUTPUT_DECOYS) {
@@ -4588,10 +4666,10 @@ bool Blockchain::check_tx_inputs(
         }
 
         if (hf_version >= feature::ENFORCE_MIN_AGE) {
-            CHECK_AND_ASSERT_MES(
-                    *pmax_used_block_height + DEFAULT_TX_SPENDABLE_AGE <= m_db->height(),
-                    false,
-                    "Transaction spends at least one output which is too young");
+            if (*pmax_used_block_height + DEFAULT_TX_SPENDABLE_AGE > m_db->height()) {
+                log::error(logcat, "Transaction spends at least one output which is too young");
+                return false;
+            }
         }
 
         if (!expand_transaction_2(tx, tx_prefix_hash, pubkeys)) {
@@ -4783,12 +4861,14 @@ bool Blockchain::check_tx_inputs(
         }
 
     } else {
-        CHECK_AND_ASSERT_MES(
-                tx.vin.size() == 0,
-                false,
-                "TX type: {} should have 0 inputs. This should have been rejected in "
-                "check_tx_semantic!",
-                tx.type);
+        if (tx.vin.size() != 0) {
+            log::error(
+                    logcat,
+                    "TX type: {} should have 0 inputs. This should have been rejected in "
+                    "check_tx_semantic!",
+                    tx.type);
+            return false;
+        }
 
         if (tx.rct_signatures.txnFee != 0) {
             tvc.m_invalid_input = true;
@@ -5351,7 +5431,10 @@ Blockchain::block_pow_verified Blockchain::verify_block_pow(
     if (blk.get_height() >= 526483 && get_network_version() < hf::hf16_pulse)
         difficulty = (difficulty * 998) / 1000;
 
-    CHECK_AND_ASSERT_MES(difficulty, result, "!!!!!!!!! difficulty overhead !!!!!!!!!");
+    if (!difficulty) {
+        log::error(logcat, "!!!!!!!!! difficulty overhead !!!!!!!!!");
+        return result;
+    }
     if (alt_block) {
         randomx_longhash_context randomx_context = {};
         if (blk.major_version >= hf::hf12_checkpointing) {
@@ -6433,12 +6516,11 @@ uint64_t Blockchain::prevalidate_block_hashes(
 
             size_t end = n * HASH_OF_HASHES_STEP + HASH_OF_HASHES_STEP;
             for (size_t i = n * HASH_OF_HASHES_STEP; i < end; ++i) {
-                CHECK_AND_ASSERT_MES(
-                        !m_blocks_hash_check[i] ||
-                                m_blocks_hash_check[i] ==
-                                        data[i - first_index * HASH_OF_HASHES_STEP],
-                        0,
-                        "Consistency failure in m_blocks_hash_check construction");
+                if (!(!m_blocks_hash_check[i] ||
+                      m_blocks_hash_check[i] == data[i - first_index * HASH_OF_HASHES_STEP])) {
+                    log::error(logcat, "Consistency failure in m_blocks_hash_check construction");
+                    return 0;
+                }
                 m_blocks_hash_check[i] = data[i - first_index * HASH_OF_HASHES_STEP];
             }
             usable += HASH_OF_HASHES_STEP;
@@ -6450,8 +6532,10 @@ uint64_t Blockchain::prevalidate_block_hashes(
         }
     }
     log::debug(logcat, "usable: {} / {}", usable, hashes.size());
-    CHECK_AND_ASSERT_MES(
-            usable < std::numeric_limits<uint64_t>::max() / 2, 0, "usable is negative");
+    if (!(usable < std::numeric_limits<uint64_t>::max() / 2)) {
+        log::error(logcat, "usable is negative");
+        return 0;
+    }
     return usable;
 }
 

@@ -378,8 +378,14 @@ public:
     }
 
     // these should never fail, but do runtime check for safety
-    CHECK_AND_ASSERT_MES(m_config.m_max_packet_size >= m_cache_in_buffer.size(), false, "Bad m_cache_in_buffer.size()");
-    CHECK_AND_ASSERT_MES(m_config.m_max_packet_size - m_cache_in_buffer.size() >= m_fragment_buffer.size(), false, "Bad m_cache_in_buffer.size() + m_fragment_buffer.size()");
+    if (m_config.m_max_packet_size < m_cache_in_buffer.size()) {
+      oxen::log::error(logcat, "Bad m_cache_in_buffer.size()");
+      return false;
+    }
+    if (m_config.m_max_packet_size - m_cache_in_buffer.size() < m_fragment_buffer.size()) {
+      oxen::log::error(logcat, "Bad m_cache_in_buffer.size() + m_fragment_buffer.size()");
+      return false;
+    }
 
     // flipped to subtraction; prevent overflow since m_max_packet_size is variable and public
     if(cb > m_config.m_max_packet_size - m_cache_in_buffer.size() - m_fragment_buffer.size())

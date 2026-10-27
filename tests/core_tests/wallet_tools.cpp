@@ -72,7 +72,10 @@ void wallet_tools::process_transactions(tools::wallet2 * wallet, const std::vect
 
 bool wallet_tools::fill_tx_sources(tools::wallet2 * wallet, std::vector<cryptonote::tx_source_entry>& sources, size_t mixin, const std::optional<size_t>& num_utxo, const std::optional<uint64_t>& min_amount, block_tracker &bt, std::vector<size_t> &selected, uint64_t cur_height, ssize_t offset, int step, const std::optional<fnc_accept_tx_source_t>& fnc_accept)
 {
-  CHECK_AND_ASSERT_THROW_MES(step != 0, "Step is zero");
+  if (step == 0) {
+    oxen::log::error(logcat, "Step is zero");
+    throw std::runtime_error{"Step is zero"};
+  }
   sources.clear();
 
   auto & transfers = wallet_accessor_test::get_transfers(wallet);
@@ -153,7 +156,10 @@ bool wallet_tools::fill_tx_sources(tools::wallet2 * wallet, std::vector<cryptono
 
 void wallet_tools::gen_tx_src(size_t mixin, uint64_t cur_height, const tools::wallet2::transfer_details& td, cryptonote::tx_source_entry& src, block_tracker& bt)
 {
-  CHECK_AND_ASSERT_THROW_MES(mixin != 0, "mixin is zero");
+  if (mixin == 0) {
+    oxen::log::error(logcat, "mixin is zero");
+    throw std::runtime_error{"mixin is zero"};
+  }
   src.amount = td.amount();
   src.rct = td.is_rct();
 
@@ -201,7 +207,11 @@ void wallet_tools::gen_block_data(block_tracker &bt, const cryptonote::block *bl
 
   for (const auto &h : bl->tx_hashes) {
     const map_hash2tx_t::const_iterator cit = mtx.find(h);
-    CHECK_AND_ASSERT_THROW_MES(mtx.end() != cit, "block contains an unknown tx hash @ {}, {}", height, h);
+    if (mtx.end() == cit) {
+      auto msg = fmt::format("block contains an unknown tx hash @ {}, {}", height, h);
+      oxen::log::error(logcat, "{}", msg);
+      throw std::runtime_error{msg};
+    }
     vtx.push_back(cit->second);
   }
 

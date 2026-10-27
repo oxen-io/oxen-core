@@ -220,7 +220,8 @@ namespace epee
     storage_entry* portable_storage::insert_new_entry_get_storage_entry(const std::string& pentry_name, section* psection, const entry_type& entry)
     {
       TRY_ENTRY();
-      CHECK_AND_ASSERT(psection, nullptr);
+      if (!psection)
+        return nullptr;
       auto ins_res = psection->m_entries.emplace(pentry_name, entry);
       return &ins_res.first->second;
       CATCH_ENTRY("portable_storage::insert_new_entry_get_storage_entry", nullptr);

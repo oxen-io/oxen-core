@@ -708,7 +708,10 @@ key skGen() {
 // Generates a vector of secret key
 // Mainly used in testing
 keyV skvGen(size_t rows) {
-    CHECK_AND_ASSERT_THROW_MES(rows > 0, "0 keys requested");
+    if (rows <= 0) {
+        oxen::log::error(logcat, "0 keys requested");
+        throw std::runtime_error{"0 keys requested"};
+    }
     keyV rv(rows);
     size_t i = 0;
     for (i = 0; i < rows; i++) {

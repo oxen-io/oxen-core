@@ -63,7 +63,11 @@ namespace epee
         recursion_limiter(size_t& counter):m_counter_ref(counter)
         {
           ++m_counter_ref;
-          CHECK_AND_ASSERT_THROW_MES(m_counter_ref < RECURSION_LIMIT, "Wrong blob data in portable storage: recursion limit ({}) exceeded", RECURSION_LIMIT);
+          if (m_counter_ref >= RECURSION_LIMIT) {
+            auto msg = fmt::format("Wrong blob data in portable storage: recursion limit ({}) exceeded", RECURSION_LIMIT);
+            oxen::log::error(logcat, "{}", msg);
+            throw std::runtime_error{msg};
+          }
         }
         ~recursion_limiter()
         {
@@ -90,7 +94,11 @@ namespace epee
     inline 
     void throwable_buffer_reader::read(void* target, size_t count)
     {
-      CHECK_AND_ASSERT_THROW_MES(m_count >= count, " attempt to read {} bytes from buffer with {} bytes remained", count, m_count);
+      if (m_count < count) {
+        auto msg = fmt::format(" attempt to read {} bytes from buffer with {} bytes remained", count, m_count);
+        oxen::log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+      }
       memcpy(target, m_ptr, count);
       m_ptr += count;
       m_count -= count;
@@ -126,7 +134,10 @@ namespace epee
     storage_entry throwable_buffer_reader::read_ae()
     {
       size_t size = read_varint();
-      CHECK_AND_ASSERT_THROW_MES(size <= m_count, "Size sanity check failed");
+      if (size > m_count) {
+        oxen::log::error(logcat, "Size sanity check failed");
+        throw std::runtime_error{"Size sanity check failed"};
+      }
       storage_entry se{std::in_place_type<array_entry>, std::in_place_type<array_t<T>>};
       auto& arr = std::get<array_t<T>>(std::get<array_entry>(se));
       if constexpr (!std::is_same_v<T, bool>) // bool uses a std::deque, which isn't reserveable
@@ -158,14 +169,17 @@ namespace epee
         case SERIALIZE_TYPE_TAG<std::string>: return read_ae<std::string>();
         case SERIALIZE_TYPE_TAG<section>:     return read_ae<section>();
         //case SERIALIZE_TYPE_ARRAY:  return read_ae<array_entry>(); // nested arrays not supported
-        default: { CHECK_AND_ASSERT_THROW_MES(false, "unknown entry_type code = {}", +type); return {}; }
+        default: { auto msg = fmt::format("unknown entry_type code = {}", +type); oxen::log::error(logcat, "{}", msg); throw std::runtime_error{msg}; return {}; }
       }
     }
 
     inline 
     uint64_t throwable_buffer_reader::read_varint()
     {
-      CHECK_AND_ASSERT_THROW_MES(m_count >= 1, "empty buff, expected place for varint");
+      if (m_count < 1) {
+        oxen::log::error(logcat, "empty buff, expected place for varint");
+        throw std::runtime_error{"empty buff, expected place for varint"};
+      }
       uint64_t v = 0;
       uint8_t size_mask = *m_ptr & PORTABLE_RAW_SIZE_MARK_MASK;
       switch (size_mask)
@@ -211,7 +225,7 @@ namespace epee
         case SERIALIZE_TYPE_TAG<std::string>: return read_se<std::string>();
         case SERIALIZE_TYPE_TAG<section>:     return read_se<section>();
         //case SERIALIZE_TYPE_ARRAY:  return read_se<array_entry>(); // nested arrays not supported
-        default: { CHECK_AND_ASSERT_THROW_MES(false, "unknown entry_type code = {}", +ent_type); return {}; }
+        default: { auto msg = fmt::format("unknown entry_type code = {}", +ent_type); oxen::log::error(logcat, "{}", msg); throw std::runtime_error{msg}; return {}; }
       }
     }
     inline 
@@ -231,8 +245,16 @@ namespace epee
     void throwable_buffer_reader::read(std::string& str)
     {
       size_t len = read_varint();
-      CHECK_AND_ASSERT_THROW_MES(len < MAX_STRING_LEN_POSSIBLE, "to big string len value in storage: {}", len);
-      CHECK_AND_ASSERT_THROW_MES(m_count >= len, "string len count value {} goes out of remain storage len {}", len, m_count);
+      if (len >= MAX_STRING_LEN_POSSIBLE) {
+        auto msg = fmt::format("to big string len value in storage: {}", len);
+        oxen::log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+      }
+      if (m_count < len) {
+        auto msg = fmt::format("string len count value {} goes out of remain storage len {}", len, m_count);
+        oxen::log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+      }
       //do this manually to avoid double memory write in huge strings (first time at resize, second at read)
       str.assign(reinterpret_cast<const char*>(m_ptr), len);
       m_ptr += len;

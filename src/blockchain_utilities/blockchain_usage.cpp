@@ -159,7 +159,10 @@ int main(int argc, char* argv[]) {
 
     r = core_storage->init(std::move(db), command_line::get_network(vm));
 
-    CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
+    if (!r) {
+        log::error(logcat, "Failed to initialize source blockchain storage");
+        return 1;
+    }
     log::warning(logcat, "Source blockchain storage initialized OK");
 
     log::warning(logcat, "Building usage patterns...");

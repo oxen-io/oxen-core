@@ -129,17 +129,21 @@ bool checkpoints::get_checkpoint(uint64_t height, checkpoint_t& checkpoint) cons
 bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str) {
     crypto::hash h{};
     bool r = tools::try_load_from_hex_guts(hash_str, h);
-    CHECK_AND_ASSERT_MES(
-            r, false, "Failed to parse checkpoint hash string into binary representation!");
+    if (!r) {
+        log::error(logcat, "Failed to parse checkpoint hash string into binary representation!");
+        return false;
+    }
 
     checkpoint_t checkpoint = {};
     if (get_checkpoint(height, checkpoint)) {
         crypto::hash const& curr_hash = checkpoint.block_hash;
-        CHECK_AND_ASSERT_MES(
-                h == curr_hash,
-                false,
-                "Checkpoint at given height already exists, and hash for new checkpoint was "
-                "different!");
+        if (h != curr_hash) {
+            log::error(
+                    logcat,
+                    "Checkpoint at given height already exists, and hash for new checkpoint was "
+                    "different!");
+            return false;
+        }
     } else {
         checkpoint.type = checkpoint_type::hardcoded;
         checkpoint.height = height;
@@ -373,7 +377,8 @@ bool checkpoints::init(network_type nettype, BlockchainDB* db) {
         for (size_t i = 0; i < oxen::array_count(HARDCODED_MAINNET_CHECKPOINTS); ++i) {
             height_to_hash const& checkpoint = HARDCODED_MAINNET_CHECKPOINTS[i];
             bool added = add_checkpoint(checkpoint.height, checkpoint.hash);
-            CHECK_AND_ASSERT(added, false);
+            if (!added)
+                return false;
         }
     }
 

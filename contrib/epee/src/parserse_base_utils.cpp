@@ -61,7 +61,8 @@ void match_string2(const char*& star_end_string, const char* buf_end, std::strin
       case 'u':  //Unicode code point
         if (buf_end - it < 4)
         {
-          ASSERT_MES_AND_THROW("Invalid Unicode escape sequence");
+          oxen::log::error(logcat, "Invalid Unicode escape sequence");
+          throw std::runtime_error{"Invalid Unicode escape sequence"};
         }
         else
         {
@@ -69,7 +70,11 @@ void match_string2(const char*& star_end_string, const char* buf_end, std::strin
           for (int i = 0; i < 4; ++i)
           {
             const auto c = *++it;
-            CHECK_AND_ASSERT_THROW_MES(oxenc::is_hex_digit(c), "Bad Unicode encoding: {}", c);
+            if (!oxenc::is_hex_digit(c)) {
+              auto msg = fmt::format("Bad Unicode encoding: {}", c);
+              oxen::log::error(logcat, "{}", msg);
+              throw std::runtime_error{msg};
+            }
             dst = dst << 4 | oxenc::from_hex_digit(c);
           }
           // encode as UTF-8
@@ -90,7 +95,8 @@ void match_string2(const char*& star_end_string, const char* buf_end, std::strin
           }
           else
           {
-            ASSERT_MES_AND_THROW("Unicode code point is out or range");
+            oxen::log::error(logcat, "Unicode code point is out or range");
+            throw std::runtime_error{"Unicode code point is out or range"};
           }
         }
         break;
@@ -111,7 +117,9 @@ void match_string2(const char*& star_end_string, const char* buf_end, std::strin
       val.push_back(*it); 
     }
   }
-  ASSERT_MES_AND_THROW("Failed to match string in json entry: {}", std::string_view{star_end_string, buf_end});
+  auto msg = fmt::format("Failed to match string in json entry: {}", std::string_view{star_end_string, buf_end});
+  oxen::log::error(logcat, "{}", msg);
+  throw std::runtime_error{msg};
 }
 // The only conclusive thing that can be said about this function is that it does indeed
 // closely match a "number 2". 💩
@@ -146,11 +154,16 @@ void match_number2(const char*& star_end_string, const char* buf_end, std::strin
         is_float_val = !!(float_flag & 2);
         return;
       }
-      else 
-        ASSERT_MES_AND_THROW("wrong number in json entry: {}", std::string(star_end_string, buf_end));
+      else {
+        auto msg = fmt::format("wrong number in json entry: {}", std::string(star_end_string, buf_end));
+        oxen::log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+      }
     }
   }
-  ASSERT_MES_AND_THROW("wrong number in json entry: {}", std::string(star_end_string, buf_end));
+  auto msg = fmt::format("wrong number in json entry: {}", std::string(star_end_string, buf_end));
+  oxen::log::error(logcat, "{}", msg);
+  throw std::runtime_error{msg};
 }
 void match_word2(const char*& star_end_string, const char* buf_end, std::string_view& val)
 {
@@ -165,11 +178,16 @@ void match_word2(const char*& star_end_string, const char* buf_end, std::string_
       {
         star_end_string = --it;
         return;
-      }else 
-        ASSERT_MES_AND_THROW("failed to match word number in json entry: {}", std::string(star_end_string, buf_end));
+      }else {
+        auto msg = fmt::format("failed to match word number in json entry: {}", std::string(star_end_string, buf_end));
+        oxen::log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+      }
     }
   }
-  ASSERT_MES_AND_THROW("failed to match word number in json entry: {}", std::string(star_end_string, buf_end));
+  auto msg = fmt::format("failed to match word number in json entry: {}", std::string(star_end_string, buf_end));
+  oxen::log::error(logcat, "{}", msg);
+  throw std::runtime_error{msg};
 }
 
 } // namespace epee::misc_utils::parse

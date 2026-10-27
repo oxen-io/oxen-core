@@ -70,19 +70,28 @@ namespace epee
       array_entry* make_array_and_insert(Storage& st, const std::string& value_name, T value, section* parent_section)
       {
         auto* array = st.template make_array<T>(value_name, parent_section);
-        CHECK_AND_ASSERT_THROW_MES(array, "failed to insert {} array", typeid(T).name());
+        if (!array) {
+          auto msg = fmt::format("failed to insert {} array", typeid(T).name());
+          oxen::log::error(logcat, "{}", msg);
+          throw std::runtime_error{msg};
+        }
         std::get<array_t<T>>(*array).push_back(std::move(value));
         return array;
       }
 
       /*inline void parse_error()
       {
-        ASSERT_MES_AND_THROW("json parse error");
+        oxen::log::error(logcat, "json parse error");
+        throw std::runtime_error{"json parse error"};
       }*/
       template<typename It, class t_storage>
       void run_handler(section* current_section, It& sec_buf_begin, It buf_end, t_storage& stg, unsigned int recursion)
       {
-        CHECK_AND_ASSERT_THROW_MES(recursion < EPEE_JSON_RECURSION_LIMIT_INTERNAL, "Wrong JSON data: recursion limitation ({}) exceeded", EPEE_JSON_RECURSION_LIMIT_INTERNAL);
+        if (recursion >= EPEE_JSON_RECURSION_LIMIT_INTERNAL) {
+          auto msg = fmt::format("Wrong JSON data: recursion limitation ({}) exceeded", EPEE_JSON_RECURSION_LIMIT_INTERNAL);
+          oxen::log::error(logcat, "{}", msg);
+          throw std::runtime_error{msg};
+        }
 
         std::string::const_iterator sub_element_start;
         std::string name;
@@ -170,13 +179,17 @@ namespace epee
                 state = match_state_wonder_after_value;
               else if(word == "true" || word == "false")
                 stg.set_value(name, word == "true", current_section);              
-              else ASSERT_MES_AND_THROW("Unknown value keyword {}", word);
+              else { auto msg = fmt::format("Unknown value keyword {}", word); oxen::log::error(logcat, "{}", msg); throw std::runtime_error{msg}; }
               state = match_state_wonder_after_value;
             }else if(*it == '{')
             {
               //sub section here
               section* new_sec = stg.open_section(name, current_section, true);
-              CHECK_AND_ASSERT_THROW_MES(new_sec, "Failed to insert new section in json: {}", std::string(it, buf_end));
+              if (!new_sec) {
+                auto msg = fmt::format("Failed to insert new section in json: {}", std::string(it, buf_end));
+                oxen::log::error(logcat, "{}", msg);
+                throw std::runtime_error{msg};
+              }
               run_handler(new_sec, it, buf_end, stg, recursion + 1);
               state = match_state_wonder_after_value;
             }else if(*it == '[')
@@ -197,7 +210,8 @@ namespace epee
           case match_state_wonder_array:
             if(*it == '[')
             {
-              ASSERT_MES_AND_THROW("array of array not supported yet :( sorry"); 
+              oxen::log::error(logcat, "array of array not supported yet :( sorry");
+              throw std::runtime_error{"array of array not supported yet :( sorry"}; 
               //mean array of array
             }
             if(*it == '{')
@@ -257,8 +271,11 @@ namespace epee
               match_word2(it, buf_end, word);
               if(word == "true" || word == "false")
                 array = make_array_and_insert(stg, name, word == "true", current_section);              
-              else
-                ASSERT_MES_AND_THROW("Unknown value keyword {}", word);
+              else {
+                auto msg = fmt::format("Unknown value keyword {}", word);
+                oxen::log::error(logcat, "{}", msg);
+                throw std::runtime_error{msg};
+              }
               state = match_state_array_after_value;
               array_md = array_mode_booleans;
             }else CHECK_ISSPACE();
@@ -280,7 +297,10 @@ namespace epee
               if(*it == '{')
               {
                 auto* a = std::get_if<array_t<section>>(array);
-                CHECK_AND_ASSERT_THROW_MES(a, "failed to insert next section");
+                if (!a) {
+                  oxen::log::error(logcat, "failed to insert next section");
+                  throw std::runtime_error{"failed to insert next section"};
+                }
                 a->emplace_back();
                 run_handler(&a->back(), it, buf_end, stg, recursion + 1);
                 state = match_state_array_after_value;
@@ -292,7 +312,10 @@ namespace epee
                 std::string val;
                 match_string2(it, buf_end, val);
                 auto* a = std::get_if<array_t<std::string>>(array);
-                CHECK_AND_ASSERT_THROW_MES(a, "failed to insert string value");
+                if (!a) {
+                  oxen::log::error(logcat, "failed to insert string value");
+                  throw std::runtime_error{"failed to insert string value"};
+                }
                 a->push_back(std::move(val));
                 state = match_state_array_after_value;
               }else CHECK_ISSPACE();
@@ -327,7 +350,10 @@ namespace epee
                   }
                 }
 
-                CHECK_AND_ASSERT_THROW_MES(insert_res, "Failed to insert next value");
+                if (!insert_res) {
+                  oxen::log::error(logcat, "Failed to insert next value");
+                  throw std::runtime_error{"Failed to insert next value"};
+                }
                 state = match_state_array_after_value;
                 array_md = array_mode_numbers;
               }else CHECK_ISSPACE();
@@ -342,21 +368,23 @@ namespace epee
                   val = true;
                 else if (word == "false")
                   val = false;
-                else ASSERT_MES_AND_THROW("Unknown value keyword {}", word);
+                else { auto msg = fmt::format("Unknown value keyword {}", word); oxen::log::error(logcat, "{}", msg); throw std::runtime_error{msg}; }
 
                 if (auto* a = std::get_if<array_t<bool>>(array))
                   a->push_back(val);
-                else ASSERT_MES_AND_THROW("can't handle a bool value mixed with other types");
+                else { oxen::log::error(logcat, "can't handle a bool value mixed with other types"); throw std::runtime_error{"can't handle a bool value mixed with other types"}; }
               }else CHECK_ISSPACE();
               break;
             case array_mode_undefined:
             default:
-              ASSERT_MES_AND_THROW("Bad array state");
+              oxen::log::error(logcat, "Bad array state");
+              throw std::runtime_error{"Bad array state"};
             }
             break;
           case match_state_error:
           default:
-            ASSERT_MES_AND_THROW("WRONG JSON STATE");
+            oxen::log::error(logcat, "WRONG JSON STATE");
+            throw std::runtime_error{"WRONG JSON STATE"};
           }
         }
       }

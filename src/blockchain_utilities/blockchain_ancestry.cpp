@@ -432,7 +432,10 @@ int main(int argc, char* argv[]) {
     }
     r = core_storage->init(std::move(bdb), net_type);
 
-    CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
+    if (!r) {
+        log::error(logcat, "Failed to initialize source blockchain storage");
+        return 1;
+    }
     log::warning(logcat, "Source blockchain storage initialized OK");
 
     std::vector<crypto::hash> start_txids;

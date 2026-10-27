@@ -315,7 +315,10 @@ bool node_server<t_payload_net_handler>::add_host_fail(
     log::debug(logcat, "Host {} fail score={}", address.host_str(), fails);
     if (fails > cryptonote::p2p::IP_FAILS_BEFORE_BLOCK) {
         auto it = m_host_fails_score.find(address.host_str());
-        CHECK_AND_ASSERT_MES(it != m_host_fails_score.end(), false, "internal error");
+        if (it == m_host_fails_score.end()) {
+            log::error(logcat, "internal error");
+            return false;
+        }
         it->second = cryptonote::p2p::IP_FAILS_BEFORE_BLOCK / 2;
         block_host(address);
     }
@@ -355,17 +358,17 @@ bool node_server<t_payload_net_handler>::handle_command_line(
                 m_command_line_peers.push_back(std::move(pe));
                 continue;
             }
-            CHECK_AND_ASSERT_MES(
-                    adr == net::error::unsupported_address,
-                    false,
-                    "Bad address (\"{}\"): {}",
-                    pr_str,
-                    adr.error().message());
+            if (adr != net::error::unsupported_address) {
+                log::error(logcat, "Bad address (\"{}\"): {}", pr_str, adr.error().message());
+                return false;
+            }
 
             std::vector<epee::net_utils::network_address> resolved_addrs;
             bool r = append_net_address(resolved_addrs, pr_str, default_port);
-            CHECK_AND_ASSERT_MES(
-                    r, false, "Failed to parse or resolve address from string: {}", pr_str);
+            if (!r) {
+                log::error(logcat, "Failed to parse or resolve address from string: {}", pr_str);
+                return false;
+            }
             for (const epee::net_utils::network_address& addr : resolved_addrs) {
                 pe.id = crypto::rand<uint64_t>();
                 pe.adr = addr;
@@ -450,8 +453,10 @@ static bool append_net_address(
     ip::tcp::resolver resolver(io_srv);
     boost::system::error_code ec;
     ip::tcp::resolver::results_type result = resolver.resolve(host, port, boost::asio::ip::tcp::resolver::canonical_name, ec);
-    CHECK_AND_ASSERT_MES(
-            !ec, false, "Failed to resolve host name '{}': {}:{}", host, ec.message(), ec.value());
+    if (ec) {
+        log::error(logcat, "Failed to resolve host name '{}': {}:{}", host, ec.message(), ec.value());
+        return false;
+    }
 
     auto i = result.begin();
     auto iend = result.end();
@@ -476,7 +481,10 @@ static bool append_net_address(
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::init(const boost::program_options::variables_map& vm) {
     bool res = handle_command_line(vm);
-    CHECK_AND_ASSERT_MES(res, false, "Failed to handle command line");
+    if (!res) {
+        log::error(logcat, "Failed to handle command line");
+        return false;
+    }
 
     static_cast<std::array<unsigned char, 16>&>(m_network_id) = get_config(m_nettype).NETWORK_ID;
 
@@ -487,12 +495,18 @@ bool node_server<t_payload_net_handler>::init(const boost::program_options::vari
         m_config_folder /= public_zone.m_port;
 
     res = init_config();
-    CHECK_AND_ASSERT_MES(res, false, "Failed to init config.");
+    if (!res) {
+        log::error(logcat, "Failed to init config.");
+        return false;
+    }
 
     for (auto& zone : m_network_zones) {
         res = zone.second.m_peerlist.init(
                 m_peerlist_storage.take_zone(zone.first), m_allow_local_ip);
-        CHECK_AND_ASSERT_MES(res, false, "Failed to init peerlist.");
+        if (!res) {
+            log::error(logcat, "Failed to init peerlist.");
+            return false;
+        }
     }
 
     for (const auto& p : m_command_line_peers)
@@ -538,7 +552,10 @@ bool node_server<t_payload_net_handler>::init(const boost::program_options::vari
                         ipv6_addr,
                         m_use_ipv6,
                         m_require_ipv4);
-                CHECK_AND_ASSERT_MES(res, false, "Failed to bind server");
+                if (!res) {
+                    log::error(logcat, "Failed to bind server");
+                    return false;
+                }
             } catch (const std::exception& e) {
                 log::error(logcat, "{}", e.what());
                 res = false;
@@ -1357,11 +1374,11 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
             random_index = filtered[random_index];
         }
 
-        CHECK_AND_ASSERT_MES(
-                random_index < (use_white_list ? zone.m_peerlist.get_white_peers_count()
-                                               : zone.m_peerlist.get_gray_peers_count()),
-                false,
-                "random_index < peers size failed!!");
+        if (random_index >= (use_white_list ? zone.m_peerlist.get_white_peers_count()
+                                               : zone.m_peerlist.get_gray_peers_count())) {
+            log::error(logcat, "random_index < peers size failed!!");
+            return false;
+        }
 
         if (tried_peers.count(random_index))
             continue;
@@ -1370,8 +1387,10 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
         peerlist_entry pe{};
         bool r = use_white_list ? zone.m_peerlist.get_white_peer_by_index(pe, random_index)
                                 : zone.m_peerlist.get_gray_peer_by_index(pe, random_index);
-        CHECK_AND_ASSERT_MES(
-                r, false, "Failed to get random peer from peerlist(white:{})", use_white_list);
+        if (!r) {
+            log::error(logcat, "Failed to get random peer from peerlist(white:{})", use_white_list);
+            return false;
+        }
 
         log::debug(
                 logcat,
@@ -2028,7 +2047,10 @@ bool node_server<t_payload_net_handler>::try_ping(
             (context.m_remote_address.get_type_id() == net::ipv4_address::get_type_id() ||
              context.m_remote_address.get_type_id() ==
                      epee::net_utils::ipv6_network_address::get_type_id());
-    CHECK_AND_ASSERT_MES(address_ok, false, "Only IPv4 or IPv6 addresses are supported here");
+    if (!address_ok) {
+        log::error(logcat, "Only IPv4 or IPv6 addresses are supported here");
+        return false;
+    }
 
     const epee::net_utils::network_address na = context.m_remote_address;
     std::string ip;
@@ -2265,12 +2287,12 @@ int node_server<t_payload_net_handler>::handle_handshake(
         auto port_l = static_cast<uint16_t>(arg.node_data.my_port);
         // try ping to be sure that we can add this peer to peer_list
         try_ping(arg.node_data, context, [peer_id_l, port_l, context, this]() {
-            CHECK_AND_ASSERT_MES(
-                    (context.m_remote_address.get_type_id() == net::ipv4_address::get_type_id() ||
+            if (!(context.m_remote_address.get_type_id() == net::ipv4_address::get_type_id() ||
                      context.m_remote_address.get_type_id() ==
-                             epee::net_utils::ipv6_network_address::get_type_id()),
-                    /*void*/,
-                    "Only IPv4 or IPv6 addresses are supported here");
+                             epee::net_utils::ipv6_network_address::get_type_id())) {
+                log::error(logcat, "Only IPv4 or IPv6 addresses are supported here");
+                return /*void*/;
+            }
             // called only(!) if success pinged, update local peerlist
             peerlist_entry pe;
             const epee::net_utils::network_address na = context.m_remote_address;
@@ -2423,8 +2445,10 @@ bool node_server<t_payload_net_handler>::parse_peers_and_add_to_container(
         }
         std::vector<epee::net_utils::network_address> resolved_addrs;
         bool r = append_net_address(resolved_addrs, pr_str, default_port);
-        CHECK_AND_ASSERT_MES(
-                r, false, "Failed to parse or resolve address from string: {}", pr_str);
+        if (!r) {
+            log::error(logcat, "Failed to parse or resolve address from string: {}", pr_str);
+            return false;
+        }
         for (const epee::net_utils::network_address& addr : resolved_addrs) {
             container.push_back(addr);
         }
@@ -2627,8 +2651,10 @@ node_server<t_payload_net_handler>::public_connect(
         network_zone& zone, epee::net_utils::network_address const& na) {
     bool is_ipv4 = na.get_type_id() == net::ipv4_address::get_type_id();
     bool is_ipv6 = na.get_type_id() == epee::net_utils::ipv6_network_address::get_type_id();
-    CHECK_AND_ASSERT_MES(
-            is_ipv4 || is_ipv6, std::nullopt, "Only IPv4 or IPv6 addresses are supported here");
+    if (!(is_ipv4 || is_ipv6)) {
+        log::error(logcat, "Only IPv4 or IPv6 addresses are supported here");
+        return std::nullopt;
+    }
 
     std::string address;
     std::string port;

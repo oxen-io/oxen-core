@@ -987,7 +987,10 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
     blk.tx_hashes.push_back(get_transaction_hash(tx));
     uint64_t fee = 0;
     bool r       = get_tx_miner_fee(tx, fee, blk.major_version >= cryptonote::feature::FEE_BURNING);
-    CHECK_AND_ASSERT_MES(r, false, "wrong transaction passed to construct_block");
+    if (!r) {
+      oxen::log::error(logcat, "wrong transaction passed to construct_block");
+      return false;
+    }
     txs_weight  += get_transaction_weight(tx);
     if (calc_total_fee) total_fee += fee;
   }
@@ -1073,8 +1076,12 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
   std::vector<cryptonote::batch_sn_payment> sn_rwds;
   if (hf_version_ < hf::hf21_eth)
     sn_rwds = rewards_db_->get_sn_payments(height);
-  if (hf_version_ < hf::hf19_reward_batching)
-    CHECK_AND_ASSERT_MES(sn_rwds.empty(), false, "batch payments should be empty before hf19");
+  if (hf_version_ < hf::hf19_reward_batching) {
+    if (!sn_rwds.empty()) {
+      oxen::log::error(logcat, "batch payments should be empty before hf19");
+      return false;
+    }
+  }
   uint64_t block_rewards = 0;
   bool r;
   while (true)
@@ -1113,7 +1120,10 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
       }
       else
       {
-        CHECK_AND_ASSERT_MES(target_block_weight < entry.block_weight, false, "Unexpected block size");
+        if (target_block_weight >= entry.block_weight) {
+          oxen::log::error(logcat, "Unexpected block size");
+          return false;
+        }
         delta = entry.block_weight - target_block_weight;
         blk.miner_tx->extra.resize(blk.miner_tx->extra.size() - delta);
         entry.block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
@@ -1123,7 +1133,10 @@ bool oxen_chain_generator::block_begin(oxen_blockchain_entry &entry, oxen_create
         }
         else
         {
-          CHECK_AND_ASSERT_MES(entry.block_weight < target_block_weight, false, "Unexpected block size");
+          if (entry.block_weight >= target_block_weight) {
+            oxen::log::error(logcat, "Unexpected block size");
+            return false;
+          }
           blk.miner_tx->extra.resize(blk.miner_tx->extra.size() + delta, 0);
           target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
         }
@@ -1422,7 +1435,10 @@ bool test_generator::construct_block(cryptonote::block &blk,
   {
     uint64_t fee = 0;
     bool r = get_tx_miner_fee(tx, fee, blk.major_version >= cryptonote::feature::FEE_BURNING);
-    CHECK_AND_ASSERT_MES(r, false, "wrong transaction passed to construct_block");
+    if (!r) {
+      oxen::log::error(logcat, "wrong transaction passed to construct_block");
+      return false;
+    }
     total_fee += fee;
     txs_weight += get_transaction_weight(tx);
   }
@@ -1465,7 +1481,10 @@ bool test_generator::construct_block(cryptonote::block &blk,
       }
       else
       {
-        CHECK_AND_ASSERT_MES(target_block_weight < actual_block_weight, false, "Unexpected block size");
+        if (target_block_weight >= actual_block_weight) {
+          oxen::log::error(logcat, "Unexpected block size");
+          return false;
+        }
         delta = actual_block_weight - target_block_weight;
         blk.miner_tx->extra.resize(blk.miner_tx->extra.size() - delta);
         actual_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
@@ -1475,7 +1494,10 @@ bool test_generator::construct_block(cryptonote::block &blk,
         }
         else
         {
-          CHECK_AND_ASSERT_MES(actual_block_weight < target_block_weight, false, "Unexpected block size");
+          if (actual_block_weight >= target_block_weight) {
+            oxen::log::error(logcat, "Unexpected block size");
+            return false;
+          }
           blk.miner_tx->extra.resize(blk.miner_tx->extra.size() + delta, 0);
           target_block_weight = txs_weight + get_transaction_weight(blk.miner_tx);
         }
@@ -1894,7 +1916,10 @@ bool fill_tx_sources(std::vector<cryptonote::tx_source_entry>& sources, const st
         {
             crypto::key_derivation derivation;
             bool r = crypto::generate_key_derivation(ts.real_out_tx_key, from.get_keys().m_view_secret_key, derivation);
-            CHECK_AND_ASSERT_MES(r, false, "Failed to generate key derivation");
+            if (!r) {
+              oxen::log::error(logcat, "Failed to generate key derivation");
+              return false;
+            }
             crypto::secret_key amount_key;
             crypto::derivation_to_scalar(derivation, oi.out_no, amount_key);
 
@@ -2012,7 +2037,10 @@ void block_tracker::process(const std::vector<const cryptonote::block*>& blockch
 
     for(const crypto::hash &h : blk->tx_hashes) {
       const map_hash2tx_t::const_iterator cit = mtx.find(h);
-      CHECK_AND_ASSERT_THROW_MES(mtx.end() != cit, "block contains an unknown tx hash");
+      if (mtx.end() == cit) {
+        oxen::log::error(logcat, "block contains an unknown tx hash");
+        throw std::runtime_error{"block contains an unknown tx hash"};
+      }
       vtx.push_back(cit->second);
     }
 
@@ -2063,7 +2091,10 @@ void block_tracker::global_indices(const cryptonote::transaction *tx, std::vecto
 void block_tracker::get_fake_outs(size_t num_outs, uint64_t amount, uint64_t global_index, uint64_t cur_height, std::vector<get_outs_entry> &outs){
   auto & vct = m_outs[amount];
   const size_t n_outs = vct.size();
-  CHECK_AND_ASSERT_THROW_MES(n_outs > 0, "n_outs is 0");
+  if (n_outs <= 0) {
+    oxen::log::error(logcat, "n_outs is 0");
+    throw std::runtime_error{"n_outs is 0"};
+  }
 
   std::set<size_t> used;
   std::vector<size_t> choices;
@@ -2078,7 +2109,10 @@ void block_tracker::get_fake_outs(size_t num_outs, uint64_t amount, uint64_t glo
     n_iters += 1;
     idx = (idx + 1) % n_outs;
     size_t oi_idx = choices[(size_t)idx];
-    CHECK_AND_ASSERT_THROW_MES((n_iters / n_outs) <= outs.size(), "Fake out pick selection problem");
+    if ((n_iters / n_outs) > outs.size()) {
+      oxen::log::error(logcat, "Fake out pick selection problem");
+      throw std::runtime_error{"Fake out pick selection problem"};
+    }
 
     auto & oi = vct[oi_idx];
     if (oi.idx == global_index)

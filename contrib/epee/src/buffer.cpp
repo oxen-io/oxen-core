@@ -46,7 +46,10 @@ void buffer::append(const void *data, size_t sz)
   const size_t capacity = storage.capacity();
   const size_t avail = capacity - storage.size();
 
-  CHECK_AND_ASSERT_THROW_MES(storage.size() < std::numeric_limits<size_t>::max() - sz, "Too much data to append");
+  if (!(storage.size() < std::numeric_limits<size_t>::max() - sz)) {
+    oxen::log::error(logcat, "Too much data to append");
+    throw std::runtime_error{"Too much data to append"};
+  }
 
   // decide when to move
   if (sz > avail)
@@ -98,10 +101,10 @@ void buffer::append(const void *data, size_t sz)
   NET_BUFFER_LOG("storage now " << offset << "/" << storage.size() << "/" << storage.capacity());
 }
 
-  void buffer::erase(size_t sz) { NET_BUFFER_LOG("erasing " << sz << "/" << size()); CHECK_AND_ASSERT_THROW_MES(offset + sz <= storage.size(), "erase: sz too large"); offset += sz; if (offset == storage.size()) { storage.resize(0); offset = 0; } }
-  std::span<const uint8_t> buffer::span(size_t sz) const { CHECK_AND_ASSERT_THROW_MES(sz <= size(), "span is too large"); return std::span<const uint8_t>(storage.data() + offset, sz); }
+  void buffer::erase(size_t sz) { NET_BUFFER_LOG("erasing " << sz << "/" << size()); if (offset + sz > storage.size()) { oxen::log::error(logcat, "erase: sz too large"); throw std::runtime_error{"erase: sz too large"}; } offset += sz; if (offset == storage.size()) { storage.resize(0); offset = 0; } }
+  std::span<const uint8_t> buffer::span(size_t sz) const { if (sz > size()) { oxen::log::error(logcat, "span is too large"); throw std::runtime_error{"span is too large"}; } return std::span<const uint8_t>(storage.data() + offset, sz); }
   // carve must keep the data in scope till next call, other API calls (such as append, erase) can invalidate the carved buffer
-  std::span<const uint8_t> buffer::carve(size_t sz) { CHECK_AND_ASSERT_THROW_MES(sz <= size(), "span is too large"); offset += sz; return std::span<const uint8_t>(storage.data() + offset - sz, sz); }
+  std::span<const uint8_t> buffer::carve(size_t sz) { if (sz > size()) { oxen::log::error(logcat, "span is too large"); throw std::runtime_error{"span is too large"}; } offset += sz; return std::span<const uint8_t>(storage.data() + offset - sz, sz); }
 
 }
 }

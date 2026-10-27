@@ -68,7 +68,10 @@ namespace net_utils
   template<typename T>
   T& check_and_get(std::shared_ptr<T>& ptr)
   {
-    CHECK_AND_ASSERT_THROW_MES(bool(ptr), "shared_state cannot be null");
+    if (!bool(ptr)) {
+      oxen::log::error(logcat, "shared_state cannot be null");
+      throw std::runtime_error{"shared_state cannot be null"};
+    }
     return *ptr;
   }
 
@@ -250,7 +253,8 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     TRY_ENTRY();
     std::shared_ptr<connection<t_protocol_handler> >  back_connection_copy;
     std::lock_guard lock{m_self_refs_lock};
-    CHECK_AND_ASSERT_MES(m_reference_count, false, "[sock {}] m_reference_count already at 0 at connection<t_protocol_handler>::release() call",
+    if (!m_reference_count) {
+      oxen::log::error(logcat, "[sock {}] m_reference_count already at 0 at connection<t_protocol_handler>::release() call",
 #ifdef _WIN32
         ""  // The below is some godforsaken unformattable type on Windows and it doesn't seem worth
             // figuring out how to print it for this one obscure assertion.
@@ -258,6 +262,8 @@ PRAGMA_WARNING_DISABLE_VS(4355)
         socket().native_handle()
 #endif
         );
+      return false;
+    }
     // is this the last reference?
     if (--m_reference_count == 0) {
         // move the held reference to a local variable, keeping the object alive until the function terminates
@@ -430,7 +436,10 @@ PRAGMA_WARNING_DISABLE_VS(4355)
         const t_safe chunksize_max = chunksize_good * 2 ;
 		const bool allow_split = (m_connection_type == e_connection_type_RPC) ? false : true; // do not split RPC data
 
-        CHECK_AND_ASSERT_MES(! (chunksize_max<0), false, "Negative chunksize_max" ); // make sure it is unsigned before removin sign with cast:
+        if (chunksize_max<0) {
+          oxen::log::error(logcat, "Negative chunksize_max");
+          return false;
+        } // make sure it is unsigned before removin sign with cast:
         long long unsigned int chunksize_max_unsigned = static_cast<long long unsigned int>( chunksize_max ) ;
 
         if (allow_split && (message.size() > chunksize_max_unsigned)) {
@@ -534,7 +543,10 @@ PRAGMA_WARNING_DISABLE_VS(4355)
         if (speed_limit_is_enabled())
 			do_send_handler_write( m_send_que.back().data(), m_send_que.back().size() ); // (((H)))
 
-        CHECK_AND_ASSERT_MES( size_now == m_send_que.front().size(), false, "Unexpected queue size");
+        if (size_now != m_send_que.front().size()) {
+          oxen::log::error(logcat, "Unexpected queue size");
+          return false;
+        }
         reset_timer(get_default_timeout(), false);
         using namespace boost::placeholders;
         boost::asio::async_write(socket(), boost::asio::buffer(m_send_que.front().data(), size_now ) ,
@@ -582,8 +594,14 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     std::lock_guard lock{hosts_mutex};
     static std::map<std::string, unsigned int> hosts;
     unsigned int &val = hosts[host];
-    CHECK_AND_ASSERT_THROW_MES(delta >= 0 || val >= (unsigned)-delta, "Count would go negative");
-    CHECK_AND_ASSERT_THROW_MES(delta <= 0 || val <= std::numeric_limits<unsigned int>::max() - (unsigned)delta, "Count would wrap");
+    if (!(delta >= 0 || val >= (unsigned)-delta)) {
+      oxen::log::error(logcat, "Count would go negative");
+      throw std::runtime_error{"Count would go negative"};
+    }
+    if (!(delta <= 0 || val <= std::numeric_limits<unsigned int>::max() - (unsigned)delta)) {
+      oxen::log::error(logcat, "Count would wrap");
+      throw std::runtime_error{"Count would wrap"};
+    }
     val += delta;
     return val;
   }
@@ -716,7 +734,10 @@ PRAGMA_WARNING_DISABLE_VS(4355)
 		auto size_now = m_send_que.front().size();
 		if (speed_limit_is_enabled())
 			do_send_handler_write_from_queue(e, m_send_que.front().size() , m_send_que.size()); // (((H)))
-		CHECK_AND_ASSERT_MES( size_now == m_send_que.front().size(), void(), "Unexpected queue size");
+		if (size_now != m_send_que.front().size()) {
+			oxen::log::error(logcat, "Unexpected queue size");
+			return;
+		}
         using namespace boost::placeholders;
         boost::asio::async_write(socket(), boost::asio::buffer(m_send_que.front().data(), size_now) , 
            strand_.wrap(

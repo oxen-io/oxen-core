@@ -2342,10 +2342,10 @@ namespace detail {
                     d.cached_to -= 10;
                     d.cached_top_hash = hash10;
                     d.cached_m10_hash = crypto::null<crypto::hash>;
-                    CHECK_AND_ASSERT_MES(
-                            d.cached_distribution.size() >= 10,
-                            std::nullopt,
-                            "Cached distribution size does not match cached bounds");
+                    if (d.cached_distribution.size() < 10) {
+                        log::error(logcat, "Cached distribution size does not match cached bounds");
+                        return std::nullopt;
+                    }
                     for (int p = 0; p < 10; ++p)
                         d.cached_distribution.pop_back();
                     can_extend = true;

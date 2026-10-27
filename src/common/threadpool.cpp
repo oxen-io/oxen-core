@@ -82,7 +82,8 @@ void threadpool::create(unsigned int max_threads) {
 void threadpool::submit(waiter* obj, std::function<void()> f, bool leaf) {
     if (is_leaf) {
         auto logcat = oxen::log::Cat("threadpool");
-        ASSERT_MES_AND_THROW("A leaf routine is using a thread pool");
+        log::error(logcat, "A leaf routine is using a thread pool");
+        throw std::runtime_error{"A leaf routine is using a thread pool"};
     }
     std::unique_lock lock{mutex};
     if (!leaf && ((active == max && !queue.empty()) || depth > 0)) {

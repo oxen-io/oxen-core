@@ -50,7 +50,8 @@ struct MultiexpData {
     MultiexpData(const rct::key& s, const rct::key& p) : scalar(s) {
         if (ge_frombytes_vartime(&point, p.bytes) != 0) {
             auto logcat = oxen::log::Cat("multiexp");
-            ASSERT_MES_AND_THROW("ge_frombytes_vartime failed");
+            oxen::log::error(logcat, "ge_frombytes_vartime failed");
+            throw std::runtime_error{"ge_frombytes_vartime failed"};
         }
     }
 };

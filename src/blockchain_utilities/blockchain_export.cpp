@@ -126,7 +126,10 @@ int main(int argc, char* argv[]) {
     }
     r = core_storage->init(std::move(db), nettype);
 
-    CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
+    if (!r) {
+        log::error(logcat, "Failed to initialize source blockchain storage");
+        return 1;
+    }
     log::warning(logcat, "Source blockchain storage initialized OK");
     log::warning(logcat, "Exporting blockchain raw data...");
 
@@ -137,7 +140,10 @@ int main(int argc, char* argv[]) {
         BootstrapFile bootstrap;
         r = bootstrap.store_blockchain_raw(core_storage, NULL, output_file_path, block_stop);
     }
-    CHECK_AND_ASSERT_MES(r, 1, "Failed to export blockchain raw data");
+    if (!r) {
+        log::error(logcat, "Failed to export blockchain raw data");
+        return 1;
+    }
     log::warning(logcat, "Blockchain raw data exported OK");
     return 0;
 

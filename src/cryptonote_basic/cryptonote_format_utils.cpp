@@ -186,8 +186,10 @@ bool expand_transaction_1(transaction& tx, bool base_only) {
                     return false;
                 }
                 const size_t n_amounts = tx.vout.size();
-                CHECK_AND_ASSERT_MES(
-                        n_amounts == rv.outPk.size(), false, "Internal error filling out V");
+                if (n_amounts != rv.outPk.size()) {
+                    log::error(logcat, "Internal error filling out V");
+                    return false;
+                }
                 rv.p.bulletproofs[0].V.resize(n_amounts);
                 for (size_t i = 0; i < n_amounts; ++i)
                     rv.p.bulletproofs[0].V[i] =
@@ -207,8 +209,10 @@ bool parse_and_validate_tx_from_blob(const std::string_view tx_blob, transaction
         log::error(logcat, "Failed to parse and validate transaction from blob: {}", e.what());
         return false;
     }
-    CHECK_AND_ASSERT_MES(
-            expand_transaction_1(tx, false), false, "Failed to expand transaction data");
+    if (!expand_transaction_1(tx, false)) {
+        log::error(logcat, "Failed to expand transaction data");
+        return false;
+    }
     tx.invalidate_hashes();
     tx.set_blob_size(tx_blob.size());
     return true;
@@ -222,8 +226,10 @@ bool parse_and_validate_tx_base_from_blob(const std::string_view tx_blob, transa
         log::error(logcat, "Failed to parse transaction base from blob: {}", e.what());
         return false;
     }
-    CHECK_AND_ASSERT_MES(
-            expand_transaction_1(tx, true), false, "Failed to expand transaction data");
+    if (!expand_transaction_1(tx, true)) {
+        log::error(logcat, "Failed to expand transaction data");
+        return false;
+    }
     tx.invalidate_hashes();
     return true;
 }
@@ -250,8 +256,10 @@ bool parse_and_validate_tx_from_blob(
                 logcat, "Failed to parse and validate transaction from blob + hash: {}", e.what());
         return false;
     }
-    CHECK_AND_ASSERT_MES(
-            expand_transaction_1(tx, false), false, "Failed to expand transaction data");
+    if (!expand_transaction_1(tx, false)) {
+        log::error(logcat, "Failed to expand transaction data");
+        return false;
+    }
     tx.invalidate_hashes();
     // TODO: validate tx
 
@@ -320,10 +328,12 @@ bool generate_key_image_helper(
             additional_recv_derivations,
             real_output_index,
             hwdev);
-    CHECK_AND_ASSERT_MES(
-            subaddr_recv_info,
-            false,
-            "key image helper: given output pubkey doesn't seem to belong to this address");
+    if (!subaddr_recv_info) {
+        log::error(
+                logcat,
+                "key image helper: given output pubkey doesn't seem to belong to this address");
+        return false;
+    }
 
     return generate_key_image_helper_precomp(
             ack,
@@ -387,37 +397,39 @@ bool generate_key_image_helper_precomp(
         if (ack.m_multisig_keys.empty()) {
             // when not in multisig, we know the full spend secret key, so the output pubkey can be
             // obtained by scalarmultBase
-            CHECK_AND_ASSERT_MES(
-                    hwdev.secret_key_to_public_key(in_ephemeral.sec, in_ephemeral.pub),
-                    false,
-                    "Failed to derive public key");
+            if (!hwdev.secret_key_to_public_key(in_ephemeral.sec, in_ephemeral.pub)) {
+                log::error(logcat, "Failed to derive public key");
+                return false;
+            }
         } else {
             // when in multisig, we only know the partial spend secret key. but we do know the full
             // spend public key, so the output pubkey can be obtained by using the standard CN key
             // derivation
-            CHECK_AND_ASSERT_MES(
-                    hwdev.derive_public_key(
-                            recv_derivation,
-                            real_output_index,
-                            ack.m_account_address.m_spend_public_key,
-                            in_ephemeral.pub),
-                    false,
-                    "Failed to derive public key");
+            if (!hwdev.derive_public_key(
+                        recv_derivation,
+                        real_output_index,
+                        ack.m_account_address.m_spend_public_key,
+                        in_ephemeral.pub)) {
+                log::error(logcat, "Failed to derive public key");
+                return false;
+            }
             // and don't forget to add the contribution from the subaddress part
             if (!received_index.is_zero()) {
                 crypto::public_key subaddr_pk;
-                CHECK_AND_ASSERT_MES(
-                        hwdev.secret_key_to_public_key(subaddr_sk, subaddr_pk),
-                        false,
-                        "Failed to derive public key");
+                if (!hwdev.secret_key_to_public_key(subaddr_sk, subaddr_pk)) {
+                    log::error(logcat, "Failed to derive public key");
+                    return false;
+                }
                 add_public_key(in_ephemeral.pub, in_ephemeral.pub, subaddr_pk);
             }
         }
 
-        CHECK_AND_ASSERT_MES(
-                in_ephemeral.pub == out_key,
-                false,
-                "key image helper precomp: given output pubkey doesn't match the derived one");
+        if (in_ephemeral.pub != out_key) {
+            log::error(
+                    logcat,
+                    "key image helper precomp: given output pubkey doesn't match the derived one");
+            return false;
+        }
     }
 
     hwdev.generate_key_image(in_ephemeral.pub, in_ephemeral.sec, ki);
@@ -483,10 +495,10 @@ std::optional<uint64_t> parse_amount(std::string_view str_amount) {
 }
 //---------------------------------------------------------------
 uint64_t get_transaction_weight(const transaction& tx, size_t blob_size) {
-    CHECK_AND_ASSERT_MES(
-            !tx.pruned,
-            std::numeric_limits<uint64_t>::max(),
-            "get_transaction_weight does not support pruned txes");
+    if (tx.pruned) {
+        log::error(logcat, "get_transaction_weight does not support pruned txes");
+        return std::numeric_limits<uint64_t>::max();
+    }
     if (tx.version < txversion::v2_ringct)
         return blob_size;
     const rct::rctSig& rv = tx.rct_signatures;
@@ -502,23 +514,27 @@ uint64_t get_transaction_weight(const transaction& tx, size_t blob_size) {
 }
 //---------------------------------------------------------------
 uint64_t get_pruned_transaction_weight(const transaction& tx) {
-    CHECK_AND_ASSERT_MES(
-            tx.pruned,
-            std::numeric_limits<uint64_t>::max(),
-            "get_pruned_transaction_weight does not support non pruned txes");
-    CHECK_AND_ASSERT_MES(
-            tx.version >= txversion::v2_ringct,
-            std::numeric_limits<uint64_t>::max(),
-            "get_pruned_transaction_weight does not support v1 txes");
-    CHECK_AND_ASSERT_MES(
-            tx.rct_signatures.type >= rct::RCTType::Bulletproof2,
-            std::numeric_limits<uint64_t>::max(),
-            "get_pruned_transaction_weight does not support older range proof types");
-    CHECK_AND_ASSERT_MES(!tx.vin.empty(), std::numeric_limits<uint64_t>::max(), "empty vin");
-    CHECK_AND_ASSERT_MES(
-            std::holds_alternative<cryptonote::txin_to_key>(tx.vin[0]),
-            std::numeric_limits<uint64_t>::max(),
-            "empty vin");
+    if (!tx.pruned) {
+        log::error(logcat, "get_pruned_transaction_weight does not support non pruned txes");
+        return std::numeric_limits<uint64_t>::max();
+    }
+    if (tx.version < txversion::v2_ringct) {
+        log::error(logcat, "get_pruned_transaction_weight does not support v1 txes");
+        return std::numeric_limits<uint64_t>::max();
+    }
+    if (tx.rct_signatures.type < rct::RCTType::Bulletproof2) {
+        log::error(
+                logcat, "get_pruned_transaction_weight does not support older range proof types");
+        return std::numeric_limits<uint64_t>::max();
+    }
+    if (tx.vin.empty()) {
+        log::error(logcat, "empty vin");
+        return std::numeric_limits<uint64_t>::max();
+    }
+    if (!(std::holds_alternative<cryptonote::txin_to_key>(tx.vin[0]))) {
+        log::error(logcat, "empty vin");
+        return std::numeric_limits<uint64_t>::max();
+    }
 
     // get pruned data size
     uint64_t weight = serialization::dump_binary(const_cast<transaction&>(tx)).size();
@@ -593,12 +609,10 @@ bool get_tx_miner_fee(
         return false;
     uint64_t amount_out = get_outs_money_amount(tx);
 
-    CHECK_AND_ASSERT_MES(
-            amount_in >= amount_out,
-            false,
-            "transaction spends more than it has ({} > {})",
-            amount_out,
-            amount_in);
+    if (amount_in < amount_out) {
+        log::error(logcat, "transaction spends more than it has ({} > {})", amount_out, amount_in);
+        return false;
+    }
     fee = amount_in - amount_out;
     return true;
 }
@@ -718,10 +732,10 @@ bool add_additional_tx_pub_keys_to_extra(
 }
 //---------------------------------------------------------------
 bool add_extra_nonce_to_tx_extra(std::vector<uint8_t>& tx_extra, const std::string& extra_nonce) {
-    CHECK_AND_ASSERT_MES(
-            extra_nonce.size() <= TX_EXTRA_NONCE_MAX_COUNT,
-            false,
-            "extra nonce could be 255 bytes max");
+    if (extra_nonce.size() > TX_EXTRA_NONCE_MAX_COUNT) {
+        log::error(logcat, "extra nonce could be 255 bytes max");
+        return false;
+    }
     tx_extra.reserve(tx_extra.size() + 2 + extra_nonce.size());
     tx_extra.push_back(TX_EXTRA_NONCE);                            // write tag
     tx_extra.push_back(static_cast<uint8_t>(extra_nonce.size()));  // write len
@@ -735,18 +749,24 @@ bool add_service_node_state_change_to_tx_extra(
         const hf hf_version) {
     tx_extra_field field;
     if (hf_version < hf::hf12_checkpointing) {
-        CHECK_AND_ASSERT_MES(
-                state_change.state == service_nodes::new_state::deregister,
-                false,
-                "internal error: cannot construct an old deregistration for a non-deregistration "
-                "state change (before hardfork v12)");
+        if (state_change.state != service_nodes::new_state::deregister) {
+            log::error(
+                    logcat,
+                    "internal error: cannot construct an old deregistration for a "
+                    "non-deregistration "
+                    "state change (before hardfork v12)");
+            return false;
+        }
         field = tx_extra_service_node_deregister_old{state_change};
     } else {
         field = state_change;
     }
 
     bool r = add_tx_extra_field_to_tx_extra(tx_extra, field);
-    CHECK_AND_ASSERT_MES(r, false, "failed to serialize tx extra service node state change");
+    if (!r) {
+        log::error(logcat, "failed to serialize tx extra service node state change");
+        return false;
+    }
     return true;
 }
 
@@ -1030,13 +1050,15 @@ bool get_inputs_money_amount(const transaction& tx, uint64_t& money) {
 //---------------------------------------------------------------
 bool check_inputs_types_supported(const transaction& tx) {
     for (const auto& in : tx.vin) {
-        CHECK_AND_ASSERT_MES(
-                std::holds_alternative<txin_to_key>(in),
-                false,
-                "wrong variant type: {}, expected {}, in transaction id={}",
-                tools::type_name(tools::variant_type(in)),
-                tools::type_name<txin_to_key>(),
-                get_transaction_hash(tx));
+        if (!(std::holds_alternative<txin_to_key>(in))) {
+            log::error(
+                    logcat,
+                    "wrong variant type: {}, expected {}, in transaction id={}",
+                    tools::type_name(tools::variant_type(in)),
+                    tools::type_name<txin_to_key>(),
+                    get_transaction_hash(tx));
+            return false;
+        }
     }
     return true;
 }
@@ -1062,13 +1084,15 @@ bool check_outs_valid(const transaction& tx) {
     }
 
     for (const tx_out& out : tx.vout) {
-        CHECK_AND_ASSERT_MES(
-                std::holds_alternative<txout_to_key>(out.target),
-                false,
-                "wrong variant type: {}, expected {}, in transaction id={}",
-                tools::type_name(tools::variant_type(out.target)),
-                tools::type_name<txout_to_key>(),
-                get_transaction_hash(tx));
+        if (!(std::holds_alternative<txout_to_key>(out.target))) {
+            log::error(
+                    logcat,
+                    "wrong variant type: {}, expected {}, in transaction id={}",
+                    tools::type_name(tools::variant_type(out.target)),
+                    tools::type_name<txout_to_key>(),
+                    get_transaction_hash(tx));
+            return false;
+        }
 
         if (tx.version == txversion::v1) {
             if (out.amount <= 0) {
@@ -1134,25 +1158,37 @@ bool is_out_to_acc(
     crypto::key_derivation derivation;
     bool r =
             acc.get_device().generate_key_derivation(tx_pub_key, acc.m_view_secret_key, derivation);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to generate key derivation");
+    if (!r) {
+        log::error(logcat, "Failed to generate key derivation");
+        return false;
+    }
     crypto::public_key pk;
     r = acc.get_device().derive_public_key(
             derivation, output_index, acc.m_account_address.m_spend_public_key, pk);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to derive public key");
+    if (!r) {
+        log::error(logcat, "Failed to derive public key");
+        return false;
+    }
     if (pk == out_key.key)
         return true;
     // try additional tx pubkeys if available
     if (!additional_tx_pub_keys.empty()) {
-        CHECK_AND_ASSERT_MES(
-                output_index < additional_tx_pub_keys.size(),
-                false,
-                "wrong number of additional tx pubkeys");
+        if (output_index >= additional_tx_pub_keys.size()) {
+            log::error(logcat, "wrong number of additional tx pubkeys");
+            return false;
+        }
         r = acc.get_device().generate_key_derivation(
                 additional_tx_pub_keys[output_index], acc.m_view_secret_key, derivation);
-        CHECK_AND_ASSERT_MES(r, false, "Failed to generate key derivation");
+        if (!r) {
+            log::error(logcat, "Failed to generate key derivation");
+            return false;
+        }
         r = acc.get_device().derive_public_key(
                 derivation, output_index, acc.m_account_address.m_spend_public_key, pk);
-        CHECK_AND_ASSERT_MES(r, false, "Failed to derive public key");
+        if (!r) {
+            log::error(logcat, "Failed to derive public key");
+            return false;
+        }
         return pk == out_key.key;
     }
     return false;
@@ -1173,10 +1209,10 @@ std::optional<subaddress_receive_info> is_out_to_acc_precomp(
         return subaddress_receive_info{found->second, derivation};
     // try additional tx pubkeys if available
     if (!additional_derivations.empty()) {
-        CHECK_AND_ASSERT_MES(
-                output_index < additional_derivations.size(),
-                std::nullopt,
-                "wrong number of additional derivations");
+        if (output_index >= additional_derivations.size()) {
+            log::error(logcat, "wrong number of additional derivations");
+            return std::nullopt;
+        }
         hwdev.derive_subaddress_public_key(
                 out_key, additional_derivations[output_index], output_index, subaddress_spendkey);
         found = subaddresses.find(subaddress_spendkey);
@@ -1206,17 +1242,17 @@ bool lookup_acc_outs(
         const std::vector<crypto::public_key>& additional_tx_pub_keys,
         std::vector<size_t>& outs,
         uint64_t& money_transfered) {
-    CHECK_AND_ASSERT_MES(
-            additional_tx_pub_keys.empty() || additional_tx_pub_keys.size() == tx.vout.size(),
-            false,
-            "wrong number of additional pubkeys");
+    if (!(additional_tx_pub_keys.empty() || additional_tx_pub_keys.size() == tx.vout.size())) {
+        log::error(logcat, "wrong number of additional pubkeys");
+        return false;
+    }
     money_transfered = 0;
     size_t i = 0;
     for (const tx_out& o : tx.vout) {
-        CHECK_AND_ASSERT_MES(
-                std::holds_alternative<txout_to_key>(o.target),
-                false,
-                "wrong type id in transaction out");
+        if (!(std::holds_alternative<txout_to_key>(o.target))) {
+            log::error(logcat, "wrong type id in transaction out");
+            return false;
+        }
         if (is_out_to_acc(
                     acc, std::get<txout_to_key>(o.target), tx_pub_key, additional_tx_pub_keys, i)) {
             outs.push_back(i);
@@ -1415,8 +1451,10 @@ crypto::hash get_blob_hash(const std::string_view blob) {
 crypto::hash get_transaction_hash(const transaction& t) {
     crypto::hash h{};
     get_transaction_hash(t, h, NULL);
-    CHECK_AND_ASSERT_THROW_MES(
-            get_transaction_hash(t, h, NULL), "Failed to calculate transaction hash");
+    if (!get_transaction_hash(t, h, NULL)) {
+        log::error(logcat, "Failed to calculate transaction hash");
+        throw std::runtime_error{"Failed to calculate transaction hash"};
+    }
     return h;
 }
 //---------------------------------------------------------------
@@ -1430,10 +1468,10 @@ bool get_transaction_hash(const transaction& t, crypto::hash& res) {
         return false;
     const unsigned int unprunable_size = t.unprunable_size;
     if (blob && unprunable_size) {
-        CHECK_AND_ASSERT_MES(
-                unprunable_size <= blob->size(),
-                false,
-                "Inconsistent transaction unprunable and blob sizes");
+        if (unprunable_size > blob->size()) {
+            log::error(logcat, "Inconsistent transaction unprunable and blob sizes");
+            return false;
+        }
         cryptonote::get_blob_hash(std::string_view{*blob}.substr(unprunable_size), res);
     } else {
         serialization::binary_string_archiver ba;
@@ -1454,9 +1492,10 @@ bool get_transaction_hash(const transaction& t, crypto::hash& res) {
 //---------------------------------------------------------------
 crypto::hash get_transaction_prunable_hash(const transaction& t, const std::string* blobdata) {
     crypto::hash res;
-    CHECK_AND_ASSERT_THROW_MES(
-            calculate_transaction_prunable_hash(t, blobdata, res),
-            "Failed to calculate tx prunable hash");
+    if (!calculate_transaction_prunable_hash(t, blobdata, res)) {
+        log::error(logcat, "Failed to calculate tx prunable hash");
+        throw std::runtime_error{"Failed to calculate tx prunable hash"};
+    }
     return res;
 }
 //---------------------------------------------------------------
@@ -1508,7 +1547,10 @@ bool calculate_transaction_hash(const transaction& t, crypto::hash& res, size_t*
     get_transaction_prefix_hash(t, hashes[0]);
 
     const std::string blob = tx_to_blob(t);
-    CHECK_AND_ASSERT_MES(!blob.empty(), false, "Failed to convert tx to blob");
+    if (blob.empty()) {
+        log::error(logcat, "Failed to convert tx to blob");
+        return false;
+    }
 
     // TODO(oxen): Not sure if this is the right fix, we may just want to set
     // unprunable size to the size of the prefix because technically that is
@@ -1518,13 +1560,15 @@ bool calculate_transaction_hash(const transaction& t, crypto::hash& res, size_t*
         const unsigned int prefix_size = t.prefix_size;
 
         // base rct
-        CHECK_AND_ASSERT_MES(
-                prefix_size <= unprunable_size && unprunable_size <= blob.size(),
-                false,
-                "Inconsistent transaction prefix ({}), unprunable ({}) and blob ({}) sizes",
-                prefix_size,
-                unprunable_size,
-                blob.size());
+        if (!(prefix_size <= unprunable_size && unprunable_size <= blob.size())) {
+            log::error(
+                    logcat,
+                    "Inconsistent transaction prefix ({}), unprunable ({}) and blob ({}) sizes",
+                    prefix_size,
+                    unprunable_size,
+                    blob.size());
+            return false;
+        }
         cryptonote::get_blob_hash(
                 std::string_view{blob}.substr(prefix_size, unprunable_size - prefix_size),
                 hashes[1]);
@@ -1632,13 +1676,16 @@ std::vector<uint64_t> relative_output_offsets_to_absolute(const std::vector<uint
 //---------------------------------------------------------------
 std::vector<uint64_t> absolute_output_offsets_to_relative(const std::vector<uint64_t>& off) {
     std::vector<uint64_t> res = off;
-    CHECK_AND_ASSERT_THROW_MES(
-            not off.empty(), "absolute index to relative offset, no indices provided");
+    if (!(not off.empty())) {
+        log::error(logcat, "absolute index to relative offset, no indices provided");
+        throw std::runtime_error{"absolute index to relative offset, no indices provided"};
+    }
 
     // vector must be sorted before calling this, else an index' offset would be negative
-    CHECK_AND_ASSERT_THROW_MES(
-            std::is_sorted(res.begin(), res.end()),
-            "absolute index to relative offset, indices not sorted");
+    if (!std::is_sorted(res.begin(), res.end())) {
+        log::error(logcat, "absolute index to relative offset, indices not sorted");
+        throw std::runtime_error{"absolute index to relative offset, indices not sorted"};
+    }
 
     for (size_t i = res.size() - 1; i != 0; i--)
         res[i] -= res[i - 1];
@@ -1725,11 +1772,15 @@ crypto::hash get_tx_tree_hash(const block& b) {
     std::vector<crypto::hash> txs_ids;
     txs_ids.reserve(1 + b.tx_hashes.size());
     if (b.major_version < feature::ETH_BLS) {
-        CHECK_AND_ASSERT_THROW_MES(b.miner_tx, "Failed to calculate miner transaction hash");
+        if (!b.miner_tx) {
+            log::error(logcat, "Failed to calculate miner transaction hash");
+            throw std::runtime_error{"Failed to calculate miner transaction hash"};
+        }
         auto& h = txs_ids.emplace_back();
-        CHECK_AND_ASSERT_THROW_MES(
-                get_transaction_hash(*b.miner_tx, h, nullptr),
-                "Failed to calculate miner transaction hash");
+        if (!get_transaction_hash(*b.miner_tx, h, nullptr)) {
+            log::error(logcat, "Failed to calculate miner transaction hash");
+            throw std::runtime_error{"Failed to calculate miner transaction hash"};
+        }
     }
     for (auto& th : b.tx_hashes)
         txs_ids.push_back(th);
