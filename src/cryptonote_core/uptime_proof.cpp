@@ -4,7 +4,6 @@
 #include <common/guts.h>
 #include <crypto/crypto.h>
 #include <cryptonote_config.h>
-#include <epee/string_tools.h>
 #include <logging/oxen_logger.h>
 #include <oxenc/bt_producer.h>
 #include <version.h>
@@ -25,7 +24,7 @@ namespace feature = cryptonote::feature;
 Proof::Proof(
         hf hardfork,
         cryptonote::network_type nettype,
-        uint32_t sn_public_ip,
+        oxen::quic::ipv4 sn_public_ip,
         uint16_t sn_storage_https_port,
         uint16_t sn_storage_omq_port,
         const std::array<uint16_t, 3> ss_version,
@@ -95,8 +94,12 @@ Proof::Proof(
             throw oxen::traced<std::runtime_error>{"version tag too long"};
     }
 
-    if (auto ip = proof.require<std::string>("ip");
-        !epee::string_tools::get_ip_int32_from_string(public_ip, ip) || public_ip == 0)
+    try {
+        public_ip = oxen::quic::ipv4{proof.require<std::string>("ip")};
+    } catch (const std::invalid_argument&) {
+        throw oxen::traced<std::runtime_error>{"Invalid IP address in proof"};
+    }
+    if (public_ip == oxen::quic::ipv4{})
         throw oxen::traced<std::runtime_error>{"Invalid IP address in proof"};
 
     l2_height = proof.require<uint64_t>("l2");
@@ -163,7 +166,7 @@ std::string Proof::bt_encode_uptime_proof(hf hardfork, cryptonote::network_type 
     proof.append("bp", tools::view_guts(pop_bls));
     if (nettype != cryptonote::network_type::MAINNET)
         proof.append("gh", version_tag);
-    proof.append("ip", epee::string_tools::get_ip_string_from_int32(public_ip));
+    proof.append("ip", public_ip.to_string());
     proof.append("l2", l2_height);
     proof.append("lv", lokinet_version);
     proof.append("pke", tools::view_guts(pubkey_ed25519));

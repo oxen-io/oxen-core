@@ -41,6 +41,7 @@
 
 #include "checkpoints/checkpoints.h"
 #include "common/format.h"
+#include "common/ipv4.h"
 #include "common/median.h"
 #include "common/string_util.h"
 #include "crypto/crypto.h"
@@ -5970,7 +5971,7 @@ struct service_node_proof_serialized_old {
     service_node_proof_serialized_old() = default;
     service_node_proof_serialized_old(const service_nodes::proof_info& info) :
             timestamp{oxenc::host_to_little(info.timestamp)},
-            ip{oxenc::host_to_little(info.proof->public_ip)},
+            ip{oxenc::host_to_little(tools::ipv4_to_legacy_int(info.proof->public_ip))},
             storage_https_port{oxenc::host_to_little(info.proof->storage_https_port)},
             quorumnet_port{oxenc::host_to_little(info.proof->qnet_port)},
             version{host_to_little_container(info.proof->version)},
@@ -5981,7 +5982,7 @@ struct service_node_proof_serialized_old {
         info.timestamp = oxenc::little_to_host(timestamp);
         if (info.timestamp > info.effective_timestamp)
             info.effective_timestamp = info.timestamp;
-        info.proof->public_ip = oxenc::little_to_host(ip);
+        info.proof->public_ip = tools::ipv4_from_legacy_int(oxenc::little_to_host(ip));
         info.proof->storage_https_port = oxenc::little_to_host(storage_https_port);
         info.proof->storage_omq_port = oxenc::little_to_host(storage_omq_port);
         info.proof->qnet_port = oxenc::little_to_host(quorumnet_port);

@@ -64,7 +64,7 @@ using tools::span_guts;
 namespace {
 
     // PRAGMA user_version of the current schema.
-    constexpr int SCHEMA_VERSION = 4;
+    constexpr int SCHEMA_VERSION = 5;
 
     // The hashes of the transactions without inputs (other than miner txs) whose rows a limited
     // history has dropped.  Unlike a transaction with inputs, whose spent key images (kept for
@@ -104,6 +104,13 @@ CREATE INDEX sn_states_full ON sn_states(height) WHERE NOT quorums_only;
         }
         if (version < 4)
             conn.sql.exec(TRIMMED_TXES_SCHEMA);
+        if (version < 5) {
+            // sn_proofs.ip used to hold the address's network-order bytes read as a little-endian
+            // integer (1.2.3.4 as 0x04030201); it now holds the natural value (0x01020304).
+            conn.sql.exec(R"(
+UPDATE sn_proofs SET ip = ((ip & 0xff) << 24) | ((ip & 0xff00) << 8) | ((ip >> 8) & 0xff00) | ((ip >> 24) & 0xff);
+)");
+        }
     }
 
     // Upper bound on the values bound into one `IN (...)` list, well below SQLite's limit on the
@@ -2600,7 +2607,7 @@ namespace {
         info.timestamp = as_u64(st.getColumn(1).getInt64());
         if (info.timestamp > info.effective_timestamp)
             info.effective_timestamp = info.timestamp;
-        info.proof->public_ip = static_cast<uint32_t>(st.getColumn(2).getInt64());
+        info.proof->public_ip = oxen::quic::ipv4{static_cast<uint32_t>(st.getColumn(2).getInt64())};
         info.proof->storage_https_port = static_cast<uint16_t>(st.getColumn(3).getInt());
         info.proof->storage_omq_port = static_cast<uint16_t>(st.getColumn(4).getInt());
         info.proof->qnet_port = static_cast<uint16_t>(st.getColumn(5).getInt());
@@ -2637,7 +2644,7 @@ void BlockchainSQLite::set_service_node_proof(
                         SN_PROOF_COLUMNS),
                 span_guts(pubkey),
                 as_i64(proof.timestamp),
-                p.public_ip,
+                p.public_ip.addr,
                 p.storage_https_port,
                 p.storage_omq_port,
                 p.qnet_port,

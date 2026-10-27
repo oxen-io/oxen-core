@@ -42,6 +42,7 @@
 #include <cstdio>
 #include <limits>
 #include <mutex>
+#include <oxen/quic/format.hpp>
 #include <random>
 #include <stdexcept>
 
@@ -3937,7 +3938,7 @@ std::unordered_map<eth::bls_public_key, bool> Blockchain::get_removable_nodes() 
                 logcat,
                 "- {} @ {}:{} is {} (recently {} node @ height {})",
                 blspk,
-                epee::string_tools::get_ip_string_from_int32(node.public_ip),
+                node.public_ip,
                 node.qnet_port,
                 liquidatable ? "removable & liquidatable (since {})"_format(node.liquidation_height)
                              : "removable",

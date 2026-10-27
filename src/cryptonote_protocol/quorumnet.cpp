@@ -34,6 +34,7 @@
 #include <time.h>
 
 #include <iterator>
+#include <oxen/quic/format.hpp>
 #include <shared_mutex>
 #include <vector>
 
@@ -193,24 +194,20 @@ namespace {
                         return;
                     }
                     if (!proof.pubkey_x25519 || !proof.proof->qnet_port ||
-                        !proof.proof->public_ip) {
+                        proof.proof->public_ip == oxen::quic::ipv4{}) {
                         log::trace(
                                 logcat,
                                 "Not including node {}: missing x25519({}), public_ip({}), or qnet "
                                 "port({})",
                                 pubkey,
                                 to_hex(get_data_as_string(proof.pubkey_x25519)),
-                                epee::string_tools::get_ip_string_from_int32(
-                                        proof.proof->public_ip),
+                                proof.proof->public_ip,
                                 proof.proof->qnet_port);
                         return;
                     }
                     remotes.emplace_back(
                             get_data_as_string(proof.pubkey_x25519),
-                            "tcp://{}:{}"_format(
-                                    epee::string_tools::get_ip_string_from_int32(
-                                            proof.proof->public_ip),
-                                    proof.proof->qnet_port),
+                            "tcp://{}:{}"_format(proof.proof->public_ip, proof.proof->qnet_port),
                             proof.proof->version);
                 });
 
@@ -352,14 +349,13 @@ namespace {
                     need_remotes.end(),
                     [this](const auto& pubkey, const auto& info, const auto& proof) {
                         if (info.is_active() && proof.pubkey_x25519 && proof.proof->qnet_port &&
-                            proof.proof->public_ip)
+                            proof.proof->public_ip != oxen::quic::ipv4{})
                             remotes.emplace(
                                     pubkey,
                                     std::make_pair(
                                             proof.pubkey_x25519,
                                             "tcp://{}:{}"_format(
-                                                    epee::string_tools::get_ip_string_from_int32(
-                                                            proof.proof->public_ip),
+                                                    proof.proof->public_ip,
                                                     proof.proof->qnet_port)));
                     });
 

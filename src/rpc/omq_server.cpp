@@ -15,7 +15,6 @@
 #include "common/string_util.h"
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
-#include "epee/string_tools.h"
 #include "rpc/common/param_parser.hpp"
 
 namespace cryptonote::rpc {
@@ -450,7 +449,7 @@ void omq_rpc::send_snode_addr_notifications(
     // - vs -- storage server version triplet
     addr.append("K", tools::view_guts(proof.pubkey_ed25519));
     addr.append("Kx", tools::view_guts(x_pk));
-    addr.append("ip", epee::string_tools::get_ip_string_from_int32(proof.public_ip));
+    addr.append("ip", proof.public_ip.to_string());
     addr.append("qn", proof.qnet_port);
     addr.append("sh", proof.storage_https_port);
     addr.append("sq", proof.storage_omq_port);

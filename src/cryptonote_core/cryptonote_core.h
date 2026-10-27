@@ -25,6 +25,7 @@
 #include <ctime>
 #include <future>
 #include <mutex>
+#include <oxen/quic/ip.hpp>
 
 #include "blockchain.h"
 #include "bls/bls_aggregator.h"
@@ -38,7 +39,6 @@
 #include "cryptonote_basic/miner.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
 #include "cryptonote_protocol/quorumnet.h"
-#include "epee/net/net_utils_base.h"
 #include "epee/storages/portable_storage_template_helper.h"
 #include "epee/warnings.h"
 #include "pulse.h"
@@ -688,11 +688,10 @@ class core final {
     std::atomic<time_t> m_last_storage_server_ping, m_last_lokinet_ping, m_last_srouter_ping;
     std::atomic<uint16_t> m_storage_https_port{0}, m_storage_omq_port{0};
 
-    uint32_t sn_public_ip() const { return m_sn_public_ip; }
+    const oxen::quic::ipv4& sn_public_ip() const { return m_sn_public_ip; }
 
-    /// Returns true if `ip` (in network byte order, as stored in uptime proofs) is within one of
-    /// the `--force-unreachable` ranges.
-    bool is_forced_unreachable(uint32_t ip) const;
+    /// Returns true if `ip` is within one of the `--force-unreachable` ranges.
+    bool is_forced_unreachable(const oxen::quic::ipv4& ip) const;
     uint16_t storage_https_port() const { return m_storage_https_port; }
     uint16_t storage_omq_port() const { return m_storage_omq_port; }
     uint16_t quorumnet_port() const { return m_quorumnet_port; }
@@ -933,10 +932,10 @@ class core final {
                                   // public oxenmq rpc
 
     /// Service Node's public IP and qnet ports
-    uint32_t m_sn_public_ip;
+    oxen::quic::ipv4 m_sn_public_ip;
     uint16_t m_quorumnet_port;
 
-    std::vector<epee::net_utils::ipv4_network_subnet> m_force_unreachable;
+    std::vector<oxen::quic::ipv4_range> m_force_unreachable;
 
     /// OxenMQ main object.  Gets created during init().
     std::shared_ptr<oxenmq::OxenMQ> m_omq;

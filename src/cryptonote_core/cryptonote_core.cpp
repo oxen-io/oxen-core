@@ -42,7 +42,7 @@ extern "C" {
 
 #include <boost/algorithm/string.hpp>
 #include <csignal>
-#include <ranges>
+#include <oxen/quic/format.hpp>
 #include <unordered_set>
 
 #include "blockchain_db/blockchain_db.h"
@@ -54,6 +54,7 @@ extern "C" {
 #include "common/exception.h"
 #include "common/file.h"
 #include "common/guts.h"
+#include "common/ipv4.h"
 #include "common/notify.h"
 #include "common/sha256sum.h"
 #include "common/string_util.h"
@@ -64,11 +65,8 @@ extern "C" {
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
 #include "epee/memwipe.h"
-#include "epee/net/local_ip.h"
-#include "epee/string_tools.h"
 #include "epee/warnings.h"
 #include "logging/oxen_logger.h"
-#include "net/parse.h"
 #include "network_config/mocknet.h"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
@@ -392,12 +390,13 @@ void core::init_options(boost::program_options::options_description& desc) {
     BlockchainDB::init_options(desc);
 }
 //-----------------------------------------------------------------------------------------------
-bool core::is_forced_unreachable(uint32_t ip) const {
-    // 0 means we don't know the IP (no proof yet), which shouldn't match even a /0
-    return ip != 0 && std::any_of(
-                              m_force_unreachable.begin(),
-                              m_force_unreachable.end(),
-                              [ip](const auto& subnet) { return subnet.matches(ip); });
+bool core::is_forced_unreachable(const oxen::quic::ipv4& ip) const {
+    // 0.0.0.0 means we don't know the IP (no proof yet), which shouldn't match even a /0
+    return ip != oxen::quic::ipv4{} &&
+           std::any_of(
+                   m_force_unreachable.begin(),
+                   m_force_unreachable.end(),
+                   [&ip](const auto& range) { return range.contains(ip); });
 }
 //-----------------------------------------------------------------------------------------------
 bool core::handle_command_line(const boost::program_options::variables_map& vm) {
@@ -420,17 +419,17 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
         service_node_list.debug_allow_local_ips = true;
 
     for (const auto& val : command_line::get_arg(vm, arg_force_unreachable)) {
-        for (auto range : tools::split_any(val, ", \t", true)) {
-            auto subnet = net::get_ipv4_subnet_address(range, true);
-            if (!subnet) {
+        for (auto range_str : tools::split_any(val, ", \t", true)) {
+            auto range = tools::parse_ipv4_range(range_str, true);
+            if (!range) {
                 log::error(
                         logcat,
                         "Invalid --{} value '{}': expected an IPv4 address or CIDR range",
                         arg_force_unreachable.name,
-                        range);
+                        range_str);
                 return false;
             }
-            m_force_unreachable.push_back(*subnet);
+            m_force_unreachable.push_back(*range);
         }
     }
     if (!m_force_unreachable.empty())
@@ -438,10 +437,7 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
                 logcat,
                 "Service nodes with public IPs in {} will be treated as unreachable when voting in "
                 "obligations quorums",
-                fmt::join(
-                        m_force_unreachable |
-                                std::views::transform([](const auto& s) { return s.str(); }),
-                        ", "));
+                fmt::join(m_force_unreachable, ", "));
 
     m_service_node = command_line::get_arg(vm, arg_service_node);
 
@@ -468,12 +464,14 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
 
         const std::string pub_ip = command_line::get_arg(vm, arg_public_ip);
         if (pub_ip.size()) {
-            if (!epee::string_tools::get_ip_int32_from_string(m_sn_public_ip, pub_ip)) {
+            try {
+                m_sn_public_ip = oxen::quic::ipv4{pub_ip};
+            } catch (const std::invalid_argument&) {
                 log::error(logcat, "Unable to parse IPv4 public address from: {}", pub_ip);
                 args_okay = false;
             }
 
-            if (!epee::net_utils::is_ip_public(m_sn_public_ip)) {
+            if (!m_sn_public_ip.is_public()) {
                 if (service_node_list.debug_allow_local_ips) {
                     log::warning(
                             logcat,
@@ -484,7 +482,7 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
                     log::error(
                             logcat,
                             "Address given for public-ip is not public: {}",
-                            epee::string_tools::get_ip_string_from_int32(m_sn_public_ip));
+                            m_sn_public_ip);
                     args_okay = false;
                 }
             }
@@ -848,7 +846,7 @@ bool core::init(
                         globallogcat,
                         fg(fmt::terminal_color::green) | fmt::emphasis::bold,
                         "Running as an L2 proxy reachable at:\n\t{}:{}/{}",
-                        epee::string_tools::get_ip_string_from_int32(m_sn_public_ip),
+                        m_sn_public_ip,
                         m_quorumnet_port,
                         m_service_keys.pub_ed25519);
             else
@@ -2018,8 +2016,7 @@ void core::check_service_node_ip_address() {
         return;
     }
 
-    auto service_node_ip = epee::string_tools::get_ip_string_from_int32(m_sn_public_ip);
-    auto service_node_address = "tcp://{}:{}"_format(service_node_ip, m_quorumnet_port);
+    auto service_node_address = "tcp://{}:{}"_format(m_sn_public_ip, m_quorumnet_port);
     auto connection_error_callback = [service_node_address]() {
         log::warning(
                 globallogcat,
@@ -2740,8 +2737,7 @@ void core::do_uptime_proof_call() {
                                         "corrected. (Do both service nodes have the correct IP for "
                                         "the service-node-public-ip setting?)",
                                         pk,
-                                        epee::string_tools::get_ip_string_from_int32(
-                                                m_sn_public_ip),
+                                        m_sn_public_ip,
                                         proof.proof->qnet_port,
                                         proof.proof->storage_https_port,
                                         proof.proof->storage_omq_port);

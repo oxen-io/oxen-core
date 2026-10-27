@@ -1,5 +1,7 @@
 #pragma once
 
+#include <oxen/quic/ip.hpp>
+
 #include "crypto/crypto.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 
@@ -37,7 +39,7 @@ class Proof {
     // associated with the SN.
     eth::bls_signature pop_bls{};
 
-    uint32_t public_ip{};
+    oxen::quic::ipv4 public_ip{};
     uint16_t storage_https_port{};
     uint16_t storage_omq_port{};
     uint16_t qnet_port{};
@@ -63,7 +65,7 @@ class Proof {
     Proof() = default;
     Proof(cryptonote::hf hardfork,
           cryptonote::network_type nettype,
-          uint32_t sn_public_ip,
+          oxen::quic::ipv4 sn_public_ip,
           uint16_t sn_storage_https_port,
           uint16_t sn_storage_omq_port,
           std::array<uint16_t, 3> ss_version,

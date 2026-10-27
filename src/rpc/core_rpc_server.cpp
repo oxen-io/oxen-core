@@ -73,7 +73,6 @@
 #include "cryptonote_core/tx_sanity_check.h"
 #include "cryptonote_core/uptime_proof.h"
 #include "epee/net/network_throttle.hpp"
-#include "epee/string_tools.h"
 #include "l2_tracker/events.h"
 #include "l2_tracker/l2_tracker_proxy.h"
 #include "logging/oxen_logger.h"
@@ -2092,12 +2091,12 @@ void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, rpc_context) {
                 top_height,
                 nullptr);
     else {
-        sns.response["service_node_state"] = json{
-                {"public_ip", epee::string_tools::get_ip_string_from_int32(m_core.sn_public_ip())},
-                {"storage_port", m_core.storage_https_port()},
-                {"storage_lmq_port", m_core.storage_omq_port()},
-                {"quorumnet_port", m_core.quorumnet_port()},
-                {"service_node_version", OXEN_VERSION}};
+        sns.response["service_node_state"] =
+                json{{"public_ip", m_core.sn_public_ip().to_string()},
+                     {"storage_port", m_core.storage_https_port()},
+                     {"storage_lmq_port", m_core.storage_omq_port()},
+                     {"quorumnet_port", m_core.quorumnet_port()},
+                     {"service_node_version", OXEN_VERSION}};
         auto rhex = sns.response_hex["service_node_state"];
         rhex["service_node_pubkey"] = keys.pub;
         rhex["pubkey_ed25519"] = keys.pub_ed25519;
@@ -3060,7 +3059,7 @@ void core_rpc_server::fill_sn_response_entry(
                     "version_tag",
                     OXEN_VERSION_TAG,
                     "public_ip",
-                    epee::string_tools::get_ip_string_from_int32(m_core.sn_public_ip()),
+                    m_core.sn_public_ip().to_string(),
                     "storage_port",
                     m_core.storage_https_port(),
                     "storage_lmq_port",
@@ -3076,7 +3075,7 @@ void core_rpc_server::fill_sn_response_entry(
                     m_core.get_service_keys().pub_x25519);
             set_if_requested(reqed, binary, "pubkey_bls", m_core.get_service_keys().pub_bls);
         } else {
-            if (proof.proof->public_ip != 0 || oxen10_compat_fields)
+            if (proof.proof->public_ip != oxen::quic::ipv4{} || oxen10_compat_fields)
                 set_if_requested(
                         reqed,
                         entry,
@@ -3089,7 +3088,7 @@ void core_rpc_server::fill_sn_response_entry(
                         "session_router_version",
                         proof.proof->session_router_version,
                         "public_ip",
-                        epee::string_tools::get_ip_string_from_int32(proof.proof->public_ip),
+                        proof.proof->public_ip.to_string(),
                         "storage_port",
                         proof.proof->storage_https_port,
                         "storage_lmq_port",

@@ -15,6 +15,7 @@
 
 #include <chrono>
 #include <memory>
+#include <oxen/quic/format.hpp>
 
 #include "bls_crypto.h"
 #include "crypto/eth.h"
@@ -328,9 +329,7 @@ namespace {
                         bytes_to_hex_dot_truncate_middle(item.addr.sn_pubkey),
                         bytes_to_hex_dot_truncate_middle(item.addr.bls_pubkey),
                         bytes_to_hex_dot_truncate_middle(item.addr.x_pubkey),
-                        "{}:{}"_format(
-                                epee::string_tools::get_ip_string_from_int32(item.addr.ip),
-                                item.addr.port),
+                        "{}:{}"_format(item.addr.ip, item.addr.port),
                         item.msg);
             }
         }
@@ -573,7 +572,7 @@ namespace {
 #if 0
 
                     auto addr = oxenmq::address{"curve://{}:{}/{:x}"_format(
-                            epee::string_tools::get_ip_string_from_int32(snode.ip), snode.port, snode.x_pubkey)};
+                            snode.ip, snode.port, snode.x_pubkey)};
                     connid = core.omq().connect_remote(
                             addr,
                             [](oxenmq::ConnectionID) { /* Successfully connected */ },
