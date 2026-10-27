@@ -34,13 +34,12 @@
 
 #include <boost/bind/bind.hpp>
 #include <boost/asio/steady_timer.hpp>
-#include "../warnings.h"
-#include "../string_tools.h"
 #include "../scope_leaver.h"
 #include "../misc_log_ex.h"
 #include "../pragma_comp_defs.h"
-// Not an epee header: this server template is only ever instantiated by oxend's p2p code, which
-// provides it.
+// Not epee headers: this server template is only ever instantiated by oxend's p2p code, which
+// provides them.
+#include "common/string_util.h"
 #include "net/ipv4_address.h"
 
 #include <chrono>
@@ -291,7 +290,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     else
     {
       address = endpoint.address().to_string();
-      port = boost::lexical_cast<std::string>(endpoint.port());
+      port = std::to_string(endpoint.port());
     }
   }
   //---------------------------------------------------------------------------------
@@ -820,7 +819,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     try
     {
       boost::asio::ip::tcp::resolver resolver(io_service_);
-      boost::asio::ip::tcp::endpoint endpoint = *resolver.resolve(address, boost::lexical_cast<std::string>(port), boost::asio::ip::tcp::resolver::canonical_name).begin();
+      boost::asio::ip::tcp::endpoint endpoint = *resolver.resolve(address, std::to_string(port),boost::asio::ip::tcp::resolver::canonical_name).begin();
       acceptor_.open(endpoint.protocol());
 #if !defined(_WIN32)
       acceptor_.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
@@ -853,7 +852,7 @@ PRAGMA_WARNING_DISABLE_VS(4355)
       {
         if (port_ipv6 == 0) port_ipv6 = port; // default arg means bind to same port as ipv4
         boost::asio::ip::tcp::resolver resolver(io_service_);
-        boost::asio::ip::tcp::endpoint endpoint = *resolver.resolve(address_ipv6, boost::lexical_cast<std::string>(port_ipv6), boost::asio::ip::tcp::resolver::canonical_name).begin();
+        boost::asio::ip::tcp::endpoint endpoint = *resolver.resolve(address_ipv6, std::to_string(port_ipv6),boost::asio::ip::tcp::resolver::canonical_name).begin();
         acceptor_ipv6.open(endpoint.protocol());
 #if !defined(_WIN32)
         acceptor_ipv6.set_option(boost::asio::ip::tcp::acceptor::reuse_address(true));
@@ -896,8 +895,6 @@ PRAGMA_WARNING_DISABLE_VS(4355)
     }
   }
   //-----------------------------------------------------------------------------
-PUSH_WARNINGS
-DISABLE_GCC_WARNING(maybe-uninitialized)
   template<class t_protocol_handler>
   bool boosted_tcp_server<t_protocol_handler>::init_server(const std::string port,  const std::string& address,
       const std::string port_ipv6, const std::string address_ipv6, bool use_ipv6, bool require_ipv4)
@@ -905,16 +902,15 @@ DISABLE_GCC_WARNING(maybe-uninitialized)
     uint32_t p = 0;
     uint32_t p_ipv6 = 0;
 
-    if (port.size() && !string_tools::get_xtype_from_string(p, port)) {
+    if (port.size() && !tools::parse_int(port, p)) {
       return false;
     }
 
-    if (port_ipv6.size() && !string_tools::get_xtype_from_string(p_ipv6, port_ipv6)) {
+    if (port_ipv6.size() && !tools::parse_int(port_ipv6, p_ipv6)) {
       return false;
     }
     return this->init_server(p, address, p_ipv6, address_ipv6, use_ipv6, require_ipv4);
   }
-POP_WARNINGS
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool boosted_tcp_server<t_protocol_handler>::worker_thread()

@@ -41,7 +41,6 @@
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "epee/misc_log_ex.h"
-#include "epee/string_tools.h"
 #include "service_node_list.h"
 
 using cryptonote::hf;

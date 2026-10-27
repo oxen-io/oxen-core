@@ -1,6 +1,7 @@
 
 #include "epee/net/net_utils_base.h"
 
+#include <iterator>
 #include <random>
 #include <oxenc/hex.h>
 
@@ -104,14 +105,24 @@ connection_id_t connection_id_t::random() {
     return conn_id;
 }
 
+std::string connection_id_t::to_string() const {
+    std::string s;
+    s.reserve(36);
+    auto out = std::back_inserter(s);
+    oxenc::to_hex(begin(), begin() + 4, out);
+    s += '-';
+    oxenc::to_hex(begin() + 4, begin() + 6, out);
+    s += '-';
+    oxenc::to_hex(begin() + 6, begin() + 8, out);
+    s += '-';
+    oxenc::to_hex(begin() + 8, begin() + 10, out);
+    s += '-';
+    oxenc::to_hex(begin() + 10, end(), out);
+    return s;
+}
+
 std::ostream& operator<<(std::ostream& out, const connection_id_t& c) {
-    // Output in uuid form:
-    // 00112233-4455-6677-8899-101112131415
-    return out << oxenc::to_hex(c.begin(), c.begin() + 4) << '-'
-               << oxenc::to_hex(c.begin() + 4, c.begin() + 6) << '-'
-               << oxenc::to_hex(c.begin() + 6, c.begin() + 8) << '-'
-               << oxenc::to_hex(c.begin() + 8, c.begin() + 10) << '-'
-               << oxenc::to_hex(c.begin() + 10, c.end());
+    return out << c.to_string();
 }
 
 }  // namespace epee

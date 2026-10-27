@@ -33,7 +33,6 @@
 
 #include "gtest/gtest.h"
 
-#include "epee/string_tools.h"
 #include "epee/net/levin_protocol_handler_async.h"
 #include "epee/net/net_utils_base.h"
 #include "unit_tests_utils.h"

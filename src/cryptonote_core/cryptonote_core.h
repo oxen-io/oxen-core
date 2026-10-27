@@ -40,14 +40,11 @@
 #include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
 #include "cryptonote_protocol/quorumnet.h"
 #include "epee/storages/portable_storage_template_helper.h"
-#include "epee/warnings.h"
 #include "pulse.h"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
 #include "service_node_voting.h"
 #include "tx_pool.h"
-PUSH_WARNINGS
-DISABLE_VS_WARNINGS(4355)
 
 namespace cryptonote {
 struct test_options {
@@ -992,5 +989,3 @@ class core final {
     std::optional<oxenmq::TaggedThreadID> m_pulse_thread_id;
 };
 }  // namespace cryptonote
-
-POP_WARNINGS

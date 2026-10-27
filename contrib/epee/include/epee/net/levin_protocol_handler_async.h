@@ -83,7 +83,7 @@ public:
 
   int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, connection_id_t connection_id);
   template<class callback_t>
-  int invoke_async(int command, const std::span<const uint8_t> in_buff, connection_id_t connection_id, const callback_t &cb, std::chrono::nanoseconds timeout = 0s);
+  int invoke_async(int command, const std::span<const uint8_t> in_buff, connection_id_t connection_id, const callback_t &cb, std::chrono::nanoseconds timeout = {});
 
   int notify(int command, const std::span<const uint8_t> in_buff, connection_id_t connection_id);
   int send(epee::shared_sv message, const connection_id_t& connection_id);
@@ -99,7 +99,7 @@ public:
   size_t get_in_connections_count();
   void set_handler(levin_commands_handler<t_connection_context>* handler, void (*destroy)(levin_commands_handler<t_connection_context>*) = NULL);
 
-  async_protocol_handler_config():m_pcommands_handler(NULL), m_pcommands_handler_destroy(NULL), m_max_packet_size(LEVIN_DEFAULT_MAX_PACKET_SIZE), m_invoke_timeout(0ns)
+  async_protocol_handler_config():m_pcommands_handler(NULL), m_pcommands_handler_destroy(NULL), m_max_packet_size(LEVIN_DEFAULT_MAX_PACKET_SIZE), m_invoke_timeout{}
   {}
   ~async_protocol_handler_config() { set_handler(NULL, NULL); }
   void del_out_connections(size_t count);
@@ -301,7 +301,7 @@ public:
 
     for (size_t i = 0; i < 60 * 1000 / 100 && 0 != m_wait_count; ++i)
     {
-      std::this_thread::sleep_for(100ms);
+      std::this_thread::sleep_for(std::chrono::milliseconds{100});
     }
     }
     catch (...) { /* ignore */ }
@@ -560,12 +560,12 @@ public:
   }
 
   template<class callback_t>
-  bool async_invoke(int command, const std::span<const uint8_t> in_buff, const callback_t &cb, std::chrono::nanoseconds timeout = 0ns)
+  bool async_invoke(int command, const std::span<const uint8_t> in_buff, const callback_t &cb, std::chrono::nanoseconds timeout = {})
   {
     auto scope_exit_handler = misc_utils::create_scope_leave_handler(
       [this] { return finish_outer_call(); });
 
-    if(timeout == 0ns)
+    if(timeout == timeout.zero())
       timeout = m_config.m_invoke_timeout;
 
     int err_code = LEVIN_OK;

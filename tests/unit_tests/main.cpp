@@ -37,7 +37,6 @@
 #include "p2p/net_node.inl"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.inl"
-#include "epee/string_tools.h"
 #include "common/command_line.h"
 #include "common/util.h"
 #include "unit_tests_utils.h"
@@ -55,7 +54,6 @@ int main(int argc, char** argv)
   TRY_ENTRY();
 
   tools::on_startup();
-  epee::string_tools::set_module_name_and_folder(argv[0]);
 
   ::testing::InitGoogleTest(&argc, argv);
 

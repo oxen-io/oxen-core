@@ -38,6 +38,7 @@
 #include "../misc_log_ex.h"
 #include "../serialization/keyvalue_serialization.h"
 #include <fmt/core.h>
+#include <fmt/ranges.h>
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "net"
@@ -62,6 +63,10 @@ struct connection_id_t : std::array<unsigned char, 16> {
     constexpr bool is_nil() const {
         return std::all_of(begin(), end(), [](auto x) { return x == 0; });
     }
+
+    // Returns the id in uuid form, e.g. 00112233-4455-6677-8899-101112131415
+    std::string to_string() const;
+    static constexpr bool to_string_formattable = true;
 };
 
 std::ostream& operator<<(std::ostream& out, const connection_id_t& c);
@@ -345,6 +350,14 @@ namespace net_utils
 
 }
 }
+
+// connection_id_t is a std::array, which fmt would otherwise also consider formattable as a range,
+// making it ambiguous with its to_string formatting.
+template <typename T, typename Char>
+    requires std::same_as<std::remove_cv_t<T>, epee::connection_id_t>
+struct fmt::is_range<T, Char> {
+    static constexpr bool value = false;
+};
 
 namespace std {
 template <>

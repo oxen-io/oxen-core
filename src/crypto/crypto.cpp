@@ -46,7 +46,6 @@
 
 #include "common/exception.h"
 #include "common/varint.h"
-#include "epee/warnings.h"
 #include "epee/wipeable_string.h"
 extern "C" {
 #include "crypto-ops.h"

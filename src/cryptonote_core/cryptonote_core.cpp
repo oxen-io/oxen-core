@@ -64,15 +64,12 @@ extern "C" {
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
-#include "epee/warnings.h"
 #include "logging/oxen_logger.h"
 #include "network_config/mocknet.h"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
 #include "uptime_proof.h"
 #include "version.h"
-
-DISABLE_VS_WARNINGS(4355)
 
 #define BAD_SEMANTICS_TXES_MAX_SIZE 100
 

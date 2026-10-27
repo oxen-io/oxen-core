@@ -36,7 +36,6 @@ oxen_add_library(epee
     network_throttle-detail.cpp
     parserse_base_utils.cpp
     portable_storage.cpp
-    string_tools.cpp
     wipeable_string.cpp
 )
 

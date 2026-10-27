@@ -49,7 +49,6 @@
 #include "cryptonote_core/oxen_name_system.h"
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_core/service_node_voting.h"
-#include "epee/string_tools.h"
 #include "epee/wipeable_string.h"
 #include "l2_tracker/events.h"
 #include "ringct/rctSigs.h"

@@ -27,7 +27,7 @@
 #pragma once
 
 #include "misc_log_ex.h"
-#include "string_tools.h"
+#include "common/string_util.h"
 #include <functional>
 #include <atomic>
 #include <condition_variable>
@@ -36,6 +36,9 @@
 #include <thread>
 #include <iostream>
 #include <any>
+#include <map>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <optional>
 #ifdef __OpenBSD__
@@ -382,19 +385,20 @@ eof:
           {
           }
 
-          string_tools::trim(command);
+          std::string_view cmd{command};
+          tools::trim(cmd);
 
-          if (command.empty())
+          if (cmd.empty())
           {
             continue;
           }
-          else if(0 == command.compare("exit") || 0 == command.compare("q"))
+          else if (cmd == "exit" || cmd == "q")
           {
             continue_handle = false;
           }
           else
           {
-            cmd_handler(command);
+            cmd_handler(std::string{cmd});
           }
         }
         catch (const std::exception &ex)
@@ -449,7 +453,7 @@ eof:
     template <typename Callback>
     void pre_handler(Callback handler)
     {
-      using Return = decltype(handler(""s));
+      using Return = decltype(handler(std::string{}));
       if constexpr (std::is_void_v<Return>)
         m_pre_handler = [f=std::move(handler)](const std::string& cmd) { f(cmd); return std::any{}; };
       else if constexpr (std::is_same_v<Return, std::any>)

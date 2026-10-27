@@ -40,7 +40,6 @@
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_rules.h"
-#include "epee/string_tools.h"
 #include "history.h"
 #include "lmdb/db_lmdb.h"
 #include "ringct/rctOps.h"

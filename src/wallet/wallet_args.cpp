@@ -39,7 +39,6 @@
 #include "common/i18n.h"
 #include "common/util.h"
 #include "epee/misc_log_ex.h"
-#include "epee/string_tools.h"
 #include "logging/oxen_logger.h"
 #include "version.h"
 
@@ -113,8 +112,6 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
     tools::disable_core_dumps();
 #endif
     tools::set_strict_default_file_permissions(true);
-
-    epee::string_tools::set_module_name_and_folder(argv[0]);
 
     po::options_description desc_general(wallet_args::tr("General options"));
     command_line::add_arg(desc_general, command_line::arg_help);

@@ -52,10 +52,6 @@
 #include "cryptonote_core/ethereum_transactions.h"
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_tx_utils.h"
-#include "epee/warnings.h"
-
-DISABLE_VS_WARNINGS(4244 4345 4503)  //'boost::foreach_detail_::or_' : decorated name length
-                                     // exceeded, name was truncated
 
 using namespace crypto;
 

@@ -56,15 +56,11 @@
 #include "epee/net/levin_protocol_handler.h"
 #include "epee/net/levin_protocol_handler_async.h"
 #include "epee/storages/levin_abstract_invoke2.h"
-#include "epee/warnings.h"
 #include "net/fwd.h"
 #include "net/ipv4_address.h"
 #include "net_node_common.h"
 #include "net_peerlist.h"
 #include "p2p_protocol_defs.h"
-
-PUSH_WARNINGS
-DISABLE_VS_WARNINGS(4355)
 
 namespace boost::asio {
 using io_service = io_context;
@@ -514,5 +510,3 @@ extern const command_line::arg_descriptor<int64_t> arg_limit_rate;
 
 template <>
 inline constexpr bool formattable::via_to_string<nodetool::PeerType> = true;
-
-POP_WARNINGS

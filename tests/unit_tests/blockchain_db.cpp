@@ -36,7 +36,6 @@
 
 #include "gtest/gtest.h"
 
-#include "epee/string_tools.h"
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/history.h"
 #include "blockchain_db/lmdb/db_lmdb.h"

@@ -703,8 +703,7 @@ unsigned device_trezor::client_version() {
     // Override client version for tests
     const char* env_trezor_client_version = nullptr;
     if ((env_trezor_client_version = getenv("TREZOR_CLIENT_VERSION")) != nullptr) {
-        auto succ = epee::string_tools::get_xtype_from_string(
-                client_version, env_trezor_client_version);
+        auto succ = tools::parse_int(env_trezor_client_version, client_version);
         if (succ) {
             log::info(
                     logcat,

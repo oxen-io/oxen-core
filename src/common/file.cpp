@@ -42,7 +42,6 @@
 #include "logging/oxen_logger.h"
 
 #ifdef WIN32
-#include "epee/string_tools.h"
 #ifndef STRSAFE_NO_DEPRECATE
 #define STRSAFE_NO_DEPRECATE
 #endif

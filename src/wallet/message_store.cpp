@@ -37,7 +37,6 @@
 #include "common/base58.h"
 #include "common/file.h"
 #include "common/util.h"
-#include "epee/string_tools.h"
 #include "serialization/binary_utils.h"
 #include "wallet_errors.h"
 

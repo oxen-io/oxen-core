@@ -35,7 +35,6 @@
 
 #include "gtest/gtest.h"
 
-#include "epee/string_tools.h"
 #include "crypto/crypto.h"
 #include "crypto/random.h"
 #include "crypto/chacha.h"

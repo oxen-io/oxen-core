@@ -34,7 +34,6 @@
 #include <fstream>
 
 #include "crypto/crypto.h"
-#include "epee/warnings.h"
 extern "C" {
 #include "crypto/keccak.h"
 }
@@ -42,8 +41,6 @@ extern "C" {
 #include "cryptonote_basic_impl.h"
 #include "cryptonote_config.h"
 #include "cryptonote_format_utils.h"
-
-DISABLE_VS_WARNINGS(4244 4345)
 
 namespace cryptonote {
 static auto logcat = log::Cat("account");

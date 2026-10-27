@@ -94,7 +94,6 @@ static auto logcat = oxen::log::Cat("wallet.simplewallet");
 
 namespace cryptonote {
 
-namespace string_tools = epee::string_tools;
 using sw = cryptonote::simple_wallet;
 
 #define OUTPUT_EXPORT_FILE_MAGIC "Loki output export\003"
@@ -359,8 +358,9 @@ namespace {
         std::getline(std::cin, buf);
 #endif
 
-        epee::string_tools::trim(buf);
-        return buf;
+        std::string_view trimmed{buf};
+        tools::trim(trimmed);
+        return std::string{trimmed};
     }
 
     epee::wipeable_string input_secure_line(const std::string& prompt) {
@@ -996,7 +996,7 @@ bool simple_wallet::make_multisig_main(
 
     // parse threshold
     uint32_t threshold;
-    if (!string_tools::get_xtype_from_string(threshold, args[0])) {
+    if (!tools::parse_int(args[0], threshold)) {
         fail_msg_writer() << tr("Invalid threshold");
         return false;
     }
@@ -1727,7 +1727,7 @@ bool simple_wallet::set_ring(const std::vector<std::string>& args) {
     std::vector<uint64_t> ring;
     for (size_t n = 2; n < args.size(); ++n) {
         ring.resize(ring.size() + 1);
-        if (!string_tools::get_xtype_from_string(ring.back(), args[n])) {
+        if (!tools::parse_int(args[n], ring.back())) {
             fail_msg_writer() << tr("invalid index: must be a strictly positive unsigned integer");
             return true;
         }
@@ -2187,7 +2187,7 @@ bool simple_wallet::set_ask_password(
 bool simple_wallet::set_min_output_count(
         const std::vector<std::string>& args /* = std::vector<std::string>()*/) {
     uint32_t count;
-    if (!string_tools::get_xtype_from_string(count, args[1])) {
+    if (!tools::parse_int(args[1], count)) {
         fail_msg_writer() << tr("invalid count: must be an unsigned integer");
         return true;
     }
@@ -2245,7 +2245,7 @@ bool simple_wallet::set_refresh_from_block_height(
     const auto pwd_container = get_and_verify_password();
     if (pwd_container) {
         uint64_t height;
-        if (!epee::string_tools::get_xtype_from_string(height, args[1])) {
+        if (!tools::parse_int(args[1], height)) {
             fail_msg_writer() << tr("Invalid height");
             return true;
         }
@@ -2297,7 +2297,7 @@ bool simple_wallet::set_segregation_height(
     const auto pwd_container = get_and_verify_password();
     if (pwd_container) {
         uint64_t height;
-        if (!epee::string_tools::get_xtype_from_string(height, args[1])) {
+        if (!tools::parse_int(args[1], height)) {
             fail_msg_writer() << tr("Invalid height");
             return true;
         }
@@ -4716,7 +4716,7 @@ bool simple_wallet::start_mining(const std::vector<std::string>& args) {
     };
     if (arg_size >= 1) {
         uint16_t num = 1;
-        ok = string_tools::get_xtype_from_string(num, args[0]);
+        ok = tools::parse_int(args[0], num);
         ok = ok && 1 <= num;
         req_params["threads_count"] = num;
     }
@@ -7486,7 +7486,7 @@ bool simple_wallet::sweep_main(
 
     size_t outputs = 1;
     if (local_args.size() > 0 && local_args[0].substr(0, 8) == "outputs=") {
-        if (!epee::string_tools::get_xtype_from_string(outputs, local_args[0].substr(8))) {
+        if (!tools::parse_int(std::string_view{local_args[0]}.substr(8), outputs)) {
             fail_msg_writer() << tr("Failed to parse number of outputs");
             return true;
         } else if (outputs < 1) {
@@ -7579,7 +7579,7 @@ bool simple_wallet::sweep_single(const std::vector<std::string>& args_) {
 
     size_t outputs = 1;
     if (local_args.size() > 0 && local_args[0].substr(0, 8) == "outputs=") {
-        if (!epee::string_tools::get_xtype_from_string(outputs, local_args[0].substr(8))) {
+        if (!tools::parse_int(std::string_view{local_args[0]}.substr(8), outputs)) {
             fail_msg_writer() << tr("Failed to parse number of outputs");
             return true;
         } else if (outputs < 1) {
@@ -7660,7 +7660,7 @@ bool simple_wallet::sweep_account(const std::vector<std::string>& args_) {
         return true;
     }
     uint32_t account = 0;
-    if (!epee::string_tools::get_xtype_from_string(account, local_args[0])) {
+    if (!tools::parse_int(local_args[0], account)) {
         fail_msg_writer() << tr("Invalid account");
         return true;
     }
@@ -8955,7 +8955,7 @@ bool simple_wallet::account(
     } else if (command == "switch" && local_args.size() == 1) {
         // switch to the specified account
         uint32_t index_major;
-        if (!epee::string_tools::get_xtype_from_string(index_major, local_args[0])) {
+        if (!tools::parse_int(local_args[0], index_major)) {
             fail_msg_writer() << tr("failed to parse index: ") << local_args[0];
             return true;
         }
@@ -8970,7 +8970,7 @@ bool simple_wallet::account(
     } else if (command == "label" && local_args.size() >= 1) {
         // set label of the specified account
         uint32_t index_major;
-        if (!epee::string_tools::get_xtype_from_string(index_major, local_args[0])) {
+        if (!tools::parse_int(local_args[0], index_major)) {
             fail_msg_writer() << tr("failed to parse index: ") << local_args[0];
             return true;
         }
@@ -8988,7 +8988,7 @@ bool simple_wallet::account(
         std::set<uint32_t> account_indices;
         for (size_t i = 1; i < local_args.size(); ++i) {
             uint32_t account_index;
-            if (!epee::string_tools::get_xtype_from_string(account_index, local_args[i])) {
+            if (!tools::parse_int(local_args[i], account_index)) {
                 fail_msg_writer() << tr("failed to parse index: ") << local_args[i];
                 return true;
             }
@@ -9004,7 +9004,7 @@ bool simple_wallet::account(
         std::set<uint32_t> account_indices;
         for (size_t i = 0; i < local_args.size(); ++i) {
             uint32_t account_index;
-            if (!epee::string_tools::get_xtype_from_string(account_index, local_args[i])) {
+            if (!tools::parse_int(local_args[i], account_index)) {
                 fail_msg_writer() << tr("failed to parse index: ") << local_args[i];
                 return true;
             }
@@ -9152,7 +9152,7 @@ bool simple_wallet::print_address(
                 m_wallet->get_num_subaddresses(m_current_subaddress_account) - 1,
                 std::nullopt);
     } else if (local_args.size() >= 2 && local_args[0] == "label") {
-        if (!epee::string_tools::get_xtype_from_string(index, local_args[1])) {
+        if (!tools::parse_int(local_args[1], index)) {
             fail_msg_writer() << tr("failed to parse index: ") << local_args[1];
             return true;
         }
@@ -9166,14 +9166,12 @@ bool simple_wallet::print_address(
         std::string label = tools::join(" ", local_args);
         m_wallet->set_subaddress_label({m_current_subaddress_account, index}, label);
         print_address_sub(index);
-    } else if (
-            local_args.size() <= 2 &&
-            epee::string_tools::get_xtype_from_string(index, local_args[0])) {
+    } else if (local_args.size() <= 2 && tools::parse_int(local_args[0], index)) {
         local_args.erase(local_args.begin());
         uint32_t index_min = index;
         uint32_t index_max = index_min;
         if (local_args.size() > 0) {
-            if (!epee::string_tools::get_xtype_from_string(index_max, local_args[0])) {
+            if (!tools::parse_int(local_args[0], index_max)) {
                 fail_msg_writer() << tr("failed to parse index: ") << local_args[0];
                 return true;
             }
@@ -9195,7 +9193,7 @@ bool simple_wallet::print_address(
         index = 0;
         local_args.erase(local_args.begin());
         if (local_args.size() > 0) {
-            if (!epee::string_tools::get_xtype_from_string(index, local_args[0])) {
+            if (!tools::parse_int(local_args[0], index)) {
                 fail_msg_writer() << tr("failed to parse index: ") << local_args[0];
                 return true;
             }
@@ -9304,7 +9302,7 @@ bool simple_wallet::address_book(
                 info.is_subaddress);
     } else {
         size_t row_id;
-        if (!epee::string_tools::get_xtype_from_string(row_id, args[1])) {
+        if (!tools::parse_int(args[1], row_id)) {
             fail_msg_writer() << tr("failed to parse index");
             return true;
         }

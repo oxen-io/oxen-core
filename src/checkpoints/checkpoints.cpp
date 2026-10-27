@@ -45,7 +45,6 @@
 #include "cryptonote_core/service_node_rules.h"
 #include "epee/serialization/keyvalue_serialization.h"
 #include "epee/storages/portable_storage_template_helper.h"  // epee json include
-#include "epee/string_tools.h"
 
 namespace cryptonote {
 

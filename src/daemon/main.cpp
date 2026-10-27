@@ -79,8 +79,6 @@ int main(int argc, char const* argv[]) {
 
         tools::on_startup();
 
-        epee::string_tools::set_module_name_and_folder(argv[0]);
-
         auto opt_size = command_line::boost_option_sizes();
 
         // Build argument description
