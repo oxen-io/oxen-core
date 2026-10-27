@@ -67,7 +67,6 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
 #include "epee/int-util.h"
-#include "epee/warnings.h"
 #include "ethereum_transactions.h"
 #include "l2_tracker/events.h"
 #include "logging/oxen_logger.h"
@@ -94,8 +93,6 @@ using namespace cryptonote;
 
 static auto logcat = log::Cat("blockchain");
 static auto logverify = log::Cat("verify");
-
-DISABLE_VS_WARNINGS(4267)
 
 // used to overestimate the block reward when estimating a per kB to use
 #define BLOCK_REWARD_OVERESTIMATE (10 * 1000000000000)

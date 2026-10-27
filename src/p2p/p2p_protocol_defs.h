@@ -35,7 +35,6 @@
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "epee/net/net_utils_base.h"
 #include "epee/serialization/keyvalue_serialization.h"
-#include "epee/string_tools.h"
 #include "net/ipv4_address.h"  // needed for serialization
 
 namespace nodetool {

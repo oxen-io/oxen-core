@@ -31,7 +31,6 @@
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
-#include "epee/string_tools.h"
 
 using namespace cryptonote;
 
@@ -92,7 +91,6 @@ int main(int argc, char* argv[])
 {
   TRY_ENTRY();
     tools::on_startup();
-    epee::string_tools::set_module_name_and_folder(argv[0]);
 
     //set up logging options
     mlog_configure(mlog_get_default_log_path("trezor_tests.log"), true);

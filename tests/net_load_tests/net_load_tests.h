@@ -33,7 +33,6 @@
 #include <atomic>
 
 #include "epee/net/net_utils_base.h"
-#include "epee/string_tools.h"
 #include "epee/net/levin_protocol_handler_async.h"
 #include "epee/net/abstract_tcp_server2.h"
 #include "epee/serialization/keyvalue_serialization.h"
@@ -184,7 +183,7 @@ namespace net_load_tests
       }
       if (!m_tcp_server.get_config_object().close(m_connections[idx]))
       {
-        oxen::log::warning(globallogcat, "Close connection error: {}", boost::lexical_cast<std::string>(m_connections[idx]));
+        oxen::log::warning(globallogcat, "Close connection error: {}", m_connections[idx].to_string());
         if (!ignore_close_fails)
         {
           return false;

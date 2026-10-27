@@ -66,7 +66,6 @@
 #include "cryptonote_core/service_node_quorum_cop.h"
 #include "cryptonote_core/service_node_voting.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
-#include "epee/string_tools.h"
 #include "rpc/common/command_decorators.h"
 #include "rpc/common/rpc_version.h"
 

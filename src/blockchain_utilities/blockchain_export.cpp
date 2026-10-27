@@ -47,7 +47,6 @@ int main(int argc, char* argv[]) {
 
     TRY_ENTRY();
 
-    epee::string_tools::set_module_name_and_folder(argv[0]);
     uint64_t block_stop = 0;
     tools::on_startup();
     auto opt_size = command_line::boost_option_sizes();

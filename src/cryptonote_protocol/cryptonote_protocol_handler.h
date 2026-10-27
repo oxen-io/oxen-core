@@ -49,11 +49,7 @@
 #include "cryptonote_protocol_defs.h"
 #include "cryptonote_protocol_handler_common.h"
 #include "epee/storages/levin_abstract_invoke2.h"
-#include "epee/warnings.h"
 #include "peer_history.h"
-
-PUSH_WARNINGS
-DISABLE_VS_WARNINGS(4355)
 
 #define CURRENCY_PROTOCOL_MAX_OBJECT_REQUEST_COUNT 500
 #define CURRENCY_PROTOCOL_MAX_TXS_REQUEST_COUNT 5000
@@ -288,5 +284,3 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
 };
 
 }  // namespace cryptonote
-
-POP_WARNINGS

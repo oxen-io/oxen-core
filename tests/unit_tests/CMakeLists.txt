@@ -45,7 +45,6 @@ add_executable(unit_tests
   epee_levin_protocol_handler_async.cpp
   epee_utils.cpp
   expect.cpp
-  get_xtype_from_string.cpp
   hashchain.cpp
   hmac_keccak.cpp
   ipv4.cpp
@@ -127,3 +126,5 @@ add_test(
 add_executable(test_notifier test_notifier.cpp)
 target_link_libraries(test_notifier extra)
 set_property(TARGET test_notifier PROPERTY FOLDER "tests")
+add_dependencies(unit_tests test_notifier)
+set_property(SOURCE notify.cpp APPEND PROPERTY COMPILE_DEFINITIONS TEST_NOTIFIER="$<TARGET_FILE:test_notifier>")

@@ -32,10 +32,10 @@
 #include <regex>
 #include <type_traits>
 #include <charconv>
+#include <utility>
 
 #include "portable_storage_base.h"
 #include "parserse_base_utils.h"
-#include "../warnings.h"
 
 namespace epee
 {
@@ -59,28 +59,13 @@ namespace epee
     {
       void operator()(const From& from, To& to)
       {
-PUSH_WARNINGS
-DISABLE_VS_WARNINGS(4018)
-DISABLE_CLANG_WARNING(tautological-constant-out-of-range-compare)
-DISABLE_GCC_AND_CLANG_WARNING(sign-compare)
-
-        bool in_range;
-        if constexpr (std::is_signed_v<From> == std::is_signed_v<To>) // signed -> signed or unsigned -> unsigned
-          in_range = from >= std::numeric_limits<To>::min() && from <= std::numeric_limits<To>::max();
-        else if constexpr (std::is_signed_v<To>) // unsigned -> signed
-          in_range = from <= std::numeric_limits<To>::max();
-        else // signed -> unsigned
-          in_range = from >= 0 && from <= std::numeric_limits<To>::max();
-
-        CHECK_AND_ASSERT_THROW_MES(in_range,
+        CHECK_AND_ASSERT_THROW_MES(std::in_range<To>(from),
             "int value overflow: cannot convert value {} to integer type with range [{}, {}]",
             +from,
             +std::numeric_limits<To>::min(),
             +std::numeric_limits<To>::max()
             );
         to = static_cast<To>(from);
-
-POP_WARNINGS
       }
     };
 

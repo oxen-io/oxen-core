@@ -403,7 +403,6 @@ void Wallet::init(
         const char* default_log_base_name,
         const std::string& log_path,
         bool console) {
-    epee::string_tools::set_module_name_and_folder(argv0);
     oxen::logging::init(log_path.empty() ? default_log_base_name : log_path, "*=info", console);
 }
 
@@ -2492,11 +2491,11 @@ bool WalletImpl::blackballOutputs(const std::vector<std::string>& outputs, bool 
 EXPORT
 bool WalletImpl::blackballOutput(const std::string& amount, const std::string& offset) {
     uint64_t raw_amount, raw_offset;
-    if (!epee::string_tools::get_xtype_from_string(raw_amount, amount)) {
+    if (!tools::parse_int(amount, raw_amount)) {
         setStatusError("Failed to parse output amount");
         return false;
     }
-    if (!epee::string_tools::get_xtype_from_string(raw_offset, offset)) {
+    if (!tools::parse_int(offset, raw_offset)) {
         setStatusError("Failed to parse output offset");
         return false;
     }
@@ -2511,11 +2510,11 @@ bool WalletImpl::blackballOutput(const std::string& amount, const std::string& o
 EXPORT
 bool WalletImpl::unblackballOutput(const std::string& amount, const std::string& offset) {
     uint64_t raw_amount, raw_offset;
-    if (!epee::string_tools::get_xtype_from_string(raw_amount, amount)) {
+    if (!tools::parse_int(amount, raw_amount)) {
         setStatusError("Failed to parse output amount");
         return false;
     }
-    if (!epee::string_tools::get_xtype_from_string(raw_offset, offset)) {
+    if (!tools::parse_int(offset, raw_offset)) {
         setStatusError("Failed to parse output offset");
         return false;
     }

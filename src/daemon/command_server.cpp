@@ -32,7 +32,6 @@
 #include <optional>
 
 #include "cryptonote_config.h"
-#include "epee/string_tools.h"
 #include "version.h"
 
 namespace daemonize {

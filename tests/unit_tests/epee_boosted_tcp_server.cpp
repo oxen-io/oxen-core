@@ -34,7 +34,6 @@
 
 #include "gtest/gtest.h"
 
-#include "epee/string_tools.h"
 #include "epee/net/abstract_tcp_server2.h"
 
 using namespace std::literals;

@@ -57,7 +57,6 @@
 #include "epee/misc_log_ex.h"
 #include "epee/net/net_utils_base.h"
 #include "epee/storages/levin_abstract_invoke2.h"
-#include "epee/string_tools.h"
 #include "net/error.h"
 #include "net/parse.h"
 #include "net_node.h"

@@ -499,8 +499,6 @@ int main(int argc, char* argv[]) {
     oxen::set_terminate_handler();
     TRY_ENTRY();
 
-    epee::string_tools::set_module_name_and_folder(argv[0]);
-
     uint64_t num_blocks = 0;
     uint64_t block_stop = 0;
     std::string m_config_folder;

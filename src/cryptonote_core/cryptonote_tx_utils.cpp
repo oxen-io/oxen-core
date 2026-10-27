@@ -45,7 +45,6 @@
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_config.h"
 #include "epee/int-util.h"
-#include "epee/string_tools.h"
 #include "multisig/multisig.h"
 #include "ringct/rctSigs.h"
 

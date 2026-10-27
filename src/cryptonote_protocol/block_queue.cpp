@@ -34,8 +34,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "epee/string_tools.h"
-
 namespace cryptonote {
 
 static auto logcat = log::Cat("cn.block_queue");
@@ -163,7 +161,7 @@ void block_queue::print() const {
                 (span.start_block_height + span.nblocks - 1),
                 span.nblocks,
                 (span.blocks.empty() ? "scheduled" : "filled    "),
-                boost::lexical_cast<std::string>(span.connection_id),
+                span.connection_id,
                 ((unsigned)(span.rate * 10 / 1024.f)) / 10.f);
 }
 
@@ -271,7 +269,7 @@ std::pair<uint64_t, uint64_t> block_queue::reserve_span(
             "Reserving span {} - {} for {}",
             span_start_height,
             (span_start_height + span_length - 1),
-            boost::lexical_cast<std::string>(connection_id));
+            connection_id);
     add_blocks(span_start_height, span_length, connection_id, std::chrono::steady_clock::now());
     set_span_hashes(span_start_height, connection_id, hashes);
     return std::make_pair(span_start_height, span_length);
@@ -432,7 +430,7 @@ float block_queue::get_speed(const connection_id_t& connection_id) const {
     log::trace(
             logcat,
             " Relative speed for {}: {} ({}/{}",
-            boost::lexical_cast<std::string>(connection_id),
+            connection_id,
             speed,
             conn_rate,
             best_rate);
@@ -458,11 +456,7 @@ float block_queue::get_download_rate(const connection_id_t& connection_id) const
 
     if (conn_rate < 0)
         conn_rate = 0.0f;
-    log::trace(
-            logcat,
-            "Download rate for {}: {} b/s",
-            boost::lexical_cast<std::string>(connection_id),
-            conn_rate);
+    log::trace(logcat, "Download rate for {}: {} b/s", connection_id, conn_rate);
     return conn_rate;
 }
 

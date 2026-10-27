@@ -31,7 +31,6 @@
 #include "gtest/gtest.h"
 
 #include "common/guts.h"
-#include "epee/string_tools.h"
 #include "ringct/rctOps.h"
 #include "ringct/rctSigs.h"
 #include "ringct/bulletproofs.h"

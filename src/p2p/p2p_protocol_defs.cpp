@@ -6,7 +6,6 @@
 
 #include "common/string_util.h"
 #include "cryptonote_protocol/peer_history.h"
-#include "epee/string_tools.h"
 #include "net/ipv4_address.h"  // needed for serialization
 
 namespace nodetool {

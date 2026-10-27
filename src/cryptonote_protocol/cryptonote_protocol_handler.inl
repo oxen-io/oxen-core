@@ -2495,7 +2495,7 @@ You are now synchronized with the network.
   template<class t_core>
   void t_cryptonote_protocol_handler<t_core>::drop_connection(cryptonote_connection_context &context, bool add_fail, bool flush_all_spans)
   {
-    log::debug(logcat, "{}dropping connection id {}, add_fail {}, flush_all_spans {}", context, boost::lexical_cast<std::string>(context.m_connection_id), add_fail, flush_all_spans);
+    log::debug(logcat, "{}dropping connection id {}, add_fail {}, flush_all_spans {}", context, context.m_connection_id, add_fail, flush_all_spans);
 
     if (add_fail)
       m_p2p->add_host_fail(context.m_remote_address);
@@ -2508,7 +2508,7 @@ You are now synchronized with the network.
     // them before we close the connection and so might never learn of the problem.
     if (context.m_drop_count >= 1)
     {
-      log::debug(logcat, "{}{} a second chance before dropping", context, "giving connect id ", boost::lexical_cast<std::string>(context.m_connection_id));
+      log::debug(logcat, "{}{} a second chance before dropping", context, "giving connect id ", context.m_connection_id);
       ++context.m_drop_count;
     }
     else
