@@ -84,6 +84,8 @@ std::optional<std::vector<std::string_view>> service_node_test_results::why() co
         results.push_back("Storage server is not reachable."sv);
     if (!lokinet_reachable)
         results.push_back("Lokinet router is not reachable."sv);
+    if (!session_router_reachable)
+        results.push_back("Session router is not reachable."sv);
     if (forced_unreachable)
         results.push_back("Public IP is within a --force-unreachable range."sv);
     return results;
@@ -98,7 +100,7 @@ service_node_test_results quorum_cop::check_service_node(
     const auto& netconf = m_core.get_net_config();
 
     service_node_test_results result;  // Defaults to true for individual tests
-    bool ss_reachable = true, lokinet_reachable = true;
+    bool ss_reachable = true, lokinet_reachable = true, sr_reachable = true;
     uint32_t public_ip = 0;
     uint64_t timestamp = 0;
     decltype(std::declval<proof_info>().public_ips) ips{};
@@ -119,6 +121,7 @@ service_node_test_results quorum_cop::check_service_node(
     m_core.service_node_list.access_proof(pubkey, [&](const proof_info& proof) {
         ss_reachable = !proof.ss_reachable.unreachable_for(unreachable_threshold);
         lokinet_reachable = !proof.lokinet_reachable.unreachable_for(unreachable_threshold);
+        sr_reachable = !proof.sr_reachable.unreachable_for(unreachable_threshold);
         public_ip = proof.proof->public_ip;
         timestamp = std::max(proof.timestamp, proof.effective_timestamp);
         ips = proof.public_ips;
@@ -159,6 +162,15 @@ service_node_test_results quorum_cop::check_service_node(
     if (!lokinet_reachable && hf_version >= hf::hf19_reward_batching) {
         log::info(logcat, "Service Node lokinet is not reachable for node: {}", pubkey);
         result.lokinet_reachable = false;
+    }
+
+    // Session router currently only tests nodes with 11.6+ uptime proofs (see the transition filter
+    // in session-router's oxend_rpc.cpp), so nodes not yet running it never accumulate failures and
+    // this doesn't need gating here.  If that filter is dropped before session router is mandatory,
+    // this will need gating.
+    if (!sr_reachable) {
+        log::info(logcat, "Service Node session router is not reachable for node: {}", pubkey);
+        result.session_router_reachable = false;
     }
 
     if (m_core.is_forced_unreachable(public_ip)) {
@@ -477,7 +489,8 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                 if (!test_results.lokinet_reachable ||
                                     test_results.forced_unreachable)
                                     reason |= cryptonote::Decommission_Reason::lokinet_unreachable;
-                                if (test_results.forced_unreachable)
+                                if (!test_results.session_router_reachable ||
+                                    test_results.forced_unreachable)
                                     reason |= cryptonote::Decommission_Reason::
                                             session_router_unreachable;
                                 if (!test_results.timestamp_participation)
@@ -634,9 +647,9 @@ void quorum_cop::process_quorums(cryptonote::block const& block) {
                                                 logcat, "Service Node is passing all local tests");
                                     log::warning(
                                             logcat,
-                                            "(Note that some tests, such as storage server and "
-                                            "lokinet reachability, can only assessed by remote "
-                                            "service nodes)");
+                                            "(Note that some tests, such as storage server, "
+                                            "lokinet, and session router reachability, can only be "
+                                            "assessed by remote service nodes)");
                                 }
                             }
                         }

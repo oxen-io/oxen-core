@@ -116,6 +116,7 @@ struct service_node_test_results {
     bool timesync_status = true;
     bool storage_server_reachable = true;
     bool lokinet_reachable = true;
+    bool session_router_reachable = true;
     bool recent_l2_height = true;
     bool failed_transition = false;
     // Set when the node's public IP is in a `--force-unreachable` range: this is voted as storage
@@ -128,7 +129,8 @@ struct service_node_test_results {
         return !failed_transition && !forced_unreachable && uptime_proved &&
                // single_ip -- deliberately excluded (it only gives ip-change penalties, not deregs)
                checkpoint_participation && pulse_participation && timestamp_participation &&
-               timesync_status && storage_server_reachable && lokinet_reachable && recent_l2_height;
+               timesync_status && storage_server_reachable && lokinet_reachable &&
+               session_router_reachable && recent_l2_height;
     }
 };
 
