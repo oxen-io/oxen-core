@@ -46,8 +46,6 @@ void accrued_history::reset(uint64_t height, const accrued_rows& rows) {
 }
 
 void accrued_history::advance(uint64_t height, const accrued_changes& changes) {
-    assert(!nothing_held);
-    assert(height == current + 1);
     if (nothing_held || height != current + 1)
         throw oxen::traced<std::logic_error>{
                 "Internal error: rewards history at {} cannot advance to {}"_format(
