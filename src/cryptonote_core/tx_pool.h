@@ -229,7 +229,7 @@ class tx_memory_pool {
     /**
      * @brief attempts to add blink transaction information about an existing blink transaction
      *
-     * You *must* already hold a blink_unique_lock().
+     * This method must be called without a held blink lock.
      *
      * This method takes an approved blink_tx and records it in the known blinks data.  No check is
      * done that the transaction actually exists on the blockchain or mempool.  It is assumed that
@@ -244,6 +244,14 @@ class tx_memory_pool {
      * @return true if the blink data was recorded, false if the given blink was already known.
      */
     bool add_existing_blink(std::shared_ptr<blink_tx> blink);
+
+    /**
+     * @brief adds a hook called each time a blink is added to the known blinks (by add_new_blink or
+     * add_existing_blink), once the blink lock is released.
+     */
+    void hook_blink_added(std::function<void()> hook) {
+        m_blink_added_hooks.push_back(std::move(hook));
+    }
 
     /**
      * @brief accesses blink tx details if the given tx hash is a known, approved blink tx, nullptr
@@ -866,6 +874,8 @@ class tx_memory_pool {
 
     // Contains blink metadata for approved blink transactions. { txhash => blink_tx, ... }.
     mutable std::unordered_map<crypto::hash, std::shared_ptr<cryptonote::blink_tx>> m_blinks;
+
+    std::vector<std::function<void()>> m_blink_added_hooks;
 
     // Helper method: retrieves hashes and mined heights of blink txes since the immutable block;
     // mempool blinks are included with a height of 0.  Also takes care of cleaning up any blinks

@@ -1914,8 +1914,6 @@ int core::add_blinks(const std::vector<std::shared_ptr<blink_tx>>& blinks) {
     if (blinks.empty())
         return added;
 
-    auto lock = mempool.blink_unique_lock();
-
     for (auto& b : blinks)
         if (b->approved())
             if (mempool.add_existing_blink(b))

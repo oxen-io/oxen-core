@@ -94,9 +94,10 @@ bool protocol_handler::init(const boost::program_options::variables_map& vm) {
 
     m_block_download_max_size = command_line::get_arg(vm, cryptonote::arg_block_download_max_size);
 
-    // Every change to the chain, from wherever it comes, goes through one of these, so our sync
-    // data keeps up with the chain (to the end of each span, while we add spans).  (Called before
-    // the core, and so the chain, initializes.)
+    // Every change to the chain, from wherever it comes, goes through one of these, as does every
+    // blink added to the mempool (which changes our blink checksums), so our sync data keeps up
+    // (to the end of each span, while we add spans).  (Called before the core, and so the chain,
+    // initializes.)
     auto& chain = m_core.blockchain;
     chain.hook_init([this] { refresh_sync_data(); });
     chain.hook_block_post_add([this](const auto&) {
@@ -104,6 +105,10 @@ bool protocol_handler::init(const boost::program_options::variables_map& vm) {
             refresh_sync_data();
     });
     chain.hook_blockchain_detached([this](const auto&) {
+        if (!m_defer_sync_refresh)
+            refresh_sync_data();
+    });
+    m_core.mempool.hook_blink_added([this] {
         if (!m_defer_sync_refresh)
             refresh_sync_data();
     });
