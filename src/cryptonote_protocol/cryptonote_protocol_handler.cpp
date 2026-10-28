@@ -95,22 +95,22 @@ bool protocol_handler::init(const boost::program_options::variables_map& vm) {
     m_block_download_max_size = command_line::get_arg(vm, cryptonote::arg_block_download_max_size);
 
     // Every change to the chain, from wherever it comes, goes through one of these, as does every
-    // blink added to the mempool (which changes our blink checksums), so our sync data keeps up
+    // blink added to the mempool (which changes our blink checksums), so our chain state keeps up
     // (to the end of each span, while we add spans).  (Called before the core, and so the chain,
     // initializes.)
     auto& chain = m_core.blockchain;
-    chain.hook_init([this] { refresh_sync_data(); });
+    chain.hook_init([this] { refresh_chain_state(); });
     chain.hook_block_post_add([this](const auto&) {
-        if (!m_defer_sync_refresh)
-            refresh_sync_data();
+        if (!m_defer_chain_refresh)
+            refresh_chain_state();
     });
     chain.hook_blockchain_detached([this](const auto&) {
-        if (!m_defer_sync_refresh)
-            refresh_sync_data();
+        if (!m_defer_chain_refresh)
+            refresh_chain_state();
     });
     m_core.mempool.hook_blink_added([this] {
-        if (!m_defer_sync_refresh)
-            refresh_sync_data();
+        if (!m_defer_chain_refresh)
+            refresh_chain_state();
     });
 
     return true;
@@ -180,7 +180,7 @@ bool protocol_handler::on_callback(cryptonote_connection_context& context) {
     } else if (context.m_state == cryptonote_connection_context::state_synchronizing) {
         NOTIFY_REQUEST_CHAIN::request r{};
         context.m_needed_objects.clear();
-        m_core.blockchain.get_short_chain_history(r.block_ids);
+        r.block_ids = get_chain_state()->short_history;
         log::info(
                 log::Cat("net.p2p.msg"),
                 "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()={}",
@@ -202,9 +202,10 @@ bool protocol_handler::on_callback(cryptonote_connection_context& context) {
 
     if (context.m_need_blink_sync) {
         NOTIFY_REQUEST_BLOCK_BLINKS::request r{};
-        auto curr_height = m_core.blockchain.get_current_blockchain_height();
-        auto my_blink_hashes = m_core.mempool.get_blink_checksums();
-        const uint64_t immutable_height = m_core.blockchain.get_immutable_height();
+        const auto ours = get_chain_state();
+        const uint64_t curr_height = ours->sync_data.current_height;
+        const auto& my_blink_hashes = ours->blink_checksums;
+        const uint64_t immutable_height = ours->immutable_height;
         // Delete any irrelevant heights > 0 (the mempool) and <= the immutable height
         context.m_blink_state.erase(
                 context.m_blink_state.lower_bound(1),
@@ -381,14 +382,15 @@ bool protocol_handler::process_payload_sync_data(
     if (context.m_state == cryptonote_connection_context::state_synchronizing)
         return true;
 
+    const auto ours = get_chain_state();
+    const uint64_t curr_height = ours->sync_data.current_height;
+
     // if the peer advertises a top block version, reject if it's not what it should be
     if (hshd.current_height > 0) {
         auto nettype = m_core.get_nettype();
         const auto version = get_network_version(nettype, hshd.current_height - 1);
         if (version != hshd.top_version) {
-            if (version < hshd.top_version &&
-                version == get_network_version(
-                                   nettype, m_core.blockchain.get_current_blockchain_height()))
+            if (version < hshd.top_version && version == get_network_version(nettype, curr_height))
                 log::warning(
                         logcat,
                         fg(fmt::terminal_color::red),
@@ -403,8 +405,6 @@ bool protocol_handler::process_payload_sync_data(
     }
 
     context.m_remote_blockchain_height = hshd.current_height;
-
-    auto curr_height = m_core.blockchain.get_current_blockchain_height();
 
     context.m_need_blink_sync = false;
     // Check for any blink txes being advertised that we don't know about
@@ -428,13 +428,8 @@ bool protocol_handler::process_payload_sync_data(
         // height *and* different than the last height the peer sent then we will request the blink
         // txes for that height.
 
-        uint64_t immutable_height;
-        std::map<uint64_t, crypto::hash> our_blink_hashes;
-        {
-            std::lock_guard lock{m_sync_data_mutex};
-            immutable_height = m_sync_immutable_height;
-            our_blink_hashes = m_sync_blink_checksums;
-        }
+        const uint64_t immutable_height = ours->immutable_height;
+        const auto& our_blink_hashes = ours->blink_checksums;
         // Delete any irrelevant heights > 0 (the mempool) and <= the immutable height
         context.m_blink_state.erase(
                 context.m_blink_state.lower_bound(1),
@@ -551,8 +546,7 @@ bool protocol_handler::process_payload_sync_data(
 
     if (have_block) {
         context.m_state = cryptonote_connection_context::state_normal;
-        if (is_initial && hshd.current_height >= target &&
-            target == m_core.blockchain.get_current_blockchain_height())
+        if (is_initial && hshd.current_height >= target && target == curr_height)
             on_connection_synchronized();
     } else {
         context.m_state = cryptonote_connection_context::state_synchronizing;
@@ -580,31 +574,35 @@ bool protocol_handler::process_payload_sync_data(
     return true;
 }
 //------------------------------------------------------------------------------------------------------------------------
-CORE_SYNC_DATA protocol_handler::get_payload_sync_data() const {
-    std::lock_guard lock{m_sync_data_mutex};
-    return m_sync_data;
+std::shared_ptr<const protocol_handler::chain_state> protocol_handler::get_chain_state() const {
+    std::lock_guard lock{m_chain_state_mutex};
+    return m_chain_state;
 }
 //------------------------------------------------------------------------------------------------------------------------
-void protocol_handler::refresh_sync_data() {
-    CORE_SYNC_DATA hshd{};
+void protocol_handler::refresh_chain_state() {
+    // Held throughout (the chain's hooks already hold it), so that a refresh from the mempool's
+    // hook can't read the chain before a change and then publish after the change's own refresh.
+    std::unique_lock chain_lock{m_core.blockchain};
+    auto state = std::make_shared<chain_state>();
+    auto& hshd = state->sync_data;
     std::tie(hshd.current_height, hshd.top_id) = m_core.blockchain.get_tail_id();
     hshd.top_version = get_network_version(m_core.get_nettype(), hshd.current_height);
     hshd.cumulative_difficulty =
             m_core.blockchain.db().get_block_cumulative_difficulty(hshd.current_height);
     hshd.current_height += 1;
     hshd.history = m_core.blockchain.db().served_history();
-    auto our_blink_hashes = m_core.mempool.get_blink_checksums();
-    hshd.blink_blocks.reserve(our_blink_hashes.size());
-    hshd.blink_hash.reserve(our_blink_hashes.size());
-    for (auto& h : our_blink_hashes) {
-        hshd.blink_blocks.push_back(h.first);
-        hshd.blink_hash.push_back(h.second);
+    state->blink_checksums = m_core.mempool.get_blink_checksums();
+    hshd.blink_blocks.reserve(state->blink_checksums.size());
+    hshd.blink_hash.reserve(state->blink_checksums.size());
+    for (auto& [height, checksum] : state->blink_checksums) {
+        hshd.blink_blocks.push_back(height);
+        hshd.blink_hash.push_back(checksum);
     }
-    const uint64_t immutable_height = m_core.blockchain.get_immutable_height();
-    std::lock_guard lock{m_sync_data_mutex};
-    m_sync_data = std::move(hshd);
-    m_sync_immutable_height = immutable_height;
-    m_sync_blink_checksums = std::move(our_blink_hashes);
+    state->immutable_height = m_core.blockchain.get_immutable_height();
+    m_core.blockchain.get_short_chain_history(state->short_history);
+
+    std::lock_guard lock{m_chain_state_mutex};
+    m_chain_state = std::move(state);
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_notify_new_fluffy_block(
@@ -860,7 +858,7 @@ int protocol_handler::handle_notify_new_fluffy_block(
                 context.m_needed_objects.clear();
                 context.m_state = cryptonote_connection_context::state_synchronizing;
                 NOTIFY_REQUEST_CHAIN::request r{};
-                m_core.blockchain.get_short_chain_history(r.block_ids);
+                r.block_ids = get_chain_state()->short_history;
                 log::info(
                         log::Cat("net.p2p.msg"),
                         "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()={}",
@@ -1602,7 +1600,7 @@ int protocol_handler::try_add_next_blocks(cryptonote_connection_context& context
                     log::error(logcat, "Failure in prepare_handle_incoming_blocks");
                     return 1;
                 }
-                m_defer_sync_refresh = true;
+                m_defer_chain_refresh = true;
 
                 {
                     bool remove_spans = false;
@@ -1611,8 +1609,8 @@ int protocol_handler::try_add_next_blocks(cryptonote_connection_context& context
                             log::warning(logcat, "Failure in cleanup_handle_incoming_blocks");
                         // Only once the chain lock is released, so that a change made by another
                         // thread between the two is caught by this refresh if not by its own.
-                        m_defer_sync_refresh = false;
-                        refresh_sync_data();
+                        m_defer_chain_refresh = false;
+                        refresh_chain_state();
 
                         // in case the peer had dropped beforehand, remove the span anyway so other
                         // threads can wake up and get it
@@ -2517,7 +2515,7 @@ skip:
                 1) {  // we have to fetch more objects ids, request blockchain entry
 
         NOTIFY_REQUEST_CHAIN::request r{};
-        m_core.blockchain.get_short_chain_history(r.block_ids);
+        r.block_ids = get_chain_state()->short_history;
         if (r.block_ids.empty()) {
             log::error(logcat, "Short chain history is empty");
             return false;
