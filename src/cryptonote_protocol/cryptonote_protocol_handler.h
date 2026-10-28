@@ -78,9 +78,18 @@ class protocol_handler : public i_cryptonote_protocol {
     // bool process_handshake_data(const std::string& data, cryptonote_connection_context& context);
     bool process_payload_sync_data(
             CORE_SYNC_DATA&& hshd, cryptonote_connection_context& context, bool is_inital);
-    // Our sync data, for handshakes and timed syncs, as of the last change to the chain.  It takes
-    // no chain locks, so it can be read from anywhere.
-    CORE_SYNC_DATA get_payload_sync_data() const;
+    // Our view of the chain (and of our blinks) as of its last change, which takes no chain locks
+    // to get, so it can be read from anywhere.
+    struct chain_state {
+        // What we send peers in handshakes and timed syncs
+        CORE_SYNC_DATA sync_data;
+        uint64_t immutable_height = 0;
+        std::map<uint64_t, crypto::hash> blink_checksums;
+        // For NOTIFY_REQUEST_CHAIN (see Blockchain::get_short_chain_history)
+        std::list<crypto::hash> short_history;
+    };
+    std::shared_ptr<const chain_state> get_chain_state() const;
+    CORE_SYNC_DATA get_payload_sync_data() const { return get_chain_state()->sync_data; }
     bool on_callback(cryptonote_connection_context& context);
     core& get_core() { return m_core; }
     bool is_synchronized() { return m_synchronized; }
@@ -241,19 +250,15 @@ class protocol_handler : public i_cryptonote_protocol {
     std::deque<std::pair<std::chrono::steady_clock::time_point, uint64_t>> m_sync_rate_samples;
     std::mutex m_sync_rate_mutex;
 
-    // Recomputes the sync data below from the chain and mempool, whose locks it takes.  Called only
-    // from the chain's hooks, as the chain changes.
-    void refresh_sync_data();
-    // Set while we add a span of blocks, so that the chain's hooks leave the refresh to the end of
-    // the span rather than doing it for every block.  Nothing else can change the chain meanwhile,
-    // as adding a span holds the chain lock throughout.
-    std::atomic<bool> m_defer_sync_refresh{false};
-    // What refresh_sync_data() publishes: our sync data, and what checking a peer's sync data
-    // against ours needs, so that neither takes chain locks.
-    mutable std::mutex m_sync_data_mutex;
-    CORE_SYNC_DATA m_sync_data{};
-    uint64_t m_sync_immutable_height = 0;
-    std::map<uint64_t, crypto::hash> m_sync_blink_checksums;
+    // Recomputes our chain state from the chain and mempool, whose locks it takes.  Called only
+    // from the chain's and mempool's hooks, as they change.
+    void refresh_chain_state();
+    // Set while we add a span of blocks, so that the hooks leave the refresh to the end of the span
+    // rather than doing it for every block.  Nothing else can change the chain meanwhile, as adding
+    // a span holds the chain lock throughout.
+    std::atomic<bool> m_defer_chain_refresh{false};
+    mutable std::mutex m_chain_state_mutex;
+    std::shared_ptr<const chain_state> m_chain_state = std::make_shared<chain_state>();
 
     std::mutex m_buffer_mutex;
     boost::circular_buffer<size_t> m_avg_buffer = boost::circular_buffer<size_t>(10);
