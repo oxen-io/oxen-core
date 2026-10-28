@@ -114,6 +114,26 @@ namespace epee
       return true;
     } 
     //-------------------------------------------------------------------------------------------------------------------
+    // Stores/loads an object into/from a section: through its store/_load members (as defined by
+    // the KV_SERIALIZE map macros), or else through kv_store/kv_load free functions found by ADL,
+    // for types that can't have the members.
+    template<class T, class t_storage>
+    bool store_obj(const T& obj, t_storage& stg, section* sec)
+    {
+      if constexpr (requires { obj.store(stg, sec); })
+        return obj.store(stg, sec);
+      else
+        return kv_store(obj, stg, sec);
+    }
+    template<class T, class t_storage>
+    bool load_obj(T& obj, t_storage& stg, section* sec)
+    {
+      if constexpr (requires { obj._load(stg, sec); })
+        return obj._load(stg, sec);
+      else
+        return kv_load(obj, stg, sec);
+    }
+    //-------------------------------------------------------------------------------------------------------------------
     template<class serializible_type, class t_storage>
     bool serialize_t_obj(const serializible_type& obj, t_storage& stg, section* parent_section, const char* pname)
     {
@@ -122,7 +142,7 @@ namespace epee
         oxen::log::error(logcat, "serialize_t_obj: failed to open/create section {}", pname);
         return false;
       }
-      return obj.store(stg, child_section);
+      return store_obj(obj, stg, child_section);
     }
     //-------------------------------------------------------------------------------------------------------------------
     template<class serializible_type, class t_storage>
@@ -130,7 +150,7 @@ namespace epee
     {
       section* child_section = stg.open_section(pname, parent_section, false);
       if(!child_section) return false;
-      return obj._load(stg, child_section);
+      return load_obj(obj, stg, child_section);
     }
     //-------------------------------------------------------------------------------------------------------------------
     template<class stl_container, class t_storage>
@@ -245,7 +265,7 @@ namespace epee
       }
 
       for (auto& elem : container)
-        if (!elem.store(stg, &sec_array->emplace_back()))
+        if (!store_obj(elem, stg, &sec_array->emplace_back()))
           return false;
       return true;
     }
@@ -257,7 +277,7 @@ namespace epee
       auto* arr = stg.template get_array<section>(pname, parent_section);
       if (!arr) return false;
       for (auto& child_section : *arr)
-        if (!container.emplace_back()._load(stg, &child_section))
+        if (!load_obj(container.emplace_back(), stg, &child_section))
           return false;
       return true;
     }

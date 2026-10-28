@@ -70,7 +70,7 @@ static auto logcat = log::Cat("net.p2p");
 using epee::connection_id_t;
 
 static bool append_net_address(
-        std::vector<epee::net_utils::network_address>& seed_nodes,
+        std::vector<oxen::quic::Address>& seed_nodes,
         std::string_view addr,
         uint16_t default_port);
 //-----------------------------------------------------------------------------------
@@ -143,13 +143,13 @@ bool node_server<t_payload_net_handler>::for_connection(
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::is_remote_host_allowed(
-        const epee::net_utils::network_address& address, time_t* t) {
+        const oxen::quic::Address& address, time_t* t) {
     std::unique_lock lock{m_blocked_hosts_lock};
 
     const time_t now = time(nullptr);
 
     // look in the hosts list
-    auto it = m_blocked_hosts.find(address.host_str());
+    auto it = m_blocked_hosts.find(address.host());
     if (it != m_blocked_hosts.end()) {
         if (now >= it->second) {
             m_blocked_hosts.erase(it);
@@ -157,7 +157,7 @@ bool node_server<t_payload_net_handler>::is_remote_host_allowed(
                     logcat,
                     fg(fmt::terminal_color::cyan),
                     "Host {} unblocked.",
-                    address.host_str());
+                    address.host());
             it = m_blocked_hosts.end();
         } else {
             if (t)
@@ -167,8 +167,8 @@ bool node_server<t_payload_net_handler>::is_remote_host_allowed(
     }
 
     // manually loop in subnets
-    if (address.get_type_id() == net::ipv4_address::get_type_id()) {
-        const auto& ip = address.template as<net::ipv4_address>().ip();
+    if (address.is_ipv4()) {
+        const auto ip = address.to_ipv4();
         for (auto it = m_blocked_subnets.begin(); it != m_blocked_subnets.end();) {
             if (now >= it->second) {
                 log::info(logcat, fg(fmt::terminal_color::cyan), "Subnet {} unblocked", it->first);
@@ -190,10 +190,7 @@ bool node_server<t_payload_net_handler>::is_remote_host_allowed(
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::block_host(
-        const epee::net_utils::network_address& addr, time_t seconds) {
-    if (!addr.is_blockable())
-        return false;
-
+        const oxen::quic::Address& addr, time_t seconds) {
     const time_t now = time(nullptr);
 
     std::unique_lock lock{m_blocked_hosts_lock};
@@ -202,32 +199,32 @@ bool node_server<t_payload_net_handler>::block_host(
         limit = std::numeric_limits<time_t>::max();
     else
         limit = now + seconds;
-    m_blocked_hosts[addr.host_str()] = limit;
+    m_blocked_hosts[addr.host()] = limit;
 
     // drop any connection to that address
     std::vector<connection_id_t> conns;
     auto& net_config = m_network.m_net_server.get_config_object();
     net_config.foreach_connection([&](const p2p_connection_context& cntxt) {
-        if (cntxt.m_remote_address.is_same_host(addr))
+        if (net::same_host(cntxt.m_remote_address, addr))
             conns.push_back(cntxt.m_connection_id);
         return true;
     });
     for (const auto& c : conns)
         net_config.close(c);
 
-    log::info(logcat, fg(fmt::terminal_color::cyan), "Host {} blocked", addr.host_str());
+    log::info(logcat, fg(fmt::terminal_color::cyan), "Host {} blocked", addr.host());
     return true;
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::unblock_host(
-        const epee::net_utils::network_address& address) {
+        const oxen::quic::Address& address) {
     std::unique_lock lock{m_blocked_hosts_lock};
-    auto i = m_blocked_hosts.find(address.host_str());
+    auto i = m_blocked_hosts.find(address.host());
     if (i == m_blocked_hosts.end())
         return false;
     m_blocked_hosts.erase(i);
-    log::info(logcat, fg(fmt::terminal_color::cyan), "Host {} unblocked", address.host_str());
+    log::info(logcat, fg(fmt::terminal_color::cyan), "Host {} unblocked", address.host());
     return true;
 }
 //-----------------------------------------------------------------------------------
@@ -248,8 +245,7 @@ bool node_server<t_payload_net_handler>::block_subnet(
     std::vector<connection_id_t> conns;
     auto& net_config = m_network.m_net_server.get_config_object();
     net_config.foreach_connection([&](const p2p_connection_context& cntxt) {
-        if (cntxt.m_remote_address.get_type_id() == net::ipv4_address::get_type_id() &&
-            subnet.contains(cntxt.m_remote_address.template as<net::ipv4_address>().ip()))
+        if (cntxt.m_remote_address.is_ipv4() && subnet.contains(cntxt.m_remote_address.to_ipv4()))
             conns.push_back(cntxt.m_connection_id);
         return true;
     });
@@ -273,15 +269,12 @@ bool node_server<t_payload_net_handler>::unblock_subnet(const oxen::quic::ipv4_r
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::add_host_fail(
-        const epee::net_utils::network_address& address) {
-    if (!address.is_blockable())
-        return false;
-
+        const oxen::quic::Address& address) {
     std::lock_guard lock{m_host_fails_score_lock};
-    uint64_t fails = ++m_host_fails_score[address.host_str()];
-    log::debug(logcat, "Host {} fail score={}", address.host_str(), fails);
+    uint64_t fails = ++m_host_fails_score[address.host()];
+    log::debug(logcat, "Host {} fail score={}", address.host(), fails);
     if (fails > cryptonote::p2p::IP_FAILS_BEFORE_BLOCK) {
-        auto it = m_host_fails_score.find(address.host_str());
+        auto it = m_host_fails_score.find(address.host());
         if (it == m_host_fails_score.end()) {
             log::error(logcat, "internal error");
             return false;
@@ -316,7 +309,7 @@ bool node_server<t_payload_net_handler>::handle_command_line(
             nodetool::peerlist_entry pe{};
             pe.id = crypto::rand<uint64_t>();
             const uint16_t default_port = cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT;
-            expect<epee::net_utils::network_address> adr =
+            expect<oxen::quic::Address> adr =
                     net::get_network_address(pr_str, default_port);
             if (adr) {
                 pe.adr = std::move(*adr);
@@ -328,13 +321,13 @@ bool node_server<t_payload_net_handler>::handle_command_line(
                 return false;
             }
 
-            std::vector<epee::net_utils::network_address> resolved_addrs;
+            std::vector<oxen::quic::Address> resolved_addrs;
             bool r = append_net_address(resolved_addrs, pr_str, default_port);
             if (!r) {
                 log::error(logcat, "Failed to parse or resolve address from string: {}", pr_str);
                 return false;
             }
-            for (const epee::net_utils::network_address& addr : resolved_addrs) {
+            for (const oxen::quic::Address& addr : resolved_addrs) {
                 pe.id = crypto::rand<uint64_t>();
                 pe.adr = addr;
                 m_command_line_peers.push_back(pe);
@@ -390,7 +383,7 @@ bool node_server<t_payload_net_handler>::handle_command_line(
 }
 //-----------------------------------------------------------------------------------
 static bool append_net_address(
-        std::vector<epee::net_utils::network_address>& seed_nodes,
+        std::vector<oxen::quic::Address>& seed_nodes,
         std::string_view addr,
         uint16_t default_port) {
     using namespace boost::asio;
@@ -423,21 +416,9 @@ static bool append_net_address(
         return false;
     }
 
-    auto i = result.begin();
-    auto iend = result.end();
-    for (; i != iend; ++i) {
-        ip::tcp::endpoint endpoint = *i;
-        if (endpoint.address().is_v4()) {
-            epee::net_utils::network_address na{net::ipv4_address{
-                    oxen::quic::ipv4{endpoint.address().to_v4().to_uint()}, endpoint.port()}};
-            seed_nodes.push_back(na);
-            log::info(logcat, "Added node: {}", na.str());
-        } else {
-            epee::net_utils::network_address na{epee::net_utils::ipv6_network_address{
-                    endpoint.address().to_v6(), endpoint.port()}};
-            seed_nodes.push_back(na);
-            log::info(logcat, "Added node: {}", na.str());
-        }
+    for (const ip::tcp::endpoint& endpoint : result) {
+        const auto& na = seed_nodes.emplace_back(endpoint.data());
+        log::info(logcat, "Added node: {}", na.to_string());
     }
     return true;
 }
@@ -984,7 +965,7 @@ bool node_server<t_payload_net_handler>::is_peer_used(const Entry& peer) {
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::is_addr_connected(
-        const epee::net_utils::network_address& peer) {
+        const oxen::quic::Address& peer) {
     bool connected = false;
     m_network.m_net_server.get_config_object().foreach_connection(
             [&](const p2p_connection_context& cntxt) {
@@ -1007,7 +988,7 @@ static std::string format_stamp_ago(int64_t stamp) {
 
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_peer(
-        const epee::net_utils::network_address& na,
+        const oxen::quic::Address& na,
         bool just_take_peerlist,
         uint64_t last_seen_stamp,
         PeerType peer_type,
@@ -1029,16 +1010,16 @@ bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_p
     log::debug(
             logcat,
             "Connecting to {}(peer_type={}, last_seen: {})...",
-            na.str(),
+            na.to_string(),
             peer_type,
             format_stamp_ago(last_seen_stamp));
 
     auto con = public_connect(na);
     if (!con) {
         if (is_priority_node(na))
-            log::info(logcat, "[priority] Connect failed to {}", na.str());
+            log::info(logcat, "[priority] Connect failed to {}", na.to_string());
         else
-            log::info(logcat, "Connect failed to {}", na.str());
+            log::info(logcat, "Connect failed to {}", na.to_string());
         record_addr_failed(na);
         return false;
     }
@@ -1049,9 +1030,9 @@ bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_p
 
     if (!res) {
         if (is_priority_node(na))
-            log::info(logcat, "{}[priority] Failed to HANDSHAKE with peer {}", *con, na.str());
+            log::info(logcat, "{}[priority] Failed to HANDSHAKE with peer {}", *con, na.to_string());
         else
-            log::info(logcat, "{} Failed to HANDSHAKE with peer {}", *con, na.str());
+            log::info(logcat, "{} Failed to HANDSHAKE with peer {}", *con, na.to_string());
         record_addr_failed(na);
         return false;
     }
@@ -1085,20 +1066,20 @@ bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_p
 
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::check_connection_and_handshake_with_peer(
-        const epee::net_utils::network_address& na, uint64_t last_seen_stamp) {
+        const oxen::quic::Address& na, uint64_t last_seen_stamp) {
     log::info(
             logcat,
             "Connecting to {}(last_seen: {})...",
-            na.str(),
+            na.to_string(),
             format_stamp_ago(last_seen_stamp));
 
     auto con = public_connect(na);
     if (!con) {
         if (is_priority_node(na))
             log::info(
-                    logcat, "{}[priority]Connect failed to {}", p2p_connection_context{}, na.str());
+                    logcat, "{}[priority]Connect failed to {}", p2p_connection_context{}, na.to_string());
         else
-            log::info(logcat, "{}Connect failed to {}", p2p_connection_context{}, na.str());
+            log::info(logcat, "{}Connect failed to {}", p2p_connection_context{}, na.to_string());
         record_addr_failed(na);
 
         return false;
@@ -1109,9 +1090,9 @@ bool node_server<t_payload_net_handler>::check_connection_and_handshake_with_pee
     const bool res = do_handshake_with_peer(pi, *con, true);
     if (!res) {
         if (is_priority_node(na))
-            log::info(logcat, "{}[priority] Failed to HANDSHAKE with peer {}", *con, na.str());
+            log::info(logcat, "{}[priority] Failed to HANDSHAKE with peer {}", *con, na.to_string());
         else
-            log::info(logcat, "{} Failed to HANDSHAKE with peer {}", *con, na.str());
+            log::info(logcat, "{} Failed to HANDSHAKE with peer {}", *con, na.to_string());
         record_addr_failed(na);
         return false;
     }
@@ -1126,16 +1107,16 @@ bool node_server<t_payload_net_handler>::check_connection_and_handshake_with_pee
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 void node_server<t_payload_net_handler>::record_addr_failed(
-        const epee::net_utils::network_address& addr) {
+        const oxen::quic::Address& addr) {
     std::unique_lock lock{m_conn_fails_cache_lock};
-    m_conn_fails_cache[addr.host_str()] = time(NULL);
+    m_conn_fails_cache[addr.host()] = time(NULL);
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::is_addr_recently_failed(
-        const epee::net_utils::network_address& addr) {
+        const oxen::quic::Address& addr) {
     std::shared_lock lock{m_conn_fails_cache_lock};
-    auto it = m_conn_fails_cache.find(addr.host_str());
+    auto it = m_conn_fails_cache.find(addr.host());
     if (it == m_conn_fails_cache.end())
         return false;
 
@@ -1157,7 +1138,7 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_anchor_peerlis
                 logcat,
                 "Considering connecting (out) to anchor peer: {} {}",
                 peerid_to_string(pe.id),
-                pe.adr.str());
+                pe.adr.to_string());
 
         if (is_peer_used(pe)) {
             log::debug(logcat, "Peer is used");
@@ -1176,7 +1157,7 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_anchor_peerlis
                 logcat,
                 "Selected peer: {} {} first_seen: {}",
                 peerid_to_string(pe.id),
-                pe.adr.str(),
+                pe.adr.to_string(),
                 format_stamp_ago(pe.first_seen));
 
         if (!try_to_connect_and_handshake_with_new_peer(
@@ -1197,7 +1178,7 @@ std::vector<size_t> node_server<t_payload_net_handler>::connectable_peers(
     // build a set of all the addresses and peer_ids that we're connected to so that we can filter
     // them out from our potential peer selection below.
     struct {
-        std::set<epee::net_utils::network_address> addr;
+        std::set<oxen::quic::Address> addr;
         std::unordered_set<peerid_type> peer;
     } seen;
     m_network.m_net_server.get_config_object().foreach_connection(
@@ -1289,7 +1270,7 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                 "Considering connecting (out) to {} list peer: {} {}",
                 (use_white_list ? "white" : "gray"),
                 peerid_to_string(pe.id),
-                pe.adr.str());
+                pe.adr.to_string());
 
         if (is_peer_used(pe)) {
             log::debug(logcat, "Peer is used");
@@ -1306,7 +1287,7 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                 logcat,
                 "Selected peer: {} {} [peer_list={}] last_seen: {}",
                 peerid_to_string(pe.id),
-                pe.adr.str(),
+                pe.adr.to_string(),
                 (use_white_list ? "white" : "gray"),
                 format_stamp_ago(pe.last_seen));
 
@@ -1489,7 +1470,7 @@ bool node_server<t_payload_net_handler>::connections_maker() {
                         logcat,
                         "Dropping peer {} (height {}, history {}), which can't serve the sync from "
                         "height {}, to make room for one that can",
-                        peers.droppable->address.str(),
+                        peers.droppable->address.to_string(),
                         peers.droppable->height,
                         cryptonote::describe_history(peers.droppable->history),
                         need->height);
@@ -1709,18 +1690,10 @@ template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::sanitize_peerlist(
         std::vector<peerlist_entry>& local_peerlist) {
     for (size_t i = 0; i < local_peerlist.size(); ++i) {
-        bool ignore = false;
         peerlist_entry& be = local_peerlist[i];
-        epee::net_utils::network_address& na = be.adr;
-        if (na.is_loopback() || na.is_local()) {
-            ignore = true;
-        } else if (
-                be.adr.get_type_id() == net::ipv4_address::get_type_id() &&
-                na.as<const net::ipv4_address>().ip() == oxen::quic::ipv4{}) {
-            ignore = true;
-        }
-        if (ignore) {
-            log::debug(logcat, "Ignoring {}", be.adr.str());
+        // Loopback, local and unspecified (0.0.0.0, ::) addresses
+        if (!be.adr.is_public_ip()) {
+            log::debug(logcat, "Ignoring {}", be.adr.to_string());
             std::swap(local_peerlist[i], local_peerlist[local_peerlist.size() - 1]);
             local_peerlist.resize(local_peerlist.size() - 1);
             --i;
@@ -1836,43 +1809,17 @@ bool node_server<t_payload_net_handler>::try_ping(
         return false;
     const auto my_port = static_cast<uint16_t>(node_data.my_port);
 
-    bool address_ok =
-            (context.m_remote_address.get_type_id() == net::ipv4_address::get_type_id() ||
-             context.m_remote_address.get_type_id() ==
-                     epee::net_utils::ipv6_network_address::get_type_id());
-    if (!address_ok) {
-        log::error(logcat, "Only IPv4 or IPv6 addresses are supported here");
-        return false;
-    }
-
-    const epee::net_utils::network_address na = context.m_remote_address;
-    std::string ip;
-    std::optional<oxen::quic::ipv4> ipv4_addr;
-    boost::asio::ip::address_v6 ipv6_addr;
-    if (na.get_type_id() == net::ipv4_address::get_type_id()) {
-        ipv4_addr = na.as<const net::ipv4_address>().ip();
-        ip = ipv4_addr->to_string();
-    } else {
-        ipv6_addr = na.as<const epee::net_utils::ipv6_network_address>().ip();
-        ip = ipv6_addr.to_string();
-    }
-
     if (!m_network.m_peerlist.is_host_allowed(context.m_remote_address))
         return false;
 
-    std::string port = std::to_string(my_port);
+    // The peer's own listening address
+    oxen::quic::Address address = context.m_remote_address;
+    address.set_port(my_port);
 
-    epee::net_utils::network_address address;
-    if (ipv4_addr) {
-        address = epee::net_utils::network_address{net::ipv4_address{*ipv4_addr, my_port}};
-    } else {
-        address = epee::net_utils::network_address{
-                epee::net_utils::ipv6_network_address(ipv6_addr, my_port)};
-    }
     peerid_type pr = node_data.peer_id;
     bool r = m_network.m_net_server.connect_async(
-            ip,
-            port,
+            address.host(),
+            std::to_string(my_port),
             m_network.m_config.m_net_config.ping_connection_timeout.count(),
             [cb, /*context,*/ address, pr, &context, this](
                     const typename net_server::t_connection_context& ping_context,
@@ -1882,7 +1829,7 @@ bool node_server<t_payload_net_handler>::try_ping(
                             logcat,
                             "{}back ping connect failed to {}",
                             ping_context,
-                            address.str());
+                            address.to_string());
                     return false;
                 }
                 COMMAND_PING::request req{};
@@ -1912,7 +1859,7 @@ bool node_server<t_payload_net_handler>::try_ping(
                                                 logcat,
                                                 "{}Failed to invoke COMMAND_PING to {}({}, {})",
                                                 ping_context,
-                                                address.str(),
+                                                address.to_string(),
                                                 code,
                                                 epee::levin::get_err_descr(code));
                                         return;
@@ -1927,7 +1874,7 @@ bool node_server<t_payload_net_handler>::try_ping(
                                                 ping_context,
                                                 "back ping invoke wrong response \"",
                                                 rsp.status,
-                                                address.str(),
+                                                address.to_string(),
                                                 pr_,
                                                 peerid_to_string(rsp.peer_id));
                                         net_config.close(ping_context.m_connection_id);
@@ -1943,7 +1890,7 @@ bool node_server<t_payload_net_handler>::try_ping(
                             "{}{}",
                             ping_context,
                             "back ping invoke failed to ",
-                            address.str());
+                            address.to_string());
                     update_peer_failed_connection(peer_stats_map, peer_stats_map_mutex, context.peer_id);
                     net_config.close(ping_context.m_connection_id);
                     return false;
@@ -2056,7 +2003,7 @@ int node_server<t_payload_net_handler>::handle_handshake(
         log::info(
                 logcat,
                 "CONNECTION FROM {} REFUSED, too many connections from the same address",
-                context.m_remote_address.host_str());
+                context.m_remote_address.host());
         drop_connection(context);
         return 1;
     }
@@ -2071,21 +2018,10 @@ int node_server<t_payload_net_handler>::handle_handshake(
         auto port_l = static_cast<uint16_t>(arg.node_data.my_port);
         // try ping to be sure that we can add this peer to peer_list
         try_ping(arg.node_data, context, [peer_id_l, port_l, context, this]() {
-            if (!(context.m_remote_address.get_type_id() == net::ipv4_address::get_type_id() ||
-                     context.m_remote_address.get_type_id() ==
-                             epee::net_utils::ipv6_network_address::get_type_id())) {
-                log::error(logcat, "Only IPv4 or IPv6 addresses are supported here");
-                return /*void*/;
-            }
             // called only(!) if success pinged, update local peerlist
             peerlist_entry pe;
-            const epee::net_utils::network_address na = context.m_remote_address;
-            if (context.m_remote_address.get_type_id() == net::ipv4_address::get_type_id()) {
-                pe.adr = net::ipv4_address{na.as<net::ipv4_address>().ip(), port_l};
-            } else {
-                pe.adr = epee::net_utils::ipv6_network_address(
-                        na.as<epee::net_utils::ipv6_network_address>().ip(), port_l);
-            }
+            pe.adr = context.m_remote_address;
+            pe.adr.set_port(port_l);
             time_t last_seen;
             time(&last_seen);
             pe.last_seen = static_cast<int64_t>(last_seen);
@@ -2096,7 +2032,7 @@ int node_server<t_payload_net_handler>::handle_handshake(
                     logcat,
                     "{}PING SUCCESS {}:{}",
                     context,
-                    context.m_remote_address.host_str(),
+                    context.m_remote_address.host(),
                     port_l);
         });
     }
@@ -2148,7 +2084,7 @@ std::string node_server<t_payload_net_handler>::print_connections_container() {
     std::stringstream ss;
     m_network.m_net_server.get_config_object().foreach_connection(
             [&](const p2p_connection_context& cntxt) {
-                ss << cntxt.m_remote_address.str() << " \t\tpeer_id "
+                ss << cntxt.m_remote_address.to_string() << " \t\tpeer_id "
                    << peerid_to_string(cntxt.peer_id) << " \t\tconn_id " << cntxt.m_connection_id
                    << (cntxt.m_is_income ? " INC" : " OUT") << std::endl;
                 return true;
@@ -2176,7 +2112,7 @@ void node_server<t_payload_net_handler>::on_connection_close(p2p_connection_cont
 
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::is_priority_node(
-        const epee::net_utils::network_address& na) {
+        const oxen::quic::Address& na) {
     return (std::find(m_priority_peers.begin(), m_priority_peers.end(), na) !=
             m_priority_peers.end()) ||
            (std::find(m_exclusive_peers.begin(), m_exclusive_peers.end(), na) !=
@@ -2186,7 +2122,7 @@ bool node_server<t_payload_net_handler>::is_priority_node(
 template <class t_payload_net_handler>
 template <class Container>
 bool node_server<t_payload_net_handler>::connect_to_peerlist(const Container& peers) {
-    for (const epee::net_utils::network_address& na : peers) {
+    for (const oxen::quic::Address& na : peers) {
         if (m_network.m_net_server.is_stop_signal_sent())
             return false;
 
@@ -2209,19 +2145,19 @@ bool node_server<t_payload_net_handler>::parse_peers_and_add_to_container(
 
     const uint16_t default_port = cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT;
     for (const std::string& pr_str : perrs) {
-        expect<epee::net_utils::network_address> adr =
+        expect<oxen::quic::Address> adr =
                 net::get_network_address(pr_str, default_port);
         if (adr) {
             container.push_back(std::move(*adr));
             continue;
         }
-        std::vector<epee::net_utils::network_address> resolved_addrs;
+        std::vector<oxen::quic::Address> resolved_addrs;
         bool r = append_net_address(resolved_addrs, pr_str, default_port);
         if (!r) {
             log::error(logcat, "Failed to parse or resolve address from string: {}", pr_str);
             return false;
         }
-        for (const epee::net_utils::network_address& addr : resolved_addrs) {
+        for (const oxen::quic::Address& addr : resolved_addrs) {
             container.push_back(addr);
         }
     }
@@ -2343,13 +2279,13 @@ bool node_server<t_payload_net_handler>::set_rate_limit(
 
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::has_too_many_connections(
-        const epee::net_utils::network_address& address) {
+        const oxen::quic::Address& address) {
     const size_t max_connections = m_nettype == cryptonote::network_type::MAINNET ? 1 : 20;
     size_t count = 0;
 
     m_network.m_net_server.get_config_object().foreach_connection(
             [&](const p2p_connection_context& cntxt) {
-                if (cntxt.m_is_income && cntxt.m_remote_address.is_same_host(address)) {
+                if (cntxt.m_is_income && net::same_host(cntxt.m_remote_address, address)) {
                     count++;
 
                     if (count > max_connections) {
@@ -2384,14 +2320,14 @@ bool node_server<t_payload_net_handler>::gray_peerlist_housekeeping() {
         log::debug(
                 logcat,
                 "PEER EVICTED FROM GRAY PEER LIST: address: {} Peer ID: {}",
-                pe.adr.host_str(),
+                pe.adr.host(),
                 peerid_to_string(pe.id));
     } else {
         m_network.m_peerlist.set_peer_just_seen(pe.id, pe.adr, pe.history);
         log::debug(
                 logcat,
                 "PEER PROMOTED TO WHITE PEER LIST IP address: {} Peer ID: {}",
-                pe.adr.host_str(),
+                pe.adr.host(),
                 peerid_to_string(pe.id));
     }
     return true;
@@ -2399,32 +2335,11 @@ bool node_server<t_payload_net_handler>::gray_peerlist_housekeeping() {
 
 template <typename t_payload_net_handler>
 std::optional<p2p_connection_context_t<typename t_payload_net_handler::connection_context>>
-node_server<t_payload_net_handler>::public_connect(epee::net_utils::network_address const& na) {
-    bool is_ipv4 = na.get_type_id() == net::ipv4_address::get_type_id();
-    bool is_ipv6 = na.get_type_id() == epee::net_utils::ipv6_network_address::get_type_id();
-    if (!(is_ipv4 || is_ipv6)) {
-        log::error(logcat, "Only IPv4 or IPv6 addresses are supported here");
-        return std::nullopt;
-    }
-
-    std::string address;
-    std::string port;
-
-    if (is_ipv4) {
-        const auto& ipv4 = na.as<const net::ipv4_address>();
-        address = ipv4.host_str();
-        port = std::to_string(ipv4.port());
-    } else {
-        const epee::net_utils::ipv6_network_address& ipv6 =
-                na.as<const epee::net_utils::ipv6_network_address>();
-        address = ipv6.ip().to_string();
-        port = std::to_string(ipv6.port());
-    }
-
+node_server<t_payload_net_handler>::public_connect(oxen::quic::Address const& na) {
     typename net_server::t_connection_context con{};
     const bool res = m_network.m_net_server.connect(
-            address,
-            port,
+            na.host(),
+            std::to_string(na.port()),
             m_network.m_config.m_net_config.connection_timeout.count(),
             con,
             m_network.m_bind_ip);

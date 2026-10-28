@@ -58,6 +58,7 @@
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_rules.h"
+#include "net/address.h"
 #include "networks.h"
 #include "oxen_economy.h"
 #include "rpc/core_rpc_server_commands_defs.h"
@@ -747,12 +748,12 @@ bool rpc_command_executor::mining_status() {
     return true;
 }
 
-static const char* get_address_type_name(epee::net_utils::address_type address_type) {
+static const char* get_address_type_name(net::address_type address_type) {
     switch (address_type) {
         default:
-        case epee::net_utils::address_type::invalid: return "invalid";
-        case epee::net_utils::address_type::ipv4: return "IPv4";
-        case epee::net_utils::address_type::ipv6: return "IPv6";
+        case net::address_type::invalid: return "invalid";
+        case net::address_type::ipv4: return "IPv4";
+        case net::address_type::ipv6: return "IPv6";
     }
 }
 
@@ -786,7 +787,7 @@ bool rpc_command_executor::print_connections() {
                         info["incoming"].get<bool>() ? "INC" : "OUT",
                         info["ip"].get<std::string_view>(),
                         info["port"].get<uint16_t>()),
-                get_address_type_name(info["address_type"].get<epee::net_utils::address_type>()),
+                get_address_type_name(info["address_type"].get<net::address_type>()),
                 info["peer_id"].get<std::string_view>(),
                 "{}({}/{})"_format(
                         info["recv_count"].get<uint64_t>(),

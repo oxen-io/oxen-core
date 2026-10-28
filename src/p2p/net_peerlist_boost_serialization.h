@@ -30,80 +30,82 @@
 
 #pragma once
 
-#include <boost/mpl/bool.hpp>
+#include <array>
+#include <boost/serialization/version.hpp>
+#include <cstring>
+#include <span>
+#include <stdexcept>
 
 #include "common/ipv4.h"
-#include "epee/net/net_utils_base.h"
-#include "net/ipv4_address.h"
+#include "net/address.h"
 #include "p2p/p2p_protocol_defs.h"
 
 BOOST_CLASS_VERSION(nodetool::peerlist_entry, 6)
 
+namespace nodetool::detail {
+// The p2pstate file has an address's IP and port inside nested objects, and boost archives write
+// class info for each class at its first appearance; these mirror the classes that the address was
+// serialized through (an IPv4 address; an IPv6 address holding a boost::asio address_v6) to keep
+// the file's format.
+struct legacy_ipv4 {
+    uint32_t ip;  // see tools::ipv4_to_legacy_int
+    uint16_t port;
+};
+struct legacy_ipv6_bytes {
+    std::array<uint8_t, 16> bytes;
+};
+struct legacy_ipv6 {
+    legacy_ipv6_bytes ip;
+    uint16_t port;
+};
+}  // namespace nodetool::detail
+
 namespace boost::serialization {
-template <class T, class Archive>
-inline void do_serialize(boost::mpl::false_, Archive& a, epee::net_utils::network_address& na) {
-    T addr{};
-    a & addr;
-    na = std::move(addr);
+template <class Archive>
+void serialize(Archive& a, nodetool::detail::legacy_ipv4& v, const unsigned int) {
+    a & v.ip;
+    a & v.port;
+}
+template <class Archive>
+void serialize(Archive& a, nodetool::detail::legacy_ipv6_bytes& v, const unsigned int) {
+    for (auto& b : v.bytes)
+        a & b;
+}
+template <class Archive>
+void serialize(Archive& a, nodetool::detail::legacy_ipv6& v, const unsigned int) {
+    a & v.ip;
+    a & v.port;
 }
 
-template <class T, class Archive>
-inline void do_serialize(
-        boost::mpl::true_, Archive& a, const epee::net_utils::network_address& na) {
-    a & na.as<T>();
-}
+template <class Archive>
+void serialize(Archive& a, oxen::quic::Address& addr, const unsigned int) {
+    constexpr bool saving = Archive::is_saving::value;
 
-template <class Archive, class ver_type>
-inline void serialize(Archive& a, epee::net_utils::network_address& na, const ver_type ver) {
-    static constexpr const typename Archive::is_saving is_saving{};
-
-    uint8_t type;
-    if (is_saving)
-        type = uint8_t(na.get_type_id());
+    uint8_t type = saving ? static_cast<uint8_t>(net::type_of(addr)) : 0;
     a & type;
-    switch (epee::net_utils::address_type(type)) {
-        case net::ipv4_address::get_type_id():
-            do_serialize<net::ipv4_address>(is_saving, a, na);
+    switch (net::address_type{type}) {
+        case net::address_type::ipv4: {
+            nodetool::detail::legacy_ipv4 v{};
+            if (saving)
+                v = {tools::ipv4_to_legacy_int(addr.to_ipv4()), addr.port()};
+            a & v;
+            if (!saving)
+                addr = oxen::quic::Address{tools::ipv4_from_legacy_int(v.ip), v.port};
             break;
-        case epee::net_utils::ipv6_network_address::get_type_id():
-            do_serialize<epee::net_utils::ipv6_network_address>(is_saving, a, na);
+        }
+        case net::address_type::ipv6: {
+            nodetool::detail::legacy_ipv6 v{};
+            if (saving) {
+                std::memcpy(v.ip.bytes.data(), addr.in6().sin6_addr.s6_addr, v.ip.bytes.size());
+                v.port = addr.port();
+            }
+            a & v;
+            if (!saving)
+                addr = oxen::quic::Address{oxen::quic::ipv6{std::span{v.ip.bytes}}, v.port};
             break;
-        case epee::net_utils::address_type::invalid:
+        }
         default: throw std::runtime_error("Unsupported network address type");
     }
-}
-template <class Archive, class ver_type>
-inline void serialize(Archive& a, net::ipv4_address& na, const ver_type ver) {
-    uint32_t ip = tools::ipv4_to_legacy_int(na.ip());
-    uint16_t port{na.port()};
-    a & ip;
-    a & port;
-    if (!typename Archive::is_saving())
-        na = net::ipv4_address{tools::ipv4_from_legacy_int(ip), port};
-}
-
-template <class Archive, class ver_type>
-inline void serialize(Archive& a, boost::asio::ip::address_v6& v6, const ver_type ver) {
-    if (typename Archive::is_saving()) {
-        auto bytes = v6.to_bytes();
-        for (auto& e : bytes)
-            a & e;
-    } else {
-        boost::asio::ip::address_v6::bytes_type bytes;
-        for (auto& e : bytes)
-            a & e;
-        v6 = boost::asio::ip::address_v6(bytes);
-    }
-}
-
-template <class Archive, class ver_type>
-inline void serialize(Archive& a, epee::net_utils::ipv6_network_address& na, const ver_type ver) {
-    boost::asio::ip::address_v6 ip{na.ip()};
-    uint16_t port{na.port()};
-    a & ip;
-    a & port;
-    if (!typename Archive::is_saving())
-        na = epee::net_utils::ipv6_network_address{ip, port};
 }
 
 template <class Archive, class ver_type>

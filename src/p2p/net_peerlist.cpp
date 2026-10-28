@@ -276,12 +276,12 @@ bool peerlist_manager::get_gray_peer_by_index(peerlist_entry& p, size_t i) {
     return true;
 }
 //--------------------------------------------------------------------------------------------------
-bool peerlist_manager::is_host_allowed(const epee::net_utils::network_address& address) {
+bool peerlist_manager::is_host_allowed(const oxen::quic::Address& address) {
     // never allow loopback ip
-    if (address.is_loopback())
+    if (net::is_loopback(address))
         return false;
 
-    if (!m_allow_local_ip && address.is_local())
+    if (!m_allow_local_ip && net::is_local(address))
         return false;
 
     return true;
@@ -327,9 +327,7 @@ bool peerlist_manager::get_peerlist_head(
 }
 
 bool peerlist_manager::set_peer_just_seen(
-        peerid_type peer,
-        const epee::net_utils::network_address& addr,
-        std::optional<uint64_t> history) try {
+        peerid_type peer, const oxen::quic::Address& addr, std::optional<uint64_t> history) try {
     if (!is_host_allowed(addr))
         return true;
 
@@ -494,7 +492,7 @@ bool peerlist_manager::get_and_empty_anchor_peerlist(std::vector<anchor_peerlist
     return false;
 }
 //--------------------------------------------------------------------------------------------------
-bool peerlist_manager::remove_from_peer_anchor(const epee::net_utils::network_address& addr) try {
+bool peerlist_manager::remove_from_peer_anchor(const oxen::quic::Address& addr) try {
     std::lock_guard lock{m_peerlist_lock};
 
     anchor_peers_indexed::index_iterator<by_addr>::type iterator =

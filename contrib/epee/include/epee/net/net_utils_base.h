@@ -30,11 +30,10 @@
 #define _NET_UTILS_BASE_H_
 
 #include <boost/asio/io_context.hpp>
-#include <boost/asio/ip/address_v6.hpp>
+#include <oxen/quic/address.hpp>
 #include <typeinfo>
 #include <type_traits>
 #include "../shared_sv.h"
-#include "enums.h"
 #include "../serialization/keyvalue_serialization.h"
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -69,180 +68,13 @@ std::ostream& operator<<(std::ostream& out, const connection_id_t& c);
 
 namespace net_utils
 {
-	class ipv6_network_address
-	{
-	protected:
-		boost::asio::ip::address_v6 m_address;
-		uint16_t m_port;
-
-	public:
-		ipv6_network_address()
-			: ipv6_network_address(boost::asio::ip::address_v6::loopback(), 0)
-		{}
-
-		ipv6_network_address(const boost::asio::ip::address_v6& ip, uint16_t port)
-			: m_address(ip), m_port(port)
-		{
-		}
-
-		bool equal(const ipv6_network_address& other) const noexcept;
-		bool less(const ipv6_network_address& other) const noexcept;
-		bool is_same_host(const ipv6_network_address& other) const noexcept
-		{ return m_address == other.m_address; }
-
-		boost::asio::ip::address_v6 ip() const noexcept { return m_address; }
-		uint16_t port() const noexcept { return m_port; }
-		std::string str() const;
-		std::string host_str() const;
-		bool is_loopback() const;
-		bool is_local() const;
-		static constexpr address_type get_type_id() noexcept { return address_type::ipv6; }
-		static constexpr bool is_blockable() noexcept { return true; }
-
-		static const uint8_t ID = 2;
-		BEGIN_KV_SERIALIZE_MAP()
-			boost::asio::ip::address_v6::bytes_type bytes = this_ref.m_address.to_bytes();
-			epee::serialization::perform_serialize_blob<is_store>(bytes, stg, parent_section, "addr");
-			const_cast<boost::asio::ip::address_v6&>(this_ref.m_address) = boost::asio::ip::address_v6(bytes);
-			KV_SERIALIZE(m_port)
-		END_KV_SERIALIZE_MAP()
-	};
-
-	inline bool operator==(const ipv6_network_address& lhs, const ipv6_network_address& rhs) noexcept
-	{ return lhs.equal(rhs); }
-	inline bool operator!=(const ipv6_network_address& lhs, const ipv6_network_address& rhs) noexcept
-	{ return !lhs.equal(rhs); }
-	inline bool operator<(const ipv6_network_address& lhs, const ipv6_network_address& rhs) noexcept
-	{ return lhs.less(rhs); }
-	inline bool operator<=(const ipv6_network_address& lhs, const ipv6_network_address& rhs) noexcept
-	{ return !rhs.less(lhs); }
-	inline bool operator>(const ipv6_network_address& lhs, const ipv6_network_address& rhs) noexcept
-	{ return rhs.less(lhs); }
-	inline bool operator>=(const ipv6_network_address& lhs, const ipv6_network_address& rhs) noexcept
-	{ return !lhs.less(rhs); }
-
-	class network_address
-	{
-		struct interface
-		{
-                        virtual ~interface() {};
-
-			virtual bool equal(const interface&) const = 0;
-			virtual bool less(const interface&) const = 0;
-			virtual bool is_same_host(const interface&) const = 0;
-
-			virtual std::string str() const = 0;
-			virtual std::string host_str() const = 0;
-			virtual uint16_t port() const = 0;
-			virtual bool is_loopback() const = 0;
-			virtual bool is_local() const = 0;
-			virtual address_type get_type_id() const = 0;
-			virtual bool is_blockable() const = 0;
-		};
-
-		template<typename T>
-		struct implementation final : interface
-		{
-			T value;
-
-			implementation(const T& src) : value(src) {}
-			~implementation() = default;
-
-			// Type-checks for cast are done in cpp
-			static const T& cast(const interface& src) noexcept
-			{ return static_cast<const implementation<T>&>(src).value; }
-
-			virtual bool equal(const interface& other) const override
-			{ return value.equal(cast(other)); }
-
-			virtual bool less(const interface& other) const override
-			{ return value.less(cast(other)); }
-
-			virtual bool is_same_host(const interface& other) const override
-			{ return value.is_same_host(cast(other)); }
-
-			virtual std::string str() const override { return value.str(); }
-			virtual std::string host_str() const override { return value.host_str(); }
-			virtual uint16_t port() const override { return value.port(); }
-			virtual bool is_loopback() const override { return value.is_loopback(); }
-			virtual bool is_local() const override { return value.is_local(); }
-			virtual address_type get_type_id() const override { return value.get_type_id(); }
-			virtual bool is_blockable() const override { return value.is_blockable(); }
-		};
-
-		std::shared_ptr<interface> self;
-
-		template<typename Type>
-		Type& as_mutable() const
-		{
-			// types `implmentation<Type>` and `implementation<const Type>` are unique
-			using Type_ = std::remove_const_t<Type>;
-			network_address::interface* const self_ = self.get(); // avoid clang warning in typeid
-			if (!self_ || typeid(implementation<Type_>) != typeid(*self_))
-				throw std::bad_cast{};
-			return static_cast<implementation<Type_>*>(self_)->value;
-		}
-
-		// Const: we're serializing
-		template<typename T, typename t_storage>
-		bool serialize_addr(t_storage& stg, epee::serialization::section* parent) const
-		{
-		  return epee::serialization::perform_serialize<true>(as<T>(), stg, parent, "addr");
-		}
-
-		// Non-const: we're deserializing
-		template<typename T, typename t_storage>
-		bool serialize_addr(t_storage& stg, epee::serialization::section* parent)
-		{
-			T addr{};
-			if (!epee::serialization::perform_serialize<false>(addr, stg, parent, "addr"))
-				return false;
-			*this = std::move(addr);
-			return true;
-		}
-
-	public:
-		network_address() : self(nullptr) {}
-		template<typename T>
-		network_address(const T& src)
-			: self(std::make_shared<implementation<T>>(src)) {}
-		bool equal(const network_address &other) const;
-		bool less(const network_address &other) const;
-		bool is_same_host(const network_address &other) const;
-		std::string str() const { return self ? self->str() : "<none>"; }
-		std::string host_str() const { return self ? self->host_str() : "<none>"; }
-		uint16_t port() const { return self ? self->port() : 0; }
-		bool is_loopback() const { return self ? self->is_loopback() : false; }
-		bool is_local() const { return self ? self->is_local() : false; }
-		address_type get_type_id() const { return self ? self->get_type_id() : address_type::invalid; }
-		bool is_blockable() const { return self ? self->is_blockable() : false; }
-		template<typename Type> const Type &as() const { return as_mutable<const Type>(); }
-
-        // Implemented outside epee, in src/net/epee_network_address_hack.cpp, because it has to know
-        // about net::ipv4_address.
-        KV_MAP_SERIALIZABLE
-	};
-
-	inline bool operator==(const network_address& lhs, const network_address& rhs)
-	{ return lhs.equal(rhs); }
-	inline bool operator!=(const network_address& lhs, const network_address& rhs)
-	{ return !lhs.equal(rhs); }
-	inline bool operator<(const network_address& lhs, const network_address& rhs)
-	{ return lhs.less(rhs); }
-	inline bool operator<=(const network_address& lhs, const network_address& rhs)
-	{ return !rhs.less(lhs); }
-	inline bool operator>(const network_address& lhs, const network_address& rhs)
-	{ return rhs.less(lhs); }
-	inline bool operator>=(const network_address& lhs, const network_address& rhs)
-	{ return !lhs.less(rhs); }
-
 	/************************************************************************/
 	/*                                                                      */
 	/************************************************************************/
 	struct connection_context_base
 	{
     const connection_id_t m_connection_id;
-    const network_address m_remote_address;
+    const oxen::quic::Address m_remote_address;
     const bool     m_is_income;
     std::chrono::steady_clock::time_point m_started;
     std::chrono::steady_clock::time_point m_last_recv;
@@ -255,7 +87,7 @@ namespace net_utils
     double m_max_speed_up;
 
     connection_context_base(connection_id_t connection_id,
-                            const network_address &remote_address, bool is_income,
+                            const oxen::quic::Address &remote_address, bool is_income,
                             std::chrono::steady_clock::time_point last_recv = std::chrono::steady_clock::time_point::min(),
                             std::chrono::steady_clock::time_point last_send = std::chrono::steady_clock::time_point::min(),
                             uint64_t recv_cnt = 0, uint64_t send_cnt = 0):
@@ -301,7 +133,7 @@ namespace net_utils
   private:
     template<class t_protocol_handler>
     friend class connection;
-    void set_details(connection_id_t connection_id, const network_address &remote_address, bool is_income)
+    void set_details(connection_id_t connection_id, const oxen::quic::Address &remote_address, bool is_income)
     {
       this->~connection_context_base();
       new(this) connection_context_base(connection_id, remote_address, is_income);

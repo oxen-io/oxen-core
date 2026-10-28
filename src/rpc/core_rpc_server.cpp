@@ -1393,7 +1393,7 @@ void core_rpc_server::invoke(SAVE_BC& save_bc, rpc_context) {
 static nlohmann::json json_peer_info(const nodetool::peerlist_entry& peer) {
     nlohmann::json p{
             {"id", peer.id},
-            {"host", peer.adr.host_str()},
+            {"host", peer.adr.host()},
             {"port", peer.adr.port()},
             {"last_seen", peer.last_seen}};
     if (peer.history)
@@ -1911,10 +1911,9 @@ void core_rpc_server::invoke(BANNED& banned, rpc_context) {
     auto na_parsed = net::get_network_address(banned.request.address, 0);
     if (!na_parsed)
         throw rpc_error{ERROR_WRONG_PARAM, "Unsupported host type"};
-    epee::net_utils::network_address na = std::move(*na_parsed);
 
     time_t seconds;
-    if (m_p2p.is_host_blocked(na, &seconds)) {
+    if (m_p2p.is_host_blocked(*na_parsed, &seconds)) {
         banned.response["banned"] = true;
         banned.response["seconds"] = seconds;
     } else {
@@ -1926,7 +1925,6 @@ void core_rpc_server::invoke(BANNED& banned, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(SET_BANS& set_bans, rpc_context) {
-    epee::net_utils::network_address na;
     // try subnet first
     auto ns_parsed = tools::parse_ipv4_range(set_bans.request.host, false);
     if (ns_parsed) {
@@ -1942,11 +1940,10 @@ void core_rpc_server::invoke(SET_BANS& set_bans, rpc_context) {
     auto na_parsed = net::get_network_address(set_bans.request.host, 0);
     if (!na_parsed)
         throw rpc_error{ERROR_WRONG_PARAM, "Unsupported host/subnet type"};
-    na = std::move(*na_parsed);
     if (set_bans.request.ban)
-        m_p2p.block_host(na, set_bans.request.seconds);
+        m_p2p.block_host(*na_parsed, set_bans.request.seconds);
     else
-        m_p2p.unblock_host(na);
+        m_p2p.unblock_host(*na_parsed);
 
     set_bans.response["status"] = STATUS_OK;
 }

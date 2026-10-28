@@ -28,14 +28,12 @@
 
 #include <gtest/gtest.h>
 
-#include "epee/net/net_utils_base.h"
 #include "net/error.h"
 #include "net/parse.h"
 
 TEST(get_network_address, ipv4)
 {
-    expect<epee::net_utils::network_address> address =
-        net::get_network_address("0.0.0.", 0);
+    expect<oxen::quic::Address> address = net::get_network_address("0.0.0.", 0);
     EXPECT_EQ(net::error::unsupported_address, address);
 
     address = net::get_network_address("0.0.0.257", 0);
@@ -43,13 +41,33 @@ TEST(get_network_address, ipv4)
 
     address = net::get_network_address("0.0.0.254", 1000);
     ASSERT_TRUE(bool(address));
-    EXPECT_EQ(epee::net_utils::address_type::ipv4, address->get_type_id());
-    EXPECT_STREQ("0.0.0.254", address->host_str().c_str());
-    EXPECT_STREQ("0.0.0.254:1000", address->str().c_str());
+    EXPECT_TRUE(address->is_ipv4());
+    EXPECT_EQ("0.0.0.254", address->host());
+    EXPECT_EQ("0.0.0.254:1000", address->to_string());
 
     address = net::get_network_address("23.0.0.254:2000", 1000);
     ASSERT_TRUE(bool(address));
-    EXPECT_EQ(epee::net_utils::address_type::ipv4, address->get_type_id());
-    EXPECT_STREQ("23.0.0.254", address->host_str().c_str());
-    EXPECT_STREQ("23.0.0.254:2000", address->str().c_str());
+    EXPECT_TRUE(address->is_ipv4());
+    EXPECT_EQ("23.0.0.254", address->host());
+    EXPECT_EQ("23.0.0.254:2000", address->to_string());
+
+    address = net::get_network_address("23.0.0.254:65536", 1000);
+    EXPECT_EQ(net::error::invalid_port, address);
+}
+
+TEST(get_network_address, ipv6)
+{
+    expect<oxen::quic::Address> address = net::get_network_address("[2001:db8::1]:22022", 0);
+    ASSERT_TRUE(bool(address));
+    EXPECT_TRUE(address->is_ipv6());
+    EXPECT_EQ("2001:db8::1", address->host());
+    EXPECT_EQ("[2001:db8::1]:22022", address->to_string());
+
+    address = net::get_network_address("[::1]", 1000);
+    ASSERT_TRUE(bool(address));
+    EXPECT_TRUE(address->is_ipv6());
+    EXPECT_EQ("[::1]:1000", address->to_string());
+
+    address = net::get_network_address("[2001:db8::g]:22022", 0);
+    EXPECT_EQ(net::error::unsupported_address, address);
 }

@@ -3,10 +3,10 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <oxen/quic/address.hpp>
 #include <utility>
 
 #include "common/format.h"
-#include "epee/net/net_utils_base.h"
 
 // What peers can serve a syncing node, going by the history they advertise (see
 // CORE_SYNC_DATA::history: 0 if a peer keeps every block, otherwise how many of its most recent
@@ -66,12 +66,9 @@ struct sync_need {
 class unhelpful_peers {
   public:
     // Records a peer, with the chain height and history it had, as unable to serve the sync.
-    void add(
-            const epee::net_utils::network_address& addr,
-            uint64_t height,
-            std::optional<uint64_t> history);
+    void add(const oxen::quic::Address& addr, uint64_t height, std::optional<uint64_t> history);
 
-    bool contains(const epee::net_utils::network_address& addr) const;
+    bool contains(const oxen::quic::Address& addr) const;
 
     // Forgets the peers that, as they were when recorded, could serve block `need`: as the sync
     // gets on, its needs move up into what they keep.  (A peer recorded as not yet having the
@@ -86,8 +83,7 @@ class unhelpful_peers {
 
   private:
     // address -> {chain height, history}
-    std::map<epee::net_utils::network_address, std::pair<uint64_t, std::optional<uint64_t>>>
-            m_peers;
+    std::map<oxen::quic::Address, std::pair<uint64_t, std::optional<uint64_t>>> m_peers;
 };
 
 }  // namespace cryptonote

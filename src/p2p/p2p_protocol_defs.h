@@ -35,15 +35,16 @@
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "epee/net/net_utils_base.h"
 #include "epee/serialization/keyvalue_serialization.h"
-#include "net/ipv4_address.h"  // needed for serialization
+#include "net/address.h"  // needed for serialization
 
 namespace nodetool {
 using peerid_type = uint64_t;
 
-#pragma pack(push, 1)
-
+// The Address members are explicitly direct-initialized: Address's default constructor is
+// explicit, so an aggregate initialization like `peerlist_entry pe{}` would otherwise
+// copy-initialize them from {}, which is ill-formed (gcc only warns, clang rejects it).
 struct peerlist_entry {
-    epee::net_utils::network_address adr;
+    oxen::quic::Address adr{};
     peerid_type id;
     int64_t last_seen;
     // The peer's history, as in cryptonote::CORE_SYNC_DATA: 0 if it keeps every block, otherwise
@@ -56,7 +57,7 @@ struct peerlist_entry {
 };
 
 struct anchor_peerlist_entry {
-    epee::net_utils::network_address adr;
+    oxen::quic::Address adr{};
     peerid_type id;
     int64_t first_seen;
 
@@ -64,14 +65,12 @@ struct anchor_peerlist_entry {
 };
 
 struct connection_entry {
-    epee::net_utils::network_address adr;
+    oxen::quic::Address adr{};
     peerid_type id;
     bool is_income;
 
     KV_MAP_SERIALIZABLE
 };
-
-#pragma pack(pop)
 
 std::string print_peerlist_to_string(const std::vector<peerlist_entry>& pl);
 
