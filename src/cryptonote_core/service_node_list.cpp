@@ -263,6 +263,14 @@ static bool has_restorable_state(
 
 static auto logcat = log::Cat("service_nodes");
 
+missing_quorum::missing_quorum(const crypto::hash& tx, uint64_t block, uint64_t quorum) :
+        oxen::traced<std::runtime_error>{
+                "State change {} in block {} references the quorum at height {}, which is not "
+                "stored"_format(tx, block, quorum)},
+        tx_hash{tx},
+        block_height{block},
+        quorum_height{quorum} {}
+
 constexpr auto X25519_MAP_PRUNING_INTERVAL = 5min;
 
 // A state change in a block can come from a quorum up to this many blocks back, and so replaying
@@ -308,6 +316,34 @@ static uint64_t min_recent_height(cryptonote::network_type nettype, uint64_t hei
     uint64_t result = (height < KEEP_WINDOW) ? 0 : height - KEEP_WINDOW;
     return result;
 }
+
+// The lowest height that a detach of up to HISTORY_RECENT_KEEP_WINDOW blocks may restore the SN
+// list to from the in-memory history.  It restores to a height that the rewards can restore to as
+// well, which (below their few in-memory heights) is the height of a rewards snapshot, taken every
+// STATE_SNAPSHOT_INTERVAL blocks: at worst, the snapshot height at or below the start of the
+// window.
+//
+// Below the window, the in-memory history keeps the state at this height, and the quorums (as
+// only_loaded_quorums states) of the HISTORY_QUORUMS_KEEP_WINDOW heights below the top, which takes
+// in the PREDECESSOR_QUORUMS heights before it that replaying the blocks after it needs.  With
+// LMDB, where the recent states are only in memory and in the short-term blob, that is what keeps
+// such a detach (at startup, from pop_blocks or for a reorg) from having to restore from the last
+// archived state instead, and replay the up to HISTORY_ARCHIVE_INTERVAL blocks since.  With the
+// states in the database, the stored snapshots come with their predecessor quorums, so there it
+// only saves restoring a stored snapshot.
+static uint64_t oldest_recent_restore_height(cryptonote::network_type nettype, uint64_t height) {
+    const uint64_t keep_from = min_recent_height(nettype, height);
+    return keep_from - keep_from % STATE_SNAPSHOT_INTERVAL;
+}
+
+// HISTORY_QUORUMS_KEEP_WINDOW rounds up the furthest back the quorums needed for that go: the start
+// of the HISTORY_RECENT_KEEP_WINDOW window, the up to STATE_SNAPSHOT_INTERVAL - 1 heights further
+// down to the snapshot height, and the PREDECESSOR_QUORUMS heights before that.
+static_assert(std::ranges::all_of(cryptonote::ALL_NETWORKS, [](cryptonote::network_type nettype) {
+    const auto& netconf = cryptonote::get_config(nettype);
+    return netconf.HISTORY_QUORUMS_KEEP_WINDOW >=
+           netconf.HISTORY_RECENT_KEEP_WINDOW + STATE_SNAPSHOT_INTERVAL - 1 + PREDECESSOR_QUORUMS;
+}));
 
 uint64_t oldest_retained_archive(const cryptonote::network_config& netconf, uint64_t height) {
     uint64_t oldest = height < netconf.HISTORY_ARCHIVE_KEEP_WINDOW
@@ -1209,7 +1245,7 @@ static service_node_info& duplicate_info(std::shared_ptr<const service_node_info
 bool service_node_list::state_t::process_state_change_tx(
         const cryptonote::BlockchainDB& db,
         state_set const& state_history,
-        std::unordered_map<crypto::hash, state_t> const& alt_states,
+        std::unordered_map<crypto::hash, state_t> const* alt_states,
         cryptonote::network_type nettype,
         const cryptonote::block& block,
         const cryptonote::transaction& tx,
@@ -1219,6 +1255,7 @@ bool service_node_list::state_t::process_state_change_tx(
         return false;
 
     const auto hf_version = block.major_version;
+    const uint64_t block_height = block.get_height();
     cryptonote::tx_extra_service_node_state_change state_change;
     if (!cryptonote::get_service_node_state_change_from_tx_extra(
                 tx.extra, state_change, hf_version)) {
@@ -1237,30 +1274,41 @@ bool service_node_list::state_t::process_state_change_tx(
     else if (archived = load_archived_state(db, sn_list, state_change.block_height); archived)
         quorums = &archived->quorums;
     else {
+        // A state change from outside the heights that the block can include one from fails
+        // verification (see verify_tx_state_change) whether or not its quorum is here, so only a
+        // missing quorum from within them leaves the main chain's SN list without something it
+        // needs.  An alt chain's state is only checked against, never built on (switching to the
+        // alt chain replays its blocks through the main chain's), so carries on without it.
+        const uint64_t quorum_height = state_change.block_height;
+        if (!alt_states && quorum_height < block_height &&
+            block_height < quorum_height + VOTE_LIFETIME)
+            throw missing_quorum{cryptonote::get_transaction_hash(tx), block_height, quorum_height};
         log::error(
                 logcat,
-                "Transaction: {} in block {} {} references quorum height but that height is "
+                "Transaction: {} in block {} {} references quorum height {} but that height is "
                 "not stored!",
                 cryptonote::get_transaction_hash(tx),
-                block.get_height(),
+                block_height,
                 cryptonote::get_block_hash(block),
-                state_change.block_height);
+                quorum_height);
         return false;
     }
 
     cryptonote::tx_verification_context tvc = {};
     if (!verify_tx_state_change(
-                state_change, block.get_height(), tvc, *quorums->obligations, hf_version)) {
+                state_change, block_height, tvc, *quorums->obligations, hf_version)) {
         quorums = nullptr;
-        for (const auto& [hash, alt_state] : alt_states) {
-            if (alt_state.height != state_change.block_height)
-                continue;
+        if (alt_states) {
+            for (const auto& [hash, alt_state] : *alt_states) {
+                if (alt_state.height != state_change.block_height)
+                    continue;
 
-            quorums = &alt_state.quorums;
-            if (!verify_tx_state_change(
-                        state_change, block.get_height(), tvc, *quorums->obligations, hf_version)) {
-                quorums = nullptr;
-                continue;
+                quorums = &alt_state.quorums;
+                if (!verify_tx_state_change(
+                            state_change, block_height, tvc, *quorums->obligations, hf_version)) {
+                    quorums = nullptr;
+                    continue;
+                }
             }
         }
     }
@@ -1297,7 +1345,6 @@ bool service_node_list::state_t::process_state_change_tx(
         return false;
     }
 
-    uint64_t block_height = block.get_height();
     auto& info = duplicate_info(iter->second);
     bool is_me = my_keys && my_keys->pub == key;
 
@@ -3944,7 +3991,7 @@ block_add_result service_node_list::state_t::update_from_block(
         cryptonote::RewardsDB* rewards_db_ptr,
         cryptonote::network_type nettype,
         state_set const& state_history,
-        std::unordered_map<crypto::hash, state_t> const& alt_states,
+        std::unordered_map<crypto::hash, state_t> const* alt_states,
         const cryptonote::block& block,
         const std::vector<cryptonote::transaction>& txs,
         const service_node_keys* my_keys,
@@ -4679,13 +4726,50 @@ block_add_result service_node_list::process_block(
         }
     }
 
-    // NOTE: Cull recent history
+    // NOTE: Cull recent history.  Most uses of the historical states (verifying state changes,
+    // get_quorum for the quorum cop, blink and checkpoints) only need their quorums; the full
+    // states are only needed:
+    // - as the states a detach may restore to, which are only ever those the rewards can restore
+    //   to as well: the snapshot heights (see oldest_recent_restore_height), and their few most
+    //   recent heights (kept as far as the alt block parents are, or else a detach to them
+    //   restores the snapshot height below instead);
+    // - as the parent states of alt blocks, which can't fork off below the immutable checkpoint;
+    // - for the state just added (get_block_producer, for the rewards of the next block).
+    // The other states are each a copy of the service node info map and of the recently removed
+    // nodes (some 0.66 MB, serialized, on mainnet), so they are kept as just their quorums.  With
+    // no immutable checkpoint yet (early in the chain, or before checkpointing) the full states
+    // are those of the HISTORY_RECENT_KEEP_WINDOW window, which also bounds them if checkpointing
+    // stalls; while replaying blocks below it, the immutable checkpoint (of the top of the chain)
+    // is above the state just added, which is kept regardless.
     const uint64_t cull_recent_height = min_recent_height(blockchain.nettype(), m_state.height);
     {
         ZoneScopedN("Cull recent history");
         state_set& set = m_transient->state_history;
-        while (set.size() && set.begin()->height < cull_recent_height)
+        const uint64_t restore_from =
+                oldest_recent_restore_height(blockchain.nettype(), m_state.height);
+        const uint64_t keep_full_from = std::max(
+                cull_recent_height, std::min(blockchain.get_immutable_height(), m_state.height));
+        const uint64_t quorums_window = netconf.HISTORY_QUORUMS_KEEP_WINDOW;
+        const uint64_t keep_quorums_from =
+                m_state.height > quorums_window ? m_state.height - quorums_window : 0;
+        while (set.size() && set.begin()->height < keep_quorums_from)
             set.erase(set.begin());
+        for (auto it = set.begin(); it != set.end() && it->height < keep_full_from;) {
+            if (it->only_loaded_quorums ||
+                (it->height >= restore_from && it->height % STATE_SNAPSHOT_INTERVAL == 0)) {
+                ++it;
+                continue;
+            }
+            auto node = set.extract(it++);
+            state_t& state = node.value();
+            state_t quorums_only{this};
+            quorums_only.only_loaded_quorums = true;
+            quorums_only.height = state.height;
+            quorums_only.block_hash = state.block_hash;
+            quorums_only.quorums = std::move(state.quorums);
+            state = std::move(quorums_only);
+            set.insert(it, std::move(node));
+        }
     }
 
     // NOTE: Cull archive history.  The cull height only advances once per archive interval, so we
@@ -4714,7 +4798,7 @@ block_add_result service_node_list::process_block(
             blockchain.maybe_rewards_db(),
             blockchain.nettype(),
             m_transient->state_history,
-            {},
+            nullptr,
             block,
             txs,
             m_service_node_keys,
@@ -4768,16 +4852,11 @@ void service_node_list::blockchain_detached(uint64_t height) {
     if (m_state.height == target_height && (!rewards || rewards->height == target_height))
         return;
 
-    const uint64_t min_height = min_restore_height(false);
-    auto rewards_can_restore = [rewards, min_height](uint64_t h) {
-        return h >= min_height && (!rewards || rewards->can_restore(h));
-    };
-
     std::string_view detach_label;
     bool restored = false;
 
     // NOTE: The current state, if it isn't above the target
-    if (m_state.height <= target_height && rewards_can_restore(m_state.height)) {
+    if (m_state.height <= target_height && can_restore_to(m_state.height)) {
         restored = true;
         detach_label = " (current state)";
     }
@@ -4787,7 +4866,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
         state_set& set = m_transient->state_history;
         for (auto it = set.rbegin(); it != set.rend(); it++) {
             if (it->only_loaded_quorums || it->height > target_height ||
-                !rewards_can_restore(it->height))
+                !can_restore_to(it->height))
                 continue;
             auto fwd = std::prev(it.base());
             m_state = std::move(*fwd);
@@ -4802,23 +4881,9 @@ void service_node_list::blockchain_detached(uint64_t height) {
 
     // NOTE: The states stored in the DB: those written every STATE_SNAPSHOT_INTERVAL blocks (see
     // store_state_snapshot) and the archived ones.
-    if (!restored) {
-        if (auto stored = find_restorable_state(
-                    blockchain.db(),
-                    this,
-                    min_restore_height(true),
-                    target_height,
-                    rewards_can_restore)) {
-            // The in-memory history holds nothing from at or after it.
-            m_transient->state_history.erase(
-                    m_transient->state_history.lower_bound(stored->height),
-                    m_transient->state_history.end());
-            m_state = std::move(*stored);
-            m_state.initialize_alt_pk_maps();
-            cleanup_zombies_from_state();
-            restored = true;
-            detach_label = " (from stored state)";
-        }
+    if (!restored && load_restorable_state(target_height)) {
+        restored = true;
+        detach_label = " (from stored state)";
     }
 
     if (restored) {
@@ -4880,24 +4945,70 @@ uint64_t service_node_list::min_restore_height(bool stored) const {
     return history_start && stored ? history_start + PREDECESSOR_QUORUMS : history_start;
 }
 
+bool service_node_list::can_restore_to(uint64_t height) const {
+    auto* rewards = blockchain.maybe_rewards_db();
+    return height >= min_restore_height(false) && (!rewards || rewards->can_restore(height));
+}
+
+bool service_node_list::load_restorable_state(uint64_t height) {
+    auto stored = find_restorable_state(
+            blockchain.db(), this, min_restore_height(true), height, [this](uint64_t h) {
+                return can_restore_to(h);
+            });
+    if (!stored)
+        return false;
+    // The in-memory history holds nothing from at or after it.
+    m_transient->state_history.erase(
+            m_transient->state_history.lower_bound(stored->height),
+            m_transient->state_history.end());
+    m_state = std::move(*stored);
+    m_state.initialize_alt_pk_maps();
+    cleanup_zombies_from_state();
+    return true;
+}
+
+std::optional<uint64_t> service_node_list::restore_stored_state(uint64_t height) {
+    ZoneScoped;
+    std::lock_guard lock(m_sn_mutex);
+    const uint64_t prev_height = m_state.height;
+    if (!load_restorable_state(height))
+        return std::nullopt;
+
+    // As with a detach, the replay from here writes the archived states above it afresh; what is
+    // there now was derived from the in-memory history that is being abandoned.
+    {
+        cryptonote::db_wtxn_guard txn_guard{blockchain.db()};
+        blockchain.db().delete_service_node_archives(
+                m_state.height + 1, std::numeric_limits<uint64_t>::max());
+    }
+    log::debug(
+            logcat,
+            "SNL restored from {} to {} (from stored state, looking at or below {})",
+            prev_height,
+            m_state.height,
+            height);
+    if (auto* rewards = blockchain.maybe_rewards_db())
+        rewards->blockchain_detached(m_state.height, blockchain.rewards_write_tx());
+    return m_state.height;
+}
+
 bool service_node_list::can_detach_to(uint64_t height) const {
     const uint64_t target_height = height ? height - 1 : 0;
     if (can_rescan() || before_hf9(target_height))
         return true;
     std::lock_guard lock(m_sn_mutex);
-    auto* rewards = blockchain.maybe_rewards_db();
-    const uint64_t min_height = min_restore_height(false);
-    auto usable = [rewards, min_height](uint64_t h) {
-        return h >= min_height && (!rewards || rewards->can_restore(h));
-    };
 
     // The same places blockchain_detached looks in
-    if (m_state.height <= target_height && usable(m_state.height))
+    if (m_state.height <= target_height && can_restore_to(m_state.height))
         return true;
     for (const auto& state : m_transient->state_history)
-        if (!state.only_loaded_quorums && state.height <= target_height && usable(state.height))
+        if (!state.only_loaded_quorums && state.height <= target_height &&
+            can_restore_to(state.height))
             return true;
-    return has_restorable_state(blockchain.db(), min_restore_height(true), target_height, usable);
+    return has_restorable_state(
+            blockchain.db(), min_restore_height(true), target_height, [this](uint64_t h) {
+                return can_restore_to(h);
+            });
 }
 
 service_nodes::payout service_node_list::state_t::get_next_block_leader() const {
@@ -5014,7 +5125,8 @@ std::optional<quorum> service_node_list::state_t::get_pulse_quorum() const {
         return std::nullopt;
 
     auto prev_state = sn_list->m_transient->state_history.find(height - 1);
-    if (prev_state == sn_list->m_transient->state_history.end()) {
+    if (prev_state == sn_list->m_transient->state_history.end() ||
+        prev_state->only_loaded_quorums) {
         log::error(logcat, "Unable to retrieve state_t history for {}", height - 1);
         return std::nullopt;
     }
@@ -5460,7 +5572,7 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     // NOTE: Check if alt block forks off some historical state on the canonical chain
     if (!starting_state) {
         auto it = m_transient->state_history.find(block_height - 1);
-        if (it != m_transient->state_history.end())
+        if (it != m_transient->state_history.end() && !it->only_loaded_quorums)
             if (block.prev_id == it->block_hash)
                 starting_state = &(*it);
     }
@@ -5489,7 +5601,7 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
             blockchain.maybe_rewards_db(),
             blockchain.nettype(),
             m_transient->state_history,
-            m_transient->alt_state,
+            &m_transient->alt_state,
             block,
             info.txs,
             m_service_node_keys,

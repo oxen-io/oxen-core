@@ -249,6 +249,9 @@ struct GET_HEIGHT : PUBLIC, LEGACY, NO_ARGS {
 ///           time synchronization checks.  (This generally means oxend's quorumnet port is not
 ///           reachable).
 ///         - `"timesync"` -- the service node's clock was too far out of sync
+///         - `"l2"` -- the service node's L2 height was too far behind
+///         - `"hf21_transition"` -- the service node did not transition at HF21
+///         - `"session_router"` -- the service node's session router was unreachable for too long
 ///         The list is omitted entirely if there are no reasons at all or if there are no reasons
 ///         that were agreed upon by all voting service nodes.
 ///       - `reasons_maybe` list of reported reasons that some but not all service nodes provided
@@ -1948,6 +1951,9 @@ struct GET_SERVICE_PRIVKEYS : NO_ARGS {
 ///     - `0x10` - oxend quorumnet unreachable for timesync checks
 ///     - `0x20` - oxend system clock is too far off
 ///     - `0x40` - Lokinet unreachable
+///     - `0x80` - L2 height too far behind
+///     - `0x100` - Did not transition at HF21
+///     - `0x200` - Session router unreachable
 ///     - other bit values are reserved for future use.
 ///   - `last_decommission_reason_consensus_any` -- The reason for the last decommission as voted
 ///     by *any* SNs.  Reasons are set here if *any* quorum member gave a reason, even if not all
@@ -1967,6 +1973,9 @@ struct GET_SERVICE_PRIVKEYS : NO_ARGS {
 ///     - `"timecheck"`
 ///     - `"timesync"`
 ///     - `"lokinet"`
+///     - `"l2"`
+///     - `"hf21_transition"`
+///     - `"session_router"`
 ///     - other values are reserved for future use.
 ///   - `last_ip_change_height` -- The last height at which the network applied an IP change penalty
 ///     to this service node.  Omitted if an IP change penalty has never been applied.
@@ -2043,6 +2052,11 @@ struct GET_SERVICE_PRIVKEYS : NO_ARGS {
 ///   - `storage_server_last_reachable` -- The last time we received a successful ping response for
 ///     this storage server (whether or not it is currently failing). Will be omitted if we have
 ///     never received a successful ping response since startup.
+///   - `storage_server_forced_unreachable` -- True if this service node's public IP is within one
+///     of the queried oxend's `--force-unreachable` ranges, in which case the queried oxend votes
+///     the storage server as unreachable in obligations quorums regardless of the test results
+///     reported by the other `storage_server_*` fields.  This field is omitted if the queried oxend
+///     is not a service node.
 ///   - `lokinet_reachable` -- Same as `storage_server_reachable`, but for lokinet router testing.
 ///   - `lokinet_first_unreachable` -- Same as `storage_server_first_unreachable`, but for lokinet
 ///     router testing.
@@ -2050,6 +2064,12 @@ struct GET_SERVICE_PRIVKEYS : NO_ARGS {
 ///     router testing.
 ///   - `lokinet_last_reachable` -- Same as `storage_server_last_reachable`, but for lokinet router
 ///     testing.
+///   - `lokinet_forced_unreachable` -- Same as `storage_server_forced_unreachable`, but for lokinet
+///     router testing.
+///   - `session_router_reachable`, `session_router_first_unreachable`,
+///     `session_router_last_unreachable`, `session_router_last_reachable`,
+///     `session_router_forced_unreachable` -- Same as the equivalent `storage_server_*` fields, but
+///     for session router testing.
 ///   - `checkpoint_votes` -- dict containing recent received checkpoint voting information for this
 ///     service node.  Service node tests will fail if too many recent pulse blocks are missed.
 ///     Contains keys:

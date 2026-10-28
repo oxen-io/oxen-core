@@ -50,6 +50,7 @@ inline constexpr network_config config{
         .HISTORY_ARCHIVE_INTERVAL = mainnet::config.HISTORY_ARCHIVE_INTERVAL,
         .HISTORY_ARCHIVE_KEEP_WINDOW = mainnet::config.HISTORY_ARCHIVE_KEEP_WINDOW,
         .HISTORY_RECENT_KEEP_WINDOW = mainnet::config.HISTORY_RECENT_KEEP_WINDOW,
+        .HISTORY_QUORUMS_KEEP_WINDOW = mainnet::config.HISTORY_QUORUMS_KEEP_WINDOW,
         .ETH_EXIT_BUFFER = testnet::config.ETH_EXIT_BUFFER,
         .ETH_DEREG_BUFFER = testnet::config.ETH_DEREG_BUFFER,
         .ETHEREUM_CHAIN_ID = mainnet::config.ETHEREUM_CHAIN_ID,
