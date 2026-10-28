@@ -102,7 +102,6 @@ class connection_basic { // not-templated base class for rapid developmet of som
     std::atomic<bool> m_was_shutdown;
     std::mutex m_send_que_lock;
     std::deque<shared_sv> m_send_que;
-    std::atomic<bool> m_is_multithreaded;
     /// Strand to ensure the connection's handlers are not called concurrently.
     boost::asio::io_service::strand strand_;
     /// Socket for the connection.

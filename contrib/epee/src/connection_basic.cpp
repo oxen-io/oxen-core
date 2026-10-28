@@ -118,7 +118,6 @@ connection_basic::connection_basic(boost::asio::ip::tcp::socket&& sock, std::sha
 	mI( new connection_basic_pimpl("peer") ),
 	m_want_close_connection(false),
 	m_was_shutdown(false),
-	m_is_multithreaded(false),
 	strand_(GET_IO_SERVICE(sock)),
 	socket_(GET_IO_SERVICE(sock))
 {
@@ -140,7 +139,6 @@ connection_basic::connection_basic(boost::asio::io_service &io_service, std::sha
 	mI( new connection_basic_pimpl("peer") ),
 	m_want_close_connection(false),
 	m_was_shutdown(false),
-	m_is_multithreaded(false),
 	strand_(io_service),
 	socket_(io_service)
 {

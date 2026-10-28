@@ -80,7 +80,6 @@ public:
   uint64_t m_max_packet_size; 
   std::chrono::nanoseconds m_invoke_timeout;
 
-  int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, connection_id_t connection_id);
   template<class callback_t>
   int invoke_async(int command, const std::span<const uint8_t> in_buff, connection_id_t connection_id, const callback_t &cb, std::chrono::nanoseconds timeout = {});
 
@@ -137,12 +136,6 @@ public:
 
   std::atomic<bool> m_deletion_initiated;
   std::atomic<bool> m_protocol_released;
-  std::atomic<bool> m_invoke_buf_ready;
-
-  volatile int m_invoke_result_code;
-
-  std::mutex m_local_inv_buff_lock;
-  std::string m_local_inv_buff;
 
   std::recursive_mutex m_call_lock;
 
@@ -282,8 +275,6 @@ public:
     m_wait_count = 0;
     m_oponent_protocol_ver = 0;
     m_connection_initialized = false;
-    m_invoke_buf_ready = false;
-    m_invoke_result_code = LEVIN_ERROR_CONNECTION;
   }
   virtual ~async_protocol_handler()
   {
@@ -423,34 +414,19 @@ public:
           {//response to some invoke 
 
             std::unique_lock invoke_response_handlers_guard{m_invoke_response_handlers_lock};
-            if(!m_invoke_response_handlers.empty())
-            {//async call scenario
-              std::shared_ptr<invoke_response_handler_base> response_handler = m_invoke_response_handlers.front();
-              bool timer_cancelled = response_handler->cancel_timer();
-               // Don't pop handler, to avoid destroying it
-              if(timer_cancelled)
-                m_invoke_response_handlers.pop_front();
-              invoke_response_handlers_guard.unlock();
+            // A response with no invoke waiting for it is a protocol violation.
+            if(m_invoke_response_handlers.empty())
+              return false;
 
-              if(timer_cancelled)
-                response_handler->handle(m_current_head.m_return_code, buff_to_invoke, m_connection_context);
-            }
-            else
-            {
-              invoke_response_handlers_guard.unlock();
-              //use sync call scenario
-              if(m_wait_count == 0 && m_close_called == 0)
-              {
-                return false;
-              }else
-              {
-                std::lock_guard lock{m_local_inv_buff_lock};
-                m_local_inv_buff = std::string((const char*)buff_to_invoke.data(), buff_to_invoke.size());
-                buff_to_invoke = {};
-                m_invoke_result_code = m_current_head.m_return_code;
-                m_invoke_buf_ready = true;
-              }
-            }
+            std::shared_ptr<invoke_response_handler_base> response_handler = m_invoke_response_handlers.front();
+            bool timer_cancelled = response_handler->cancel_timer();
+             // Don't pop handler, to avoid destroying it
+            if(timer_cancelled)
+              m_invoke_response_handlers.pop_front();
+            invoke_response_handlers_guard.unlock();
+
+            if(timer_cancelled)
+              response_handler->handle(m_current_head.m_return_code, buff_to_invoke, m_connection_context);
           }else
           {
             if(m_current_head.m_have_to_return_data)
@@ -543,7 +519,6 @@ public:
         break;
       }
 
-      m_invoke_buf_ready = false;
       {
         std::lock_guard lock{m_invoke_response_handlers_lock};
 
@@ -570,54 +545,6 @@ public:
     }
 
     return true;
-  }
-
-  int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out)
-  {
-    OXEN_DEFER { finish_outer_call(); };
-
-    if(m_deletion_initiated)
-      return LEVIN_ERROR_CONNECTION_DESTROYED;
-
-    std::lock_guard lock{m_call_lock};
-
-    if(m_deletion_initiated)
-      return LEVIN_ERROR_CONNECTION_DESTROYED;
-
-    m_invoke_buf_ready = false;
-
-    if (!send_message(command, in_buff, LEVIN_PACKET_REQUEST, true))
-    {
-      return LEVIN_ERROR_CONNECTION;
-    }
-
-    auto start = std::chrono::steady_clock::now();
-    size_t prev_size = 0;
-
-    while(!m_invoke_buf_ready && !m_deletion_initiated && !m_protocol_released)
-    {
-      if(m_cache_in_buffer.size() - prev_size >= MIN_BYTES_WANTED)
-      {
-        prev_size = m_cache_in_buffer.size();
-        start = std::chrono::steady_clock::now();
-      }
-      if (std::chrono::steady_clock::now() > start + m_config.m_invoke_timeout)
-      {
-        close();
-        return LEVIN_ERROR_CONNECTION_TIMEDOUT;
-      }
-      if(!m_pservice_endpoint->call_run_once_service_io())
-        return LEVIN_ERROR_CONNECTION_DESTROYED;
-    }
-
-    if(m_deletion_initiated || m_protocol_released)
-      return LEVIN_ERROR_CONNECTION_DESTROYED;
-
-    std::lock_guard invlock{m_local_inv_buff_lock};
-    buff_out.swap(m_local_inv_buff);
-    m_local_inv_buff.clear();
-
-    return m_invoke_result_code;
   }
 
   int notify(int command, const std::span<const uint8_t> in_buff)
@@ -746,14 +673,6 @@ int async_protocol_handler_config<t_connection_context>::find_and_lock_connectio
   if(!aph->start_outer_call())
     return LEVIN_ERROR_CONNECTION_DESTROYED;
   return LEVIN_OK;
-}
-//------------------------------------------------------------------------------------------
-template<class t_connection_context>
-int async_protocol_handler_config<t_connection_context>::invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, connection_id_t connection_id)
-{
-  async_protocol_handler<t_connection_context>* aph;
-  int r = find_and_lock_connection(connection_id, aph);
-  return LEVIN_OK == r ? aph->invoke(command, in_buff, buff_out) : r;
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context> template<class callback_t>

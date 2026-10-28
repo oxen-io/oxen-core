@@ -67,11 +67,6 @@ namespace
             throw std::logic_error{"send_done not implemented"};
         }
 
-        virtual bool call_run_once_service_io() override final
-        {
-            return io_service_.run_one();
-        }
-
         virtual bool request_callback() override final
         {
             throw std::logic_error{"request_callback not implemented"};
