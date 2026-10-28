@@ -574,6 +574,7 @@ bool node_server::run() {
     auto& core = m_payload_handler.get_core();
     auto& omq = core.omq();
     const auto& thread = core.p2p_thread_id();
+    m_payload_handler.refresh_sync_data();
     m_transport.start(omq, thread);
     m_idle_timers.push_back(omq.add_timer([this] { idle_worker(); }, 1s, true, thread));
     m_idle_timers.push_back(
@@ -765,7 +766,7 @@ void node_server::do_handshake_with_peer(
 
     request_t arg{};
     get_local_node_data(arg.node_data);
-    m_payload_handler.get_payload_sync_data(arg.payload_data);
+    arg.payload_data = m_payload_handler.get_payload_sync_data();
 
     // The levin layer can fail an invoke both by calling back with an error and by returning
     // false, so this makes sure `done` is called only once.
@@ -872,7 +873,7 @@ bool node_server::do_peer_timed_sync(
     using request_t = typename COMMAND_TIMED_SYNC::request;
     using response_t = typename COMMAND_TIMED_SYNC::response;
     request_t arg{};
-    m_payload_handler.get_payload_sync_data(arg.payload_data);
+    arg.payload_data = m_payload_handler.get_payload_sync_data();
 
     bool r = epee::net_utils::async_invoke_remote_command2<response_t>(
             context_.m_connection_id,
@@ -1775,7 +1776,7 @@ int node_server::handle_timed_sync(
             continue;
         rsp.local_peerlist_new.push_back(std::move(pe));
     }
-    m_payload_handler.get_payload_sync_data(rsp.payload_data);
+    rsp.payload_data = m_payload_handler.get_payload_sync_data();
 
     log::debug(logcat, "{}COMMAND_TIMED_SYNC", context);
     return 1;
@@ -1885,7 +1886,7 @@ int node_server::handle_handshake(
     for (const auto& e : rsp.local_peerlist_new)
         context.sent_addresses.insert(e.adr);
     get_local_node_data(rsp.node_data);
-    m_payload_handler.get_payload_sync_data(rsp.payload_data);
+    rsp.payload_data = m_payload_handler.get_payload_sync_data();
     log::debug(logcat, "{}COMMAND_HANDSHAKE", context);
     return 1;
 }

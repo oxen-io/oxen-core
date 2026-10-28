@@ -526,7 +526,13 @@ bool protocol_handler::process_payload_sync_data(
     return true;
 }
 //------------------------------------------------------------------------------------------------------------------------
-bool protocol_handler::get_payload_sync_data(CORE_SYNC_DATA& hshd) {
+CORE_SYNC_DATA protocol_handler::get_payload_sync_data() const {
+    std::lock_guard lock{m_sync_data_mutex};
+    return m_sync_data;
+}
+//------------------------------------------------------------------------------------------------------------------------
+void protocol_handler::refresh_sync_data() {
+    CORE_SYNC_DATA hshd{};
     std::tie(hshd.current_height, hshd.top_id) = m_core.blockchain.get_tail_id();
     hshd.top_version = get_network_version(m_core.get_nettype(), hshd.current_height);
     hshd.cumulative_difficulty =
@@ -540,14 +546,8 @@ bool protocol_handler::get_payload_sync_data(CORE_SYNC_DATA& hshd) {
         hshd.blink_blocks.push_back(h.first);
         hshd.blink_hash.push_back(h.second);
     }
-    return true;
-}
-//------------------------------------------------------------------------------------------------------------------------
-bool protocol_handler::get_payload_sync_data(std::string& data) {
-    CORE_SYNC_DATA hsd{};
-    get_payload_sync_data(hsd);
-    epee::serialization::store_t_to_binary(hsd, data);
-    return true;
+    std::lock_guard lock{m_sync_data_mutex};
+    m_sync_data = std::move(hshd);
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_notify_new_fluffy_block(
@@ -793,6 +793,7 @@ int protocol_handler::handle_notify_new_fluffy_block(
                 return 1;
             }
             if (bvc.m_added_to_main_chain) {
+                refresh_sync_data();
                 // TODO: Add here announce protocol usage
                 NOTIFY_NEW_FLUFFY_BLOCK::request reg_arg{};
                 reg_arg.current_blockchain_height = arg.current_blockchain_height;
@@ -1779,6 +1780,7 @@ int protocol_handler::try_add_next_blocks(cryptonote_connection_context& context
                         on_connection_synchronized();
                 }
 
+                refresh_sync_data();
                 if (!m_stopping)
                     m_p2p->call_on_connection(context, [this](cryptonote_connection_context& c) {
                         try_add_next_blocks(c);
@@ -1841,6 +1843,7 @@ int protocol_handler::handle_request_get_txs(
 }
 //------------------------------------------------------------------------------------------------------------------------
 bool protocol_handler::on_idle() {
+    refresh_sync_data();
     m_idle_peer_kicker.do_call([this] { return kick_idle_peers(); });
     m_standby_checker.do_call([this] { return check_standby_peers(); });
     m_sync_search_checker.do_call([this] { return update_sync_search(); });
