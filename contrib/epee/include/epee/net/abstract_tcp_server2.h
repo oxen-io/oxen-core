@@ -195,12 +195,6 @@ namespace net_utils
     boosted_tcp_server(const boosted_tcp_server&) = delete;
     boosted_tcp_server& operator=(const boosted_tcp_server&) = delete;
 
-    enum try_connect_result_t
-    {
-      CONNECT_SUCCESS,
-      CONNECT_FAILURE,
-    };
-
   public:
     typedef std::shared_ptr<connection<t_protocol_handler> > connection_ptr;
     typedef typename t_protocol_handler::connection_context t_connection_context;
@@ -238,8 +232,6 @@ namespace net_utils
 
     void set_connection_filter(i_connection_filter* pfilter);
 
-    try_connect_result_t try_connect(connection_ptr new_connection_l, const std::string& adr, const std::string& port, boost::asio::ip::tcp::socket &sock_, const boost::asio::ip::tcp::endpoint &remote_endpoint, const std::string &bind_ip, uint32_t conn_timeout);
-    bool connect(const std::string& adr, const std::string& port, uint32_t conn_timeot, t_connection_context& cn, const std::string& bind_ip = "0.0.0.0");
     template<class t_callback>
     bool connect_async(const std::string& adr, const std::string& port, uint32_t conn_timeot, const t_callback &cb, const std::string& bind_ip = "0.0.0.0");
 

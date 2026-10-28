@@ -544,24 +544,7 @@ bool node_server<t_payload_net_handler>::run() {
     mPeersLoggerThread.emplace([&]() {
         log::debug(logcat, "Thread monitor number of peers - start");
         while (!is_closing && !m_network.m_net_server.is_stop_signal_sent()) {
-            unsigned int number_of_in_peers = 0;
-            unsigned int number_of_out_peers = 0;
-            m_network.m_net_server.get_config_object().foreach_connection(
-                    [&](const p2p_connection_context& cntxt) {
-                        if (cntxt.m_is_income) {
-                            ++number_of_in_peers;
-                        } else {
-                            // If this is a new (<10s) connection and we're still in before
-                            // handshake mode then don't count it yet: it is probably a back
-                            // ping connection that will be closed soon.
-                            if (!(cntxt.m_state == p2p_connection_context::state_before_handshake &&
-                                  std::chrono::steady_clock::now() < cntxt.m_started + 10s))
-                                ++number_of_out_peers;
-                        }
-                        return true;
-                    });
-            m_network.m_current_number_of_in_peers = number_of_in_peers;
-            m_network.m_current_number_of_out_peers = number_of_out_peers;
+            m_network.m_current_number_of_in_peers = get_incoming_connections_count();
             std::this_thread::sleep_for(1s);
         }
         log::debug(logcat, "Thread monitor number of peers - done");
@@ -766,64 +749,72 @@ bool node_server<t_payload_net_handler>::send_stop_signal() {
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
-bool node_server<t_payload_net_handler>::do_handshake_with_peer(
-        peerid_type& pi, p2p_connection_context& context_, bool just_take_peerlist) {
+void node_server<t_payload_net_handler>::do_handshake_with_peer(
+        const connection_id_t& connection_id,
+        bool anchor,
+        bool just_take_peerlist,
+        std::function<void(p2p_connection_context*)> done) {
     using request_t = typename COMMAND_HANDSHAKE::request;
     using response_t = typename COMMAND_HANDSHAKE::response;
 
     request_t arg{};
-    response_t rsp{};
     get_local_node_data(arg.node_data);
     m_payload_handler.get_payload_sync_data(arg.payload_data);
 
-    std::promise<void> ev;
-    std::atomic<bool> hsh_result(false);
-    bool timeout = false;
+    // The levin layer can fail an invoke both by calling back with an error and by returning
+    // false, so this makes sure `done` is called only once.
+    auto finished = std::make_shared<std::atomic<bool>>(false);
+    auto finish = [finished, done = std::move(done)](p2p_connection_context* context) {
+        if (!finished->exchange(true))
+            done(context);
+    };
 
     bool r = epee::net_utils::async_invoke_remote_command2<response_t>(
-            context_.m_connection_id,
+            connection_id,
             COMMAND_HANDSHAKE::ID,
             arg,
             m_network.m_net_server.get_config_object(),
-            [this, &pi, &ev, &hsh_result, &just_take_peerlist, &context_, &timeout](
+            [this, anchor, just_take_peerlist, finish](
                     int code, response_t&& rsp, p2p_connection_context& context) {
-                OXEN_DEFER {
-                    ev.set_value();
-                };
+                bool timeout = false;
+                const bool ok = [&] {
+                    if (code < 0) {
+                        log::warning(
+                                logcat,
+                                "{}COMMAND_HANDSHAKE invoke failed. ({},{})",
+                                context,
+                                code,
+                                epee::levin::get_err_descr(code));
+                        timeout = code == LEVIN_ERROR_CONNECTION_TIMEDOUT ||
+                                  code == LEVIN_ERROR_CONNECTION_DESTROYED;
+                        return false;
+                    }
 
-                if (code < 0) {
-                    log::warning(
-                            logcat,
-                            "{}COMMAND_HANDSHAKE invoke failed. ({},{})",
-                            context,
-                            code,
-                            epee::levin::get_err_descr(code));
-                    if (code == LEVIN_ERROR_CONNECTION_TIMEDOUT ||
-                        code == LEVIN_ERROR_CONNECTION_DESTROYED)
-                        timeout = true;
-                    return;
-                }
+                    if (rsp.node_data.network_id != m_network_id) {
+                        log::warning(
+                                logcat,
+                                "{}COMMAND_HANDSHAKE Failed, wrong network! ({}), closing "
+                                "connection.",
+                                context,
+                                boost::lexical_cast<std::string>(rsp.node_data.network_id));
+                        return false;
+                    }
 
-                if (rsp.node_data.network_id != m_network_id) {
-                    log::warning(
-                            logcat,
-                            "{}COMMAND_HANDSHAKE Failed, wrong network! ({}), closing connection.",
-                            context,
-                            boost::lexical_cast<std::string>(rsp.node_data.network_id));
-                    return;
-                }
+                    if (!handle_remote_peerlist(rsp.local_peerlist_new, context)) {
+                        log::warning(
+                                logcat,
+                                "{}COMMAND_HANDSHAKE: failed to handle_remote_peerlist(...), "
+                                "closing connection.",
+                                context);
+                        add_host_fail(context.m_remote_address);
+                        return false;
+                    }
 
-                if (!handle_remote_peerlist(rsp.local_peerlist_new, context)) {
-                    log::warning(
-                            logcat,
-                            "{}COMMAND_HANDSHAKE: failed to handle_remote_peerlist(...), closing "
-                            "connection.",
-                            context);
-                    add_host_fail(context.m_remote_address);
-                    return;
-                }
-                hsh_result = true;
-                if (!just_take_peerlist) {
+                    if (just_take_peerlist) {
+                        log::debug(logcat, "{} COMMAND_HANDSHAKE(AND CLOSE) INVOKED OK", context);
+                        return true;
+                    }
+
                     if (!m_payload_handler.process_payload_sync_data(
                                 std::move(rsp.payload_data), context, true)) {
                         log::warning(
@@ -831,47 +822,41 @@ bool node_server<t_payload_net_handler>::do_handshake_with_peer(
                                 "{}COMMAND_HANDSHAKE invoked, but process_payload_sync_data "
                                 "returned false, dropping connection.",
                                 context);
-                        hsh_result = false;
-                        return;
+                        return false;
                     }
 
-                    pi = context.peer_id = rsp.node_data.peer_id;
+                    context.peer_id = rsp.node_data.peer_id;
                     m_network.m_peerlist.set_peer_just_seen(
                             rsp.node_data.peer_id, context.m_remote_address, context.m_history);
 
                     if (rsp.node_data.peer_id == m_network.m_config.m_peer_id) {
                         log::debug(
-                                logcat,
-                                "{}Connection to self detected, dropping connection",
-                                context);
-                        hsh_result = false;
-                        return;
+                                logcat, "{}Connection to self detected, dropping connection", context);
+                        return false;
                     }
+                    context.m_anchor = anchor;
                     log::info(logcat, "{}New connection handshaked", context);
                     log::debug(logcat, "{} COMMAND_HANDSHAKE INVOKED OK", context);
-                } else {
-                    log::debug(logcat, "{} COMMAND_HANDSHAKE(AND CLOSE) INVOKED OK", context);
+                    return true;
+                }();
+
+                if (!ok) {
+                    log::warning(logcat, "{}COMMAND_HANDSHAKE Failed", context);
+                    update_peer_failed_connection(
+                            peer_stats_map, peer_stats_map_mutex, context.peer_id);
+                    // A timed out or destroyed connection has already been closed
+                    if (!timeout)
+                        m_network.m_net_server.get_config_object().close(context.m_connection_id);
                 }
-                // `context_` is the caller's copy of the connection's context; the anchor flag
-                // set on it has to reach the connection itself, or the connection isn't treated
-                // as an anchor.
-                context.m_anchor = context_.m_anchor;
-                context_ = context;
+                finish(ok ? &context : nullptr);
             },
             std::chrono::milliseconds{cryptonote::p2p::DEFAULT_HANDSHAKE_INVOKE_TIMEOUT});
 
-    if (r) {
-        ev.get_future().wait();
+    if (!r) {
+        log::warning(logcat, "COMMAND_HANDSHAKE invoke could not be sent");
+        m_network.m_net_server.get_config_object().close(connection_id);
+        finish(nullptr);
     }
-
-    if (!hsh_result) {
-        log::warning(logcat, "{}COMMAND_HANDSHAKE Failed", context_);
-        update_peer_failed_connection(peer_stats_map, peer_stats_map_mutex, context_.peer_id);
-        if (!timeout)
-            m_network.m_net_server.get_config_object().close(context_.m_connection_id);
-    }
-
-    return hsh_result;
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
@@ -952,6 +937,9 @@ bool node_server<t_payload_net_handler>::is_peer_used(const Entry& peer) {
     if (m_network.m_config.m_peer_id == peer.id)
         return true;  // dont make connections to ourself
 
+    if (is_connect_pending(peer.adr))
+        return true;
+
     bool used = false;
     m_network.m_net_server.get_config_object().foreach_connection(
             [&](const p2p_connection_context& cntxt) {
@@ -989,24 +977,17 @@ static std::string format_stamp_ago(int64_t stamp) {
 }
 
 template <class t_payload_net_handler>
-bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_peer(
+bool node_server<t_payload_net_handler>::connect_and_handshake(
         const oxen::quic::Address& na,
+        PeerType peer_type,
         bool just_take_peerlist,
         uint64_t last_seen_stamp,
-        PeerType peer_type,
-        uint64_t first_seen_stamp) {
-    if (m_network.m_current_number_of_out_peers ==
-        m_network.m_config.m_net_config.max_out_connection_count)  // out peers limit
+        uint64_t first_seen_stamp,
+        std::function<void(bool success)> done) {
     {
-        log::debug(logcat, "hit the out connections peer limit");
-        return false;
-    } else if (
-            m_network.m_current_number_of_out_peers >
-            m_network.m_config.m_net_config.max_out_connection_count) {
-        log::debug(logcat, "above the out connections peer limit, deleting a connection");
-        m_network.m_net_server.get_config_object().del_out_connections(1);
-        --(m_network.m_current_number_of_out_peers);  // atomic variable, update time = 1s
-        return false;
+        std::lock_guard lock{m_pending_connects_mutex};
+        if (!m_pending_connects.insert(na).second)
+            return false;
     }
 
     log::debug(
@@ -1016,94 +997,104 @@ bool node_server<t_payload_net_handler>::try_to_connect_and_handshake_with_new_p
             peer_type,
             format_stamp_ago(last_seen_stamp));
 
-    auto con = public_connect(na);
-    if (!con) {
-        if (is_priority_node(na))
-            log::info(logcat, "[priority] Connect failed to {}", na.to_string());
-        else
-            log::info(logcat, "Connect failed to {}", na.to_string());
-        record_addr_failed(na);
-        return false;
+    const std::string_view priority = is_priority_node(na) ? "[priority] " : "";
+    auto finish = [this, na, done = std::move(done)](bool success) {
+        {
+            std::lock_guard lock{m_pending_connects_mutex};
+            m_pending_connects.erase(na);
+        }
+        if (!success)
+            record_addr_failed(na);
+        if (done)
+            done(success);
+    };
+
+    bool started = m_network.m_net_server.connect_async(
+            na.host(),
+            std::to_string(na.port()),
+            m_network.m_config.m_net_config.connection_timeout.count(),
+            [this, na, priority, peer_type, just_take_peerlist, first_seen_stamp, finish](
+                    const typename net_server::t_connection_context& con,
+                    const boost::system::error_code& ec) {
+                if (ec) {
+                    log::info(logcat, "{}Connect failed to {}", priority, na.to_string());
+                    finish(false);
+                    return false;
+                }
+                do_handshake_with_peer(
+                        con.m_connection_id,
+                        peer_type == PeerType::anchor,
+                        just_take_peerlist,
+                        [this, na, priority, just_take_peerlist, first_seen_stamp, finish](
+                                p2p_connection_context* context) {
+                            if (!context) {
+                                log::info(
+                                        logcat,
+                                        "{}Failed to HANDSHAKE with peer {}",
+                                        priority,
+                                        na.to_string());
+                                finish(false);
+                                return;
+                            }
+
+                            if (just_take_peerlist) {
+                                log::debug(logcat, "{}CONNECTION HANDSHAKED OK AND CLOSED.", *context);
+                                m_network.m_net_server.get_config_object().close(
+                                        context->m_connection_id);
+                                finish(true);
+                                return;
+                            }
+
+                            peerlist_entry pe_local{};
+                            pe_local.adr = na;
+                            pe_local.id = context->peer_id;
+                            pe_local.last_seen = static_cast<int64_t>(time(nullptr));
+                            pe_local.history = context->m_history;
+                            m_network.m_peerlist.append_with_peer_white(pe_local);
+
+                            anchor_peerlist_entry ape{};
+                            ape.adr = na;
+                            ape.id = context->peer_id;
+                            ape.first_seen = first_seen_stamp ? first_seen_stamp : time(nullptr);
+                            m_network.m_peerlist.append_with_peer_anchor(ape);
+
+                            log::debug(logcat, "{}CONNECTION HANDSHAKED OK.", *context);
+                            finish(true);
+                        });
+                return true;
+            },
+            m_network.m_bind_ip);
+
+    if (!started) {
+        log::info(logcat, "{}Connect failed to {}", priority, na.to_string());
+        finish(false);
     }
-
-    con->m_anchor = peer_type == PeerType::anchor;
-    peerid_type pi{};
-    bool res = do_handshake_with_peer(pi, *con, just_take_peerlist);
-
-    if (!res) {
-        if (is_priority_node(na))
-            log::info(logcat, "{}[priority] Failed to HANDSHAKE with peer {}", *con, na.to_string());
-        else
-            log::info(logcat, "{} Failed to HANDSHAKE with peer {}", *con, na.to_string());
-        record_addr_failed(na);
-        return false;
-    }
-
-    if (just_take_peerlist) {
-        m_network.m_net_server.get_config_object().close(con->m_connection_id);
-        log::debug(logcat, "{}CONNECTION HANDSHAKED OK AND CLOSED.", *con);
-        return true;
-    }
-
-    peerlist_entry pe_local{};
-    pe_local.adr = na;
-    pe_local.id = pi;
-    time_t last_seen;
-    time(&last_seen);
-    pe_local.last_seen = static_cast<int64_t>(last_seen);
-    pe_local.history = con->m_history;
-    m_network.m_peerlist.append_with_peer_white(pe_local);
-    // update last seen and push it to peerlist manager
-
-    anchor_peerlist_entry ape{};
-    ape.adr = na;
-    ape.id = pi;
-    ape.first_seen = first_seen_stamp ? first_seen_stamp : time(nullptr);
-
-    m_network.m_peerlist.append_with_peer_anchor(ape);
-
-    log::debug(logcat, "{}CONNECTION HANDSHAKED OK.", *con);
-    return true;
+    return started;
 }
-
+//-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
-bool node_server<t_payload_net_handler>::check_connection_and_handshake_with_peer(
-        const oxen::quic::Address& na, uint64_t last_seen_stamp) {
-    log::info(
-            logcat,
-            "Connecting to {}(last_seen: {})...",
-            na.to_string(),
-            format_stamp_ago(last_seen_stamp));
-
-    auto con = public_connect(na);
-    if (!con) {
-        if (is_priority_node(na))
-            log::info(
-                    logcat, "{}[priority]Connect failed to {}", p2p_connection_context{}, na.to_string());
-        else
-            log::info(logcat, "{}Connect failed to {}", p2p_connection_context{}, na.to_string());
-        record_addr_failed(na);
-
-        return false;
-    }
-
-    con->m_anchor = false;
-    peerid_type pi{};
-    const bool res = do_handshake_with_peer(pi, *con, true);
-    if (!res) {
-        if (is_priority_node(na))
-            log::info(logcat, "{}[priority] Failed to HANDSHAKE with peer {}", *con, na.to_string());
-        else
-            log::info(logcat, "{} Failed to HANDSHAKE with peer {}", *con, na.to_string());
-        record_addr_failed(na);
-        return false;
-    }
-
-    m_network.m_net_server.get_config_object().close(con->m_connection_id);
-
-    log::debug(logcat, "{}CONNECTION HANDSHAKED OK AND CLOSED.", *con);
-
-    return true;
+bool node_server<t_payload_net_handler>::is_connect_pending(const oxen::quic::Address& na) {
+    std::lock_guard lock{m_pending_connects_mutex};
+    return m_pending_connects.count(na);
+}
+//-----------------------------------------------------------------------------------
+template <class t_payload_net_handler>
+size_t node_server<t_payload_net_handler>::get_outgoing_and_pending_count() {
+    size_t count = 0;
+    std::set<oxen::quic::Address> connected;
+    m_network.m_net_server.get_config_object().foreach_connection(
+            [&](const p2p_connection_context& cntxt) {
+                if (!cntxt.m_is_income) {
+                    ++count;
+                    connected.insert(cntxt.m_remote_address);
+                }
+                return true;
+            });
+    std::lock_guard lock{m_pending_connects_mutex};
+    for (const auto& addr : m_pending_connects)
+        if (!connected.count(addr))
+            ++count;
+    return count;
 }
 
 //-----------------------------------------------------------------------------------
@@ -1135,7 +1126,11 @@ static std::string peerid_to_string(peerid_type peer_id) {
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::make_new_connection_from_anchor_peerlist(
         const std::vector<anchor_peerlist_entry>& anchor_peerlist) {
+    bool started = false;
     for (const auto& pe : anchor_peerlist) {
+        if (get_outgoing_and_pending_count() >= cryptonote::p2p::DEFAULT_ANCHOR_CONNECTIONS_COUNT)
+            break;
+
         log::debug(
                 logcat,
                 "Considering connecting (out) to anchor peer: {} {}",
@@ -1162,16 +1157,11 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_anchor_peerlis
                 pe.adr.to_string(),
                 format_stamp_ago(pe.first_seen));
 
-        if (!try_to_connect_and_handshake_with_new_peer(
-                    pe.adr, false, 0, PeerType::anchor, pe.first_seen)) {
-            log::debug(logcat, "Handshake failed");
-            continue;
-        }
-
-        return true;
+        if (connect_and_handshake(pe.adr, PeerType::anchor, false, 0, pe.first_seen))
+            started = true;
     }
 
-    return false;
+    return started;
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
@@ -1189,6 +1179,10 @@ std::vector<size_t> node_server<t_payload_net_handler>::connectable_peers(
                 seen.peer.insert(cntxt.peer_id);
                 return true;
             });
+    {
+        std::lock_guard lock{m_pending_connects_mutex};
+        seen.addr.insert(m_pending_connects.begin(), m_pending_connects.end());
+    }
 
     std::vector<size_t> filtered;
     size_t idx = 0;
@@ -1293,34 +1287,26 @@ bool node_server<t_payload_net_handler>::make_new_connection_from_peerlist(
                 (use_white_list ? "white" : "gray"),
                 format_stamp_ago(pe.last_seen));
 
-        if (!try_to_connect_and_handshake_with_new_peer(
-                    pe.adr,
-                    false,
-                    pe.last_seen,
-                    use_white_list ? PeerType::white : PeerType::gray)) {
-            log::debug(logcat, "Handshake failed");
-            continue;
-        }
-
-        return true;
+        if (connect_and_handshake(
+                    pe.adr, use_white_list ? PeerType::white : PeerType::gray, false, pe.last_seen))
+            return true;
     }
     return false;
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
-bool node_server<t_payload_net_handler>::connect_to_seed() {
+void node_server<t_payload_net_handler>::connect_to_seed() {
     if (!m_seed_nodes_initialized) {
         std::unique_lock lock{m_seed_nodes_mutex};
         if (!m_seed_nodes_initialized) {
             const auto& netconf = cryptonote::get_config(m_nettype);
             for (const auto& full_addr : netconf.P2P_SEED_NODES) {
                 log::debug(logcat, "Seed node: {}", full_addr);
-                append_net_address(
-                        m_seed_nodes,
-                        full_addr,
-                        netconf.P2P_DEFAULT_PORT);
+                append_net_address(m_seed_nodes, full_addr, netconf.P2P_DEFAULT_PORT);
             }
             log::debug(logcat, "Number of seed nodes: {}", m_seed_nodes.size());
+            if (!m_seed_nodes.empty())
+                m_next_seed = crypto::rand_idx(m_seed_nodes.size());
             m_seed_nodes_initialized = true;
         }
     }
@@ -1328,58 +1314,30 @@ bool node_server<t_payload_net_handler>::connect_to_seed() {
     std::shared_lock shlock{m_seed_nodes_mutex};
 
     if (m_seed_nodes.empty() || m_offline || !m_exclusive_peers.empty())
-        return true;
+        return;
 
-    size_t try_count = 0;
-    bool is_connected_to_at_least_one_seed_node = false;
-    size_t current_index = crypto::rand_idx(m_seed_nodes.size());
-    while (true) {
-        if (m_network.m_net_server.is_stop_signal_sent())
-            return false;
+    // A seed is only asked for its peerlist, which any one of them can give, so they are tried one
+    // at a time, in turn.
+    for (const auto& seed : m_seed_nodes)
+        if (is_connect_pending(seed))
+            return;
 
+    const size_t n_seeds = m_seed_nodes.size();
+    for (size_t i = 0; i < n_seeds; ++i) {
+        const auto& seed = m_seed_nodes[m_next_seed++ % n_seeds];
         peerlist_entry pe_seed{};
-        pe_seed.adr = m_seed_nodes[current_index];
+        pe_seed.adr = seed;
         if (is_peer_used(pe_seed))
-            is_connected_to_at_least_one_seed_node = true;
-        else if (try_to_connect_and_handshake_with_new_peer(m_seed_nodes[current_index], true))
-            break;
-        if (++try_count > m_seed_nodes.size()) {
-            if (!m_fallback_seed_nodes_added.test_and_set()) {
+            continue;
+        connect_and_handshake(seed, PeerType::white, true, 0, 0, [this, n_seeds](bool success) {
+            if (success)
+                m_seed_failures = 0;
+            else if (++m_seed_failures % n_seeds == 0)
                 log::warning(
-                        logcat, "Failed to connect to any of seed peers, trying fallback seeds");
-                current_index = m_seed_nodes.size() - 1;
-                {
-                    shlock.unlock();
-                    {
-                        const auto& netconf = cryptonote::get_config(m_nettype);
-                        std::unique_lock lock{m_seed_nodes_mutex};
-                        for (const auto& peer : netconf.P2P_SEED_NODES) {
-                            log::debug(logcat, "Fallback seed node: {}", peer);
-                            append_net_address(
-                                    m_seed_nodes,
-                                    peer,
-                                    netconf.P2P_DEFAULT_PORT);
-                        }
-                    }
-                    shlock.lock();
-                }
-                if (current_index == m_seed_nodes.size() - 1) {
-                    log::warning(logcat, "No fallback seeds, continuing without seeds");
-                    break;
-                }
-                // continue for another few cycles
-            } else {
-                if (!is_connected_to_at_least_one_seed_node)
-                    log::warning(
-                            logcat,
-                            "Failed to connect to any of seed peers, continuing without seeds");
-                break;
-            }
-        }
-        if (++current_index >= m_seed_nodes.size())
-            current_index = 0;
+                        logcat, "Failed to connect to any of seed peers, continuing without seeds");
+        });
+        return;
     }
-    return true;
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
@@ -1419,21 +1377,19 @@ auto node_server<t_payload_net_handler>::check_sync_peers(const cryptonote::sync
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::connections_maker() {
-    if (m_offline)
+    if (m_offline || m_network.m_net_server.is_stop_signal_sent())
         return true;
-    if (!connect_to_peerlist(m_exclusive_peers))
-        return false;
 
+    // Nothing here waits for a connection: each attempt started counts as pending until its
+    // handshake finishes, and the next run (each second) sees how it went.
+    connect_to_peerlist(m_exclusive_peers);
     if (!m_exclusive_peers.empty())
         return true;
 
-    size_t start_conn_count = get_public_outgoing_connections_count();
-    if (!get_public_white_peers_count() && !connect_to_seed()) {
-        return false;
-    }
+    if (!get_public_white_peers_count())
+        connect_to_seed();
 
-    if (!connect_to_peerlist(m_priority_peers))
-        return false;
+    connect_to_peerlist(m_priority_peers);
 
     // While syncing, at least half the outgoing connections' worth of peers should be able to serve
     // what the sync needs; no more than that, so that syncing nodes don't all crowd onto the peers
@@ -1462,7 +1418,7 @@ bool node_server<t_payload_net_handler>::connections_maker() {
         }
         if (peers.able < (max_out + 1) / 2) {
             for (bool white : {true, false})
-                while (get_outgoing_connections_count() < max_out &&
+                while (get_outgoing_and_pending_count() < max_out &&
                        make_new_connection_from_peerlist(white, need))
                     ;
             want_servable = !connectable_peers(true, need).empty() ||
@@ -1484,59 +1440,54 @@ bool node_server<t_payload_net_handler>::connections_maker() {
     }
 
     if (!want_servable) {
-        size_t base_expected_white_connections =
-                (max_out * cryptonote::p2p::DEFAULT_WHITELIST_CONNECTIONS_PERCENT) / 100;
-
-        size_t conn_count = get_outgoing_connections_count();
-        while (conn_count < max_out) {
-            // While syncing, only white (known good) peers
-            const size_t expected_white_connections =
-                    !m_payload_handler.is_synchronized() ? max_out
-                                                         : base_expected_white_connections;
-            log::debug(logcat, "Expected white connections {}, connection count {}", expected_white_connections, conn_count);
-            if (conn_count < expected_white_connections) {
-                // start from anchor list
-                while (get_outgoing_connections_count() <
-                               cryptonote::p2p::DEFAULT_ANCHOR_CONNECTIONS_COUNT &&
-                       make_expected_connections_count(
-                               PeerType::anchor, cryptonote::p2p::DEFAULT_ANCHOR_CONNECTIONS_COUNT))
-                    ;
-                // then do white list
-                while (get_outgoing_connections_count() < expected_white_connections &&
-                       make_expected_connections_count(PeerType::white, expected_white_connections))
-                    ;
-                // then do grey list
-                while (get_outgoing_connections_count() < max_out &&
-                       make_expected_connections_count(PeerType::gray, max_out))
-                    ;
-            } else {
-                // start from grey list
-                while (get_outgoing_connections_count() < max_out &&
-                       make_expected_connections_count(PeerType::gray, max_out))
-                    ;
-                // and then do white list
-                while (get_outgoing_connections_count() < max_out &&
-                       make_expected_connections_count(PeerType::white, max_out))
-                    ;
-            }
-            if (m_network.m_net_server.is_stop_signal_sent())
-                return false;
-            size_t new_conn_count = get_outgoing_connections_count();
-            if (new_conn_count <= conn_count) {
-                log::debug(logcat, "We did not make any connections, sleeping for 1s");
-                // we did not make any connection, sleep a bit to avoid a busy loop in case we don't
-                // have any peers to try, then break so we will try seeds to get more peers
-                std::this_thread::sleep_for(1s);
-                break;
-            }
-            conn_count = new_conn_count;
+        // While syncing, only white (known good) peers
+        const size_t expected_white_connections =
+                !m_payload_handler.is_synchronized()
+                        ? max_out
+                        : (max_out * cryptonote::p2p::DEFAULT_WHITELIST_CONNECTIONS_PERCENT) / 100;
+        const size_t conn_count = get_outgoing_and_pending_count();
+        log::debug(
+                logcat,
+                "Expected white connections {}, connection count {}",
+                expected_white_connections,
+                conn_count);
+        if (conn_count < expected_white_connections) {
+            // start from anchor list
+            while (get_outgoing_and_pending_count() <
+                           cryptonote::p2p::DEFAULT_ANCHOR_CONNECTIONS_COUNT &&
+                   make_expected_connections_count(
+                           PeerType::anchor, cryptonote::p2p::DEFAULT_ANCHOR_CONNECTIONS_COUNT))
+                ;
+            // then do white list
+            while (get_outgoing_and_pending_count() < expected_white_connections &&
+                   make_expected_connections_count(PeerType::white, expected_white_connections))
+                ;
+            // then do grey list
+            while (get_outgoing_and_pending_count() < max_out &&
+                   make_expected_connections_count(PeerType::gray, max_out))
+                ;
+        } else {
+            // start from grey list
+            while (get_outgoing_and_pending_count() < max_out &&
+                   make_expected_connections_count(PeerType::gray, max_out))
+                ;
+            // and then do white list
+            while (get_outgoing_and_pending_count() < max_out &&
+                   make_expected_connections_count(PeerType::white, max_out))
+                ;
         }
     }
 
-    if (start_conn_count == get_public_outgoing_connections_count() && start_conn_count < max_out) {
+    // Nothing in flight and still short of connections: there was no one left to try, so ask a
+    // seed for more peers.
+    bool pending;
+    {
+        std::lock_guard lock{m_pending_connects_mutex};
+        pending = !m_pending_connects.empty();
+    }
+    if (!pending && get_outgoing_connections_count() < max_out) {
         log::info(logcat, "Failed to connect to any, trying seeds");
-        if (!connect_to_seed())
-            return false;
+        connect_to_seed();
     }
 
     return true;
@@ -1554,7 +1505,7 @@ bool node_server<t_payload_net_handler>::make_expected_connections_count(
         m_network.m_peerlist.get_and_empty_anchor_peerlist(apl);
     }
 
-    size_t conn_count = get_outgoing_connections_count();
+    size_t conn_count = get_outgoing_and_pending_count();
     // add new connections from white peers
     if (conn_count < expected_connections) {
         if (m_network.m_net_server.is_stop_signal_sent())
@@ -2106,18 +2057,17 @@ bool node_server<t_payload_net_handler>::is_priority_node(
 
 template <class t_payload_net_handler>
 template <class Container>
-bool node_server<t_payload_net_handler>::connect_to_peerlist(const Container& peers) {
+void node_server<t_payload_net_handler>::connect_to_peerlist(const Container& peers) {
     for (const oxen::quic::Address& na : peers) {
-        if (m_network.m_net_server.is_stop_signal_sent())
-            return false;
+        if (get_outgoing_and_pending_count() >=
+            m_network.m_config.m_net_config.max_out_connection_count)
+            return;
 
         if (is_addr_connected(na))
             continue;
 
-        try_to_connect_and_handshake_with_new_peer(na);
+        connect_and_handshake(na, PeerType::white, false);
     }
-
-    return true;
 }
 
 template <class t_payload_net_handler>
@@ -2300,37 +2250,24 @@ bool node_server<t_payload_net_handler>::gray_peerlist_housekeeping() {
     if (!m_network.m_peerlist.get_random_gray_peer(pe))
         return true;
 
-    if (!check_connection_and_handshake_with_peer(pe.adr, pe.last_seen)) {
-        m_network.m_peerlist.remove_from_peer_gray(pe);
-        log::debug(
-                logcat,
-                "PEER EVICTED FROM GRAY PEER LIST: address: {} Peer ID: {}",
-                pe.adr.host(),
-                peerid_to_string(pe.id));
-    } else {
-        m_network.m_peerlist.set_peer_just_seen(pe.id, pe.adr, pe.history);
-        log::debug(
-                logcat,
-                "PEER PROMOTED TO WHITE PEER LIST IP address: {} Peer ID: {}",
-                pe.adr.host(),
-                peerid_to_string(pe.id));
-    }
+    connect_and_handshake(pe.adr, PeerType::gray, true, pe.last_seen, 0, [this, pe](bool success) {
+        if (!success) {
+            m_network.m_peerlist.remove_from_peer_gray(pe);
+            log::debug(
+                    logcat,
+                    "PEER EVICTED FROM GRAY PEER LIST: address: {} Peer ID: {}",
+                    pe.adr.host(),
+                    peerid_to_string(pe.id));
+        } else {
+            m_network.m_peerlist.set_peer_just_seen(pe.id, pe.adr, pe.history);
+            log::debug(
+                    logcat,
+                    "PEER PROMOTED TO WHITE PEER LIST IP address: {} Peer ID: {}",
+                    pe.adr.host(),
+                    peerid_to_string(pe.id));
+        }
+    });
     return true;
 }
 
-template <typename t_payload_net_handler>
-std::optional<p2p_connection_context_t<typename t_payload_net_handler::connection_context>>
-node_server<t_payload_net_handler>::public_connect(oxen::quic::Address const& na) {
-    typename net_server::t_connection_context con{};
-    const bool res = m_network.m_net_server.connect(
-            na.host(),
-            std::to_string(na.port()),
-            m_network.m_config.m_net_config.connection_timeout.count(),
-            con,
-            m_network.m_bind_ip);
-
-    if (res)
-        return {std::move(con)};
-    return std::nullopt;
-}
 }  // namespace nodetool

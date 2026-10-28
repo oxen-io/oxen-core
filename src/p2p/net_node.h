@@ -38,6 +38,7 @@
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <functional>
+#include <set>
 #include <shared_mutex>
 #include <utility>
 #include <vector>
@@ -118,7 +119,6 @@ class node_server
                 m_bind_ipv6_address(),
                 m_peerlist(),
                 m_config{},
-                m_current_number_of_out_peers(0),
                 m_current_number_of_in_peers(0) {
             set_config_defaults();
         }
@@ -130,7 +130,6 @@ class node_server
         uint16_t m_port_ipv6 = 0;
         peerlist_manager m_peerlist;
         config m_config;
-        std::atomic<unsigned int> m_current_number_of_out_peers;
         std::atomic<unsigned int> m_current_number_of_in_peers;
 
       private:
@@ -290,16 +289,22 @@ class node_server
 
     bool connections_maker();
     bool peer_sync_idle_maker();
-    bool do_handshake_with_peer(
-            peerid_type& pi, p2p_connection_context& context, bool just_take_peerlist = false);
+    // Handshakes over a connection we made, without blocking.  `done` is called once, with the
+    // connection's context (valid only during the call) if the handshake succeeded, or nullptr
+    // (after closing the connection) if it failed.
+    void do_handshake_with_peer(
+            const connection_id_t& connection_id,
+            bool anchor,
+            bool just_take_peerlist,
+            std::function<void(p2p_connection_context*)> done);
     bool do_peer_timed_sync(
             const epee::net_utils::connection_context_base& context, peerid_type peer_id);
 
     bool make_new_connection_from_anchor_peerlist(
             const std::vector<anchor_peerlist_entry>& anchor_peerlist);
     // The indices, in the white or gray list, of the peers we could connect to: not connected
-    // already, nor recently failed, and, given what a sync needs, only those whose peerlist entry
-    // says they can serve it and that haven't already turned out not to.
+    // already, nor being connected to, nor recently failed, and, given what a sync needs, only
+    // those whose peerlist entry says they can serve it and that haven't already turned out not to.
     std::vector<size_t> connectable_peers(
             bool use_white_list, const std::optional<cryptonote::sync_need>& need = std::nullopt);
     bool make_new_connection_from_peerlist(
@@ -321,12 +326,21 @@ class node_server
     // While syncing, counts the connected peers that can serve what the sync needs, recording the
     // outgoing ones that can't as unhelpful.
     sync_peers check_sync_peers(const cryptonote::sync_need& need);
-    bool try_to_connect_and_handshake_with_new_peer(
+    // Starts connecting to `na` and handshaking with it, returning false (and starting nothing) if
+    // an attempt on `na` is already pending.  A successful handshake adds the peer to the white and
+    // anchor lists, unless `just_take_peerlist`, in which case the connection is closed once the
+    // peer's peerlist is in.  `done`, if given, is called with whether the handshake succeeded.
+    bool connect_and_handshake(
             const oxen::quic::Address& na,
-            bool just_take_peerlist = false,
+            PeerType peer_type,
+            bool just_take_peerlist,
             uint64_t last_seen_stamp = 0,
-            PeerType peer_type = PeerType::white,
-            uint64_t first_seen_stamp = 0);
+            uint64_t first_seen_stamp = 0,
+            std::function<void(bool success)> done = nullptr);
+    bool is_connect_pending(const oxen::quic::Address& na);
+    // The outgoing connections plus the pending attempts not yet connected, which is what counts
+    // against the outgoing connection limit.
+    size_t get_outgoing_and_pending_count();
     // Draw from a truncated exponential with the given rate, truncated to produce values in [0,
     // N), and then take the integer floor to get a [0, N-1] value.  This distribution prefers
     // earlier values: with the default rate and the *untruncated* distribution, [0] is selected
@@ -349,10 +363,10 @@ class node_server
     void record_addr_failed(const oxen::quic::Address& addr);
     bool is_addr_recently_failed(const oxen::quic::Address& addr);
     bool is_priority_node(const oxen::quic::Address& na);
-    bool connect_to_seed();
+    void connect_to_seed();
 
     template <class Container>
-    bool connect_to_peerlist(const Container& peers);
+    void connect_to_peerlist(const Container& peers);
 
     template <class Container>
     bool parse_peers_and_add_to_container(
@@ -372,8 +386,6 @@ class node_server
     size_t get_incoming_connections_count();
     size_t get_outgoing_connections_count();
 
-    bool check_connection_and_handshake_with_peer(
-            const oxen::quic::Address& na, uint64_t last_seen_stamp);
     bool gray_peerlist_housekeeping();
     bool check_incoming_connections();
 
@@ -429,12 +441,17 @@ class node_server
     std::vector<oxen::quic::Address> m_seed_nodes;
     std::atomic<bool> m_seed_nodes_initialized{false};
     std::shared_mutex m_seed_nodes_mutex;
-    std::atomic_flag m_fallback_seed_nodes_added;
+    // The seed to try next, and how many seeds in a row have failed (so that a full round of
+    // failures is reported once).
+    std::atomic<size_t> m_next_seed{0};
+    std::atomic<size_t> m_seed_failures{0};
     std::vector<nodetool::peerlist_entry> m_command_line_peers;
     uint64_t m_peer_livetime;
-    // keep connections to initiate some interactions
 
-    std::optional<p2p_connection_context> public_connect(oxen::quic::Address const&);
+    // Addresses we have an outgoing connection attempt in flight to, from the start of its connect
+    // until its handshake finishes.
+    std::set<oxen::quic::Address> m_pending_connects;
+    std::mutex m_pending_connects_mutex;
 
     network m_network;
 
