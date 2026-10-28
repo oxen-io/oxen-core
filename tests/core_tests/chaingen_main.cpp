@@ -228,6 +228,7 @@ try {
     GENERATE_AND_PLAY(gen_double_spend_in_different_chains);
     GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_the_same_block);
     GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_different_blocks);
+    GENERATE_AND_PLAY(gen_double_spend_failed_reorg_hooks);
 
     GENERATE_AND_PLAY(gen_multisig_tx_invalid_23_1__no_threshold);
     GENERATE_AND_PLAY(gen_multisig_tx_invalid_45_5_23_no_threshold);
