@@ -33,6 +33,7 @@ oxen_add_library(p2p
   p2p_protocol_defs.cpp
   net_node.cpp
   net_peerlist.cpp
+  transport.cpp
 )
 
 target_link_libraries(p2p

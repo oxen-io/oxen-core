@@ -17,12 +17,14 @@
 #include "frame.h"
 
 struct bufferevent;
+struct bufferevent_rate_limit_group;
 struct evconnlistener;
 
 namespace nodetool::levin {
 
 // The return codes an invoke's callback gets when no response arrived, and that an invoke is
 // answered with when nothing handles it (the values the epee levin implementation uses).
+inline constexpr int32_t ERROR_CONNECTION_NOT_FOUND = -2;
 inline constexpr int32_t ERROR_CONNECTION_DESTROYED = -3;
 inline constexpr int32_t ERROR_TIMEDOUT = -4;
 inline constexpr int32_t ERROR_HANDLER_NOT_DEFINED = -6;
@@ -71,6 +73,12 @@ class connection {
     // Closes the connection if nothing arrives from the peer, or nothing queued gets sent to it,
     // for `timeout`.
     void set_idle_timeout(std::chrono::milliseconds timeout);
+
+    // Makes the connection share the given group's rate limits.
+    void join_rate_limit_group(bufferevent_rate_limit_group* group);
+
+    // Sets the IP type-of-service byte on the connection's packets.
+    void set_tos(int tos);
 
     void notify(uint32_t command, std::span<const unsigned char> body);
 
@@ -148,16 +156,20 @@ void connect(
 // Construct and destroy it on the loop thread.
 class listener {
   public:
-    // Throws if it can't listen on `bind`.
+    // Throws if it can't listen on `bind`.  Without `accepting`, it binds but leaves connections
+    // waiting in the socket's backlog until accept() is called.
     listener(
             oxen::quic::Loop& loop,
             const oxen::quic::Address& bind,
             uint64_t max_body_size,
-            std::function<void(std::shared_ptr<connection>)> on_accept);
+            std::function<void(std::shared_ptr<connection>)> on_accept,
+            bool accepting = true);
     ~listener();
 
     listener(const listener&) = delete;
     listener& operator=(const listener&) = delete;
+
+    void accept();
 
     // The address bound to, with the actual port when bound to port 0.
     const oxen::quic::Address& address() const { return bound_; }
