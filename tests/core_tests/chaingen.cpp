@@ -1188,7 +1188,7 @@ void oxen_chain_generator::block_end(oxen_blockchain_entry &entry, oxen_create_b
           rewards_db_.get(),
           cryptonote::network_type::FAKECHAIN,
           state_history_,
-          {} /*alt_states*/,
+          nullptr /*alt_states*/,
           entry.block,
           entry.txs,
           nullptr,
