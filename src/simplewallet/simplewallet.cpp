@@ -337,7 +337,7 @@ namespace {
         return std::string{trimmed};
     }
 
-    epee::wipeable_string input_secure_line(const std::string& prompt) {
+    crypto::cleared_string input_secure_line(const std::string& prompt) {
         rdln::suspend_readline pause_readline;
         auto pwd_container = tools::password_container::prompt(false, prompt.c_str(), false);
         if (!pwd_container) {
@@ -345,7 +345,7 @@ namespace {
             return "";
         }
 
-        epee::wipeable_string buf = pwd_container->password();
+        crypto::cleared_string buf = pwd_container->password();
 
         buf.trim();
         return buf;
@@ -703,7 +703,7 @@ bool simple_wallet::spendkey(
 
 bool simple_wallet::print_seed(bool encrypted) {
     bool success = false;
-    epee::wipeable_string seed;
+    crypto::cleared_string seed;
     bool ready, multisig;
 
     if (m_wallet->key_on_device()) {
@@ -730,7 +730,7 @@ bool simple_wallet::print_seed(bool encrypted) {
         return true;
     }
 
-    epee::wipeable_string seed_pass;
+    crypto::cleared_string seed_pass;
     if (encrypted) {
         auto pwd_container = password_prompter(
                 tr("Enter optional seed offset passphrase, empty to see raw seed"), true);
@@ -782,7 +782,7 @@ bool simple_wallet::seed_set_language(
         return true;
     }
 
-    epee::wipeable_string password;
+    crypto::cleared_string password;
     {
         SCOPED_WALLET_UNLOCK();
 
@@ -3161,7 +3161,7 @@ bool simple_wallet::ask_wallet_create_if_needed() {
  * \brief Prints the seed with a nice message
  * \param seed seed to print
  */
-void simple_wallet::print_seed(const epee::wipeable_string& seed) {
+void simple_wallet::print_seed(const crypto::cleared_string& seed) {
     success_msg_writer(true) << "\n"
                              << fmt::format(
                                         "NOTE: the following {} can be used to recover access to "
@@ -3198,11 +3198,8 @@ void simple_wallet::print_seed(const epee::wipeable_string& seed) {
     fflush(stdout);
 }
 //----------------------------------------------------------------------------------------------------
-static bool might_be_partial_seed(const epee::wipeable_string& words) {
-    std::vector<epee::wipeable_string> seed;
-
-    words.split(seed);
-    return seed.size() < 24;
+static bool might_be_partial_seed(const crypto::cleared_string& words) {
+    return words.split().size() < 24;
 }
 //----------------------------------------------------------------------------------------------------
 static bool datestr_to_int(
@@ -3225,7 +3222,7 @@ static bool datestr_to_int(
 //----------------------------------------------------------------------------------------------------
 bool simple_wallet::init(const boost::program_options::variables_map& vm) {
     OXEN_DEFER {
-        m_electrum_seed.wipe();
+        m_electrum_seed.clear();
     };
 
     if (auto deprecations = tools::wallet2::has_deprecated_options(vm); !deprecations.empty()) {
@@ -3237,8 +3234,8 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
 
     const auto nettype = command_line::get_network(vm);
 
-    epee::wipeable_string multisig_keys;
-    epee::wipeable_string password;
+    crypto::cleared_string multisig_keys;
+    crypto::cleared_string password;
 
     if (!handle_command_line(vm))
         return false;
@@ -3311,7 +3308,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                     do {
                         const char* prompt = m_electrum_seed.empty() ? "Specify Electrum seed"
                                                                      : "Electrum seed continued";
-                        epee::wipeable_string electrum_seed = input_secure_line(prompt);
+                        crypto::cleared_string electrum_seed = input_secure_line(prompt);
                         if (std::cin.eof())
                             return false;
                         if (electrum_seed.empty()) {
@@ -3345,7 +3342,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                     password_prompter(tr("Enter seed offset passphrase, empty if none"), false);
             if (std::cin.eof() || !pwd_container)
                 return false;
-            epee::wipeable_string seed_pass = pwd_container->password();
+            crypto::cleared_string seed_pass = pwd_container->password();
             if (!seed_pass.empty()) {
                 if (m_restore_multisig_wallet) {
                     crypto::secret_key key;
@@ -3378,7 +3375,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             }
 
             // parse view secret key
-            epee::wipeable_string viewkey_string = input_secure_line("Secret view key");
+            crypto::cleared_string viewkey_string = input_secure_line("Secret view key");
             if (std::cin.eof())
                 return false;
             if (viewkey_string.empty()) {
@@ -3414,7 +3411,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
         } else if (!m_generate_from_spend_key.empty()) {
             m_wallet_file = m_generate_from_spend_key;
             // parse spend secret key
-            epee::wipeable_string spendkey_string = input_secure_line("Secret spend key");
+            crypto::cleared_string spendkey_string = input_secure_line("Secret spend key");
             if (std::cin.eof())
                 return false;
             if (spendkey_string.empty()) {
@@ -3453,7 +3450,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             }
 
             // parse spend secret key
-            epee::wipeable_string spendkey_string = input_secure_line("Secret spend key");
+            crypto::cleared_string spendkey_string = input_secure_line("Secret spend key");
             if (std::cin.eof())
                 return false;
             if (spendkey_string.empty()) {
@@ -3467,7 +3464,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             }
 
             // parse view secret key
-            epee::wipeable_string viewkey_string = input_secure_line("Secret view key");
+            crypto::cleared_string viewkey_string = input_secure_line("Secret view key");
             if (std::cin.eof())
                 return false;
             if (viewkey_string.empty()) {
@@ -3558,7 +3555,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             }
 
             // parse secret view key
-            epee::wipeable_string viewkey_string = input_secure_line("Secret view key");
+            crypto::cleared_string viewkey_string = input_secure_line("Secret view key");
             if (std::cin.eof())
                 return false;
             if (viewkey_string.empty()) {
@@ -3587,7 +3584,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             // parsing N/N
             if (multisig_m == multisig_n) {
                 std::vector<crypto::secret_key> multisig_secret_spendkeys(multisig_n);
-                epee::wipeable_string spendkey_string;
+                crypto::cleared_string spendkey_string;
                 std::string spendkey_data;
                 // get N secret spend keys from user
                 for (unsigned int i = 0; i < multisig_n; ++i) {
@@ -3670,7 +3667,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
                 return false;
             }
             m_wallet_file = m_generate_new;
-            std::optional<epee::wipeable_string> r;
+            std::optional<crypto::cleared_string> r;
             if (m_restore_multisig_wallet)
                 r = new_wallet(vm, multisig_keys, old_language);
             else
@@ -3976,7 +3973,7 @@ std::optional<tools::password_container> simple_wallet::get_and_verify_password(
     return pwd_container;
 }
 //----------------------------------------------------------------------------------------------------
-std::optional<epee::wipeable_string> simple_wallet::new_wallet(
+std::optional<crypto::cleared_string> simple_wallet::new_wallet(
         const boost::program_options::variables_map& vm,
         const crypto::secret_key& recovery_key,
         bool recover,
@@ -3993,7 +3990,7 @@ std::optional<epee::wipeable_string> simple_wallet::new_wallet(
     if (!m_wallet) {
         return {};
     }
-    epee::wipeable_string password = rc.second.password();
+    crypto::cleared_string password = rc.second.password();
 
     if (!m_subaddress_lookahead.empty()) {
         auto lookahead = parse_subaddress_lookahead(m_subaddress_lookahead);
@@ -4063,7 +4060,7 @@ std::optional<epee::wipeable_string> simple_wallet::new_wallet(
     }
 
     // convert rng value to electrum-style word list
-    epee::wipeable_string electrum_words;
+    crypto::cleared_string electrum_words;
 
     crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language);
 
@@ -4090,7 +4087,7 @@ std::optional<epee::wipeable_string> simple_wallet::new_wallet(
     return password;
 }
 //----------------------------------------------------------------------------------------------------
-std::optional<epee::wipeable_string> simple_wallet::new_wallet(
+std::optional<crypto::cleared_string> simple_wallet::new_wallet(
         const boost::program_options::variables_map& vm,
         const cryptonote::account_public_address& address,
         const std::optional<crypto::secret_key>& spendkey,
@@ -4106,7 +4103,7 @@ std::optional<epee::wipeable_string> simple_wallet::new_wallet(
     if (!m_wallet) {
         return {};
     }
-    epee::wipeable_string password = rc.second.password();
+    crypto::cleared_string password = rc.second.password();
 
     if (!m_subaddress_lookahead.empty()) {
         auto lookahead = parse_subaddress_lookahead(m_subaddress_lookahead);
@@ -4148,7 +4145,7 @@ std::optional<epee::wipeable_string> simple_wallet::new_wallet(
 }
 
 //----------------------------------------------------------------------------------------------------
-std::optional<epee::wipeable_string> simple_wallet::new_device_wallet(
+std::optional<crypto::cleared_string> simple_wallet::new_device_wallet(
         const boost::program_options::variables_map& vm) {
     std::pair<std::unique_ptr<tools::wallet2>, tools::password_container> rc;
     try {
@@ -4162,7 +4159,7 @@ std::optional<epee::wipeable_string> simple_wallet::new_device_wallet(
     if (!m_wallet) {
         return {};
     }
-    epee::wipeable_string password = rc.second.password();
+    crypto::cleared_string password = rc.second.password();
 
     if (!m_subaddress_lookahead.empty()) {
         auto lookahead = parse_subaddress_lookahead(m_subaddress_lookahead);
@@ -4203,9 +4200,9 @@ std::optional<epee::wipeable_string> simple_wallet::new_device_wallet(
     return password;
 }
 //----------------------------------------------------------------------------------------------------
-std::optional<epee::wipeable_string> simple_wallet::new_wallet(
+std::optional<crypto::cleared_string> simple_wallet::new_wallet(
         const boost::program_options::variables_map& vm,
-        const epee::wipeable_string& multisig_keys,
+        const crypto::cleared_string& multisig_keys,
         const std::string& old_language) {
     std::pair<std::unique_ptr<tools::wallet2>, tools::password_container> rc;
     try {
@@ -4218,7 +4215,7 @@ std::optional<epee::wipeable_string> simple_wallet::new_wallet(
     if (!m_wallet) {
         return {};
     }
-    epee::wipeable_string password = rc.second.password();
+    crypto::cleared_string password = rc.second.password();
 
     if (!m_subaddress_lookahead.empty()) {
         auto lookahead = parse_subaddress_lookahead(m_subaddress_lookahead);
@@ -4262,7 +4259,7 @@ std::optional<epee::wipeable_string> simple_wallet::new_wallet(
     return password;
 }
 //----------------------------------------------------------------------------------------------------
-std::optional<epee::wipeable_string> simple_wallet::open_wallet(
+std::optional<crypto::cleared_string> simple_wallet::open_wallet(
         const boost::program_options::variables_map& vm) {
     if (m_wallet_file.empty()) {
         fail_msg_writer() << tr("no wallet file provided");
@@ -4278,7 +4275,7 @@ std::optional<epee::wipeable_string> simple_wallet::open_wallet(
         return {};
     }
 
-    epee::wipeable_string password;
+    crypto::cleared_string password;
     try {
         auto rc = tools::wallet2::make_from_file(vm, false, "", password_prompter);
         m_wallet = std::move(rc.first);
@@ -4329,7 +4326,7 @@ std::optional<epee::wipeable_string> simple_wallet::open_wallet(
                 m_wallet->rewrite(m_wallet_file, password);
 
                 // Display the seed
-                epee::wipeable_string seed;
+                crypto::cleared_string seed;
                 m_wallet->get_seed(seed);
                 print_seed(seed);
             } else {
@@ -4708,7 +4705,7 @@ void simple_wallet::on_skip_transaction(
         return;
 }
 //----------------------------------------------------------------------------------------------------
-std::optional<epee::wipeable_string> simple_wallet::on_get_password(const char* reason) {
+std::optional<crypto::cleared_string> simple_wallet::on_get_password(const char* reason) {
     if (m_locked)
         return std::nullopt;
     // can't ask for password from a background thread
@@ -4742,7 +4739,7 @@ void simple_wallet::on_device_button_request(uint64_t code) {
     message_writer(fmt::terminal_color::white) << tr("Device requires attention");
 }
 //----------------------------------------------------------------------------------------------------
-std::optional<epee::wipeable_string> simple_wallet::on_device_pin_request() {
+std::optional<crypto::cleared_string> simple_wallet::on_device_pin_request() {
     rdln::suspend_readline pause_readline;
     std::string msg = tr("Enter device PIN");
     auto pwd_container = tools::password_container::prompt(false, msg.c_str());
@@ -4751,7 +4748,7 @@ std::optional<epee::wipeable_string> simple_wallet::on_device_pin_request() {
     return pwd_container->password();
 }
 //----------------------------------------------------------------------------------------------------
-std::optional<epee::wipeable_string> simple_wallet::on_device_passphrase_request(bool& on_device) {
+std::optional<crypto::cleared_string> simple_wallet::on_device_passphrase_request(bool& on_device) {
     if (on_device) {
         std::string accepted =
                 input_line(tr("Device asks for passphrase. Do you want to enter the passphrase on "

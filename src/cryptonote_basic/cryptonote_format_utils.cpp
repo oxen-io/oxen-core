@@ -41,6 +41,7 @@
 #include <variant>
 
 #include "common/tracy_shim.h"
+#include "crypto/cleared_string.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/verification_context.h"
@@ -48,7 +49,6 @@
 #include "cryptonote_core/oxen_name_system.h"
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_core/service_node_voting.h"
-#include "epee/wipeable_string.h"
 #include "l2_tracker/events.h"
 #include "ringct/rctSigs.h"
 #include "serialization/binary_utils.h"
@@ -1786,13 +1786,13 @@ crypto::hash get_tx_tree_hash(const block& b) {
     return get_tx_tree_hash(txs_ids);
 }
 //---------------------------------------------------------------
-crypto::secret_key encrypt_key(crypto::secret_key key, const epee::wipeable_string& passphrase) {
+crypto::secret_key encrypt_key(crypto::secret_key key, const crypto::cleared_string& passphrase) {
     const auto hash = crypto::cn_heavy_v1(passphrase.view());
     sc_add(key.data(), key.data(), hash.data());
     return key;
 }
 //---------------------------------------------------------------
-crypto::secret_key decrypt_key(crypto::secret_key key, const epee::wipeable_string& passphrase) {
+crypto::secret_key decrypt_key(crypto::secret_key key, const crypto::cleared_string& passphrase) {
     const auto hash = crypto::cn_heavy_v1(passphrase.view());
     sc_sub(key.data(), key.data(), hash.data());
     return key;

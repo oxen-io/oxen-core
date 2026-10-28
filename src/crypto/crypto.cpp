@@ -45,7 +45,7 @@
 #include <stdexcept>
 
 #include "common/varint.h"
-#include "epee/wipeable_string.h"
+#include "crypto/cleared_string.h"
 extern "C" {
 #include "crypto-ops.h"
 #include "keccak.h"
@@ -754,7 +754,7 @@ bool check_key_image_signature(
 }
 
 secret_key ed25519_to_monero_secret_key(const ed25519_secret_key& skey) {
-    epee::wipeable_string privkey_signhash;
+    crypto::cleared_string privkey_signhash;
     privkey_signhash.resize(crypto_hash_sha512_BYTES);
     unsigned char* pk_sh_data = reinterpret_cast<unsigned char*>(privkey_signhash.data());
     crypto_hash_sha512(pk_sh_data, skey.data(), 32 /* first 32 bytes are the seed to be SHA512 hashed (the last 32 are just the pubkey) */);

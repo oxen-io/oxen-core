@@ -1,21 +1,21 @@
 // Copyright (c) 2018, The Monero Project
-// 
+//
 // All rights reserved.
-// 
+//
 // Redistribution and use in source and binary forms, with or without modification, are
 // permitted provided that the following conditions are met:
-// 
+//
 // 1. Redistributions of source code must retain the above copyright notice, this list of
 //    conditions and the following disclaimer.
-// 
+//
 // 2. Redistributions in binary form must reproduce the above copyright notice, this list
 //    of conditions and the following disclaimer in the documentation and/or other
 //    materials provided with the distribution.
-// 
+//
 // 3. Neither the name of the copyright holder nor the names of its contributors may be
 //    used to endorse or promote products derived from this software without specific
 //    prior written permission.
-// 
+//
 // THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY
 // EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
 // MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL
@@ -30,121 +30,112 @@
 #include <optional>
 #include "gtest/gtest.h"
 
-#include "epee/wipeable_string.h"
+#include "crypto/cleared_string.h"
 
-TEST(wipeable_string, ctor)
+using crypto::cleared_string;
+
+TEST(cleared_string, ctor)
 {
-  epee::wipeable_string s0;
+  cleared_string s0;
   ASSERT_EQ(s0.size(), 0);
 
-  epee::wipeable_string s1(std::string("foo"));
+  cleared_string s1(std::string("foo"));
   ASSERT_EQ(s1.size(), 3);
   ASSERT_TRUE(!memcmp(s1.data(), "foo", s1.size()));
 
-  epee::wipeable_string s2(std::string("bar"));
-  ASSERT_EQ(s2.size(), 3);
-  ASSERT_TRUE(!memcmp(s2.data(), "bar", s2.size()));
-
-  epee::wipeable_string s3(std::string("quux"));
-  ASSERT_EQ(s3.size(), 4);
-  ASSERT_TRUE(!memcmp(s3.data(), "quux", s3.size()));
+  std::string moved = "quux";
+  cleared_string s2(std::move(moved));
+  ASSERT_EQ(s2.view(), "quux");
 }
 
-TEST(wipeable_string, wipe)
+TEST(cleared_string, shrinking_zeroes)
 {
-  epee::wipeable_string s0(std::string("foo"));
-  ASSERT_EQ(s0.size(), 3);
-  s0.wipe();
-  ASSERT_EQ(s0.size(), 3);
-  ASSERT_TRUE(!memcmp(s0.data(), "\0\0\0", 3));
+  cleared_string s0(std::string("foo"));
+  const char* p = s0.data();
+  s0.resize(1);
+  ASSERT_EQ(s0.view(), "f");
+  // Still in the buffer's capacity, which shrinking doesn't release
+  ASSERT_EQ(p, s0.data());
+  ASSERT_TRUE(!memcmp(p + 1, "\0\0", 2));
 }
 
-TEST(wipeable_string, clear)
+TEST(cleared_string, clear)
 {
-  epee::wipeable_string s0(std::string("foo"));
+  cleared_string s0(std::string("foo"));
   ASSERT_EQ(s0.size(), 3);
   s0.clear();
   ASSERT_EQ(s0.size(), 0);
 }
 
-TEST(wipeable_string, push_back)
+TEST(cleared_string, push_back)
 {
-  epee::wipeable_string s0(std::string("fo"));
+  cleared_string s0(std::string("fo"));
   ASSERT_EQ(s0.size(), 2);
   s0.push_back('o');
   ASSERT_EQ(s0.size(), 3);
   ASSERT_TRUE(!memcmp(s0.data(), "foo", s0.size()));
 }
 
-TEST(wipeable_string, append_char)
+TEST(cleared_string, append_char)
 {
-  epee::wipeable_string s0(std::string("fo"));
+  cleared_string s0(std::string("fo"));
   ASSERT_EQ(s0.size(), 2);
   s0 += 'o';
   ASSERT_EQ(s0.size(), 3);
   ASSERT_TRUE(!memcmp(s0.data(), "foo", s0.size()));
 }
 
-TEST(wipeable_string, append_string)
+TEST(cleared_string, append_string)
 {
-  epee::wipeable_string s0(std::string("foo"));
+  cleared_string s0(std::string("foo"));
   ASSERT_EQ(s0.size(), 3);
   s0 += "bar";
   ASSERT_EQ(s0.size(), 6);
   ASSERT_TRUE(!memcmp(s0.data(), "foobar", s0.size()));
 }
 
-TEST(wipeable_string, empty)
+TEST(cleared_string, empty)
 {
-  epee::wipeable_string s0;
+  cleared_string s0;
   ASSERT_TRUE(s0.empty());
   s0.push_back(' ');
   ASSERT_FALSE(s0.empty());
   ASSERT_EQ(s0.pop_back(), ' ');
   ASSERT_TRUE(s0.empty());
+  ASSERT_THROW(s0.pop_back(), std::runtime_error);
 }
 
-TEST(wipeable_string, pop_back)
+TEST(cleared_string, pop_back)
 {
-  epee::wipeable_string s = "test";
+  cleared_string s = "test";
   ASSERT_EQ(s.size(), 4);
   ASSERT_EQ(s.pop_back(), 't');
   ASSERT_EQ(s.size(), 3);
   ASSERT_TRUE(!memcmp(s.data(), "tes", s.size()));
 }
 
-TEST(wipeable_string, equal)
+TEST(cleared_string, equal)
 {
-  epee::wipeable_string s0 = "foo";
-  epee::wipeable_string s1 = "bar";
-  epee::wipeable_string s0_2 = "foo";
+  cleared_string s0 = "foo";
+  cleared_string s1 = "bar";
+  cleared_string s0_2 = "foo";
   ASSERT_TRUE(s0 == s0);
   ASSERT_TRUE(s0 == s0_2);
   ASSERT_TRUE(s1 == s1);
   ASSERT_FALSE(s1 == s0);
   ASSERT_FALSE(s1 == s0_2);
-}
-
-TEST(wipeable_string, not_equal)
-{
-  epee::wipeable_string s0 = "foo";
-  epee::wipeable_string s1 = "bar";
-  epee::wipeable_string s0_2 = "foo";
-  ASSERT_FALSE(s0 != s0);
   ASSERT_FALSE(s0 != s0_2);
-  ASSERT_FALSE(s1 != s1);
   ASSERT_TRUE(s1 != s0);
-  ASSERT_TRUE(s1 != s0_2);
 }
 
-static epee::wipeable_string trimmed(const char *s)
+static cleared_string trimmed(const char *s)
 {
-  epee::wipeable_string str(s);
+  cleared_string str(s);
   str.trim();
   return str;
 }
 
-TEST(wipeable_string, trim)
+TEST(cleared_string, trim)
 {
   ASSERT_TRUE(trimmed("") == "");
   ASSERT_TRUE(trimmed(" ") == "");
@@ -161,15 +152,12 @@ TEST(wipeable_string, trim)
   ASSERT_TRUE(trimmed("  a  b  ") == "a  b");
 }
 
-static bool check_split(const char *s, const std::vector<epee::wipeable_string> &v)
+static bool check_split(const char *s, const std::vector<cleared_string> &v)
 {
-  epee::wipeable_string str(s);
-  std::vector<epee::wipeable_string> fields;
-  str.split(fields);
-  return v == fields;
+  return cleared_string{s}.split() == v;
 }
 
-TEST(wipeable_string, split)
+TEST(cleared_string, split)
 {
   ASSERT_TRUE(check_split("", {}));
   ASSERT_TRUE(check_split("foo", {"foo"}));
@@ -183,22 +171,34 @@ TEST(wipeable_string, split)
   ASSERT_TRUE(check_split("\tfoo\n bar\r\nbaz", {"foo", "bar", "baz"}));
 }
 
-TEST(wipeable_string, parse_hexstr)
+TEST(cleared_string, parse_hexstr)
 {
-  std::optional<epee::wipeable_string> s;
+  std::optional<cleared_string> s;
 
-  ASSERT_EQ(std::nullopt, epee::wipeable_string("x").parse_hexstr());
-  ASSERT_EQ(std::nullopt, epee::wipeable_string("x0000000000000000").parse_hexstr());
-  ASSERT_EQ(std::nullopt, epee::wipeable_string("0000000000000000x").parse_hexstr());
-  ASSERT_EQ(std::nullopt, epee::wipeable_string("0").parse_hexstr());
-  ASSERT_EQ(std::nullopt, epee::wipeable_string("000").parse_hexstr());
+  ASSERT_EQ(std::nullopt, cleared_string("x").parse_hexstr());
+  ASSERT_EQ(std::nullopt, cleared_string("x0000000000000000").parse_hexstr());
+  ASSERT_EQ(std::nullopt, cleared_string("0000000000000000x").parse_hexstr());
+  ASSERT_EQ(std::nullopt, cleared_string("0").parse_hexstr());
+  ASSERT_EQ(std::nullopt, cleared_string("000").parse_hexstr());
 
-  ASSERT_TRUE((s = epee::wipeable_string("").parse_hexstr()) != std::nullopt);
+  ASSERT_TRUE((s = cleared_string("").parse_hexstr()) != std::nullopt);
   ASSERT_EQ(*s, "");
-  ASSERT_TRUE((s = epee::wipeable_string("00").parse_hexstr()) != std::nullopt);
-  ASSERT_EQ(*s, epee::wipeable_string("", 1));
-  ASSERT_TRUE((s = epee::wipeable_string("41").parse_hexstr()) != std::nullopt);
-  ASSERT_EQ(*s, epee::wipeable_string("A"));
-  ASSERT_TRUE((s = epee::wipeable_string("414243").parse_hexstr()) != std::nullopt);
-  ASSERT_EQ(*s, epee::wipeable_string("ABC"));
+  ASSERT_TRUE((s = cleared_string("00").parse_hexstr()) != std::nullopt);
+  ASSERT_EQ(*s, cleared_string("", 1));
+  ASSERT_TRUE((s = cleared_string("41").parse_hexstr()) != std::nullopt);
+  ASSERT_EQ(*s, cleared_string("A"));
+  ASSERT_TRUE((s = cleared_string("414243").parse_hexstr()) != std::nullopt);
+  ASSERT_EQ(*s, cleared_string("ABC"));
+  ASSERT_TRUE((s = cleared_string("4a4B").parse_hexstr()) != std::nullopt);
+  ASSERT_EQ(*s, cleared_string("JK"));
+}
+
+TEST(cleared_string, hex_to_pod)
+{
+  uint32_t x = 7;
+  ASSERT_FALSE(cleared_string("0102").hex_to_pod(x));
+  ASSERT_FALSE(cleared_string("0102030x").hex_to_pod(x));
+  ASSERT_EQ(x, 7);
+  ASSERT_TRUE(cleared_string("01020304").hex_to_pod(x));
+  ASSERT_TRUE(!memcmp(&x, "\x01\x02\x03\x04", 4));
 }

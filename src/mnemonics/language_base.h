@@ -39,7 +39,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "epee/wipeable_string.h"
+#include "crypto/cleared_string.h"
 #include "logging/oxen_logger.h"
 
 /*!
@@ -141,15 +141,15 @@ inline T utf8canonical(const T& s) {
 }
 
 struct WordHash {
-    std::size_t operator()(const epee::wipeable_string& s) const {
-        return std::hash<epee::wipeable_string>{}(utf8canonical(s));
+    std::size_t operator()(const crypto::cleared_string& s) const {
+        return std::hash<crypto::cleared_string>{}(utf8canonical(s));
     }
 };
 
 struct WordEqual {
-    bool operator()(const epee::wipeable_string& s0, const epee::wipeable_string& s1) const {
-        const epee::wipeable_string s0c = utf8canonical(s0);
-        const epee::wipeable_string s1c = utf8canonical(s1);
+    bool operator()(const crypto::cleared_string& s0, const crypto::cleared_string& s1) const {
+        const crypto::cleared_string s0c = utf8canonical(s0);
+        const crypto::cleared_string s1c = utf8canonical(s1);
         return s0c == s1c;
     }
 };
@@ -167,9 +167,9 @@ class Base {
     };
     enum { NWORDS = 1626 };
     std::vector<std::string> word_list; /*!< A pointer to the array of words */
-    std::unordered_map<epee::wipeable_string, uint32_t, WordHash, WordEqual>
+    std::unordered_map<crypto::cleared_string, uint32_t, WordHash, WordEqual>
             word_map; /*!< hash table to find word's index */
-    std::unordered_map<epee::wipeable_string, uint32_t, WordHash, WordEqual>
+    std::unordered_map<crypto::cleared_string, uint32_t, WordHash, WordEqual>
             trimmed_word_map;          /*!< hash table to find word's trimmed index */
     std::string language_name;         /*!< Name of language */
     std::string english_language_name; /*!< Name of language */
@@ -197,7 +197,7 @@ class Base {
                     throw std::runtime_error(
                             "Too short word in " + language_name + " word list: " + *it);
             }
-            epee::wipeable_string trimmed;
+            crypto::cleared_string trimmed;
             if (it->length() > unique_prefix_length) {
                 trimmed = utf8prefix(*it, unique_prefix_length);
             } else {
@@ -243,7 +243,7 @@ class Base {
      * \brief Returns a pointer to the word map.
      * \return A pointer to the word map.
      */
-    const std::unordered_map<epee::wipeable_string, uint32_t, WordHash, WordEqual>& get_word_map()
+    const std::unordered_map<crypto::cleared_string, uint32_t, WordHash, WordEqual>& get_word_map()
             const {
         return word_map;
     }
@@ -251,7 +251,7 @@ class Base {
      * \brief Returns a pointer to the trimmed word map.
      * \return A pointer to the trimmed word map.
      */
-    const std::unordered_map<epee::wipeable_string, uint32_t, WordHash, WordEqual>&
+    const std::unordered_map<crypto::cleared_string, uint32_t, WordHash, WordEqual>&
     get_trimmed_word_map() const {
         return trimmed_word_map;
     }

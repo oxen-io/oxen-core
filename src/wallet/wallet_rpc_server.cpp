@@ -45,6 +45,7 @@
 #include "common/guts.h"
 #include "common/i18n.h"
 #include "common/signal_handler.h"
+#include "crypto/cleared_string.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
@@ -53,7 +54,6 @@
 #include "cryptonote_core/oxen_name_system.h"
 #include "daemonizer/daemonizer.h"
 #include "epee/storages/portable_storage.h"
-#include "epee/wipeable_string.h"
 #include "kv_json.h"
 #include "mnemonics/electrum-words.h"
 #include "multisig/multisig.h"
@@ -1815,7 +1815,7 @@ QUERY_KEY::response wallet_rpc_server::invoke(QUERY_KEY::request&& req) {
     QUERY_KEY::response res{};
 
     if (req.key_type == "mnemonic") {
-        epee::wipeable_string seed;
+        crypto::cleared_string seed;
         bool ready;
         if (m_wallet->multisig(&ready)) {
             if (!ready)
@@ -2688,8 +2688,8 @@ GENERATE_FROM_KEYS::response wallet_rpc_server::invoke(GENERATE_FROM_KEYS::reque
     if (!get_account_address_from_str(info, wal->nettype(), req.address))
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to parse public address"};
 
-    epee::wipeable_string password = rc.second.password();
-    epee::wipeable_string viewkey_string = req.viewkey;
+    crypto::cleared_string password = rc.second.password();
+    crypto::cleared_string viewkey_string = req.viewkey;
     crypto::secret_key viewkey;
     if (!tools::try_load_from_hex_guts(viewkey_string.view(), viewkey))
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to parse view key secret key"};
@@ -2698,7 +2698,7 @@ GENERATE_FROM_KEYS::response wallet_rpc_server::invoke(GENERATE_FROM_KEYS::reque
 
     {
         if (!req.spendkey.empty()) {
-            epee::wipeable_string spendkey_string = req.spendkey;
+            crypto::cleared_string spendkey_string = req.spendkey;
             crypto::secret_key spendkey;
             if (!tools::try_load_from_hex_guts(spendkey_string.view(), spendkey))
                 throw wallet_rpc_error{
@@ -2771,7 +2771,7 @@ RESTORE_DETERMINISTIC_WALLET::response wallet_rpc_server::invoke(
     if (!wal)
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to create wallet"};
 
-    epee::wipeable_string password = rc.second.password();
+    crypto::cleared_string password = rc.second.password();
 
     bool was_deprecated_wallet =
             ((old_language == crypto::ElectrumWords::old_language_name) ||
@@ -2811,7 +2811,7 @@ RESTORE_DETERMINISTIC_WALLET::response wallet_rpc_server::invoke(
     log::info(logcat, "Wallet has been restored.\n");
 
     // // Convert the secret key back to seed
-    epee::wipeable_string electrum_words;
+    crypto::cleared_string electrum_words;
     if (!crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language))
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to encode seed"};
     res.seed = std::string(electrum_words.data(), electrum_words.size());

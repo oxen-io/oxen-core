@@ -261,23 +261,23 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback {
     }
 
     EXPORT
-    std::optional<epee::wipeable_string> on_device_pin_request() override {
+    std::optional<crypto::cleared_string> on_device_pin_request() override {
         if (m_listener) {
             auto pin = m_listener->onDevicePinRequest();
             if (pin) {
-                return std::make_optional(epee::wipeable_string(pin->data(), pin->size()));
+                return std::make_optional(crypto::cleared_string(pin->data(), pin->size()));
             }
         }
         return std::nullopt;
     }
 
     EXPORT
-    std::optional<epee::wipeable_string> on_device_passphrase_request(bool& on_device) override {
+    std::optional<crypto::cleared_string> on_device_passphrase_request(bool& on_device) override {
         if (m_listener) {
             auto passphrase = m_listener->onDevicePassphraseRequest(on_device);
             if (passphrase) {
                 return std::make_optional(
-                        epee::wipeable_string(passphrase->data(), passphrase->size()));
+                        crypto::cleared_string(passphrase->data(), passphrase->size()));
             }
         } else {
             on_device = true;
@@ -832,7 +832,7 @@ bool WalletImpl::close(bool store) {
 
 EXPORT
 std::string WalletImpl::seed() const {
-    epee::wipeable_string seed;
+    crypto::cleared_string seed;
     if (m_wallet_ptr)
         wallet()->get_seed(seed);
     return std::string(seed.data(), seed.size());  // TODO
@@ -876,7 +876,8 @@ EXPORT
 bool WalletImpl::setDevicePin(const std::string& pin) {
     clearStatus();
     try {
-        wallet()->get_account().get_device().set_pin(epee::wipeable_string(pin.data(), pin.size()));
+        wallet()->get_account().get_device().set_pin(
+                crypto::cleared_string(pin.data(), pin.size()));
     } catch (const std::exception& e) {
         setStatusError(e.what());
     }
@@ -888,7 +889,7 @@ bool WalletImpl::setDevicePassphrase(const std::string& passphrase) {
     clearStatus();
     try {
         wallet()->get_account().get_device().set_passphrase(
-                epee::wipeable_string(passphrase.data(), passphrase.size()));
+                crypto::cleared_string(passphrase.data(), passphrase.size()));
     } catch (const std::exception& e) {
         setStatusError(e.what());
     }
@@ -1340,7 +1341,7 @@ std::string WalletImpl::makeMultisig(const std::vector<std::string>& info, uint3
         if (w->multisig())
             throw std::runtime_error("Wallet is already multisig");
 
-        return w->make_multisig(epee::wipeable_string(m_password), info, threshold);
+        return w->make_multisig(crypto::cleared_string(m_password), info, threshold);
     } catch (const std::exception& e) {
         log::error(logcat, "Error on making multisig wallet: {}", e.what());
         setStatusError(std::string("Failed to make multisig: ") + e.what());
@@ -1356,7 +1357,7 @@ std::string WalletImpl::exchangeMultisigKeys(const std::vector<std::string>& inf
         auto w = wallet();
         checkMultisigWalletNotReady(w);
 
-        return w->exchange_multisig_keys(epee::wipeable_string(m_password), info);
+        return w->exchange_multisig_keys(crypto::cleared_string(m_password), info);
     } catch (const std::exception& e) {
         log::error(logcat, "Error on exchanging multisig keys: {}", e.what());
         setStatusError(std::string("Failed to make multisig: ") + e.what());
@@ -1372,7 +1373,7 @@ bool WalletImpl::finalizeMultisig(const std::vector<std::string>& extraMultisigI
         auto w = wallet();
         checkMultisigWalletNotReady(w);
 
-        if (w->finalize_multisig(epee::wipeable_string(m_password), extraMultisigInfo)) {
+        if (w->finalize_multisig(crypto::cleared_string(m_password), extraMultisigInfo)) {
             return true;
         }
 
