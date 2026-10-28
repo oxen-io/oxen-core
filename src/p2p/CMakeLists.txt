@@ -28,6 +28,7 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 oxen_add_library(p2p
+  levin/frame.cpp
   p2p_protocol_defs.cpp
   net_node.cpp
   net_peerlist.cpp

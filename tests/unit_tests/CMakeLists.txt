@@ -51,6 +51,7 @@ add_executable(unit_tests
   keccak.cpp
   kv_json.cpp
   levin.cpp
+  levin_frame.cpp
   logging.cpp
   oxen_name_system.cpp
   main.cpp
