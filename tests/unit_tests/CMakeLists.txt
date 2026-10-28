@@ -41,8 +41,6 @@ add_executable(unit_tests
   command_line.cpp
   crypto.cpp
   device.cpp
-  epee_boosted_tcp_server.cpp
-  epee_levin_protocol_handler_async.cpp
   epee_utils.cpp
   expect.cpp
   hashchain.cpp
@@ -53,7 +51,6 @@ add_executable(unit_tests
   levin.cpp
   levin_connection.cpp
   levin_frame.cpp
-  levin_interop.cpp
   logging.cpp
   oxen_name_system.cpp
   main.cpp

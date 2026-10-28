@@ -118,19 +118,6 @@ set_property(TARGET base58_fuzz_tests
   PROPERTY
     FOLDER "tests")
 
-add_executable(levin_fuzz_tests levin.cpp fuzzer.cpp)
-target_link_libraries(levin_fuzz_tests
-  PRIVATE
-    common
-    epee
-    Boost::thread
-    Boost::program_options
-    logging
-    extra)
-set_property(TARGET levin_fuzz_tests
-  PROPERTY
-    FOLDER "tests")
-
 add_executable(levin_frame_fuzz_tests levin_frame.cpp fuzzer.cpp)
 target_link_libraries(levin_frame_fuzz_tests
   PRIVATE

@@ -27,12 +27,7 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 oxen_add_library(epee
-    buffer.cpp
-    connection_basic.cpp
-    levin_base.cpp
     net_utils_base.cpp
-    network_throttle.cpp
-    network_throttle-detail.cpp
     portable_storage.cpp
     wipeable_string.cpp
 )
@@ -59,7 +54,6 @@ target_link_libraries(epee
     oxenc::oxenc
     oxen::quic-utils
   PRIVATE
-    Boost::thread
     oxen::logging
     sessiondep::libsodium
     extra)

@@ -27,35 +27,9 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <gtest/gtest.h>
-#include <limits>
 
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
-#include "epee/net/levin_base.h"
 #include "epee/storages/portable_storage_template_helper.h"
-
-TEST(make_header, no_expect_return)
-{
-    static constexpr const std::size_t max_length = std::numeric_limits<std::size_t>::max();
-
-    const epee::levin::bucket_head2 header1 = epee::levin::make_header(1024, max_length, 5601, false);
-    EXPECT_EQ(LEVIN_SIGNATURE, header1.m_signature);
-    EXPECT_FALSE(header1.m_have_to_return_data);
-    EXPECT_EQ(max_length, header1.m_cb);
-    EXPECT_EQ(1024u, header1.m_command);
-    EXPECT_EQ(LEVIN_PROTOCOL_VER_1, header1.m_protocol_version);
-    EXPECT_EQ(5601u, header1.m_flags);
-}
-
-TEST(make_header, expect_return)
-{
-    const epee::levin::bucket_head2 header1 = epee::levin::make_header(65535, 0, 0, true);
-    EXPECT_EQ(LEVIN_SIGNATURE, header1.m_signature);
-    EXPECT_TRUE(header1.m_have_to_return_data);
-    EXPECT_EQ(0u, header1.m_cb);
-    EXPECT_EQ(65535u, header1.m_command);
-    EXPECT_EQ(LEVIN_PROTOCOL_VER_1, header1.m_protocol_version);
-    EXPECT_EQ(0u, header1.m_flags);
-}
 
 TEST(serialize_tx_notify, unpadded)
 {

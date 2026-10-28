@@ -39,7 +39,6 @@
 #include "epee/shared_sv.h"
 #include "crypto/crypto.h"
 #include "epee/net/net_utils_base.h"
-#include "epee/net/buffer.h"
 #include "net/address.h"
 
 namespace
@@ -184,71 +183,4 @@ TEST(NetUtils, PrivateRanges)
   ASSERT_EQ(is_local("1.0.168.192"), false);
   ASSERT_EQ(is_local("1.0.16.172"), false);
   ASSERT_EQ(is_local("1.0.0.127"), false);
-}
-
-TEST(net_buffer, basic)
-{
-  epee::net_utils::buffer buf;
-
-  ASSERT_EQ(buf.size(), 0);
-  EXPECT_THROW(buf.span(1), std::runtime_error);
-  buf.append("a", 1);
-  std::span<const uint8_t> span =buf.span(1);
-  ASSERT_EQ(span.size(), 1);
-  ASSERT_EQ(span.data()[0], 'a');
-  EXPECT_THROW(buf.span(2), std::runtime_error);
-  buf.append("bc", 2);
-  buf.erase(1);
-  EXPECT_THROW(buf.span(3), std::runtime_error);
-  span = buf.span(2);
-  ASSERT_EQ(span.size(), 2);
-  ASSERT_EQ(span.data()[0], 'b');
-  ASSERT_EQ(span.data()[1], 'c');
-  buf.erase(1);
-  EXPECT_THROW(buf.span(2), std::runtime_error);
-  span = buf.span(1);
-  ASSERT_EQ(span.size(), 1);
-  ASSERT_EQ(span.data()[0], 'c');
-  EXPECT_THROW(buf.erase(2), std::runtime_error);
-  buf.erase(1);
-  EXPECT_EQ(buf.size(), 0);
-  EXPECT_THROW(buf.span(1), std::runtime_error);
-}
-
-TEST(net_buffer, existing_capacity)
-{
-  epee::net_utils::buffer buf;
-
-  buf.append("123456789", 9);
-  buf.erase(9);
-  buf.append("abc", 3);
-  buf.append("def", 3);
-  ASSERT_EQ(buf.size(), 6);
-  std::span<const uint8_t> span =buf.span(6);
-  ASSERT_TRUE(!memcmp(span.data(), "abcdef", 6));
-}
-
-TEST(net_buffer, reallocate)
-{
-  epee::net_utils::buffer buf;
-
-  buf.append(std::string(4000, ' ').c_str(), 4000);
-  buf.append(std::string(8000, '0').c_str(), 8000);
-  ASSERT_EQ(buf.size(), 12000);
-  std::span<const uint8_t> span =buf.span(12000);
-  ASSERT_TRUE(!memcmp(span.data(), std::string(4000, ' ').c_str(), 4000));
-  ASSERT_TRUE(!memcmp(span.data() + 4000, std::string(8000, '0').c_str(), 8000));
-}
-
-TEST(net_buffer, move)
-{
-  epee::net_utils::buffer buf;
-
-  buf.append(std::string(400, ' ').c_str(), 400);
-  buf.erase(399);
-  buf.append(std::string(4000, '0').c_str(), 4000);
-  ASSERT_EQ(buf.size(), 4001);
-  std::span<const uint8_t> span =buf.span(4001);
-  ASSERT_TRUE(!memcmp(span.data(), std::string(1, ' ').c_str(), 1));
-  ASSERT_TRUE(!memcmp(span.data() + 1, std::string(4000, '0').c_str(), 4000));
 }
