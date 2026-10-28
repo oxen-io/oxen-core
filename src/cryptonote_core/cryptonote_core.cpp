@@ -1435,7 +1435,7 @@ void core::start_oxenmq() {
         m_omq->add_timer([this]() { check_service_node_ip_address(); }, 15min, false);
     }
     m_omq->add_timer([this] { run_periodic_tasks(); }, 1s);
-    m_p2p_thread_id = m_omq->add_tagged_thread("p2p");
+    m_chain_thread_id = m_omq->add_tagged_thread("chain");
     m_omq->start();
 
     // This forces an IP check after initialization instead of deferring it 15 minutes.

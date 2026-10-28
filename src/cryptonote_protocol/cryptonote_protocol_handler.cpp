@@ -2836,7 +2836,7 @@ void protocol_handler::drop_connection(
 }
 //------------------------------------------------------------------------------------------------------------------------
 void protocol_handler::chain_job(std::function<void()> f) {
-    m_core.omq().job(std::move(f), m_core.p2p_thread_id());
+    m_core.omq().job(std::move(f), m_core.chain_thread_id());
 }
 //------------------------------------------------------------------------------------------------------------------------
 void protocol_handler::on_connection_close(cryptonote_connection_context& context) {
