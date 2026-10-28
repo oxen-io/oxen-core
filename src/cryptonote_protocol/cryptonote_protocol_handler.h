@@ -38,6 +38,7 @@
 #include <boost/program_options/variables_map.hpp>
 #include <chrono>
 #include <deque>
+#include <map>
 #include <mutex>
 #include <oxen/quic/utils.hpp>
 #include <string>
@@ -270,8 +271,12 @@ class protocol_handler : public i_cryptonote_protocol {
     std::deque<std::pair<std::chrono::steady_clock::time_point, uint64_t>> m_sync_rate_samples;
     std::mutex m_sync_rate_mutex;
 
+    // What refresh_sync_data() publishes: our sync data, and what checking a peer's sync data
+    // against ours needs, so that neither takes chain locks.
     mutable std::mutex m_sync_data_mutex;
     CORE_SYNC_DATA m_sync_data{};
+    uint64_t m_sync_immutable_height = 0;
+    std::map<uint64_t, crypto::hash> m_sync_blink_checksums;
 
     std::mutex m_buffer_mutex;
     boost::circular_buffer<size_t> m_avg_buffer = boost::circular_buffer<size_t>(10);
