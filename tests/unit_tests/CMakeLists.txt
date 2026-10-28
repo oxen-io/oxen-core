@@ -63,6 +63,7 @@ add_executable(unit_tests
   node_server.cpp
   notify.cpp
   output_distribution.cpp
+  p2p_formats.cpp
   parse_amount.cpp
   parse_address.cpp
   peer_history.cpp
