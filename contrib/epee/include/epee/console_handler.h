@@ -26,7 +26,6 @@
 
 #pragma once
 
-#include "misc_log_ex.h"
 #include "common/string_util.h"
 #include <functional>
 #include <atomic>
@@ -51,9 +50,6 @@
   #include "readline_buffer.h"
 #endif
 #include "readline_suspend.h"
-
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "console_handler"
 
 namespace epee
 {

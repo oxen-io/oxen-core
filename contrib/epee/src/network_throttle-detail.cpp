@@ -39,15 +39,11 @@
 #include <algorithm>
 
 #include "epee/net/net_utils_base.h"
-#include "epee/misc_log_ex.h"
 
 #include "epee/net/abstract_tcp_server2.h"
 
 // TODO:
 #include "epee/net/network_throttle-detail.hpp"
-
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "net.throttle"
 
 // ################################################################################################
 // ################################################################################################

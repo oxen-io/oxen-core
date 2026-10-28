@@ -34,13 +34,16 @@
 #include <deque>
 #include <cstdint>
 #include <map>
-#include "../misc_log_ex.h"
+#include <oxen/log.hpp>
 
 namespace epee
 {
 
   namespace serialization
   {
+    namespace log = oxen::log;
+    inline auto logcat = log::Cat("serialization");
+
     constexpr uint32_t PORTABLE_STORAGE_SIGNATUREA = 0x01011101;
     constexpr uint32_t PORTABLE_STORAGE_SIGNATUREB = 0x01020101; // bender's nightmare
     constexpr uint8_t PORTABLE_STORAGE_FORMAT_VER = 1;

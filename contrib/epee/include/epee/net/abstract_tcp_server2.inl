@@ -34,7 +34,6 @@
 
 #include <boost/bind/bind.hpp>
 #include <boost/asio/steady_timer.hpp>
-#include "../misc_log_ex.h"
 // Not epee headers: this server template is only ever instantiated by oxend's p2p code, which
 // provides them.
 #include "common/oxen.h"
@@ -129,9 +128,7 @@ namespace net_utils
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool connection<t_protocol_handler>::start(bool is_income, bool is_multithreaded)
-  {
-    TRY_ENTRY();
-
+  try {
     boost::system::error_code ec;
     auto remote_ep = socket().remote_endpoint(ec);
     if (ec)
@@ -148,14 +145,14 @@ namespace net_utils
       const auto ip_ = remote_ep.address().to_v6();
       return start(is_income, is_multithreaded, ipv6_network_address{ip_, remote_ep.port()});
     }
-    CATCH_ENTRY("connection<t_protocol_handler>::start()", false);
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to start connection: {}", e.what());
+    return false;
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool connection<t_protocol_handler>::start(bool is_income, bool is_multithreaded, network_address real_remote)
-  {
-    TRY_ENTRY();
-
+  try {
     // Use safe_shared_from_this, because of this is public method and it can be called on the object being deleted
     auto self = safe_shared_from_this();
     if(!self)
@@ -198,24 +195,26 @@ namespace net_utils
 	
 	boost::asio::ip::tcp::no_delay noDelayOption(false);
 	socket().set_option(noDelayOption);
-	
-    return true;
 
-    CATCH_ENTRY("connection<t_protocol_handler>::start()", false);
+    return true;
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to start connection: {}", e.what());
+    return false;
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool connection<t_protocol_handler>::request_callback()
-  {
-    TRY_ENTRY();
+  try {
     // Use safe_shared_from_this, because of this is public method and it can be called on the object being deleted
     auto self = safe_shared_from_this();
     if(!self)
       return false;
 
     strand_.post(boost::bind(&connection<t_protocol_handler>::call_back_starter, self), std::allocator<void>{});
-    CATCH_ENTRY("connection<t_protocol_handler>::request_callback()", false);
     return true;
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to request connection callback: {}", e.what());
+    return false;
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -226,9 +225,7 @@ namespace net_utils
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool connection<t_protocol_handler>::add_ref()
-  {
-    TRY_ENTRY();
-
+  try {
     // Use safe_shared_from_this, because of this is public method and it can be called on the object being deleted
     auto self = safe_shared_from_this();
     if(!self)
@@ -239,13 +236,14 @@ namespace net_utils
     ++m_reference_count;
     m_self_ref = std::move(self);
     return true;
-    CATCH_ENTRY("connection<t_protocol_handler>::add_ref()", false);
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to add connection reference: {}", e.what());
+    return false;
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool connection<t_protocol_handler>::release()
-  {
-    TRY_ENTRY();
+  try {
     std::shared_ptr<connection<t_protocol_handler> >  back_connection_copy;
     std::lock_guard lock{m_self_refs_lock};
     if (!m_reference_count) {
@@ -265,15 +263,17 @@ namespace net_utils
         std::swap(back_connection_copy, m_self_ref);
     }
     return true;
-    CATCH_ENTRY("connection<t_protocol_handler>::release()", false);
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to release connection reference: {}", e.what());
+    return false;
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   void connection<t_protocol_handler>::call_back_starter()
-  {
-    TRY_ENTRY();
+  try {
     m_protocol_handler.handle_qued_callback();
-    CATCH_ENTRY("connection<t_protocol_handler>::call_back_starter()", void());
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Connection callback failed: {}", e.what());
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -298,9 +298,7 @@ namespace net_utils
   template<class t_protocol_handler>
   void connection<t_protocol_handler>::handle_read(const boost::system::error_code& e,
     std::size_t bytes_transferred)
-  {
-    TRY_ENTRY();
-    
+  try {
     if (!e)
     {
         double current_speed_down;
@@ -386,13 +384,13 @@ namespace net_utils
     // means that all shared_ptr references to the connection object will
     // disappear and the object will be destroyed automatically after this
     // handler returns. The connection class's destructor closes the socket.
-    CATCH_ENTRY("connection<t_protocol_handler>::handle_read", void());
+  } catch (const std::exception& ex) {
+    oxen::log::error(logcat, "Failed to handle connection read: {}", ex.what());
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool connection<t_protocol_handler>::call_run_once_service_io()
-  {
-    TRY_ENTRY();
+  try {
     if(!m_is_multithreaded)
     {
       //single thread model, we can wait in blocked call
@@ -410,15 +408,16 @@ namespace net_utils
       if(!cnt)
         std::this_thread::sleep_for(1ms);
     }
-    
+
     return true;
-    CATCH_ENTRY("connection<t_protocol_handler>::call_run_once_service_io", false);
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to run connection io service: {}", e.what());
+    return false;
   }
   //---------------------------------------------------------------------------------
     template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::do_send(shared_sv message) {
-    TRY_ENTRY();
-
+  bool connection<t_protocol_handler>::do_send(shared_sv message)
+  try {
     // Use safe_shared_from_this, because of this is public method and it can be called on the object being deleted
     auto self = safe_shared_from_this();
     if (!self) return false;
@@ -455,15 +454,15 @@ namespace net_utils
 		else { // small block
 			return do_send_chunk(std::move(message)); // just send as 1 big chunk
 		}
-
-    CATCH_ENTRY("connection<t_protocol_handler>::do_send", false);
-	} // do_send()
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to send to connection: {}", e.what());
+    return false;
+  }
 
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool connection<t_protocol_handler>::do_send_chunk(shared_sv chunk)
-  {
-    TRY_ENTRY();
+  try {
     // Use safe_shared_from_this, because of this is public method and it can be called on the object being deleted
     auto self = safe_shared_from_this();
     if(!self)
@@ -554,9 +553,10 @@ namespace net_utils
     //do_send_handler_stop( ptr , cb ); // empty function
 
     return true;
-
-    CATCH_ENTRY("connection<t_protocol_handler>::do_send_chunk", false);
-  } // do_send_chunk
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to send chunk to connection: {}", e.what());
+    return false;
+  }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   std::chrono::milliseconds connection<t_protocol_handler>::get_default_timeout()
@@ -655,8 +655,7 @@ namespace net_utils
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool connection<t_protocol_handler>::close()
-  {
-    TRY_ENTRY();
+  try {
     auto self = safe_shared_from_this();
     if(!self)
       return false;
@@ -671,9 +670,11 @@ namespace net_utils
     {
       shutdown();
     }
-    
+
     return true;
-    CATCH_ENTRY("connection<t_protocol_handler>::close", false);
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to close connection: {}", e.what());
+    return false;
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -693,9 +694,7 @@ namespace net_utils
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   void connection<t_protocol_handler>::handle_write(const boost::system::error_code& e, size_t cb)
-  {
-    TRY_ENTRY();
-
+  try {
     if (e)
     {
       shutdown();
@@ -746,7 +745,8 @@ namespace net_utils
     {
       shutdown();
     }
-    CATCH_ENTRY("connection<t_protocol_handler>::handle_write", void());
+  } catch (const std::exception& ex) {
+    oxen::log::error(logcat, "Failed to handle connection write: {}", ex.what());
   }
 
   //---------------------------------------------------------------------------------
@@ -820,8 +820,7 @@ namespace net_utils
   template<class t_protocol_handler>
     bool boosted_tcp_server<t_protocol_handler>::init_server(uint32_t port,  const std::string& address,
 	uint32_t port_ipv6, const std::string& address_ipv6, bool use_ipv6, bool require_ipv4)
-  {
-    TRY_ENTRY();
+  try {
     m_stop_signal_sent = false;
     m_port = port;
     m_port_ipv6 = port_ipv6;
@@ -898,17 +897,8 @@ namespace net_utils
       }
 
     return true;
-    }
-    catch (const std::exception &e)
-    {
-      throw std::runtime_error(std::string("Error starting server: ") + e.what());
-      return false;
-    }
-    catch (...)
-    {
-      throw std::runtime_error("Error starting server");
-      return false;
-    }
+  } catch (const std::exception &e) {
+    throw std::runtime_error(std::string("Error starting server: ") + e.what());
   }
   //-----------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -931,7 +921,6 @@ namespace net_utils
   template<class t_protocol_handler>
   bool boosted_tcp_server<t_protocol_handler>::worker_thread()
   {
-    TRY_ENTRY();
     while(!m_stop_signal_sent)
     {
       try
@@ -944,7 +933,6 @@ namespace net_utils
       }
     }
     return true;
-    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::worker_thread", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -965,8 +953,7 @@ namespace net_utils
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool boosted_tcp_server<t_protocol_handler>::run_server(size_t threads_count, bool wait)
-  {
-    TRY_ENTRY();
+  try {
     m_threads_count = threads_count;
     m_main_thread_id = std::this_thread::get_id();
     while(!m_stop_signal_sent)
@@ -1004,13 +991,14 @@ namespace net_utils
       }
     }
     return true;
-    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::run_server", false);
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to run server: {}", e.what());
+    return false;
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool boosted_tcp_server<t_protocol_handler>::is_thread_worker()
   {
-    TRY_ENTRY();
     std::lock_guard lock{m_threads_lock};
     for (auto& th : m_threads)
       if(th.get_id() == std::this_thread::get_id())
@@ -1018,18 +1006,18 @@ namespace net_utils
     if(m_threads_count == 1 && std::this_thread::get_id() == m_main_thread_id)
       return true;
     return false;
-    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::is_thread_worker", false);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool boosted_tcp_server<t_protocol_handler>::server_stop()
-  {
-    TRY_ENTRY();
+  try {
     for (auto& th : m_threads)
       if (th.joinable())
         th.join();
     return true;
-    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::server_stop", false);
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to stop server: {}", e.what());
+    return false;
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -1038,15 +1026,17 @@ namespace net_utils
     m_stop_signal_sent = true;
     typename connection<t_protocol_handler>::shared_state *state = static_cast<typename connection<t_protocol_handler>::shared_state*>(m_state.get());
     state->stop_signal_sent = true;
-    TRY_ENTRY();
-    {
+    try {
+      {
         std::lock_guard lock{connections_mutex};
         for (auto &c: connections_)
           c->cancel();
         connections_.clear();
+      }
+      io_service_.stop();
+    } catch (const std::exception& e) {
+      oxen::log::error(logcat, "Failed to signal server stop: {}", e.what());
     }
-    io_service_.stop();
-    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::send_stop_signal()", void());
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
@@ -1135,9 +1125,7 @@ namespace net_utils
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   typename boosted_tcp_server<t_protocol_handler>::try_connect_result_t boosted_tcp_server<t_protocol_handler>::try_connect(connection_ptr new_connection_l, const std::string& adr, const std::string& port, boost::asio::ip::tcp::socket &sock_, const boost::asio::ip::tcp::endpoint &remote_endpoint, const std::string &bind_ip, uint32_t conn_timeout)
-  {
-    TRY_ENTRY();
-
+  try {
     sock_.open(remote_endpoint.protocol());
     if(bind_ip != "0.0.0.0" && bind_ip != "0" && bind_ip != "" )
     {
@@ -1204,15 +1192,14 @@ namespace net_utils
     }
 
     return CONNECT_SUCCESS;
-
-    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::try_connect", CONNECT_FAILURE);
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to connect to {}:{}: {}", adr, port, e.what());
+    return CONNECT_FAILURE;
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
   bool boosted_tcp_server<t_protocol_handler>::connect(const std::string& adr, const std::string& port, uint32_t conn_timeout, t_connection_context& conn_context, const std::string& bind_ip)
-  {
-    TRY_ENTRY();
-
+  try {
     connection_ptr new_connection_l(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type) );
     {
         std::lock_guard lock{connections_mutex};
@@ -1311,14 +1298,14 @@ namespace net_utils
 	new_connection_l->save_dbg_log();
 
     return r;
-
-    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::connect", false);
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to connect to {}:{}: {}", adr, port, e.what());
+    return false;
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler> template<class t_callback>
   bool boosted_tcp_server<t_protocol_handler>::connect_async(const std::string& adr, const std::string& port, uint32_t conn_timeout, const t_callback &cb, const std::string& bind_ip)
-  {
-    TRY_ENTRY();    
+  try {
     connection_ptr new_connection_l(new connection<t_protocol_handler>(io_service_, m_state, m_connection_type) );
     {
         std::lock_guard lock{connections_mutex};
@@ -1429,7 +1416,9 @@ namespace net_utils
         }
       });
     return true;
-    CATCH_ENTRY("boosted_tcp_server<t_protocol_handler>::connect_async", false);
+  } catch (const std::exception& e) {
+    oxen::log::error(logcat, "Failed to connect to {}:{}: {}", adr, port, e.what());
+    return false;
   }
   
 } // namespace

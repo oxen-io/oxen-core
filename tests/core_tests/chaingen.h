@@ -64,9 +64,6 @@
 
 #include "../rewards_db_test.h"
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "tests.core"
-
 #define TESTS_DEFAULT_FEE ((uint64_t)200000000) // 2 * pow(10, 8)
 #define TEST_DEFAULT_DIFFICULTY 1
 

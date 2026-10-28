@@ -35,13 +35,9 @@
 #include <type_traits>
 #include "../shared_sv.h"
 #include "enums.h"
-#include "../misc_log_ex.h"
 #include "../serialization/keyvalue_serialization.h"
 #include <fmt/core.h>
 #include <fmt/ranges.h>
-
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "net"
 
 namespace boost::asio {
   using io_service = io_context;
