@@ -131,6 +131,17 @@ set_property(TARGET levin_fuzz_tests
   PROPERTY
     FOLDER "tests")
 
+add_executable(levin_frame_fuzz_tests levin_frame.cpp fuzzer.cpp)
+target_link_libraries(levin_frame_fuzz_tests
+  PRIVATE
+    common
+    p2p
+    logging
+    extra)
+set_property(TARGET levin_frame_fuzz_tests
+  PROPERTY
+    FOLDER "tests")
+
 add_executable(bulletproof_fuzz_tests bulletproof.cpp fuzzer.cpp)
 target_link_libraries(bulletproof_fuzz_tests
   PRIVATE
