@@ -193,7 +193,10 @@ class protocol_handler : public i_cryptonote_protocol {
             bool force_next_span,
             std::string_view caller);
     size_t get_synchronizing_connections_count();
-    bool on_connection_synchronized();
+    // Queues set_synchronized() on the chain thread: it changes the database's sync mode and tells
+    // the miner, so it can be called from anywhere.
+    void on_connection_synchronized();
+    void set_synchronized();
     bool should_download_next_span(cryptonote_connection_context& context, bool standby);
     void drop_connection(
             cryptonote_connection_context& context, bool add_fail, bool flush_all_spans);
@@ -259,17 +262,20 @@ class protocol_handler : public i_cryptonote_protocol {
     tools::periodic_task m_standby_checker{"standby checker", 100ms};
     tools::periodic_task m_sync_search_checker{"sync search check", 101s};
     std::atomic<unsigned int> m_max_out_peers;
-    std::chrono::steady_clock::time_point m_last_add_end_time;
-    uint64_t m_sync_spans_downloaded, m_sync_old_spans_downloaded, m_sync_bad_spans_downloaded;
-    uint64_t m_sync_download_chain_size, m_sync_download_objects_size;
+    // The sync's bookkeeping, which peers' messages (on the event loop) and adding their blocks (on
+    // the chain thread) both update, is atomic.
+    std::atomic<std::chrono::steady_clock::time_point> m_last_add_end_time;
+    std::atomic<uint64_t> m_sync_spans_downloaded, m_sync_old_spans_downloaded,
+            m_sync_bad_spans_downloaded;
+    std::atomic<uint64_t> m_sync_download_chain_size, m_sync_download_objects_size;
     size_t m_block_download_max_size;
 
     // When and at what height the current sync started (see process_payload_sync_data for what
     // counts as a start): the sync time estimates, the sync rate and the "Synced N blocks" summary
     // are all measured from here.
-    std::chrono::steady_clock::time_point m_sync_start_time;
-    uint64_t m_sync_start_height = 0;
-    std::chrono::steady_clock::time_point m_period_start_time;
+    std::atomic<std::chrono::steady_clock::time_point> m_sync_start_time;
+    std::atomic<uint64_t> m_sync_start_height = 0;
+    std::atomic<std::chrono::steady_clock::time_point> m_period_start_time;
     uint64_t get_estimated_remaining_sync_seconds(
             uint64_t current_blockchain_height, uint64_t target_blockchain_height);
     std::string get_periodic_sync_estimate(

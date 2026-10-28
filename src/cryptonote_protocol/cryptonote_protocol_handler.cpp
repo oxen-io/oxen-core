@@ -531,11 +531,9 @@ bool protocol_handler::process_payload_sync_data(
             m_sync_download_objects_size = 0;
         }
 
-        if (hshd.current_height >=
-            curr_height + 5)  // don't switch to unsafe mode just for a few blocks
-        {
-            m_core.safesyncmode(false);
-        }
+        // don't switch to unsafe mode just for a few blocks
+        if (hshd.current_height >= curr_height + 5)
+            chain_job([this] { m_core.safesyncmode(false); });
         m_core.set_target_blockchain_height((hshd.current_height));
     }
 
@@ -1336,7 +1334,7 @@ uint64_t protocol_handler::get_estimated_remaining_sync_seconds(
     }
 
     auto now = std::chrono::steady_clock::now();
-    seconds_f sync_time = now - m_sync_start_time;
+    seconds_f sync_time = now - m_sync_start_time.load();
     cryptonote::network_type nettype = m_core.get_nettype();
 
     // Don't simply use remaining number of blocks for the estimate but "sync weight" as provided by
@@ -1355,7 +1353,7 @@ std::string protocol_handler::get_periodic_sync_estimate(
         uint64_t current_blockchain_height, uint64_t target_blockchain_height) {
     std::string text;
     const auto now = std::chrono::steady_clock::now();
-    auto period_sync_time = now - m_period_start_time;
+    auto period_sync_time = now - m_period_start_time.load();
     if (period_sync_time > 30s) {
         // Period is over, time to report another estimate
         uint64_t remaining_seconds = get_estimated_remaining_sync_seconds(
@@ -1369,7 +1367,7 @@ std::string protocol_handler::get_periodic_sync_estimate(
 }
 
 double protocol_handler::average_sync_rate(uint64_t current_blockchain_height) const {
-    seconds_f sync_time = std::chrono::steady_clock::now() - m_sync_start_time;
+    seconds_f sync_time = std::chrono::steady_clock::now() - m_sync_start_time.load();
     if (sync_time.count() <= 0 || current_blockchain_height <= m_sync_start_height)
         return 0;
     return (current_blockchain_height - m_sync_start_height) / sync_time.count();
@@ -1545,7 +1543,7 @@ protocol_handler::span_result protocol_handler::add_next_span() {
             log::debug(
                     logcat,
                     "Restarting adding block after idle for {} seconds",
-                    tools::friendly_duration(start - m_last_add_end_time));
+                    tools::friendly_duration(start - m_last_add_end_time.load()));
         }
 
         std::vector<block> pblocks;
@@ -2159,7 +2157,7 @@ bool protocol_handler::request_missing_objects(
                     // if this has gone on for too long, drop incoming connection to guard against
                     // some wedge state
                     if (!context.m_is_income) {
-                        auto ns = std::chrono::steady_clock::now() - m_last_add_end_time;
+                        auto ns = std::chrono::steady_clock::now() - m_last_add_end_time.load();
                         if (ns >= DROP_ON_SYNC_WEDGE_THRESHOLD) {
                             log::debug(
                                     logcat,
@@ -2462,7 +2460,11 @@ skip:
     return true;
 }
 //------------------------------------------------------------------------------------------------------------------------
-bool protocol_handler::on_connection_synchronized() {
+void protocol_handler::on_connection_synchronized() {
+    chain_job([this] { set_synchronized(); });
+}
+//------------------------------------------------------------------------------------------------------------------------
+void protocol_handler::set_synchronized() {
     bool val_expected = false;
     uint64_t current_blockchain_height = chain_height();
     if (!m_core.blockchain.is_within_compiled_block_hash_area(current_blockchain_height) &&
@@ -2473,7 +2475,7 @@ bool protocol_handler::on_connection_synchronized() {
             // Report only after syncing an "interesting" number of blocks:
             if (synced_blocks > 20) {
                 auto synced_seconds = std::chrono::duration_cast<std::chrono::seconds>(
-                        std::chrono::steady_clock::now() - m_sync_start_time);
+                        std::chrono::steady_clock::now() - m_sync_start_time.load());
                 log::info(
                         globallogcat,
                         fg(fmt::terminal_color::yellow),
@@ -2489,7 +2491,7 @@ You are now synchronized with the network.
 **********************************************************************)");
         if (logcat->should_log(log::Level::info)) {
             const std::chrono::duration<double> sync_time{
-                    std::chrono::steady_clock::now() - m_sync_start_time};
+                    std::chrono::steady_clock::now() - m_sync_start_time.load()};
             log::info(
                     logcat,
                     fg(fmt::terminal_color::yellow),
@@ -2504,7 +2506,6 @@ You are now synchronized with the network.
         m_core.on_synchronized();
     }
     m_core.safesyncmode(true);
-    return true;
 }
 //------------------------------------------------------------------------------------------------------------------------
 size_t protocol_handler::get_synchronizing_connections_count() {
