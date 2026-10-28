@@ -28,8 +28,6 @@
 
 #pragma once
 
-#include <iomanip>
-#include <regex>
 #include <type_traits>
 #include <charconv>
 #include <utility>
@@ -71,32 +69,16 @@ namespace epee
       }
     };
 
-    // For MyMonero/OpenMonero backend compatibility
-    // MyMonero backend sends amount, fees and timestamp values as strings.
-    // Until MM backend is updated, this is needed for compatibility between OpenMonero and MyMonero. 
+    // Accepts amounts given as numeric strings, which JSON clients sometimes send to avoid
+    // precision loss in languages without 64-bit integers.
     template<>
     struct converter<std::string, uint64_t>
     {
-      // MyMonero ISO 8061 timestamp (2017-05-06T16:27:06Z)
-      inline static std::regex mymonero_iso8061_timestamp{R"(\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-5]\dZ)"};
-
       void operator()(const std::string& from, uint64_t& to)
       {
         const auto* strend = from.data() + from.size();
         if (auto [p, ec] = std::from_chars(from.data(), strend, to); ec == std::errc{} && p == strend)
-          return; // Good: successfully consumed the whole string.
-
-        if (std::regex_match(from, mymonero_iso8061_timestamp))
-        {
-          // Convert to unix timestamp
-          std::tm tm{};
-          std::istringstream ss{from};
-          if (ss >> std::get_time(&tm, "%Y-%m-%dT%H:%M:%S"))
-          {
-            to = std::mktime(&tm);
-            return;
-          }
-        }
+          return;
         ASSERT_AND_THROW_WRONG_CONVERSION();
       }
     };

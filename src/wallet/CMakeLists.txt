@@ -35,18 +35,6 @@ oxen_add_library(wallet
   transfer_view.cpp
 )
 
-# Unmaintained wallet features, disabled by default
-option(ENABLE_LIGHT_WALLET "Enable (unsupported) light wallet support" OFF)
-option(ENABLE_WALLET_MMS "Enable (unsupported) monero Multisig Messaging System" OFF)
-
-if (ENABLE_LIGHT_WALLET)
-  target_compile_definitions(wallet PUBLIC ENABLE_LIGHT_WALLET)
-endif()
-if (ENABLE_WALLET_MMS)
-  target_compile_definitions(wallet PUBLIC ENABLE_WALLET_MMS)
-  target_sources(wallet PRIVATE message_store.cpp message_transporter.cpp)
-endif()
-
 target_link_libraries(wallet
   PUBLIC
     multisig

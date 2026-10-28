@@ -193,10 +193,8 @@ class simple_wallet : public tools::i_wallet2_callback {
             std::vector<tools::wallet2::pending_tx>& ptx_vector,
             bool blink,
             uint64_t lock_time_in_blocks = 0,
-            uint64_t unlock_block = 0 ENABLE_IF_MMS(, bool called_by_mms = false));
-    bool transfer_main(
-            Transfer transfer_type,
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
+            uint64_t unlock_block = 0);
+    bool transfer_main(Transfer transfer_type, const std::vector<std::string>& args);
 
     bool transfer(const std::vector<std::string>& args);
     bool locked_transfer(const std::vector<std::string>& args);
@@ -286,32 +284,15 @@ class simple_wallet : public tools::i_wallet2_callback {
     bool payment_id(const std::vector<std::string>& args);
     bool print_fee_info(const std::vector<std::string>& args);
     bool prepare_multisig(const std::vector<std::string>& args);
-    bool prepare_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool make_multisig(const std::vector<std::string>& args);
-    bool make_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool finalize_multisig(const std::vector<std::string>& args);
     bool exchange_multisig_keys(const std::vector<std::string>& args);
-    bool exchange_multisig_keys_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool export_multisig(const std::vector<std::string>& args);
-    bool export_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool import_multisig(const std::vector<std::string>& args);
-    bool import_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool accept_loaded_tx(const tools::wallet2::multisig_tx_set& txs);
     bool sign_multisig(const std::vector<std::string>& args);
-    bool sign_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool submit_multisig(const std::vector<std::string>& args);
-    bool submit_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool export_raw_multisig(const std::vector<std::string>& args);
-#ifdef WALLET_ENABLE_MMS
-    bool mms(const std::vector<std::string>& args);
-#endif
     bool print_ring(const std::vector<std::string>& args);
     bool set_ring(const std::vector<std::string>& args);
     bool unset_ring(const std::vector<std::string>& args);
@@ -399,9 +380,6 @@ class simple_wallet : public tools::i_wallet2_callback {
     // idle thread workers
     bool check_inactivity();
     bool check_refresh(bool long_poll_trigger);
-#ifdef WALLET_ENABLE_MMS
-    bool check_mms();
-#endif
 
     //----------------- i_wallet2_callback ---------------------
     virtual void on_new_block(uint64_t height, const cryptonote::block& block);
@@ -509,52 +487,5 @@ class simple_wallet : public tools::i_wallet2_callback {
             "inactivity check", 80s, true /*start_immediately*/, 20s /*up-to random delay*/};
     tools::periodic_task m_refresh_checker{
             "refresh check", 90s, true /*start_immediately*/, 20s /*up-to random delay*/};
-
-#ifdef WALLET_ENABLE_MMS
-    // MMS
-    tools::periodic_task m_mms_checker{
-            "mms checker", 90s, true /*start_immediately*/, 25s /*up-to random delay*/};
-
-    mms::message_store& get_message_store() const { return m_wallet->get_message_store(); };
-    mms::multisig_wallet_state get_multisig_wallet_state() const {
-        return m_wallet->get_multisig_wallet_state();
-    };
-    bool mms_active() const { return get_message_store().get_active(); };
-    bool choose_mms_processing(
-            const std::vector<mms::processing_data>& data_list, uint32_t& choice);
-    void list_mms_messages(const std::vector<mms::message>& messages);
-    void list_signers(const std::vector<mms::authorized_signer>& signers);
-    void add_signer_config_messages();
-    void show_message(const mms::message& m);
-    void ask_send_all_ready_messages();
-    void check_for_messages();
-    bool user_confirms(const std::string& question);
-    bool get_message_from_arg(const std::string& arg, mms::message& m);
-    bool get_number_from_arg(
-            const std::string& arg,
-            uint32_t& number,
-            const uint32_t lower_bound,
-            const uint32_t upper_bound);
-
-    void mms_init(const std::vector<std::string>& args);
-    void mms_info(const std::vector<std::string>& args);
-    void mms_signer(const std::vector<std::string>& args);
-    void mms_list(const std::vector<std::string>& args);
-    void mms_next(const std::vector<std::string>& args);
-    void mms_sync(const std::vector<std::string>& args);
-    void mms_transfer(const std::vector<std::string>& args);
-    void mms_delete(const std::vector<std::string>& args);
-    void mms_send(const std::vector<std::string>& args);
-    void mms_receive(const std::vector<std::string>& args);
-    void mms_export(const std::vector<std::string>& args);
-    void mms_note(const std::vector<std::string>& args);
-    void mms_show(const std::vector<std::string>& args);
-    void mms_set(const std::vector<std::string>& args);
-    void mms_help(const std::vector<std::string>& args);
-    void mms_send_signer_config(const std::vector<std::string>& args);
-    void mms_start_auto_config(const std::vector<std::string>& args);
-    void mms_stop_auto_config(const std::vector<std::string>& args);
-    void mms_auto_config(const std::vector<std::string>& args);
-#endif
 };
 }  // namespace cryptonote

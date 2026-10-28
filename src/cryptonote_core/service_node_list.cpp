@@ -37,6 +37,7 @@
 #include <zstd.h>
 
 #include <algorithm>
+#include <bitset>
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/seed_seq.hpp>
 #include <chrono>

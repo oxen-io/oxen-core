@@ -53,39 +53,22 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
 #include "cryptonote_core/oxen_name_system.h"
+#include "epee/wipeable_string.h"
+#include "multisig_info.h"
+#include "multisig_sig.h"
 #include "node_rpc_proxy.h"
+#include "pending_tx.h"
 #include "ringct/rctOps.h"
 #include "ringct/rctTypes.h"
 #include "rpc/core_rpc_server_binary_commands.h"
 #include "rpc/core_rpc_server_commands_defs.h"
-#include "wallet_errors.h"
-#ifdef WALLET_ENABLE_MMS
-#include "message_store.h"
-// Intended to make the ifdefs a bit less cumbersome where we need to pass an extra arg with MMS.
-// E.g. `foo(a, b IF_MMS(, c))`  becomes `foo(a, b, c)` undef MMS and `foo(a,b)` without MMS.
-#define ENABLE_IF_MMS(...) __VA_ARGS__
-#else
-#define ENABLE_IF_MMS(...)
-#endif
-
-#ifdef ENABLE_LIGHT_WALLET
-#include "wallet_light_rpc.h"
-// Same as above, but for light wallet args
-#define ENABLE_IF_LIGHT_WALLET(...) __VA_ARGS__
-#else
-#define ENABLE_IF_LIGHT_WALLET(...)
-#endif
-
-#include "epee/wipeable_string.h"
-#include "multisig_info.h"
-#include "multisig_sig.h"
-#include "pending_tx.h"
 #include "rpc/http_client.h"
 #include "transfer_destination.h"
 #include "transfer_details.h"
 #include "transfer_view.h"
 #include "tx_construction_data.h"
 #include "tx_sets.h"
+#include "wallet_errors.h"
 
 #define SUBADDRESS_LOOKAHEAD_MAJOR 50
 #define SUBADDRESS_LOOKAHEAD_MINOR 200
@@ -383,11 +366,6 @@ class wallet2 {
                     (m_type == wallet::pay_type::service_node) ||
                     (m_type == wallet::pay_type::governance));
         }
-    };
-
-    struct address_tx : payment_details {
-        bool m_mempool;
-        bool m_incoming;
     };
 
     struct pool_payment_details {
@@ -744,12 +722,7 @@ class wallet2 {
             std::string proxy = "",
             bool trusted_daemon = true);
 
-    void stop() {
-        m_run.store(false, std::memory_order_relaxed);
-#ifdef WALLET_ENABLE_MMS
-        m_message_store.stop();
-#endif
-    }
+    void stop() { m_run.store(false, std::memory_order_relaxed); }
 
     i_wallet2_callback* callback() const { return m_callback; }
     void callback(i_wallet2_callback* callback) { m_callback = callback; }
@@ -764,19 +737,6 @@ class wallet2 {
     bool get_seed(
             epee::wipeable_string& electrum_words,
             const epee::wipeable_string& passphrase = epee::wipeable_string()) const;
-
-#ifdef ENABLE_LIGHT_WALLET
-    /*!
-     * \brief Checks if light wallet. A light wallet sends view key to a server where the blockchain
-     * is scanned.
-     */
-    bool light_wallet() const { return m_light_wallet; }
-    void set_light_wallet(bool light_wallet) { m_light_wallet = light_wallet; }
-    uint64_t get_light_wallet_scanned_block_height() const {
-        return m_light_wallet_scanned_block_height;
-    }
-    uint64_t get_light_wallet_blockchain_height() const { return m_light_wallet_blockchain_height; }
-#endif
 
     /*!
      * \brief Gets the seed language
@@ -1641,39 +1601,6 @@ class wallet2 {
 
     bool is_unattended() const { return m_unattended; }
 
-#ifdef ENABLE_LIGHT_WALLET
-    // Light wallet specific functions
-    // fetch unspent outs from lw node and store in m_transfers
-    void light_wallet_get_unspent_outs();
-    // fetch txs and store in m_payments
-    void light_wallet_get_address_txs();
-    // get_address_info
-    bool light_wallet_get_address_info(tools::light_rpc::GET_ADDRESS_INFO::response& response);
-    // Login. new_address is true if address hasn't been used on lw node before.
-    bool light_wallet_login(bool& new_address);
-    // Send an import request to lw node. returns info about import fee, address and payment_id
-    bool light_wallet_import_wallet_request(
-            tools::light_rpc::IMPORT_WALLET_REQUEST::response& response);
-    // get random outputs from light wallet server
-    void light_wallet_get_outs(
-            std::vector<std::vector<get_outs_entry>>& outs,
-            const std::vector<size_t>& selected_transfers,
-            size_t fake_outputs_count);
-    // Parse rct string
-    bool light_wallet_parse_rct_str(
-            const std::string& rct_string,
-            const crypto::public_key& tx_pub_key,
-            uint64_t internal_output_index,
-            rct::key& decrypted_mask,
-            rct::key& rct_commit,
-            bool decrypt) const;
-    // check if key image is ours
-    bool light_wallet_key_image_is_ours(
-            const crypto::key_image& key_image,
-            const crypto::public_key& tx_public_key,
-            uint64_t out_index);
-#endif
-
     /*
      * "attributes" are a mechanism to store an arbitrary number of string values
      * on the level of the wallet as a whole, identified by keys. Their introduction,
@@ -1698,34 +1625,16 @@ class wallet2 {
     crypto::public_key get_multisig_signing_public_key(size_t idx) const;
     crypto::public_key get_multisig_signing_public_key(const crypto::secret_key& skey) const;
 
-    template <typename RPC>
+    template <std::derived_from<cryptonote::rpc::BINARY> RPC>
     bool invoke_http(
             const typename RPC::request& req,
             typename RPC::response& res,
             bool throw_on_error = false) {
-        using namespace cryptonote::rpc;
-        static_assert(
-                std::is_base_of_v<RPC_COMMAND, RPC>
-#ifdef ENABLE_LIGHT_WALLET
-                || std::is_base_of_v<tools::light_rpc::LIGHT_RPC_COMMAND, RPC>
-#endif
-        );
-
         if (m_offline)
             return false;
 
         try {
-            if constexpr (std::is_base_of_v<LEGACY, RPC>)
-                // TODO: post-8.x hard fork we can remove this one and let everything go through the
-                // non-binary json_rpc version instead (because all legacy json commands are
-                // callable via json_rpc as of daemon 8.x).
-                res = m_http_client.json<RPC>(RPC::names().front(), req);
-            else if constexpr (std::is_base_of_v<BINARY, RPC>)
-                res = m_http_client.binary<RPC>(RPC::names().front(), req);
-            else if constexpr (std::is_base_of_v<RPC_COMMAND, RPC>)
-                res = m_http_client.json_rpc<RPC>(RPC::names().front(), req);
-            else  // light RPC:
-                res = m_http_client.json<RPC>(RPC::name, req);
+            res = m_http_client.binary<RPC>(RPC::names().front(), req);
             return true;
         } catch (const std::exception& e) {
             if (throw_on_error)
@@ -1906,14 +1815,6 @@ class wallet2 {
 
     uint64_t get_bytes_sent() const;
     uint64_t get_bytes_received() const;
-
-#ifdef WALLET_ENABLE_MMS
-    // MMS
-    // -------------------------------------------------------------------------------------------------
-    mms::message_store& get_message_store() { return m_message_store; };
-    const mms::message_store& get_message_store() const { return m_message_store; };
-    mms::multisig_wallet_state get_multisig_wallet_state() const;
-#endif
 
     bool lock_keys_file();
     bool unlock_keys_file();
@@ -2194,9 +2095,6 @@ class wallet2 {
     cryptonote::account_base m_account;
     fs::path m_wallet_file;
     fs::path m_keys_file;
-#ifdef WALLET_ENABLE_MMS
-    fs::path m_mms_file;
-#endif
     hashchain m_blockchain;
     std::atomic<uint64_t> m_cached_height;  // Tracks m_blockchain.size(), but thread-safe.
     std::unordered_map<crypto::hash, unconfirmed_transfer_details> m_unconfirmed_txs;
@@ -2286,25 +2184,6 @@ class wallet2 {
     // Aux transaction data from device
     std::unordered_map<crypto::hash, std::string> m_tx_device;
 
-#ifdef ENABLE_LIGHT_WALLET
-    // Light wallet
-    bool m_light_wallet; /* sends view key to daemon for scanning */
-    uint64_t m_light_wallet_scanned_block_height;
-    uint64_t m_light_wallet_blockchain_height;
-    uint64_t m_light_wallet_per_kb_fee = FEE_PER_BYTE_V13 * 1024;
-    bool m_light_wallet_connected;
-    uint64_t m_light_wallet_balance;
-    uint64_t m_light_wallet_unlocked_balance;
-    // Light wallet info needed to populate m_payment requires 2 separate api calls (get_address_txs
-    // and get_unspent_outs) We save the info from the first call in m_light_wallet_address_txs for
-    // easier lookup.
-    std::unordered_map<crypto::hash, address_tx> m_light_wallet_address_txs;
-#endif
-
-    // FIXME should this be with the light wallet stuff?
-    // store calculated key image for faster lookup
-    std::unordered_map<crypto::public_key, std::map<uint64_t, crypto::key_image>> m_key_image_cache;
-
     fs::path m_ring_database;
     bool m_ring_history_saved;
     std::unique_ptr<ringdb> m_ringdb;
@@ -2312,13 +2191,6 @@ class wallet2 {
 
     uint64_t m_last_block_reward;
     std::unique_ptr<tools::file_locker> m_keys_file_locker;
-
-#ifdef WALLET_ENABLE_MMS
-    mms::message_store m_message_store;
-#endif
-    bool m_original_keys_available;
-    cryptonote::account_public_address m_original_address;
-    crypto::secret_key m_original_view_secret_key{};
 
     crypto::chacha_key m_cache_key{};
     std::optional<epee::wipeable_string> m_encrypt_keys_after_refresh;
