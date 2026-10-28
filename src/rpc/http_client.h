@@ -13,7 +13,6 @@
 #include <string_view>
 
 #include "common/meta.h"
-#include "epee/net/jsonrpc_structs.h"
 #include "epee/storages/portable_storage_template_helper.h"
 #include "version.h"
 
@@ -157,56 +156,6 @@ class http_client {
     /// error, or on an HTTP request that returns an HTTP error code.
     nlohmann::json json_rpc(std::string_view method, nlohmann::json params = nullptr);
 
-    /// FIXME: drop this.
-    ///
-    /// Makes a JSON-RPC request; that is, a POST request to /json_rpc with a proper JSON-RPC
-    /// wrapper around the serialized json data as the body.  On a successful response the response
-    /// is deserialized into a RPC::response which is returned.
-    ///
-    /// \tparam RPC - the RPC base class; subtypes RPC::request and RPC::response are used for the
-    /// request and response, respectively.
-    ///
-    /// \param method - the end-point to be passed as the "method" parameter of the JSON-RPC
-    /// request. \param req - the request to be serialized and sent as the JSON-RPC "params" value.
-    ///
-    /// \returns RPC::request, deserialized from the response.
-    ///
-    /// \throws rpc::http_client_error on connection-related failure
-    /// \throws rpc::http_client_serialization_error on a serialization failure
-    /// \throws rpc::http_client_response_error on a successful HTTP request that returns a json_rpc
-    /// error, or on an HTTP request that returns an HTTP error code.
-    template <typename RPC>
-    typename RPC::response json_rpc(std::string_view method, const typename RPC::request& req) {
-        epee::json_rpc::request<const typename RPC::request&> jsonrpc_req{
-                "2.0", std::string{method}, json_rpc_id++, req};
-
-        std::string req_serialized;
-        if (!epee::serialization::store_t_to_json(jsonrpc_req, req_serialized))
-            throw http_client_serialization_error{
-                    "Failed to serialize " + tools::type_name(typeid(typename RPC::request)) +
-                    " for json_rpc request for " + std::string{method}};
-
-        cpr::Response res =
-                post("json_rpc",
-                     std::move(req_serialized),
-                     {{"Content-Type", "application/json; charset=utf-8"}});
-
-        epee::json_rpc::response_with_error<typename RPC::response> resp{};
-        if (!epee::serialization::load_t_from_json(resp, res.text))
-            throw http_client_serialization_error{
-                    "Failed to deserialize response for json_rpc request for " +
-                    std::string{method}};
-
-        if (resp.error.code || resp.error.message.size())
-            throw http_client_response_error{
-                    false,
-                    resp.error.code,
-                    "JSON RPC returned an error response: " +
-                            (resp.error.message.empty() ? "(no message)" : resp.error.message)};
-
-        return std::move(resp.result);
-    }
-
     /// Makes a binary request; that is, a POST request to /target with the binary-serialized
     /// request as the body.  The response is binary-deserialized into a RPC::response which is
     /// returned.
@@ -238,46 +187,6 @@ class http_client {
         if (!epee::serialization::load_t_from_binary(result, res.text))
             throw http_client_serialization_error{
                     "Failed to deserialize response for binary request for /" + target};
-
-        return result;
-    }
-
-    /// Makes a "legacy" JSON request; that is, a POST request to /target with the serialized json
-    /// as the body.  The response is deserialized into a RPC::response which is returned.
-    ///
-    /// Note: this is *not* a JSON-RPC request, but rather a plain JSON request where the body is
-    /// the direct dump of the given request value.  See json_rpc if you want to do a JSON-RPC
-    /// request instead.
-    ///
-    /// \tparam RPC - the RPC base class; subtypes RPC::request and RPC::response are used for the
-    /// request and response, respectively.
-    ///
-    /// \param target - the end-point, without a leading /, to be concatenated with the base_url
-    /// given construction.  For example "foo" used with a base url of "https://example.com" will
-    /// post to https://example.com/foo. \param req - the request to be serialized and sent as JSON.
-    ///
-    /// \returns RPC::request, deserialized from the response.
-    ///
-    /// \throws rpc::http_client_error on connection-related failure
-    /// \throws rpc::http_client_serialization_error on a serialization failure
-    template <typename RPC>
-    typename RPC::response json(std::string_view target_, const typename RPC::request& req) {
-        std::string target{target_};
-        std::string req_serialized;
-        if (!epee::serialization::store_t_to_json(req, req_serialized))
-            throw http_client_serialization_error{
-                    "Failed to serialize " + tools::type_name(typeid(typename RPC::request)) +
-                    " for json request /" + target};
-
-        cpr::Response res =
-                post(target,
-                     std::move(req_serialized),
-                     {{"Content-Type", "application/json; charset=utf-8"}});
-
-        typename RPC::response result;
-        if (!epee::serialization::load_t_from_json(result, res.text))
-            throw http_client_serialization_error{
-                    "Failed to deserialize response for json request for /" + target};
 
         return result;
     }
