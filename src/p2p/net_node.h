@@ -50,6 +50,7 @@
 #include "common/util.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_config.h"
+#include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "cryptonote_protocol/peer_history.h"
 #include "epee/net/abstract_tcp_server2.h"
 #include "epee/net/levin_protocol_handler_async.h"
@@ -65,14 +66,9 @@ using io_service = io_context;
 }
 
 namespace nodetool {
-template <class base_type>
-struct p2p_connection_context_t : base_type  // t_payload_net_handler::connection_context //public
-                                             // net_utils::connection_context_base
-{
-    p2p_connection_context_t() : peer_id(0), m_in_timedsync(false) {}
-
-    peerid_type peer_id;
-    bool m_in_timedsync;
+struct p2p_connection_context : cryptonote_connection_context {
+    peerid_type peer_id = 0;
+    bool m_in_timedsync = false;
     std::set<oxen::quic::Address> sent_addresses;
 };
 
@@ -91,18 +87,12 @@ struct peer_stats {
     uint64_t total_connection_time = 0;
 };
 
-template <class t_payload_net_handler>
-class node_server
-        : public epee::levin::levin_commands_handler<
-                  p2p_connection_context_t<typename t_payload_net_handler::connection_context>>,
-          public i_p2p_endpoint,
-          public epee::net_utils::i_connection_filter {
+class node_server : public epee::levin::levin_commands_handler<p2p_connection_context>,
+                    public i_p2p_endpoint,
+                    public epee::net_utils::i_connection_filter {
     struct by_conn_id {};
     struct by_peer_id {};
     struct by_addr {};
-
-    using p2p_connection_context =
-            p2p_connection_context_t<typename t_payload_net_handler::connection_context>;
 
     using net_server = epee::net_utils::boosted_tcp_server<
             epee::levin::async_protocol_handler<p2p_connection_context>>;
@@ -147,9 +137,7 @@ class node_server
     };
 
   public:
-    typedef t_payload_net_handler payload_net_handler;
-
-    node_server(t_payload_net_handler& payload_handler) :
+    node_server(cryptonote::protocol_handler& payload_handler) :
             m_payload_handler(payload_handler),
             m_external_port(0),
             m_allow_local_ip(false),
@@ -166,7 +154,7 @@ class node_server
     bool deinit();
     bool send_stop_signal();
     uint32_t get_this_peer_port() { return m_listening_port; }
-    t_payload_net_handler& get_payload_object();
+    cryptonote::protocol_handler& get_payload_object();
 
     // debug functions
     bool log_peerlist();
@@ -219,8 +207,7 @@ class node_server
     HANDLE_INVOKE_T2(COMMAND_PING, handle_ping)
     // TODO: remove after HF19
     HANDLE_INVOKE_T2(COMMAND_REQUEST_SUPPORT_FLAGS, handle_get_support_flags)
-    CHAIN_INVOKE_MAP_TO_OBJ_FORCE_CONTEXT(
-            m_payload_handler, typename t_payload_net_handler::connection_context&)
+    CHAIN_INVOKE_MAP_TO_OBJ_FORCE_CONTEXT(m_payload_handler, cryptonote_connection_context&)
     END_INVOKE_MAP2()
 
     //----------------- commands handlers ----------------------------------------------
@@ -419,7 +406,7 @@ class node_server
     std::unordered_map<peerid_type, peer_stats> peer_stats_map;
     std::mutex peer_stats_map_mutex;
 
-    t_payload_net_handler& m_payload_handler;
+    cryptonote::protocol_handler& m_payload_handler;
     peerlist_storage m_peerlist_storage;
     // Only used by connections_maker (so needs no lock).
     cryptonote::unhelpful_peers m_unhelpful_peers;

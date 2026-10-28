@@ -62,7 +62,7 @@ class daemon {
     boost::program_options::variables_map vm;
 
     using protocol_handler = cryptonote::protocol_handler;
-    using node_server = nodetool::node_server<protocol_handler>;
+    using node_server = nodetool::node_server;
 
     // Core objects; these are in unique ptrs because we want daemon to be movable and most of these
     // are not movable, and std::unique_ptr is a sort of pre-C++17 poor man's std::optional.

@@ -30,13 +30,12 @@
 oxen_add_library(p2p
   p2p_protocol_defs.cpp
   net_node.cpp
-  net_node.inl
   net_peerlist.cpp
 )
 
 target_link_libraries(p2p
   PUBLIC
-    cryptonote_core
+    cryptonote_protocol
   PRIVATE
     version
     net

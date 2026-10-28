@@ -176,9 +176,7 @@ void core_rpc_server::init_options(
     cryptonote::rpc_args::init_options(desc, hidden);
 }
 //------------------------------------------------------------------------------------------------------------------------------
-core_rpc_server::core_rpc_server(
-        core& cr, nodetool::node_server<cryptonote::protocol_handler>& p2p) :
-        m_core(cr), m_p2p(p2p) {}
+core_rpc_server::core_rpc_server(core& cr, nodetool::node_server& p2p) : m_core(cr), m_p2p(p2p) {}
 //------------------------------------------------------------------------------------------------------------------------------
 bool core_rpc_server::check_core_ready() {
     return m_p2p.get_payload_object().is_synchronized();

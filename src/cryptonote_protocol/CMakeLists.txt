@@ -32,13 +32,13 @@ oxen_add_library(cryptonote_protocol
   cryptonote_protocol_handler.cpp
   cryptonote_protocol_defs.cpp
   quorumnet.cpp
-  p2p_net_node_instantiation.cpp
 )
 
 target_link_libraries(cryptonote_protocol
   PUBLIC
-    p2p
+    cryptonote_core
   PRIVATE
+    net
     sqlitedb
     logging
     extra)
