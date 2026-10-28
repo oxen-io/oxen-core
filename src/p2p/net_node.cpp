@@ -937,26 +937,6 @@ bool node_server::do_peer_timed_sync(
 }
 
 //-----------------------------------------------------------------------------------
-size_t node_server::get_random_exp_index(
-        const size_t size, const double rate) {
-    if (size <= 1)
-        return 0;
-
-    // (See net_node.h)
-
-    crypto::random_device rng;
-    const double u = std::uniform_real_distribution{}(rng);
-    // For non-truncated exponential we could use: -1/rate * log(1-u), (or
-    // std::exponential_distribution) but then we'd have to repeat until we got a value < size,
-    // which is technically unbounded computational time.  Instead we mutate the calculation like
-    // this, which gives us exponential, but truncated to [0, size), without looping:
-    const size_t res =
-            static_cast<size_t>(-1.0 / rate * std::log(1.0 - u * (1.0 - std::exp(-rate * size))));
-
-    log::debug(logcat, "Random connection index={} (size={})", res, size);
-    return res;
-}
-//-----------------------------------------------------------------------------------
 bool node_server::is_peer_used(const oxen::quic::Address& addr) {
     return is_connect_pending(addr) || is_addr_connected(addr);
 }
