@@ -2542,6 +2542,17 @@ int protocol_handler::handle_response_chain_entry(
         drop_connection(context, true, false);
         return 1;
     }
+    // No oxend has ever sent more (see Blockchain::find_blockchain_supplement), and we check each
+    // one we already have against the chain, so a peer mustn't get to choose how many.
+    if (arg.m_block_ids.size() > BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT) {
+        log::error(
+                logcat,
+                "sent {} block ids, more than the {} limit, dropping connection",
+                arg.m_block_ids.size(),
+                BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT);
+        drop_connection(context, true, false);
+        return 1;
+    }
     if (arg.total_height < arg.m_block_ids.size() ||
         arg.start_height > arg.total_height - arg.m_block_ids.size()) {
         log::error(logcat, "sent invalid start/nblocks/height, dropping connection");

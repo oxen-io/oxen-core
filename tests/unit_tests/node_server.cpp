@@ -141,6 +141,41 @@ TEST(ban, add)
   ASSERT_TRUE(t >= 4);
 }
 
+namespace {
+// Records the connections a protocol handler drops, in place of a p2p node dropping them
+struct drop_recorder : nodetool::p2p_endpoint_stub {
+  std::vector<epee::connection_id_t> dropped;
+  bool drop_connection(const epee::net_utils::connection_context_base& context) override
+  {
+    dropped.push_back(context.m_connection_id);
+    return true;
+  }
+};
+}
+
+TEST(protocol_handler, oversized_chain_entry_drops_peer)
+{
+  cryptonote::core pr_core;
+  cryptonote::protocol_handler cprotocol(pr_core);
+  drop_recorder p2p;
+  cprotocol.set_p2p_endpoint(&p2p);
+
+  cryptonote::NOTIFY_RESPONSE_CHAIN_ENTRY::request entry{};
+  entry.m_block_ids.resize(cryptonote::BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT + 1);
+  entry.start_height = 0;
+  entry.total_height = entry.m_block_ids.size();
+  const auto body = nodetool::levin::encode(entry);
+
+  cryptonote::cryptonote_connection_context context{
+      epee::connection_id_t::random(), MAKE_IPV4_ADDRESS(1,2,3,4), false};
+  cprotocol.notify(
+      cryptonote::NOTIFY_RESPONSE_CHAIN_ENTRY::ID,
+      oxen::quic::reinterpret_span<const uint8_t>(std::span{body}),
+      context);
+  ASSERT_EQ(p2p.dropped.size(), 1);
+  EXPECT_EQ(p2p.dropped[0], context.m_connection_id);
+}
+
 TEST(sync_need, heights)
 {
   using cryptonote::sync_need_for;
