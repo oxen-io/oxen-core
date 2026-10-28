@@ -27,10 +27,9 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 oxen_add_library(net
+  address.cpp
   error.cpp
-  ipv4_address.cpp
   parse.cpp
-  epee_network_address_hack.cpp
   )
 target_link_libraries(net
   PUBLIC

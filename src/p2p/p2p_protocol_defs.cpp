@@ -6,7 +6,6 @@
 
 #include "common/string_util.h"
 #include "cryptonote_protocol/peer_history.h"
-#include "net/ipv4_address.h"  // needed for serialization
 
 namespace nodetool {
 
@@ -16,7 +15,7 @@ std::string print_peerlist_to_string(const std::vector<peerlist_entry>& pl) {
     for (const auto& pe : pl) {
         result += "{:016x}\t{}\tlast_seen {}\thistory {}\n"_format(
                 pe.id,
-                pe.adr.str(),
+                pe.adr.to_string(),
                 pe.last_seen == 0
                         ? "never"s
                         : tools::friendly_duration(

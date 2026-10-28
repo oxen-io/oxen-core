@@ -28,11 +28,8 @@
 
 #include "parse.h"
 
-#include <boost/version.hpp>
-
 #include "common/string_util.h"
 #include "net/error.h"
-#include "net/ipv4_address.h"
 
 namespace net {
 std::pair<std::string_view, std::string_view> get_network_address_host_and_port(
@@ -54,22 +51,12 @@ std::pair<std::string_view, std::string_view> get_network_address_host_and_port(
     return result;
 }
 
-expect<epee::net_utils::network_address> get_network_address(
+expect<oxen::quic::Address> get_network_address(
         std::string_view address, const std::uint16_t default_port) {
-    bool ipv6 = false;
-
     auto [host_str, port_str] = get_network_address_host_and_port(address);
 
     if (host_str.empty())
         return make_error_code(net::error::invalid_host);
-
-    boost::system::error_code ec;
-#if BOOST_VERSION >= 106600
-    auto v6 = boost::asio::ip::make_address_v6(host_str, ec);
-#else
-    auto v6 = boost::asio::ip::address_v6::from_string(std::string{host_str}, ec);
-#endif
-    ipv6 = !ec;
 
     std::uint16_t port = default_port;
     if (port_str.size()) {
@@ -77,11 +64,11 @@ expect<epee::net_utils::network_address> get_network_address(
             return make_error_code(net::error::invalid_port);
     }
 
-    if (ipv6)
-        return {epee::net_utils::ipv6_network_address{v6, port}};
-
+    std::string host{host_str};
     try {
-        return {ipv4_address{oxen::quic::ipv4{std::string{host_str}}, port}};
+        if (host.find(':') != std::string::npos)
+            return oxen::quic::Address{oxen::quic::ipv6{host}, port};
+        return oxen::quic::Address{oxen::quic::ipv4{host}, port};
     } catch (const std::invalid_argument&) {
         return make_error_code(net::error::unsupported_address);
     }

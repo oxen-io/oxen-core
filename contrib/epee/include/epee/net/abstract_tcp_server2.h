@@ -61,7 +61,7 @@ namespace net_utils
 
   struct i_connection_filter
   {
-    virtual bool is_remote_host_allowed(const epee::net_utils::network_address &address, time_t *t = NULL)=0;
+    virtual bool is_remote_host_allowed(const oxen::quic::Address &address, time_t *t = NULL)=0;
   protected:
     virtual ~i_connection_filter(){}
   };
@@ -108,9 +108,6 @@ namespace net_utils
 
     /// Start the first asynchronous operation for the connection.
     bool start(bool is_income, bool is_multithreaded);
-
-    // `real_remote` is the actual endpoint (if connection is to proxy, etc.)
-    bool start(bool is_income, bool is_multithreaded, network_address real_remote);
 
     void get_context(t_connection_context& context_){context_ = context;}
 
@@ -242,12 +239,6 @@ namespace net_utils
 
     void set_connection_filter(i_connection_filter* pfilter);
 
-    void set_default_remote(epee::net_utils::network_address remote)
-    {
-      default_remote = std::move(remote);
-    }
-
-    bool add_connection(t_connection_context& out, boost::asio::ip::tcp::socket&& sock, network_address real_remote);
     try_connect_result_t try_connect(connection_ptr new_connection_l, const std::string& adr, const std::string& port, boost::asio::ip::tcp::socket &sock_, const boost::asio::ip::tcp::endpoint &remote_endpoint, const std::string &bind_ip, uint32_t conn_timeout);
     bool connect(const std::string& adr, const std::string& port, uint32_t conn_timeot, t_connection_context& cn, const std::string& bind_ip = "0.0.0.0");
     template<class t_callback>
@@ -349,7 +340,6 @@ namespace net_utils
     /// Acceptor used to listen for incoming connections.
     boost::asio::ip::tcp::acceptor acceptor_;
     boost::asio::ip::tcp::acceptor acceptor_ipv6;
-    epee::net_utils::network_address default_remote;
 
     std::atomic<bool> m_stop_signal_sent;
     uint32_t m_port;

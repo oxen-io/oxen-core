@@ -37,8 +37,8 @@
 #include "cryptonote_core/blockchain.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
 
-#define MAKE_IPV4_ADDRESS(a,b,c,d) net::ipv4_address{oxen::quic::ipv4(a,b,c,d),0}
-#define MAKE_IPV4_ADDRESS_PORT(a,b,c,d,e) net::ipv4_address{oxen::quic::ipv4(a,b,c,d),e}
+#define MAKE_IPV4_ADDRESS(a,b,c,d) oxen::quic::Address{oxen::quic::ipv4(a,b,c,d),0}
+#define MAKE_IPV4_ADDRESS_PORT(a,b,c,d,e) oxen::quic::Address{oxen::quic::ipv4(a,b,c,d),e}
 #define MAKE_IPV4_SUBNET(a,b,c,d,e) (oxen::quic::ipv4(a,b,c,d) / e)
 
 namespace cryptonote {
@@ -138,12 +138,12 @@ private:
 
 typedef nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<test_core>> Server;
 
-static bool is_blocked(Server &server, const epee::net_utils::network_address &address, time_t *t = NULL)
+static bool is_blocked(Server &server, const oxen::quic::Address &address, time_t *t = NULL)
 {
   std::map<std::string, time_t> hosts = server.get_blocked_hosts();
   for (auto rec: hosts)
   {
-    if (rec.first == address.host_str())
+    if (rec.first == address.host())
     {
       if (t)
         *t = rec.second;

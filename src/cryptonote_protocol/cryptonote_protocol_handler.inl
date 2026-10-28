@@ -49,7 +49,7 @@
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/tx_pool.h"
 #include "epee/net/network_throttle-detail.hpp"
-#include "net/ipv4_address.h"
+#include "net/address.h"
 #include "common/random.h"
 #include "common/lock.h"
 #include "common/util.h"
@@ -220,11 +220,11 @@ namespace cryptonote
 
     m_p2p->for_each_connection([&](const connection_context& cntxt, nodetool::peerid_type peer_id)
     {
-      bool local_ip = cntxt.m_remote_address.is_local();
+      bool local_ip = net::is_local(cntxt.m_remote_address);
       const auto now = std::chrono::steady_clock::now();
       seconds_f connection_time{now - cntxt.m_started};
       ss << std::setw(30) << std::left << std::string(cntxt.m_is_income ? " [INC]":"[OUT]") +
-        cntxt.m_remote_address.str()
+        cntxt.m_remote_address.to_string()
         << std::setw(20) << "{:016x}"_format(peer_id)
         << std::setw(30) << std::to_string(cntxt.m_recv_cnt) + "(" + std::to_string(tools::to_seconds(now - cntxt.m_last_recv)) + ")" +
                       "/" + std::to_string(cntxt.m_send_cnt) + "(" + std::to_string(tools::to_seconds(now - cntxt.m_last_send)) + ")"
@@ -235,7 +235,7 @@ namespace cryptonote
         << std::setw(10) << std::fixed << (connection_time < 1s ? 0.0 : cntxt.m_send_cnt / connection_time.count() / 1024)
         << std::setw(13) << std::fixed << cntxt.m_current_speed_up / 1024
         << (local_ip ? "[LAN]" : "")
-        << std::left << (cntxt.m_remote_address.is_loopback() ? "[LOCALHOST]" : "") // 127.0.0.1
+        << std::left << (net::is_loopback(cntxt.m_remote_address) ? "[LOCALHOST]" : "") // 127.0.0.1
         << "\n";
 
       if (connection_time >= 1s)
@@ -273,11 +273,11 @@ namespace cryptonote
 
       cnx.incoming = cntxt.m_is_income ? true : false;
 
-      cnx.address = cntxt.m_remote_address.str();
-      cnx.host = cntxt.m_remote_address.host_str();
+      cnx.address = cntxt.m_remote_address.to_string();
+      cnx.host = cntxt.m_remote_address.host();
       cnx.ip = "";
       cnx.port = "";
-      if (cntxt.m_remote_address.get_type_id() == net::ipv4_address::get_type_id())
+      if (cntxt.m_remote_address.is_ipv4())
       {
         cnx.ip = cnx.host;
         cnx.port = std::to_string(cntxt.m_remote_address.port());
@@ -293,8 +293,8 @@ namespace cryptonote
 
       cnx.state = get_protocol_state_string(cntxt.m_state);
 
-      cnx.localhost = cntxt.m_remote_address.is_loopback();
-      cnx.local_ip = cntxt.m_remote_address.is_local();
+      cnx.localhost = net::is_loopback(cntxt.m_remote_address);
+      cnx.local_ip = net::is_local(cntxt.m_remote_address);
 
       seconds_f connection_time{std::chrono::steady_clock::now() - cntxt.m_started};
       if (connection_time < 1s)
@@ -316,7 +316,7 @@ namespace cryptonote
 
       cnx.height = cntxt.m_remote_blockchain_height;
       cnx.history = cntxt.m_history;
-      cnx.address_type = (uint8_t)cntxt.m_remote_address.get_type_id();
+      cnx.address_type = static_cast<uint8_t>(net::type_of(cntxt.m_remote_address));
 
       connections.push_back(cnx);
 

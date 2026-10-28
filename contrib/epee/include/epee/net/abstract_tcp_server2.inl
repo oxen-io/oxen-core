@@ -37,7 +37,6 @@
 // Not epee headers: this server template is only ever instantiated by oxend's p2p code, which
 // provides them.
 #include "common/oxen.h"
-#include "net/ipv4_address.h"
 
 #include <chrono>
 #include <thread>
@@ -61,6 +60,8 @@ namespace epee
 {
 namespace net_utils
 {
+  using namespace std::literals;
+
   template<typename T>
   T& check_and_get(std::shared_ptr<T>& ptr)
   {
@@ -134,35 +135,20 @@ namespace net_utils
         throw std::runtime_error(std::string("Failed to get remote endpoint: ") + ec.message() + ":" + std::to_string(ec.value()));
     if (!remote_ep.address().is_v4() && !remote_ep.address().is_v6())
         throw std::runtime_error("Only IPv4 and IPv6 are supported here");
-    if (remote_ep.address().is_v4())
-    {
-      return start(is_income, is_multithreaded, net::ipv4_address{
-              oxen::quic::ipv4{remote_ep.address().to_v4().to_uint()}, remote_ep.port()});
-    }
-    else
-    {
-      const auto ip_ = remote_ep.address().to_v6();
-      return start(is_income, is_multithreaded, ipv6_network_address{ip_, remote_ep.port()});
-    }
-  } catch (const std::exception& e) {
-    oxen::log::error(logcat, "Failed to start connection: {}", e.what());
-    return false;
-  }
-  //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::start(bool is_income, bool is_multithreaded, network_address real_remote)
-  try {
+    oxen::quic::Address remote{remote_ep.data()};
+
     // Use safe_shared_from_this, because of this is public method and it can be called on the object being deleted
     auto self = safe_shared_from_this();
     if(!self)
       return false;
 
     m_is_multithreaded = is_multithreaded;
-    m_local = real_remote.is_loopback() || real_remote.is_local();
+    // Loopback or otherwise not publicly routable
+    m_local = !remote.is_public_ip();
 
     // create a random id, we don't need crypto strength here
     context = t_connection_context{};
-    context.set_details(connection_id_t::random(), std::move(real_remote), is_income);
+    context.set_details(connection_id_t::random(), remote, is_income);
 
     if(static_cast<shared_state&>(get_state()).pfilter && !static_cast<shared_state&>(get_state()).pfilter->is_remote_host_allowed(context.m_remote_address))
     {
@@ -170,7 +156,7 @@ namespace net_utils
       return false;
     }
 
-    m_host = context.m_remote_address.host_str();
+    m_host = context.m_remote_address.host();
     try { host_count(m_host, 1); } catch(...) { /* ignore */ }
 
     m_protocol_handler.after_init_connection();
@@ -771,8 +757,7 @@ namespace net_utils
     io_service_(m_io_service_local_instance->io_service),
     acceptor_(io_service_),
     acceptor_ipv6(io_service_),
-    default_remote(),
-    m_stop_signal_sent(false), m_port(0), 
+    m_stop_signal_sent(false), m_port(0),
     m_threads_count(0),
     m_thread_index(0),
 		m_connection_type( connection_type ),
@@ -789,7 +774,6 @@ namespace net_utils
     io_service_(extarnal_io_service),
     acceptor_(io_service_),
     acceptor_ipv6(io_service_),
-    default_remote(),
     m_stop_signal_sent(false), m_port(0),
     m_threads_count(0),
     m_thread_index(0),
@@ -1062,12 +1046,7 @@ namespace net_utils
       boost::asio::socket_base::keep_alive opt(true);
       conn->socket().set_option(opt);
 
-      bool res;
-      if (default_remote.get_type_id() == net_utils::address_type::invalid)
-        res = conn->start(true, 1 < m_threads_count);
-      else
-        res = conn->start(true, 1 < m_threads_count, default_remote);
-      if (!res)
+      if (!conn->start(true, 1 < m_threads_count))
       {
         conn->cancel();
         return;
@@ -1087,22 +1066,6 @@ namespace net_utils
     current_acceptor->async_accept((*current_new_connection)->socket(),
         boost::bind(accept_function_pointer, this,
           boost::asio::placeholders::error));
-  }
-  //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool boosted_tcp_server<t_protocol_handler>::add_connection(t_connection_context& out, boost::asio::ip::tcp::socket&& sock, network_address real_remote)
-  {
-    if(std::addressof(get_io_service()) == std::addressof(GET_IO_SERVICE(sock)))
-    {
-      connection_ptr conn(new connection<t_protocol_handler>(std::move(sock), m_state, m_connection_type));
-      if(conn->start(false, 1 < m_threads_count, std::move(real_remote)))
-      {
-        conn->get_context(out);
-        conn->save_dbg_log();
-        return true;
-      }
-    }
-    return false;
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>

@@ -20,7 +20,7 @@ namespace {
 
 nodetool::peerlist_entry ipv4_entry() {
     nodetool::peerlist_entry e{};
-    e.adr = net::ipv4_address{oxen::quic::ipv4{51, 0, 18, 255}, 65535};
+    e.adr = oxen::quic::Address{oxen::quic::ipv4{51, 0, 18, 255}, 65535};
     e.id = 0x0102030405060708;
     e.last_seen = 1700000000;
     e.history = 1000;
@@ -29,8 +29,7 @@ nodetool::peerlist_entry ipv4_entry() {
 
 nodetool::peerlist_entry ipv6_entry() {
     nodetool::peerlist_entry e{};
-    e.adr = epee::net_utils::ipv6_network_address{
-            boost::asio::ip::make_address_v6("2001:db8::1"), 22022};
+    e.adr = oxen::quic::Address{oxen::quic::ipv6{"2001:db8::1"s}, 22022};
     e.id = 0x0102030405060708;
     e.last_seen = 1700000000;
     return e;
@@ -90,7 +89,7 @@ TEST(p2p_formats, kv_ipv4_peer) {
     nodetool::peerlist_entry loaded{};
     ASSERT_TRUE(epee::serialization::load_t_from_binary(loaded, oxenc::from_hex(expected)));
     EXPECT_EQ(loaded.adr, ipv4_entry().adr);
-    EXPECT_EQ(loaded.adr.str(), "51.0.18.255:65535");
+    EXPECT_EQ(loaded.adr.to_string(), "51.0.18.255:65535");
     EXPECT_EQ(loaded.id, ipv4_entry().id);
     EXPECT_EQ(loaded.last_seen, ipv4_entry().last_seen);
     EXPECT_EQ(loaded.history, ipv4_entry().history);
@@ -104,7 +103,7 @@ TEST(p2p_formats, kv_ipv6_peer) {
     nodetool::peerlist_entry loaded{};
     ASSERT_TRUE(epee::serialization::load_t_from_binary(loaded, oxenc::from_hex(expected)));
     EXPECT_EQ(loaded.adr, ipv6_entry().adr);
-    EXPECT_EQ(loaded.adr.str(), "[2001:db8::1]:22022");
+    EXPECT_EQ(loaded.adr.to_string(), "[2001:db8::1]:22022");
     EXPECT_FALSE(loaded.history);
 }
 
@@ -119,8 +118,8 @@ constexpr auto boost_header =
 TEST(p2p_formats, boost_ipv4_peer) {
     // clang-format off
     auto expected = "{}"
-            "0000" "01"         // network_address class info; type 1
-            "0000"              // ipv4 address class info
+            "0000" "01"         // address class info; type 1
+            "0000"              // IPv4 address class info
             "04" "330012ff"     // ip (the legacy, byte-reversed int)
             "02" "ffff"         // port
             "08" "0807060504030201" // id
@@ -140,9 +139,9 @@ TEST(p2p_formats, boost_ipv4_peer) {
 TEST(p2p_formats, boost_ipv6_peer) {
     // clang-format off
     auto expected = "{}"
-            "0000" "02"         // network_address class info; type 2
-            "0000"              // ipv6 address class info
-            "0000"              // boost::asio::ip::address_v6 class info
+            "0000" "02"         // address class info; type 2
+            "0000"              // IPv6 address class info
+            "0000"              // IPv6 address bytes class info
             "20010db8000000000000000000000001" // the 16 address bytes
             "02" "0656"         // port
             "08" "0807060504030201" // id

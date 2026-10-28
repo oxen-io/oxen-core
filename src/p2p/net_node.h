@@ -52,12 +52,11 @@
 #include "cryptonote_protocol/levin_notify.h"
 #include "cryptonote_protocol/peer_history.h"
 #include "epee/net/abstract_tcp_server2.h"
-#include "epee/net/enums.h"
 #include "epee/net/levin_protocol_handler.h"
 #include "epee/net/levin_protocol_handler_async.h"
 #include "epee/storages/levin_abstract_invoke2.h"
+#include "net/address.h"
 #include "net/fwd.h"
-#include "net/ipv4_address.h"
 #include "net_node_common.h"
 #include "net_peerlist.h"
 #include "p2p_protocol_defs.h"
@@ -75,7 +74,7 @@ struct p2p_connection_context_t : base_type  // t_payload_net_handler::connectio
 
     peerid_type peer_id;
     bool m_in_timedsync;
-    std::set<epee::net_utils::network_address> sent_addresses;
+    std::set<oxen::quic::Address> sent_addresses;
 };
 
 enum class PeerType { anchor = 0, white, gray };
@@ -189,14 +188,14 @@ class node_server
     void change_max_in_public_peers(size_t count);
     uint32_t get_max_in_public_peers() const;
     virtual bool block_host(
-            const epee::net_utils::network_address& adress,
+            const oxen::quic::Address& adress,
             time_t seconds = tools::to_seconds(cryptonote::p2p::IP_BLOCK_TIME));
-    virtual bool unblock_host(const epee::net_utils::network_address& address);
+    virtual bool unblock_host(const oxen::quic::Address& address);
     virtual bool block_subnet(
             const oxen::quic::ipv4_range& subnet,
             time_t seconds = tools::to_seconds(cryptonote::p2p::IP_BLOCK_TIME));
     virtual bool unblock_subnet(const oxen::quic::ipv4_range& subnet);
-    virtual bool is_host_blocked(const epee::net_utils::network_address& address, time_t* seconds) {
+    virtual bool is_host_blocked(const oxen::quic::Address& address, time_t* seconds) {
         return !is_remote_host_allowed(address, seconds);
     }
     virtual std::map<std::string, time_t> get_blocked_hosts() {
@@ -286,10 +285,9 @@ class node_server
             const connection_id_t&,
             std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type)>
                     f);
-    virtual bool add_host_fail(const epee::net_utils::network_address& address);
+    virtual bool add_host_fail(const oxen::quic::Address& address);
     //----------------- i_connection_filter --------------------------------------------------------
-    virtual bool is_remote_host_allowed(
-            const epee::net_utils::network_address& address, time_t* t = NULL);
+    virtual bool is_remote_host_allowed(const oxen::quic::Address& address, time_t* t = NULL);
     //-----------------------------------------------------------------------------------------------
     bool handle_command_line(const boost::program_options::variables_map& vm);
     bool idle_worker();
@@ -319,7 +317,7 @@ class node_server
             bool use_white_list, const std::optional<cryptonote::sync_need>& need = std::nullopt);
     struct droppable_peer {
         epee::connection_id_t connection_id;
-        epee::net_utils::network_address address;
+        oxen::quic::Address address;
         uint64_t height;
         std::optional<uint64_t> history;
     };
@@ -335,7 +333,7 @@ class node_server
     // outgoing ones that can't as unhelpful.
     sync_peers check_sync_peers(const cryptonote::sync_need& need);
     bool try_to_connect_and_handshake_with_new_peer(
-            const epee::net_utils::network_address& na,
+            const oxen::quic::Address& na,
             bool just_take_peerlist = false,
             uint64_t last_seen_stamp = 0,
             PeerType peer_type = PeerType::white,
@@ -354,14 +352,14 @@ class node_server
     // Takes a peerlist_entry or anchor_peerlist_entry
     template <typename Entry>
     bool is_peer_used(const Entry& peer);
-    bool is_addr_connected(const epee::net_utils::network_address& peer);
+    bool is_addr_connected(const oxen::quic::Address& peer);
     template <class t_callback>
     bool try_ping(
             basic_node_data& node_data, p2p_connection_context& context, const t_callback& cb);
     bool make_expected_connections_count(PeerType peer_type, size_t expected_connections);
-    void record_addr_failed(const epee::net_utils::network_address& addr);
-    bool is_addr_recently_failed(const epee::net_utils::network_address& addr);
-    bool is_priority_node(const epee::net_utils::network_address& na);
+    void record_addr_failed(const oxen::quic::Address& addr);
+    bool is_addr_recently_failed(const oxen::quic::Address& addr);
+    bool is_priority_node(const oxen::quic::Address& na);
     bool connect_to_seed();
 
     template <class Container>
@@ -381,12 +379,12 @@ class node_server
     bool set_rate_down_limit(const boost::program_options::variables_map& vm, int64_t limit);
     bool set_rate_limit(const boost::program_options::variables_map& vm, int64_t limit);
 
-    bool has_too_many_connections(const epee::net_utils::network_address& address);
+    bool has_too_many_connections(const oxen::quic::Address& address);
     size_t get_incoming_connections_count();
     size_t get_outgoing_connections_count();
 
     bool check_connection_and_handshake_with_peer(
-            const epee::net_utils::network_address& na, uint64_t last_seen_stamp);
+            const oxen::quic::Address& na, uint64_t last_seen_stamp);
     bool gray_peerlist_housekeeping();
     bool check_incoming_connections();
 
@@ -437,9 +435,9 @@ class node_server
     tools::periodic_task m_gray_peerlist_housekeeping_interval{"p2p graylist", 1min};
     tools::periodic_task m_incoming_connections_interval{"incoming connection warning", 1h};
 
-    std::list<epee::net_utils::network_address> m_priority_peers;
-    std::vector<epee::net_utils::network_address> m_exclusive_peers;
-    std::vector<epee::net_utils::network_address> m_seed_nodes;
+    std::list<oxen::quic::Address> m_priority_peers;
+    std::vector<oxen::quic::Address> m_exclusive_peers;
+    std::vector<oxen::quic::Address> m_seed_nodes;
     std::atomic<bool> m_seed_nodes_initialized{false};
     std::shared_mutex m_seed_nodes_mutex;
     std::atomic_flag m_fallback_seed_nodes_added;
@@ -447,7 +445,7 @@ class node_server
     uint64_t m_peer_livetime;
     // keep connections to initiate some interactions
 
-    std::optional<p2p_connection_context> public_connect(epee::net_utils::network_address const&);
+    std::optional<p2p_connection_context> public_connect(oxen::quic::Address const&);
 
     network m_network;
 

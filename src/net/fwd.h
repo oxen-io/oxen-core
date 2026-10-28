@@ -30,5 +30,4 @@
 
 namespace net {
 enum class error : int;
-class ipv4_address;
 }  // namespace net

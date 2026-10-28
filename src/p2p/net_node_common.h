@@ -35,7 +35,6 @@
 #include <utility>
 #include <vector>
 
-#include "epee/net/enums.h"
 #include "epee/net/net_utils_base.h"
 #include "p2p_protocol_defs.h"
 
@@ -66,12 +65,11 @@ struct i_p2p_endpoint {
     virtual void for_each_connection(std::function<bool(t_connection_context&, peerid_type)> f) = 0;
     virtual bool for_connection(
             const connection_id_t&, std::function<bool(t_connection_context&, peerid_type)> f) = 0;
-    virtual bool block_host(
-            const epee::net_utils::network_address& address, time_t seconds = 0) = 0;
-    virtual bool unblock_host(const epee::net_utils::network_address& address) = 0;
+    virtual bool block_host(const oxen::quic::Address& address, time_t seconds = 0) = 0;
+    virtual bool unblock_host(const oxen::quic::Address& address) = 0;
     virtual std::map<std::string, time_t> get_blocked_hosts() = 0;
     virtual std::map<oxen::quic::ipv4_range, time_t> get_blocked_subnets() = 0;
-    virtual bool add_host_fail(const epee::net_utils::network_address& address) = 0;
+    virtual bool add_host_fail(const oxen::quic::Address& address) = 0;
 };
 
 template <class t_connection_context>
@@ -110,14 +108,12 @@ struct p2p_endpoint_stub : public i_p2p_endpoint<t_connection_context> {
     }
 
     virtual uint64_t get_public_connections_count() { return false; }
-    virtual bool block_host(const epee::net_utils::network_address& address, time_t seconds) {
-        return true;
-    }
-    virtual bool unblock_host(const epee::net_utils::network_address& address) { return true; }
+    virtual bool block_host(const oxen::quic::Address& address, time_t seconds) { return true; }
+    virtual bool unblock_host(const oxen::quic::Address& address) { return true; }
     virtual std::map<std::string, time_t> get_blocked_hosts() {
         return std::map<std::string, time_t>();
     }
     virtual std::map<oxen::quic::ipv4_range, time_t> get_blocked_subnets() { return {}; }
-    virtual bool add_host_fail(const epee::net_utils::network_address& address) { return true; }
+    virtual bool add_host_fail(const oxen::quic::Address& address) { return true; }
 };
 }  // namespace nodetool
