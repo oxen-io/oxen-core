@@ -54,9 +54,9 @@ struct i_p2p_endpoint {
             int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) = 0;
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context) = 0;
     virtual void request_callback(const epee::net_utils::connection_context_base& context) = 0;
-    // Calls `f` with the connection's context on the thread that handles the connection's
-    // messages, after what is already queued there, unless the connection has closed by then.
-    // Safe to call from any thread.
+    // Calls `f` with the connection's context on the event loop that handles the connection's
+    // messages, after what is running or already queued there, unless the connection has closed by
+    // then.  Safe to call from any thread.
     virtual void call_on_connection(
             const connection_id_t& id, std::function<void(cryptonote_connection_context&)> f) = 0;
     virtual uint64_t get_public_connections_count() = 0;

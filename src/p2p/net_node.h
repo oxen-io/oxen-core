@@ -412,8 +412,8 @@ class node_server : public i_p2p_endpoint {
 
     network m_network;
     transport m_transport{*this};
-    // The OxenMQ timers running idle_worker and the protocol handler's on_idle while we run
-    std::vector<oxenmq::TimerID> m_idle_timers;
+    // The event loop timers running idle_worker and the protocol handler's on_idle while we run
+    std::vector<oxen::quic::TimerID> m_idle_timers;
 
     std::map<std::string, time_t> m_conn_fails_cache;
     std::shared_mutex m_conn_fails_cache_lock;

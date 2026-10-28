@@ -573,18 +573,15 @@ bool node_server::run() {
         log::debug(logcat, "Thread monitor number of peers - done");
     });  // lambda
 
-    auto& core = m_payload_handler.get_core();
-    auto& omq = core.omq();
-    const auto& thread = core.p2p_thread_id();
-    m_transport.start(omq, thread);
-    m_idle_timers.push_back(omq.add_timer([this] { idle_worker(); }, 1s, true, thread));
-    m_idle_timers.push_back(
-            omq.add_timer([this] { m_payload_handler.on_idle(); }, 1s, true, thread));
+    m_transport.start();
+    auto& loop = m_transport.loop();
+    m_idle_timers.push_back(loop.add_timer(1s, [this] { idle_worker(); }));
+    m_idle_timers.push_back(loop.add_timer(1s, [this] { m_payload_handler.on_idle(); }));
 
     log::info(logcat, "p2p network running");
     m_transport.wait();
     for (const auto& timer : m_idle_timers)
-        omq.cancel_timer(timer);
+        loop.remove(timer);
     m_idle_timers.clear();
 
     log::info(logcat, "p2p network stopped.");

@@ -908,7 +908,7 @@ class core final {
     /// interval for systemd watchdog pings & updating the service Status line
     tools::periodic_task m_systemd_notify_interval{"systemd notifier", 10s};
 
-    uint64_t m_target_blockchain_height;  //!< blockchain height target
+    std::atomic<uint64_t> m_target_blockchain_height;  //!< blockchain height target
 
     network_type m_nettype;  //!< which network are we on?
 
