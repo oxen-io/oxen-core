@@ -231,7 +231,6 @@ TEST(NetUtils, NetworkAddress)
     static std::string str() { return {}; }
     static std::string host_str() { return {}; }
     constexpr static epee::net_utils::address_type get_type_id() noexcept { return epee::net_utils::address_type(-1); }
-    constexpr static epee::net_utils::zone get_zone() noexcept { return epee::net_utils::zone::invalid; }
     constexpr static bool is_blockable() noexcept { return false; }
   };
 
@@ -243,7 +242,6 @@ TEST(NetUtils, NetworkAddress)
   EXPECT_FALSE(empty.is_loopback());
   EXPECT_FALSE(empty.is_local());
   EXPECT_EQ(epee::net_utils::address_type::invalid, empty.get_type_id());
-  EXPECT_EQ(epee::net_utils::zone::invalid, empty.get_zone());
   EXPECT_FALSE(empty.is_blockable());
   EXPECT_THROW(empty.as<custom_address>(), std::bad_cast);
 
@@ -261,7 +259,6 @@ TEST(NetUtils, NetworkAddress)
   EXPECT_FALSE(address1.is_loopback());
   EXPECT_FALSE(address1.is_local());
   EXPECT_EQ(net::ipv4_address::get_type_id(), address1.get_type_id());
-  EXPECT_EQ(epee::net_utils::zone::public_, address1.get_zone());
   EXPECT_TRUE(address1.is_blockable());
   EXPECT_NO_THROW(address1.as<net::ipv4_address>());
   EXPECT_THROW(address1.as<custom_address>(), std::bad_cast);
@@ -280,7 +277,6 @@ TEST(NetUtils, NetworkAddress)
   EXPECT_TRUE(loopback.is_loopback());
   EXPECT_FALSE(loopback.is_local());
   EXPECT_EQ(net::ipv4_address::get_type_id(), address1.get_type_id());
-  EXPECT_EQ(epee::net_utils::zone::public_, address1.get_zone());
 
   const epee::net_utils::network_address local{
     net::ipv4_address{ip_local, 8080}

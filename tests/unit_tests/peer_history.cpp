@@ -262,7 +262,7 @@ TEST(peer_history, stored_in_the_peerlist_file) {
     std::istringstream in{out.str()};
     auto read = nodetool::peerlist_storage::open(in, true);
     ASSERT_TRUE(read);
-    auto public_ = read->take_zone(epee::net_utils::zone::public_);
+    auto public_ = read->take();
     ASSERT_EQ(public_.white.size(), 2);
     EXPECT_EQ(public_.white[0].history, 20'160);
     EXPECT_EQ(public_.white[1].history, std::nullopt);

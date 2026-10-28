@@ -78,10 +78,6 @@ namespace epee::net_utils
   {
     return o << to_string(a);
   }
-  std::ostream& operator<<(std::ostream& o, zone z)
-  {
-    return o << to_string(z);
-  }
 } // namespace epee::net_utils
 
 namespace epee {

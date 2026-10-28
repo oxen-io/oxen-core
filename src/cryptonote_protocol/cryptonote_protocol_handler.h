@@ -177,15 +177,13 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
                 "[{}] post relay {} -->",
                 epee::net_utils::print_connection_context_short(exclude_context),
                 tools::type_name<T>());
-        std::vector<std::pair<epee::net_utils::zone, connection_id_t>> connections;
+        std::vector<connection_id_t> connections;
         m_p2p->for_each_connection(
                 [&exclude_context, &connections](
                         connection_context& context, nodetool::peerid_type peer_id) {
-                    if (context.m_state > cryptonote_connection_context::state_synchronizing) {
-                        epee::net_utils::zone zone = context.m_remote_address.get_zone();
-                        if (peer_id && exclude_context.m_connection_id != context.m_connection_id)
-                            connections.push_back({zone, context.m_connection_id});
-                    }
+                    if (context.m_state > cryptonote_connection_context::state_synchronizing &&
+                        peer_id && exclude_context.m_connection_id != context.m_connection_id)
+                        connections.push_back(context.m_connection_id);
                     return true;
                 });
 
@@ -195,7 +193,7 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
             return m_p2p->relay_notify_to_list(
                     T::ID,
                     oxen::quic::reinterpret_span<const uint8_t>(std::span{arg_buff}),
-                    std::move(connections));
+                    connections);
         }
 
         return true;

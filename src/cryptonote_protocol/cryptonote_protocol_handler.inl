@@ -2332,13 +2332,13 @@ You are now synchronized with the network.
   bool t_cryptonote_protocol_handler<t_core>::relay_block(NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context)
   {
     // sort peers between fluffy ones and others
-    std::vector<std::pair<epee::net_utils::zone, connection_id_t>> fluffyConnections;
+    std::vector<connection_id_t> fluffyConnections;
     m_p2p->for_each_connection([&exclude_context, &fluffyConnections](connection_context& context, nodetool::peerid_type peer_id)
     {
-      if (peer_id && exclude_context.m_connection_id != context.m_connection_id && context.m_remote_address.get_zone() == epee::net_utils::zone::public_)
+      if (peer_id && exclude_context.m_connection_id != context.m_connection_id)
       {
         log::debug(logcat, "{}PEER FLUFFY BLOCKS - RELAYING THIN/COMPACT WHATEVER BLOCK", context);
-        fluffyConnections.push_back({context.m_remote_address.get_zone(), context.m_connection_id});
+        fluffyConnections.push_back(context.m_connection_id);
       }
       return true;
     });
@@ -2362,7 +2362,7 @@ You are now synchronized with the network.
       epee::serialization::store_t_to_binary(arg_without_tx_blobs, fluffyBlob);
     }
 
-    m_p2p->relay_notify_to_list(NOTIFY_NEW_FLUFFY_BLOCK::ID, oxen::quic::reinterpret_span<const uint8_t>(std::span{fluffyBlob}), std::move(fluffyConnections));
+    m_p2p->relay_notify_to_list(NOTIFY_NEW_FLUFFY_BLOCK::ID, oxen::quic::reinterpret_span<const uint8_t>(std::span{fluffyBlob}), fluffyConnections);
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------

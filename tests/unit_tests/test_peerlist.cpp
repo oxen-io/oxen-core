@@ -74,18 +74,13 @@ TEST(peer_list, peer_list_general)
 
 namespace
 {
-  bool check_empty(nodetool::peerlist_storage& peers, std::initializer_list<epee::net_utils::zone> zones)
+  bool check_empty(nodetool::peerlist_storage& peers)
   {
-    bool pass = false;
-    for (const epee::net_utils::zone zone : zones)
-    {
-      const nodetool::peerlist_types types{peers.take_zone(zone)};
-      EXPECT_TRUE(types.white.empty());
-      EXPECT_TRUE(types.gray.empty());
-      EXPECT_TRUE(types.anchor.empty());
-      pass = (types.white.empty() && types.gray.empty() && types.anchor.empty());
-    }
-    return pass;
+    const nodetool::peerlist_types types{peers.take()};
+    EXPECT_TRUE(types.white.empty());
+    EXPECT_TRUE(types.gray.empty());
+    EXPECT_TRUE(types.anchor.empty());
+    return types.white.empty() && types.gray.empty() && types.anchor.empty();
   }
 
   void check_public_peers(const nodetool::peerlist_types& types)
@@ -117,10 +112,8 @@ namespace
 
 TEST(peerlist_storage, store)
 {
-  using epee::net_utils::zone;
-
   nodetool::peerlist_storage peers{};
-  EXPECT_TRUE(check_empty(peers, {zone::invalid, zone::public_}));
+  EXPECT_TRUE(check_empty(peers));
 
   std::string buffer{};
   {
@@ -133,7 +126,7 @@ TEST(peerlist_storage, store)
     EXPECT_TRUE(peers.store(stream, types));
     buffer = stream.str();
   }
-  EXPECT_TRUE(check_empty(peers, {zone::invalid, zone::public_}));
+  EXPECT_TRUE(check_empty(peers));
   {
     std::istringstream stream{buffer};
     std::optional<nodetool::peerlist_storage> read_peers =
@@ -141,10 +134,9 @@ TEST(peerlist_storage, store)
     ASSERT_TRUE(bool(read_peers));
     peers = std::move(*read_peers);
   }
-  EXPECT_TRUE(check_empty(peers, {zone::invalid}));
 
-  nodetool::peerlist_types types = peers.take_zone(zone::public_);
-  EXPECT_TRUE(check_empty(peers, {zone::invalid, zone::public_}));
+  nodetool::peerlist_types types = peers.take();
+  EXPECT_TRUE(check_empty(peers));
   check_public_peers(types);
 
   // Storing what was taken and reading it back gives the same peers again
@@ -160,7 +152,7 @@ TEST(peerlist_storage, store)
     ASSERT_TRUE(bool(read_peers));
     peers = std::move(*read_peers);
   }
-  types = peers.take_zone(zone::public_);
-  EXPECT_TRUE(check_empty(peers, {zone::invalid, zone::public_}));
+  types = peers.take();
+  EXPECT_TRUE(check_empty(peers));
   check_public_peers(types);
 }

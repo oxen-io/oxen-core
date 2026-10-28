@@ -45,9 +45,6 @@ class ipv4_address {
     static constexpr epee::net_utils::address_type get_type_id() noexcept {
         return epee::net_utils::address_type::ipv4;
     }
-    static constexpr epee::net_utils::zone get_zone() noexcept {
-        return epee::net_utils::zone::public_;
-    }
     static constexpr bool is_blockable() noexcept { return true; }
 };
 
