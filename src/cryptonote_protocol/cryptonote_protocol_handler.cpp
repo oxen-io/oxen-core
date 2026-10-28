@@ -1921,7 +1921,7 @@ bool protocol_handler::kick_idle_peers() {
 //------------------------------------------------------------------------------------------------------------------------
 bool protocol_handler::update_sync_search() {
     const uint64_t target = m_core.get_target_blockchain_height();
-    const uint64_t height = m_core.blockchain.get_current_blockchain_height();
+    const uint64_t height = chain_height();
     if (target > height)  // if we're not synced yet, don't do it
         return true;
 
@@ -2005,7 +2005,7 @@ bool protocol_handler::should_download_next_span(
     std::pair<uint64_t, uint64_t> span;
     bool filled;
 
-    const uint64_t blockchain_height = m_core.blockchain.get_current_blockchain_height();
+    const uint64_t blockchain_height = chain_height();
     if (context.m_remote_blockchain_height <= blockchain_height)
         return false;
     const auto now = std::chrono::steady_clock::now();
@@ -2155,7 +2155,7 @@ bool protocol_handler::request_missing_objects(
         do {
             size_t nspans = m_block_queue.get_num_filled_spans();
             size_t size = m_block_queue.get_data_size();
-            const uint64_t bc_height = m_core.blockchain.get_current_blockchain_height();
+            const uint64_t bc_height = chain_height();
             const size_t block_queue_size_threshold = m_block_download_max_size
                                                             ? m_block_download_max_size
                                                             : BLOCK_QUEUE_SIZE_THRESHOLD;
@@ -2240,11 +2240,7 @@ bool protocol_handler::request_missing_objects(
                 bool filled = false;
                 std::chrono::steady_clock::time_point time;
                 connection_id_t connection_id;
-                if (m_block_queue.has_next_span(
-                            m_core.blockchain.get_current_blockchain_height(),
-                            filled,
-                            time,
-                            connection_id) &&
+                if (m_block_queue.has_next_span(chain_height(), filled, time, connection_id) &&
                     filled) {
                     log::debug(
                             logcat,
@@ -2320,14 +2316,13 @@ bool protocol_handler::request_missing_objects(
             force_next_span,
             context.m_needed_objects.size(),
             context.m_last_response_height,
-            m_core.blockchain.get_current_blockchain_height());
+            chain_height());
     if (context.m_needed_objects.size() || force_next_span) {
         // we know objects that we need, request this objects
         NOTIFY_REQUEST_GET_BLOCKS::request req;
         bool is_next = false;
         size_t count = 0;
-        const size_t count_limit =
-                m_core.get_block_sync_size(m_core.blockchain.get_current_blockchain_height());
+        const size_t count_limit = m_core.get_block_sync_size(chain_height());
         std::pair<uint64_t, uint64_t> span = std::make_pair(0, 0);
         if (force_next_span) {
             if (span.second == 0) {
@@ -2487,7 +2482,7 @@ skip:
     // we might have been called from the "received chain entry" handler, and end up
     // here because we can't use any of those blocks (maybe because all of them are
     // actually already requested). In this case, if we can add blocks instead, do so
-    if (m_core.blockchain.get_current_blockchain_height() < m_core.get_target_blockchain_height()) {
+    if (chain_height() < m_core.get_target_blockchain_height()) {
         const std::unique_lock sync{m_sync_lock, std::try_to_lock};
         if (sync) {
             uint64_t start_height;
@@ -2562,8 +2557,7 @@ skip:
 
         context.m_state = cryptonote_connection_context::state_normal;
         if (context.m_remote_blockchain_height >= m_core.get_target_blockchain_height()) {
-            if (m_core.blockchain.get_current_blockchain_height() >=
-                m_core.get_target_blockchain_height())
+            if (chain_height() >= m_core.get_target_blockchain_height())
                 on_connection_synchronized();
         } else {
             log::info(logcat, "{} we've reached this peer's blockchain height", context);
@@ -2574,7 +2568,7 @@ skip:
 //------------------------------------------------------------------------------------------------------------------------
 bool protocol_handler::on_connection_synchronized() {
     bool val_expected = false;
-    uint64_t current_blockchain_height = m_core.blockchain.get_current_blockchain_height();
+    uint64_t current_blockchain_height = chain_height();
     if (!m_core.blockchain.is_within_compiled_block_hash_area(current_blockchain_height) &&
         m_synchronized.compare_exchange_strong(val_expected, true)) {
         log::info(globallogcat, fg(fmt::terminal_color::green), "SYNCHRONIZED OK");
@@ -2866,7 +2860,7 @@ std::string protocol_handler::get_peers_overview() const {
 //------------------------------------------------------------------------------------------------------------------------
 bool protocol_handler::needs_new_sync_connections() const {
     const uint64_t target = m_core.get_target_blockchain_height();
-    const uint64_t height = m_core.blockchain.get_current_blockchain_height();
+    const uint64_t height = chain_height();
     if (target && target <= height)
         return false;
     size_t n_out_peers = 0;
@@ -2886,7 +2880,7 @@ std::optional<sync_need> protocol_handler::get_sync_need() const {
     // a moment before we add it, when peers not yet heard from would look unable to serve it.
     if (m_synchronized)
         return std::nullopt;
-    const uint64_t height = m_core.blockchain.get_current_blockchain_height();
+    const uint64_t height = chain_height();
     return sync_need_for(
             height,
             m_block_queue.get_next_needed_height(height),

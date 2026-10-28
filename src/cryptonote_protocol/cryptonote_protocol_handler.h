@@ -90,6 +90,8 @@ class protocol_handler : public i_cryptonote_protocol {
     };
     std::shared_ptr<const chain_state> get_chain_state() const;
     CORE_SYNC_DATA get_payload_sync_data() const { return get_chain_state()->sync_data; }
+    // Our chain's height, from our chain state
+    uint64_t chain_height() const { return get_chain_state()->sync_data.current_height; }
     bool on_callback(cryptonote_connection_context& context);
     core& get_core() { return m_core; }
     bool is_synchronized() { return m_synchronized; }
