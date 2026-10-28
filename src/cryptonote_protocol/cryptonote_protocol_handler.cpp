@@ -933,94 +933,82 @@ int protocol_handler::handle_request_fluffy_missing_tx(
             arg.missing_tx_indices.size(),
             arg.block_hash);
 
-    std::vector<std::pair<std::string, block>> local_blocks;
-    std::vector<std::string> local_txs;
-
-    block b;
-    if (!m_core.blockchain.get_block_by_hash(arg.block_hash, b)) {
-        log::error(logcat, "failed to find block: {}, dropping connection", arg.block_hash);
-        drop_connection(context, false, false);
-        return 1;
-    }
-
-    std::vector<crypto::hash> txids;
-    NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_response;
-    fluffy_response.b.block = t_serializable_object_to_blob(b);
-    fluffy_response.current_blockchain_height = arg.current_blockchain_height;
-
-    // NOTE: Dupe index check
-    {
-        std::unordered_set<uint64_t> requested_index_set;
-        requested_index_set.reserve(16);  // typical maximum number of txs per block
-
-        for (uint64_t requested_index : arg.missing_tx_indices) {
-            if (!requested_index_set.insert(requested_index).second) {
-                log::error(
-                        logcat,
-                        "Failed to handle request NOTIFY_REQUEST_FLUFFY_MISSING_TX, request is "
-                        "asking for the same tx index more than once, tx index = {}, block tx "
-                        "count {}, block_height = {}, dropping connection",
-                        requested_index,
-                        b.tx_hashes.size(),
-                        arg.current_blockchain_height);
-
-                drop_connection(context, false, false);
-                return 1;
-            }
-        }
-    }
-
-    for (auto& tx_idx : arg.missing_tx_indices) {
-        if (tx_idx < b.tx_hashes.size()) {
-            log::debug(logcat, "  tx {}", b.tx_hashes[tx_idx]);
-            txids.push_back(b.tx_hashes[tx_idx]);
-        } else {
+    std::unordered_set<uint64_t> requested_index_set;
+    requested_index_set.reserve(16);  // typical maximum number of txs per block
+    for (uint64_t requested_index : arg.missing_tx_indices) {
+        if (!requested_index_set.insert(requested_index).second) {
             log::error(
                     logcat,
                     "Failed to handle request NOTIFY_REQUEST_FLUFFY_MISSING_TX, request is asking "
-                    "for a tx whose index is out of bounds, tx index = {}, block tx count {}, "
-                    "block_height = {}, dropping connection ",
-                    tx_idx,
-                    b.tx_hashes.size(),
+                    "for the same tx index more than once, tx index = {}, block_height = {}, "
+                    "dropping connection",
+                    requested_index,
                     arg.current_blockchain_height);
-
             drop_connection(context, false, false);
             return 1;
         }
     }
 
-    std::vector<cryptonote::transaction> txs;
-    std::unordered_set<crypto::hash> missed;
-    if (!m_core.blockchain.get_transactions(txids, txs, &missed)) {
-        log::error(
-                logcat,
-                "Failed to handle request NOTIFY_REQUEST_FLUFFY_MISSING_TX, failed to get "
-                "requested transactions");
-        drop_connection(context, false, false);
-        return 1;
-    }
-    if (!missed.empty() || txs.size() != txids.size()) {
-        log::error(
-                logcat,
-                "Failed to handle request NOTIFY_REQUEST_FLUFFY_MISSING_TX, {} requested "
-                "transactions not found, dropping connection",
-                missed.size());
-        drop_connection(context, false, false);
-        return 1;
-    }
+    chain_job([this, id = context.m_connection_id, arg = std::move(arg)] {
+        block b;
+        if (!m_core.blockchain.get_block_by_hash(arg.block_hash, b)) {
+            log::error(logcat, "failed to find block: {}, dropping connection", arg.block_hash);
+            drop_connection(id, false, false);
+            return;
+        }
 
-    for (auto& tx : txs) {
-        fluffy_response.b.txs.push_back(t_serializable_object_to_blob(tx));
-    }
+        std::vector<crypto::hash> txids;
+        for (auto& tx_idx : arg.missing_tx_indices) {
+            if (tx_idx >= b.tx_hashes.size()) {
+                log::error(
+                        logcat,
+                        "Failed to handle request NOTIFY_REQUEST_FLUFFY_MISSING_TX, request is "
+                        "asking for a tx whose index is out of bounds, tx index = {}, block tx "
+                        "count {}, block_height = {}, dropping connection ",
+                        tx_idx,
+                        b.tx_hashes.size(),
+                        arg.current_blockchain_height);
+                drop_connection(id, false, false);
+                return;
+            }
+            log::debug(logcat, "  tx {}", b.tx_hashes[tx_idx]);
+            txids.push_back(b.tx_hashes[tx_idx]);
+        }
 
-    log::info(
-            log::Cat("net.p2p.msg"),
-            "-->>NOTIFY_RESPONSE_FLUFFY_MISSING_TX: txs.size()={}, "
-            "rsp.current_blockchain_height={}",
-            fluffy_response.b.txs.size(),
-            fluffy_response.current_blockchain_height);
+        std::vector<cryptonote::transaction> txs;
+        std::unordered_set<crypto::hash> missed;
+        if (!m_core.blockchain.get_transactions(txids, txs, &missed)) {
+            log::error(
+                    logcat,
+                    "Failed to handle request NOTIFY_REQUEST_FLUFFY_MISSING_TX, failed to get "
+                    "requested transactions");
+            drop_connection(id, false, false);
+            return;
+        }
+        if (!missed.empty() || txs.size() != txids.size()) {
+            log::error(
+                    logcat,
+                    "Failed to handle request NOTIFY_REQUEST_FLUFFY_MISSING_TX, {} requested "
+                    "transactions not found, dropping connection",
+                    missed.size());
+            drop_connection(id, false, false);
+            return;
+        }
 
-    post_notify<NOTIFY_NEW_FLUFFY_BLOCK>(fluffy_response, context);
+        NOTIFY_NEW_FLUFFY_BLOCK::request fluffy_response;
+        fluffy_response.b.block = t_serializable_object_to_blob(b);
+        fluffy_response.current_blockchain_height = arg.current_blockchain_height;
+        for (auto& tx : txs)
+            fluffy_response.b.txs.push_back(t_serializable_object_to_blob(tx));
+
+        log::info(
+                log::Cat("net.p2p.msg"),
+                "-->>NOTIFY_RESPONSE_FLUFFY_MISSING_TX: txs.size()={}, "
+                "rsp.current_blockchain_height={}",
+                fluffy_response.b.txs.size(),
+                fluffy_response.current_blockchain_height);
+        post_notify<NOTIFY_NEW_FLUFFY_BLOCK>(fluffy_response, id);
+    });
     return 1;
 }
 //------------------------------------------------------------------------------------------------------------------------
@@ -1170,21 +1158,24 @@ int protocol_handler::handle_request_get_blocks(
         return 1;
     }
 
-    NOTIFY_RESPONSE_GET_BLOCKS::request rsp;
-    if (!m_core.blockchain.handle_get_blocks(arg, rsp)) {
-        log::error(
-                logcat, "failed to handle request NOTIFY_REQUEST_GET_BLOCKS, dropping connection");
-        drop_connection(context, false, false);
-        return 1;
-    }
-    log::info(
-            log::Cat("net.p2p.msg"),
-            "-->>NOTIFY_RESPONSE_GET_BLOCKS: blocks.size()={}, rsp.m_current_blockchain_height={}, "
-            "missed_ids.size()={}",
-            rsp.blocks.size(),
-            rsp.current_blockchain_height,
-            rsp.missed_ids.size());
-    post_notify<NOTIFY_RESPONSE_GET_BLOCKS>(rsp, context);
+    chain_job([this, id = context.m_connection_id, arg = std::move(arg)] {
+        NOTIFY_RESPONSE_GET_BLOCKS::request rsp;
+        if (!m_core.blockchain.handle_get_blocks(arg, rsp)) {
+            log::error(
+                    logcat,
+                    "failed to handle request NOTIFY_REQUEST_GET_BLOCKS, dropping connection");
+            drop_connection(id, false, false);
+            return;
+        }
+        log::info(
+                log::Cat("net.p2p.msg"),
+                "-->>NOTIFY_RESPONSE_GET_BLOCKS: blocks.size()={}, "
+                "rsp.m_current_blockchain_height={}, missed_ids.size()={}",
+                rsp.blocks.size(),
+                rsp.current_blockchain_height,
+                rsp.missed_ids.size());
+        post_notify<NOTIFY_RESPONSE_GET_BLOCKS>(rsp, id);
+    });
     return 1;
 }
 //------------------------------------------------------------------------------------------------------------------------
@@ -1834,19 +1825,22 @@ int protocol_handler::handle_request_get_txs(
         return 1;
     }
 
-    NOTIFY_NEW_TRANSACTIONS::request rsp;
-    rsp.requested = true;
-    if (!m_core.blockchain.handle_get_txs(arg, rsp)) {
-        log::error(logcat, "failed to handle request NOTIFY_REQUEST_GET_TXS, dropping connection");
-        drop_connection(context, false, false);
-        return 1;
-    }
-    log::info(
-            log::Cat("net.p2p.msg"),
-            "-->>NOTIFY_NEW_TRANSACTIONS: requested=true, txs[{}], blinks[{}]",
-            rsp.txs.size(),
-            rsp.blinks.size());
-    post_notify<NOTIFY_NEW_TRANSACTIONS>(rsp, context);
+    chain_job([this, id = context.m_connection_id, arg = std::move(arg)] {
+        NOTIFY_NEW_TRANSACTIONS::request rsp;
+        rsp.requested = true;
+        if (!m_core.blockchain.handle_get_txs(arg, rsp)) {
+            log::error(
+                    logcat, "failed to handle request NOTIFY_REQUEST_GET_TXS, dropping connection");
+            drop_connection(id, false, false);
+            return;
+        }
+        log::info(
+                log::Cat("net.p2p.msg"),
+                "-->>NOTIFY_NEW_TRANSACTIONS: requested=true, txs[{}], blinks[{}]",
+                rsp.txs.size(),
+                rsp.blinks.size());
+        post_notify<NOTIFY_NEW_TRANSACTIONS>(rsp, id);
+    });
     return 1;
 }
 //------------------------------------------------------------------------------------------------------------------------
@@ -1949,20 +1943,22 @@ bool protocol_handler::check_standby_peers() {
 int protocol_handler::handle_request_chain(
         int command, NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_connection_context& context) {
     log::debug(logcat, "Received NOTIFY_REQUEST_CHAIN ({} blocks)", arg.block_ids.size());
-    NOTIFY_RESPONSE_CHAIN_ENTRY::request r;
-    if (!m_core.blockchain.find_blockchain_supplement(arg.block_ids, r)) {
-        log::error(logcat, "Failed to handle NOTIFY_REQUEST_CHAIN.");
-        drop_connection(context, false, false);
-        return 1;
-    }
-    log::debug(
-            logcat,
-            "-->>NOTIFY_RESPONSE_CHAIN_ENTRY: m_start_height={}, m_total_height={}, "
-            "m_block_ids.size()={}",
-            r.start_height,
-            r.total_height,
-            r.m_block_ids.size());
-    post_notify<NOTIFY_RESPONSE_CHAIN_ENTRY>(r, context);
+    chain_job([this, id = context.m_connection_id, arg = std::move(arg)] {
+        NOTIFY_RESPONSE_CHAIN_ENTRY::request r;
+        if (!m_core.blockchain.find_blockchain_supplement(arg.block_ids, r)) {
+            log::error(logcat, "Failed to handle NOTIFY_REQUEST_CHAIN.");
+            drop_connection(id, false, false);
+            return;
+        }
+        log::debug(
+                logcat,
+                "-->>NOTIFY_RESPONSE_CHAIN_ENTRY: m_start_height={}, m_total_height={}, "
+                "m_block_ids.size()={}",
+                r.start_height,
+                r.total_height,
+                r.m_block_ids.size());
+        post_notify<NOTIFY_RESPONSE_CHAIN_ENTRY>(r, id);
+    });
     return 1;
 }
 //------------------------------------------------------------------------------------------------------------------------
@@ -2698,15 +2694,15 @@ int protocol_handler::handle_request_block_blinks(
             log::Cat("net.p2p.msg"),
             "Received NOTIFY_REQUEST_BLOCK_BLINKS: heights.size()={}",
             arg.heights.size());
-    NOTIFY_RESPONSE_BLOCK_BLINKS::request r;
-
-    r.txs = m_core.mempool.get_mined_blinks({arg.heights.begin(), arg.heights.end()});
-
-    log::info(
-            log::Cat("net.p2p.msg"),
-            "-->>NOTIFY_RESPONSE_BLOCK_BLINKS: txs.size()={}",
-            r.txs.size());
-    post_notify<NOTIFY_RESPONSE_BLOCK_BLINKS>(r, context);
+    chain_job([this, id = context.m_connection_id, arg = std::move(arg)] {
+        NOTIFY_RESPONSE_BLOCK_BLINKS::request r;
+        r.txs = m_core.mempool.get_mined_blinks({arg.heights.begin(), arg.heights.end()});
+        log::info(
+                log::Cat("net.p2p.msg"),
+                "-->>NOTIFY_RESPONSE_BLOCK_BLINKS: txs.size()={}",
+                r.txs.size());
+        post_notify<NOTIFY_RESPONSE_BLOCK_BLINKS>(r, id);
+    });
     return 1;
 }
 //------------------------------------------------------------------------------------------------------------------------
@@ -2918,6 +2914,17 @@ void protocol_handler::drop_connection(
         ++context.m_drop_count;
     } else
         m_p2p->drop_connection(context);
+}
+//------------------------------------------------------------------------------------------------------------------------
+void protocol_handler::drop_connection(
+        const connection_id_t& id, bool add_fail, bool flush_all_spans) {
+    m_p2p->call_on_connection(id, [=, this](cryptonote_connection_context& c) {
+        drop_connection(c, add_fail, flush_all_spans);
+    });
+}
+//------------------------------------------------------------------------------------------------------------------------
+void protocol_handler::chain_job(std::function<void()> f) {
+    m_core.omq().job(std::move(f), m_core.p2p_thread_id());
 }
 //------------------------------------------------------------------------------------------------------------------------
 void protocol_handler::on_connection_close(cryptonote_connection_context& context) {

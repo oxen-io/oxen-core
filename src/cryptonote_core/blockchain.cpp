@@ -3090,7 +3090,7 @@ bool Blockchain::get_blocks(
 //       that belong with blocks are missing, but not if blocks themselves
 //       are missing.
 bool Blockchain::handle_get_blocks(
-        NOTIFY_REQUEST_GET_BLOCKS::request& arg, NOTIFY_RESPONSE_GET_BLOCKS::request& rsp) {
+        const NOTIFY_REQUEST_GET_BLOCKS::request& arg, NOTIFY_RESPONSE_GET_BLOCKS::request& rsp) {
     ZoneScoped;
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock blockchain_lock{m_blockchain_lock, std::defer_lock};
@@ -3172,7 +3172,7 @@ bool Blockchain::handle_get_blocks(
 }
 //------------------------------------------------------------------
 bool Blockchain::handle_get_txs(
-        NOTIFY_REQUEST_GET_TXS::request& arg, NOTIFY_NEW_TRANSACTIONS::request& rsp) {
+        const NOTIFY_REQUEST_GET_TXS::request& arg, NOTIFY_NEW_TRANSACTIONS::request& rsp) {
     ZoneScoped;
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock blockchain_lock{m_blockchain_lock, std::defer_lock};

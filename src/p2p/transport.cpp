@@ -26,10 +26,21 @@ static std::span<const uint8_t> as_span(std::string_view s) {
 // Whether `command`'s requests, and the responses to our invokes of it, are handled on the loop as
 // they arrive rather than on the handler thread: the p2p layer's own commands, which take no chain
 // locks, so that answering a peer (these are the only commands ever invoked) never waits behind
-// chain work.
+// chain work; and the cryptonote commands whose handlers queue their own chain jobs.
 static constexpr bool handled_on_loop(int command) {
-    return command == COMMAND_HANDSHAKE::ID || command == COMMAND_TIMED_SYNC::ID ||
-           command == COMMAND_PING::ID || command == COMMAND_REQUEST_SUPPORT_FLAGS::ID;
+    using namespace cryptonote;
+    switch (command) {
+        case COMMAND_HANDSHAKE::ID:
+        case COMMAND_TIMED_SYNC::ID:
+        case COMMAND_PING::ID:
+        case COMMAND_REQUEST_SUPPORT_FLAGS::ID:
+        case NOTIFY_REQUEST_GET_BLOCKS::ID:
+        case NOTIFY_REQUEST_GET_TXS::ID:
+        case NOTIFY_REQUEST_CHAIN::ID:
+        case NOTIFY_REQUEST_FLUFFY_MISSING_TX::ID:
+        case NOTIFY_REQUEST_BLOCK_BLINKS::ID: return true;
+        default: return false;
+    }
 }
 
 transport::transport(node_server& node) : node_{node} {}
