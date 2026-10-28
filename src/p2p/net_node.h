@@ -226,6 +226,7 @@ class node_server : public transport::handler, public i_p2p_endpoint {
     virtual void on_connection_new(p2p_connection_context& context);
     virtual void on_connection_close(p2p_connection_context& context);
     virtual void callback(p2p_connection_context& context);
+    virtual bool handled_on_loop(int command) const;
     //----------------- i_p2p_endpoint -------------------------------------------------------------
     virtual bool relay_notify_to_list(
             int command,

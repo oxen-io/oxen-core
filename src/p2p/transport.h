@@ -35,10 +35,11 @@ struct p2p_connection_context : cryptonote_connection_context {
     std::set<oxen::quic::Address> sent_addresses;
 };
 
-// Runs the p2p node's connections.  Each is a levin connection on a libquic event loop, and
-// everything the connections deliver (connections opening and closing, requests, notifies and
-// invoke responses) goes to the handler on one OxenMQ thread, in the order it arrived, so that a
-// connection's requests are handled, and answered, in order.
+// Runs the p2p node's connections.  Each is a levin connection on a libquic event loop.  What the
+// connections deliver (connections opening and closing, requests, notifies and invoke responses)
+// is handled on the loop thread for the commands the handler says can be, and otherwise goes to
+// the handler on one OxenMQ thread, in the order it arrived; either way a connection's requests
+// are answered in order, as every command that is invoked is handled on the loop.
 class transport {
   public:
     struct handler {
@@ -57,6 +58,9 @@ class transport {
         // Whether to accept a connection from `address`; called on the loop thread.
         virtual bool is_remote_host_allowed(
                 const oxen::quic::Address& address, time_t* t = nullptr) = 0;
+        // Whether `command`'s requests, and the responses to our invokes of it, are handled on
+        // the loop thread as they arrive, rather than on the handler thread.
+        virtual bool handled_on_loop(int command) const = 0;
 
       protected:
         ~handler() = default;
