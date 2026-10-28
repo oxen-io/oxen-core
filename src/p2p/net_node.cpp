@@ -1665,6 +1665,13 @@ void node_server::callback(p2p_connection_context& context) {
     m_payload_handler.on_callback(context);
 }
 //-----------------------------------------------------------------------------------
+bool node_server::handled_on_loop(int command) const {
+    // Our own commands, which take no chain locks, so that answering a peer (these are the only
+    // commands ever invoked) never waits behind chain work.
+    return command == COMMAND_HANDSHAKE::ID || command == COMMAND_TIMED_SYNC::ID ||
+           command == COMMAND_PING::ID || command == COMMAND_REQUEST_SUPPORT_FLAGS::ID;
+}
+//-----------------------------------------------------------------------------------
 bool node_server::invoke_notify_to_peer(
         int command,
         const std::span<const uint8_t> req_buff,

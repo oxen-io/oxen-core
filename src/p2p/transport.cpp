@@ -148,6 +148,14 @@ std::shared_ptr<transport::peer> transport::add(
             {.on_invoke = [this, wp](levin::connection& c, uint32_t command, std::string body)
                      -> std::optional<std::pair<int32_t, std::string>> {
                  count_in(body.size());
+                 if (handler_.handled_on_loop(command)) {
+                     auto p = wp.lock();
+                     received(*p, c.bytes_received(), c.last_recv());
+                     std::string out;
+                     const int code = handler_.invoke(command, as_span(body), out, p->context);
+                     count_out(out.size());
+                     return std::pair<int32_t, std::string>{code, std::move(out)};
+                 }
                  post([this,
                        wp,
                        command,
@@ -173,6 +181,12 @@ std::shared_ptr<transport::peer> transport::add(
              .on_notify =
                      [this, wp](levin::connection& c, uint32_t command, std::string body) {
                          count_in(body.size());
+                         if (handler_.handled_on_loop(command)) {
+                             auto p = wp.lock();
+                             received(*p, c.bytes_received(), c.last_recv());
+                             handler_.notify(command, as_span(body), p->context);
+                             return;
+                         }
                          post([this,
                                wp,
                                command,
@@ -342,9 +356,13 @@ int transport::invoke_async(
                 command,
                 {reinterpret_cast<const unsigned char*>(b.data()), b.size()},
                 timeout,
-                [this, p, cb](int32_t code, std::string response) {
+                [this, p, command, cb](int32_t code, std::string response) {
                     if (code >= 0)
                         count_in(response.size());
+                    if (handler_.handled_on_loop(command)) {
+                        cb(code, as_span(response), p->context);
+                        return;
+                    }
                     post([p, cb, code, response = std::move(response)] {
                         cb(code, as_span(response), p->context);
                     });
