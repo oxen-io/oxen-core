@@ -36,8 +36,9 @@
 #include <type_traits>
 #include <vector>
 
+#include <oxen/quic/address.hpp>
+
 #include "crypto/crypto.h"
-#include "epee/net/net_utils_base.h"
 #include "net/address.h"
 
 namespace

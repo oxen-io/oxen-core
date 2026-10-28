@@ -66,7 +66,6 @@
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "epee/net/net_utils_base.h"
 #include "levin/messages.h"
 #include "net/error.h"
 #include "net/parse.h"
@@ -78,8 +77,6 @@
 
 namespace nodetool {
 static auto logcat = log::Cat("net.p2p");
-
-using epee::connection_id_t;
 
 const command_line::arg_descriptor<std::string> arg_p2p_bind_ip = {
         "p2p-bind-ip", "Interface for p2p network protocol (IPv4)", "0.0.0.0"};
@@ -782,7 +779,7 @@ void node_server::do_handshake_with_peer(
                                 "{}COMMAND_HANDSHAKE Failed, wrong network! ({}), closing "
                                 "connection.",
                                 context,
-                                boost::lexical_cast<std::string>(rsp.node_data.network_id));
+                                rsp.node_data.network_id.to_string());
                         return false;
                     }
 
@@ -847,13 +844,12 @@ void node_server::do_handshake_with_peer(
     }
 }
 //-----------------------------------------------------------------------------------
-bool node_server::do_peer_timed_sync(
-        const epee::net_utils::connection_context_base& context_, peerid_type /*peer_id*/) {
+bool node_server::do_peer_timed_sync(const connection_id_t& id) {
     COMMAND_TIMED_SYNC::request arg{};
     arg.payload_data = m_payload_handler.get_payload_sync_data();
 
     const int r = m_transport.invoke<COMMAND_TIMED_SYNC>(
-            context_.m_connection_id,
+            id,
             arg,
             [this](int code, COMMAND_TIMED_SYNC::response&& rsp, p2p_connection_context& context) {
                 context.m_in_timedsync = false;
@@ -886,7 +882,7 @@ bool node_server::do_peer_timed_sync(
             });
 
     if (r < 0) {
-        log::warning(logcat, "{}COMMAND_TIMED_SYNC Failed", context_);
+        log::warning(logcat, "[{}] COMMAND_TIMED_SYNC Failed", id);
         return false;
     }
     return true;
@@ -1541,22 +1537,20 @@ bool node_server::peer_sync_idle_maker() {
     // globally.
 
     log::debug(logcat, "STARTED PEERLIST IDLE HANDSHAKE");
-    typedef std::list<std::pair<epee::net_utils::connection_context_base, peerid_type>>
-            local_connects_type;
-    local_connects_type cncts;
+    // Collected first, as invoking can close a connection, which takes it out of what
+    // foreach_connection iterates over
+    std::vector<connection_id_t> ids;
     m_transport.foreach_connection([&](p2p_connection_context& cntxt) {
+        // do idle sync only with handshaked connections
         if (cntxt.peer_id && !cntxt.m_in_timedsync) {
             cntxt.m_in_timedsync = true;
-            cncts.push_back(local_connects_type::value_type(
-                    cntxt,
-                    cntxt.peer_id));  // do idle sync only with handshaked connections
+            ids.push_back(cntxt.m_connection_id);
         }
         return true;
     });
 
-    std::for_each(cncts.begin(), cncts.end(), [&](const auto& vl) {
-        do_peer_timed_sync(vl.first, vl.second);
-    });
+    for (const auto& id : ids)
+        do_peer_timed_sync(id);
 
     log::debug(logcat, "FINISHED PEERLIST IDLE HANDSHAKE");
     return true;
@@ -1579,8 +1573,7 @@ bool node_server::sanitize_peerlist(std::vector<peerlist_entry>& local_peerlist)
 }
 //-----------------------------------------------------------------------------------
 bool node_server::handle_remote_peerlist(
-        const std::vector<peerlist_entry>& peerlist,
-        const epee::net_utils::connection_context_base& context) {
+        const std::vector<peerlist_entry>& peerlist, const cryptonote_connection_context& context) {
     std::vector<peerlist_entry> peerlist_ = peerlist;
     if (!sanitize_peerlist(peerlist_))
         return false;
@@ -1639,7 +1632,7 @@ int node_server::notify(int command, std::span<const uint8_t> in, p2p_connection
     return m_payload_handler.notify(command, in, context);
 }
 //-----------------------------------------------------------------------------------
-void node_server::request_callback(const epee::net_utils::connection_context_base& context) {
+void node_server::request_callback(const cryptonote_connection_context& context) {
     m_transport.call_on(context.m_connection_id, [this](p2p_connection_context& c) {
         m_payload_handler.on_callback(c);
     });
@@ -1664,7 +1657,7 @@ void node_server::invoke_notify_to_peer(
     m_transport.notify(command, req_buff, id);
 }
 //-----------------------------------------------------------------------------------
-bool node_server::drop_connection(const epee::net_utils::connection_context_base& context) {
+bool node_server::drop_connection(const cryptonote_connection_context& context) {
     m_transport.close(context.m_connection_id);
     return true;
 }
@@ -1780,7 +1773,7 @@ int node_server::handle_handshake(
                 "{}{}",
                 context,
                 "WRONG NETWORK AGENT CONNECTED! id=",
-                boost::lexical_cast<std::string>(arg.node_data.network_id));
+                arg.node_data.network_id.to_string());
         drop_connection(context);
         add_host_fail(context.m_remote_address);
         return 1;
@@ -1909,15 +1902,16 @@ std::string node_server::print_connections_container() {
     std::stringstream ss;
     m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
         ss << cntxt.m_remote_address.to_string() << " \t\tpeer_id "
-           << peerid_to_string(cntxt.peer_id) << " \t\tconn_id " << cntxt.m_connection_id
-           << (cntxt.m_is_income ? " INC" : " OUT") << std::endl;
+           << peerid_to_string(cntxt.peer_id) << " \t\tconn_id "
+           << cntxt.m_connection_id.to_string() << (cntxt.m_is_income ? " INC" : " OUT")
+           << std::endl;
         return true;
     });
     return ss.str();
 }
 //-----------------------------------------------------------------------------------
 void node_server::on_connection_new(p2p_connection_context& context) {
-    log::info(logcat, "[{}] NEW CONNECTION", epee::net_utils::print_connection_context(context));
+    log::info(logcat, "{} NEW CONNECTION {}", context, context.m_connection_id);
 }
 //-----------------------------------------------------------------------------------
 void node_server::on_connection_close(p2p_connection_context& context) {
@@ -1930,7 +1924,7 @@ void node_server::on_connection_close(p2p_connection_context& context) {
 
     m_payload_handler.on_connection_close(context);
 
-    log::info(logcat, "[{}] CLOSE CONNECTION", epee::net_utils::print_connection_context(context));
+    log::info(logcat, "{} CLOSE CONNECTION {}", context, context.m_connection_id);
 }
 
 bool node_server::is_priority_node(const oxen::quic::Address& na) {

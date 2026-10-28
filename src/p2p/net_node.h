@@ -221,8 +221,8 @@ class node_server : public i_p2p_endpoint {
             int command,
             const std::span<const uint8_t> req_buff,
             const connection_id_t& id) override;
-    bool drop_connection(const epee::net_utils::connection_context_base& context) override;
-    void request_callback(const epee::net_utils::connection_context_base& context) override;
+    bool drop_connection(const cryptonote_connection_context& context) override;
+    void request_callback(const cryptonote_connection_context& context) override;
     void call_on_connection(
             const connection_id_t& id,
             std::function<void(cryptonote_connection_context&)> f) override;
@@ -239,7 +239,7 @@ class node_server : public i_p2p_endpoint {
     bool idle_worker();
     bool handle_remote_peerlist(
             const std::vector<peerlist_entry>& peerlist,
-            const epee::net_utils::connection_context_base& context);
+            const cryptonote_connection_context& context);
     bool get_local_node_data(basic_node_data& node_data);
     // bool get_local_handshake_data(handshake_data& hshd);
 
@@ -255,8 +255,7 @@ class node_server : public i_p2p_endpoint {
             bool anchor,
             bool just_take_peerlist,
             std::function<void(p2p_connection_context*)> done);
-    bool do_peer_timed_sync(
-            const epee::net_utils::connection_context_base& context, peerid_type peer_id);
+    bool do_peer_timed_sync(const connection_id_t& id);
 
     bool make_new_connection_from_anchor_peerlist(
             const std::vector<anchor_peerlist_entry>& anchor_peerlist);
@@ -268,7 +267,7 @@ class node_server : public i_p2p_endpoint {
     bool make_new_connection_from_peerlist(
             bool use_white_list, const std::optional<cryptonote::sync_need>& need = std::nullopt);
     struct droppable_peer {
-        epee::connection_id_t connection_id;
+        connection_id_t connection_id;
         oxen::quic::Address address;
         uint64_t height;
         std::optional<uint64_t> history;
@@ -406,7 +405,7 @@ class node_server : public i_p2p_endpoint {
     std::mutex m_host_fails_score_lock;
     std::map<std::string, uint64_t> m_host_fails_score;
 
-    epee::connection_id_t m_network_id{};
+    connection_id_t m_network_id{};
     cryptonote::network_type m_nettype;
 };
 
