@@ -30,6 +30,7 @@
 
 #include <chrono>
 #include <boost/thread/thread.hpp>
+#include <oxen/quic/utils.hpp>
 
 #include "gtest/gtest.h"
 
@@ -431,7 +432,7 @@ TEST_F(positive_test_connection_to_levin_protocol_handler_calls, handler_process
   const std::string in_data(256, 'e');
 
   const epee::shared_sv noise{epee::levin::make_noise_notify(1024)};
-  const epee::shared_sv notify{epee::levin::make_notify(expected_command, epee::strspan<std::uint8_t>(in_data))};
+  const epee::shared_sv notify{epee::levin::make_notify(expected_command, oxen::quic::reinterpret_span<const std::uint8_t>(std::span{in_data}))};
 
   test_connection_ptr conn = create_connection();
 
@@ -467,8 +468,8 @@ TEST_F(positive_test_connection_to_levin_protocol_handler_calls, handler_process
   std::string in_fragmented_data(1024 * 4, 'c');
 
   const epee::shared_sv noise{epee::levin::make_noise_notify(1024)};
-  const epee::shared_sv notify{epee::levin::make_notify(expected_command, epee::strspan<std::uint8_t>(in_data))};
-  epee::shared_sv fragmented{epee::levin::make_fragmented_notify(noise.view, expected_fragmented_command, epee::strspan<std::uint8_t>(in_fragmented_data))};
+  const epee::shared_sv notify{epee::levin::make_notify(expected_command, oxen::quic::reinterpret_span<const std::uint8_t>(std::span{in_data}))};
+  epee::shared_sv fragmented{epee::levin::make_fragmented_notify(noise.view, expected_fragmented_command, oxen::quic::reinterpret_span<const std::uint8_t>(std::span{in_fragmented_data}))};
 
   EXPECT_EQ(5u, fragmented.size() / 1024);
   EXPECT_EQ(0u, fragmented.size() % 1024);

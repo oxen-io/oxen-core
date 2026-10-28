@@ -27,8 +27,9 @@
 #pragma once
 
 #include "portable_storage_template_helper.h"
-#include "../byte_span.h"
 #include "../net/levin_base.h"
+
+#include <oxen/quic/utils.hpp>
 
 namespace epee
 {
@@ -106,7 +107,7 @@ namespace epee
       const_cast<t_arg&>(out_struct).store(stg);//TODO: add true const support to searilzation
       std::string buff_to_send;
       stg.store_to_binary(buff_to_send);
-      int res = transport.invoke_async(command, epee::strspan<uint8_t>(buff_to_send), conn_id, [cb](int code, const std::span<const uint8_t> buff, typename t_transport::connection_context& context)
+      int res = transport.invoke_async(command, oxen::quic::reinterpret_span<const uint8_t>(std::span{buff_to_send}), conn_id, [cb](int code, const std::span<const uint8_t> buff, typename t_transport::connection_context& context)
       {
         t_result result_struct{};
         if( code <=0 )
@@ -144,7 +145,7 @@ namespace epee
       std::string buff_to_send;
       stg.store_to_binary(buff_to_send);
 
-      int res = transport.notify(command, epee::strspan<uint8_t>(buff_to_send), conn_id);
+      int res = transport.notify(command, oxen::quic::reinterpret_span<const uint8_t>(std::span{buff_to_send}), conn_id);
       if(res <=0 )
       {
         return false;

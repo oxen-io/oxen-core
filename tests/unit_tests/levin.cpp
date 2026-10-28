@@ -30,6 +30,7 @@
 #include <cstring>
 #include <gtest/gtest.h>
 #include <limits>
+#include <oxen/quic/utils.hpp>
 #include <set>
 
 #include "epee/shared_sv.h"
@@ -40,7 +41,6 @@
 #include "cryptonote_protocol/levin_notify.h"
 #include "p2p/net_node.h"
 #include "epee/net/levin_base.h"
-#include "epee/byte_span.h"
 
 namespace
 {
@@ -167,7 +167,7 @@ namespace
                 throw std::logic_error{"Unexpected ID at front of message queue"};
 
             epee::serialization::portable_storage storage{};
-            if(!storage.load_from_binary(epee::strspan<std::uint8_t>(queue.front().payload)))
+            if(!storage.load_from_binary(queue.front().payload))
                 throw std::logic_error{"Unable to parse epee binary format"};
 
             typename T::request request{};
@@ -316,7 +316,7 @@ TEST(make_notify, with_payload)
     std::string bytes(100, 'a');
     std::generate(bytes.begin(), bytes.end(), crypto::random_device{});
 
-    const epee::shared_sv message{epee::levin::make_notify(443, epee::strspan<std::uint8_t>(bytes))};
+    const epee::shared_sv message{epee::levin::make_notify(443, oxen::quic::reinterpret_span<const std::uint8_t>(std::span{bytes}))};
     const epee::levin::bucket_head2 header =
         epee::levin::make_header(443, bytes.size(), LEVIN_PACKET_REQUEST, false);
 
@@ -368,7 +368,7 @@ TEST(make_fragment, multiple)
     std::generate(bytes.begin(), bytes.end(), crypto::random_device{});
 
     const epee::shared_sv noise{epee::levin::make_noise_notify(1024)};
-    epee::shared_sv fragment{epee::levin::make_fragmented_notify(noise.view, 114, epee::strspan<std::uint8_t>(bytes))};
+    epee::shared_sv fragment{epee::levin::make_fragmented_notify(noise.view, 114, oxen::quic::reinterpret_span<const std::uint8_t>(std::span{bytes}))};
 
     epee::levin::bucket_head2 header =
         epee::levin::make_header(0, 1024 - sizeof(epee::levin::bucket_head2), LEVIN_PACKET_BEGIN, false);

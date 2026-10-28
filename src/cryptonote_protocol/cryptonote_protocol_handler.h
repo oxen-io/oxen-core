@@ -39,6 +39,7 @@
 #include <chrono>
 #include <deque>
 #include <mutex>
+#include <oxen/quic/utils.hpp>
 #include <string>
 #include <unordered_map>
 
@@ -192,7 +193,9 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
             std::string arg_buff;
             epee::serialization::store_t_to_binary(arg, arg_buff);
             return m_p2p->relay_notify_to_list(
-                    T::ID, epee::strspan<uint8_t>(arg_buff), std::move(connections));
+                    T::ID,
+                    oxen::quic::reinterpret_span<const uint8_t>(std::span{arg_buff}),
+                    std::move(connections));
         }
 
         return true;
@@ -279,7 +282,10 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
                 tools::type_name<t_parameter>());
         std::string blob;
         epee::serialization::store_t_to_binary(arg, blob);
-        return m_p2p->invoke_notify_to_peer(t_parameter::ID, epee::strspan<uint8_t>(blob), context);
+        return m_p2p->invoke_notify_to_peer(
+                t_parameter::ID,
+                oxen::quic::reinterpret_span<const uint8_t>(std::span{blob}),
+                context);
     }
 };
 

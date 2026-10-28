@@ -9,6 +9,7 @@
 #include <bitset>
 #include <concepts>
 #include <iterator>
+#include <oxen/quic/utils.hpp>
 #include <session/placeholders.hpp>
 #include <type_traits>
 #include <variant>
@@ -24,7 +25,6 @@
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/blockchain.h"
-#include "epee/byte_span.h"
 #include "oxen_economy.h"
 #include "sqlitedb/sqlite.hpp"
 
@@ -145,7 +145,7 @@ namespace {
 
     // Binds a string's bytes as a BLOB (rather than TEXT, as a string binds by default).
     std::span<const unsigned char> blob(std::string_view s) {
-        return epee::strspan<unsigned char>(s);
+        return oxen::quic::reinterpret_span<const unsigned char>(s);
     }
 
     // Builds a mapping_record from the current row of a query selecting the mapping_record_column

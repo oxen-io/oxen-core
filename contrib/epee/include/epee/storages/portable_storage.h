@@ -32,7 +32,8 @@
 #include "portable_storage_to_bin.h"
 #include "portable_storage_from_bin.h"
 #include "portable_storage_val_converters.h"
-#include "../byte_span.h"
+
+#include <oxen/quic/utils.hpp>
 
 #include <span>
 
@@ -137,7 +138,7 @@ namespace epee
       //-------------------------------------------------------------------------------
       bool store_to_binary(std::string& target);
       bool load_from_binary(const std::span<const uint8_t> target);
-      bool load_from_binary(std::string_view target) { return load_from_binary(epee::strspan<uint8_t>(target)); }
+      bool load_from_binary(std::string_view target) { return load_from_binary(oxen::quic::reinterpret_span<const uint8_t>(target)); }
 
       /// The top-level section, which is what serializable types store into and load from when
       /// not given a parent section.
