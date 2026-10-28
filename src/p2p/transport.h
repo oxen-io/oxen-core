@@ -69,20 +69,22 @@ class transport {
     // The event loop the connections run on, and everything that deals with them.
     oxen::quic::Loop& loop() { return loop_; }
 
-    // The callbacks run inside the connections lock.  Returning false from foreach_connection's
-    // stops it.
+    // The connections, and their contexts, belong to the loop: what follows can be called from any
+    // thread, and does its work on the loop.  These run there, and return, before returning (so
+    // inline, if called on the loop); their callbacks must not wait on anything that might be
+    // waiting on the loop.  Returning false from foreach_connection's stops it.
     bool foreach_connection(const std::function<bool(p2p_connection_context&)>& f);
     bool for_connection(
             const connection_id_t& id, const std::function<bool(p2p_connection_context&)>& f);
     size_t get_connections_count();
     size_t get_out_connections_count();
     size_t get_in_connections_count();
+
+    // These only queue the work (unless called on the loop): what they act on may be gone by then.
     void del_out_connections(size_t count);
     void del_in_connections(size_t count);
-
-    bool close(const connection_id_t& id);
-    // Returns 1 if the notify is queued, or a (negative) levin error code.
-    int notify(int command, std::span<const uint8_t> body, const connection_id_t& id);
+    void close(const connection_id_t& id);
+    void notify(int command, std::span<const uint8_t> body, const connection_id_t& id);
     // `cb` gets the response's return code and body, or a levin error code (and no body), along
     // with the connection's context, on the loop.  Returns 1 if the invoke is sent, or a (negative)
     // levin error code if not, in which case `cb` is never called.
@@ -116,7 +118,7 @@ class transport {
     }
     // Calls `f` with the connection's context on the loop, after what is running or already queued
     // there, unless it has closed by then.
-    bool call_on(const connection_id_t& id, std::function<void(p2p_connection_context&)> f);
+    void call_on(const connection_id_t& id, std::function<void(p2p_connection_context&)> f);
 
     // Connects to `remote` (from `local`, if given) and calls `done` on the loop with the new
     // connection's context, or with nullptr if the connection failed.
@@ -152,8 +154,15 @@ class transport {
         std::chrono::steady_clock::time_point sample_start;
     };
 
+    // These, and everything that touches peers_, run on the loop.
     std::shared_ptr<peer> find(const connection_id_t& id);
     std::shared_ptr<peer> add(std::shared_ptr<levin::connection> conn, bool incoming);
+    int invoke_on_loop(
+            int command,
+            std::span<const uint8_t> body,
+            const connection_id_t& id,
+            std::function<void(int, std::span<const uint8_t>, p2p_connection_context&)> cb,
+            std::chrono::nanoseconds timeout);
     void received(peer& p, uint64_t bytes_received, std::chrono::steady_clock::time_point at);
     void count_in(size_t body_size);
     void count_out(size_t body_size);
@@ -165,7 +174,6 @@ class transport {
     std::unique_ptr<levin::listener> listener_ipv4_, listener_ipv6_;
     uint16_t port_ = 0, port_ipv6_ = 0;
 
-    std::recursive_mutex mutex_;
     std::unordered_map<connection_id_t, std::shared_ptr<peer>> peers_;
 
     std::atomic<bool> stopping_{false};

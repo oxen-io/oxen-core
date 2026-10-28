@@ -1665,9 +1665,9 @@ bool node_server::relay_notify_to_list(
     return true;
 }
 //-----------------------------------------------------------------------------------
-bool node_server::invoke_notify_to_peer(
+void node_server::invoke_notify_to_peer(
         int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) {
-    return m_transport.notify(command, req_buff, id) > 0;
+    m_transport.notify(command, req_buff, id);
 }
 //-----------------------------------------------------------------------------------
 bool node_server::drop_connection(const epee::net_utils::connection_context_base& context) {

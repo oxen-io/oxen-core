@@ -226,7 +226,7 @@ class node_server : public i_p2p_endpoint {
             int command,
             const std::span<const uint8_t> data_buff,
             std::span<const connection_id_t> connections) override;
-    bool invoke_notify_to_peer(
+    void invoke_notify_to_peer(
             int command,
             const std::span<const uint8_t> req_buff,
             const connection_id_t& id) override;

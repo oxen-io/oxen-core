@@ -83,7 +83,6 @@ void transport::stop() {
     loop_.call_get([this] {
         listener_ipv4_.reset();
         listener_ipv6_.reset();
-        std::lock_guard lock{mutex_};
         for (auto& [id, p] : peers_)
             p->conn->close();
     });
@@ -102,13 +101,11 @@ void transport::detach() {
     loop_.call_get([this] {
         listener_ipv4_.reset();
         listener_ipv6_.reset();
-        std::lock_guard lock{mutex_};
         peers_.clear();
     });
 }
 
 std::shared_ptr<transport::peer> transport::find(const connection_id_t& id) {
-    std::lock_guard lock{mutex_};
     auto it = peers_.find(id);
     return it == peers_.end() ? nullptr : it->second;
 }
@@ -154,19 +151,13 @@ std::shared_ptr<transport::peer> transport::add(
                          if (!p)
                              return;
                          node_.on_connection_close(p->context);
-                         {
-                             std::lock_guard lock{mutex_};
-                             peers_.erase(p->context.m_connection_id);
-                         }
+                         peers_.erase(p->context.m_connection_id);
                          // The peer owns the connection whose callback this is, so it has to
                          // outlive the callback
                          loop_.call_soon([p = std::move(p)] {});
                      }});
 
-    {
-        std::lock_guard lock{mutex_};
-        peers_.emplace(id, p);
-    }
+    peers_.emplace(id, p);
     node_.on_connection_new(p->context);
     return p;
 }
@@ -196,92 +187,107 @@ void transport::count_out(size_t body_size) {
 }
 
 bool transport::foreach_connection(const std::function<bool(p2p_connection_context&)>& f) {
-    std::lock_guard lock{mutex_};
-    for (auto& [id, p] : peers_)
-        if (!f(p->context))
-            return false;
-    return true;
+    return loop_.call_get([&] {
+        for (auto& [id, p] : peers_)
+            if (!f(p->context))
+                return false;
+        return true;
+    });
 }
 
 bool transport::for_connection(
         const connection_id_t& id, const std::function<bool(p2p_connection_context&)>& f) {
-    std::lock_guard lock{mutex_};
-    auto it = peers_.find(id);
-    if (it == peers_.end())
-        return false;
-    f(it->second->context);
-    return true;
+    return loop_.call_get([&] {
+        auto p = find(id);
+        if (p)
+            f(p->context);
+        return p != nullptr;
+    });
 }
 
 size_t transport::get_connections_count() {
-    std::lock_guard lock{mutex_};
-    return peers_.size();
+    return loop_.call_get([this] { return peers_.size(); });
 }
 
 size_t transport::get_out_connections_count() {
-    std::lock_guard lock{mutex_};
-    size_t n = 0;
-    for (auto& [id, p] : peers_)
-        n += !p->context.m_is_income;
-    return n;
+    return loop_.call_get([this] {
+        size_t n = 0;
+        for (auto& [id, p] : peers_)
+            n += !p->context.m_is_income;
+        return n;
+    });
 }
 
 size_t transport::get_in_connections_count() {
-    std::lock_guard lock{mutex_};
-    size_t n = 0;
-    for (auto& [id, p] : peers_)
-        n += p->context.m_is_income;
-    return n;
+    return loop_.call_get([this] {
+        size_t n = 0;
+        for (auto& [id, p] : peers_)
+            n += p->context.m_is_income;
+        return n;
+    });
 }
 
 void transport::del_out_connections(size_t count) {
-    std::vector<connection_id_t> ids;
-    foreach_connection([&](p2p_connection_context& c) {
-        if (!c.m_is_income)
-            ids.push_back(c.m_connection_id);
-        return ids.size() < count;
+    loop_.call([this, count]() mutable {
+        for (auto& [id, p] : peers_) {
+            if (!count)
+                break;
+            if (!p->context.m_is_income) {
+                p->conn->close();
+                --count;
+            }
+        }
     });
-    for (const auto& id : ids)
-        close(id);
 }
 
 void transport::del_in_connections(size_t count) {
-    std::vector<connection_id_t> ids;
-    foreach_connection([&](p2p_connection_context& c) {
-        if (c.m_is_income)
-            ids.push_back(c.m_connection_id);
-        return ids.size() < count;
+    loop_.call([this, count]() mutable {
+        for (auto& [id, p] : peers_) {
+            if (!count)
+                break;
+            if (p->context.m_is_income) {
+                p->conn->close();
+                --count;
+            }
+        }
     });
-    for (const auto& id : ids)
-        close(id);
 }
 
-bool transport::close(const connection_id_t& id) {
-    auto p = find(id);
-    if (!p)
-        return false;
-    loop_.call([p] { p->conn->close(); });
-    return true;
+void transport::close(const connection_id_t& id) {
+    loop_.call([this, id] {
+        if (auto p = find(id))
+            p->conn->close();
+    });
 }
 
-int transport::notify(int command, std::span<const uint8_t> body, const connection_id_t& id) {
-    auto p = find(id);
-    if (!p)
-        return levin::ERROR_CONNECTION_NOT_FOUND;
+void transport::notify(int command, std::span<const uint8_t> body, const connection_id_t& id) {
     if (stopping_)
-        return levin::ERROR_CONNECTION_DESTROYED;
+        return;
     count_out(body.size());
-    loop_.call(
-            [p, command, b = std::string{reinterpret_cast<const char*>(body.data()), body.size()}] {
-                p->context.m_send_cnt += b.size();
-                p->context.m_last_send = std::chrono::steady_clock::now();
-                p->conn->notify(
-                        command, {reinterpret_cast<const unsigned char*>(b.data()), b.size()});
-            });
-    return 1;
+    loop_.call([this,
+                id,
+                command,
+                b = std::string{reinterpret_cast<const char*>(body.data()), body.size()}] {
+        auto p = find(id);
+        if (!p)
+            return;
+        p->context.m_send_cnt += b.size();
+        p->context.m_last_send = std::chrono::steady_clock::now();
+        p->conn->notify(command, {reinterpret_cast<const unsigned char*>(b.data()), b.size()});
+    });
 }
 
 int transport::invoke_async(
+        int command,
+        std::span<const uint8_t> body,
+        const connection_id_t& id,
+        std::function<void(int, std::span<const uint8_t>, p2p_connection_context&)> cb,
+        std::chrono::nanoseconds timeout) {
+    return loop_.call_get(
+            [&] { return invoke_on_loop(command, body, id, std::move(cb), timeout); });
+}
+
+int transport::invoke_on_loop(
         int command,
         std::span<const uint8_t> body,
         const connection_id_t& id,
@@ -295,38 +301,27 @@ int transport::invoke_async(
     if (timeout == timeout.zero())
         timeout = invoke_timeout;
     count_out(body.size());
-    loop_.call([this,
-                p,
-                command,
-                b = std::string{reinterpret_cast<const char*>(body.data()), body.size()},
-                timeout = std::chrono::duration_cast<std::chrono::milliseconds>(timeout),
-                cb = std::move(cb)] {
-        p->context.m_send_cnt += b.size();
-        p->context.m_last_send = std::chrono::steady_clock::now();
-        p->conn->invoke(
-                command,
-                {reinterpret_cast<const unsigned char*>(b.data()), b.size()},
-                timeout,
-                [this, p, cb](int32_t code, std::string response) {
-                    if (code >= 0)
-                        count_in(response.size());
-                    cb(code, as_span(response), p->context);
-                });
-    });
+    p->context.m_send_cnt += body.size();
+    p->context.m_last_send = std::chrono::steady_clock::now();
+    p->conn->invoke(
+            command,
+            {reinterpret_cast<const unsigned char*>(body.data()), body.size()},
+            std::chrono::duration_cast<std::chrono::milliseconds>(timeout),
+            [this, p, cb = std::move(cb)](int32_t code, std::string response) {
+                if (code >= 0)
+                    count_in(response.size());
+                cb(code, as_span(response), p->context);
+            });
     return 1;
 }
 
-bool transport::call_on(const connection_id_t& id, std::function<void(p2p_connection_context&)> f) {
-    auto p = find(id);
-    if (!p)
-        return false;
+void transport::call_on(const connection_id_t& id, std::function<void(p2p_connection_context&)> f) {
     // call_soon, not call: on the loop itself, f still waits until what's running is done (e.g. a
     // handshake handler has its response sent before a callback it requests runs).
-    loop_.call_soon([this, p, f = std::move(f)] {
-        if (find(p->context.m_connection_id))
+    loop_.call_soon([this, id, f = std::move(f)] {
+        if (auto p = find(id))
             f(p->context);
     });
-    return true;
 }
 
 void transport::connect(
@@ -363,7 +358,6 @@ void transport::update_rate_limits() {
             down_kbps_ * 1024, down_kbps_ * 1024, up_kbps_ * 1024, up_kbps_ * 1024, nullptr);
     if (!rate_group_) {
         rate_group_ = bufferevent_rate_limit_group_new(loop_.get_event_base(), cfg);
-        std::lock_guard lock{mutex_};
         for (auto& [id, p] : peers_)
             p->conn->join_rate_limit_group(rate_group_);
     } else {
