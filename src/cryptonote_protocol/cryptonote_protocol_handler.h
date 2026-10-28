@@ -311,11 +311,7 @@ class protocol_handler : public i_cryptonote_protocol {
 
     template <class t_parameter>
     void post_notify(typename t_parameter::request& arg, cryptonote_connection_context& context) {
-        log::debug(
-                globallogcat,
-                "[{}] post {} -->",
-                epee::net_utils::print_connection_context_short(context),
-                tools::type_name<t_parameter>());
+        log::debug(globallogcat, "{} post {} -->", context, tools::type_name<t_parameter>());
         post_notify<t_parameter>(arg, context.m_connection_id);
     }
     // For chain jobs, which have only the connection's id

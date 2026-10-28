@@ -23,8 +23,8 @@ struct ev_token_bucket_cfg;
 
 namespace nodetool {
 
+using cryptonote::connection_id_t;
 using cryptonote::cryptonote_connection_context;
-using epee::connection_id_t;
 
 struct p2p_connection_context : cryptonote_connection_context {
     using cryptonote_connection_context::cryptonote_connection_context;

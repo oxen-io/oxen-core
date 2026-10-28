@@ -2471,15 +2471,15 @@ skip:
                     logcat,
                     "request_missing_blocks final condition failed!"
                     "\nm_last_response_height={}"
-                    "\nm_remote_blockchain_height="
-                    "\nm_needed_objects.size()="
-                    "\nm_requested_objects.size()="
-                    "\non connection [{}]",
+                    "\nm_remote_blockchain_height={}"
+                    "\nm_needed_objects.size()={}"
+                    "\nm_requested_objects.size()={}"
+                    "\non connection {}",
                     context.m_last_response_height,
                     context.m_remote_blockchain_height,
                     context.m_needed_objects.size(),
                     context.m_requested_objects.size(),
-                    epee::net_utils::print_connection_context_short(context));
+                    context);
             return false;
         }
 

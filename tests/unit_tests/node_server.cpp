@@ -144,8 +144,8 @@ TEST(ban, add)
 namespace {
 // Records the connections a protocol handler drops, in place of a p2p node dropping them
 struct drop_recorder : nodetool::p2p_endpoint_stub {
-  std::vector<epee::connection_id_t> dropped;
-  bool drop_connection(const epee::net_utils::connection_context_base& context) override
+  std::vector<cryptonote::connection_id_t> dropped;
+  bool drop_connection(const cryptonote::cryptonote_connection_context& context) override
   {
     dropped.push_back(context.m_connection_id);
     return true;
@@ -167,7 +167,7 @@ TEST(protocol_handler, oversized_chain_entry_drops_peer)
   const auto body = nodetool::levin::encode(entry);
 
   cryptonote::cryptonote_connection_context context{
-      epee::connection_id_t::random(), MAKE_IPV4_ADDRESS(1,2,3,4), false};
+      cryptonote::connection_id_t::random(), MAKE_IPV4_ADDRESS(1,2,3,4), false};
   cprotocol.notify(
       cryptonote::NOTIFY_RESPONSE_CHAIN_ENTRY::ID,
       oxen::quic::reinterpret_span<const uint8_t>(std::span{body}),
@@ -188,7 +188,7 @@ TEST(protocol_handler, oversized_chain_request_drops_peer)
   const auto body = nodetool::levin::encode(request);
 
   cryptonote::cryptonote_connection_context context{
-      epee::connection_id_t::random(), MAKE_IPV4_ADDRESS(1,2,3,4), false};
+      cryptonote::connection_id_t::random(), MAKE_IPV4_ADDRESS(1,2,3,4), false};
   cprotocol.notify(
       cryptonote::NOTIFY_REQUEST_CHAIN::ID,
       oxen::quic::reinterpret_span<const uint8_t>(std::span{body}),

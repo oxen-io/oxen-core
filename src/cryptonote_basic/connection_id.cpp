@@ -1,28 +1,11 @@
+#include "connection_id.h"
 
-#include "epee/net/net_utils_base.h"
+#include <oxenc/hex.h>
 
 #include <iterator>
 #include <random>
-#include <oxenc/hex.h>
 
-namespace epee::net_utils
-{
-  std::string print_connection_context(const connection_context_base& ctx)
-  {
-    std::stringstream ss;
-    ss << ctx.m_remote_address.to_string() << " " << ctx.m_connection_id << (ctx.m_is_income ? " INC":" OUT");
-    return ss.str();
-  }
-
-  std::string print_connection_context_short(const connection_context_base& ctx)
-  {
-    std::stringstream ss;
-    ss << ctx.m_remote_address.to_string() << (ctx.m_is_income ? " INC":" OUT");
-    return ss.str();
-  }
-} // namespace epee::net_utils
-
-namespace epee {
+namespace cryptonote {
 
 static std::mt19937_64 seed_rng() {
     std::random_device dev;
@@ -59,8 +42,4 @@ std::string connection_id_t::to_string() const {
     return s;
 }
 
-std::ostream& operator<<(std::ostream& out, const connection_id_t& c) {
-    return out << c.to_string();
-}
-
-}  // namespace epee
+}  // namespace cryptonote

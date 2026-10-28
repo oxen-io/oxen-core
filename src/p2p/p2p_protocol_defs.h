@@ -31,9 +31,9 @@
 #pragma once
 
 #include "crypto/crypto.h"
+#include "cryptonote_basic/connection_id.h"
 #include "cryptonote_config.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
-#include "epee/net/net_utils_base.h"
 #include "epee/serialization/keyvalue_serialization.h"
 #include "net/address.h"  // needed for serialization
 
@@ -80,7 +80,7 @@ struct network_config {
 };
 
 struct basic_node_data {
-    epee::connection_id_t network_id;
+    cryptonote::connection_id_t network_id;
     uint32_t my_port;
     peerid_type peer_id;
 

@@ -34,7 +34,6 @@
 
 #include "common/oxen.h"
 #include "cryptonote_basic/cryptonote_basic.h"
-#include "epee/net/net_utils_base.h"
 #include "epee/serialization/keyvalue_serialization.h"
 
 namespace service_nodes {

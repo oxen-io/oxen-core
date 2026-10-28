@@ -32,21 +32,45 @@
 #include <atomic>
 #include <chrono>
 #include <concepts>
+#include <map>
+#include <optional>
+#include <oxen/quic/address.hpp>
 #include <unordered_set>
+#include <vector>
 
 #include "common/format.h"
+#include "connection_id.h"
 #include "crypto/hash.h"
-#include "epee/net/net_utils_base.h"
 #include "fmt/format.h"
 
 using namespace std::literals;
 
 namespace cryptonote {
 
-using epee::connection_id_t;
+struct cryptonote_connection_context {
+    cryptonote_connection_context() = default;
+    cryptonote_connection_context(
+            connection_id_t connection_id,
+            const oxen::quic::Address& remote_address,
+            bool is_income) :
+            m_connection_id{connection_id},
+            m_remote_address{remote_address},
+            m_is_income{is_income} {}
 
-struct cryptonote_connection_context : public epee::net_utils::connection_context_base {
-    using connection_context_base::connection_context_base;
+    const connection_id_t m_connection_id{};
+    const oxen::quic::Address m_remote_address{};
+    const bool m_is_income = false;
+    std::chrono::steady_clock::time_point m_started = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::time_point m_last_recv =
+            std::chrono::steady_clock::time_point::min();
+    std::chrono::steady_clock::time_point m_last_send =
+            std::chrono::steady_clock::time_point::min();
+    uint64_t m_recv_cnt = 0;
+    uint64_t m_send_cnt = 0;
+    double m_current_speed_down = 0;
+    double m_current_speed_up = 0;
+    double m_max_speed_down = 0;
+    double m_max_speed_up = 0;
 
     enum state {
         state_before_handshake = 0,  // default state
@@ -100,3 +124,14 @@ constexpr char get_protocol_state_char(cryptonote_connection_context::state s) {
 }
 
 }  // namespace cryptonote
+
+// Formats a connection (as the prefix of a log message about it) as e.g. "[1.2.3.4:22022 OUT]"
+template <std::derived_from<cryptonote::cryptonote_connection_context> T, typename Char>
+struct fmt::formatter<T, Char> : fmt::formatter<std::string_view> {
+    auto format(const cryptonote::cryptonote_connection_context& c, format_context& ctx) const {
+        return formatter<std::string_view>::format(
+                fmt::format(
+                        "[{} {}]", c.m_remote_address.to_string(), c.m_is_income ? "INC" : "OUT"),
+                ctx);
+    }
+};

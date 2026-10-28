@@ -32,7 +32,6 @@
 
 #include "common/util.h"
 #include "p2p/net_peerlist.h"
-#include "epee/net/net_utils_base.h"
 
 TEST(peer_list, peer_list_general)
 {

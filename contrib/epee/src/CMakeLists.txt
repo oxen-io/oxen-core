@@ -27,7 +27,6 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 oxen_add_library(epee
-    net_utils_base.cpp
     portable_storage.cpp
     wipeable_string.cpp
 )

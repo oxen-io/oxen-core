@@ -82,7 +82,7 @@ int main(int argc, char* argv[]) {
     SL(cryptonote::txpool_tx_meta_t);
 
     SL(oxen::quic::Address);
-    SL(epee::net_utils::connection_context_base);
+    SL(cryptonote::cryptonote_connection_context);
 
     SL(nodetool::peerlist_entry);
     SL(nodetool::anchor_peerlist_entry);

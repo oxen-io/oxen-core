@@ -36,13 +36,12 @@
 #include <vector>
 
 #include "cryptonote_basic/connection_context.h"
-#include "epee/net/net_utils_base.h"
 #include "p2p_protocol_defs.h"
 
 namespace nodetool {
 
+using cryptonote::connection_id_t;
 using cryptonote::cryptonote_connection_context;
-using epee::connection_id_t;
 
 struct i_p2p_endpoint {
     virtual bool relay_notify_to_list(
@@ -52,8 +51,8 @@ struct i_p2p_endpoint {
     // Safe to call from any thread.
     virtual void invoke_notify_to_peer(
             int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) = 0;
-    virtual bool drop_connection(const epee::net_utils::connection_context_base& context) = 0;
-    virtual void request_callback(const epee::net_utils::connection_context_base& context) = 0;
+    virtual bool drop_connection(const cryptonote_connection_context& context) = 0;
+    virtual void request_callback(const cryptonote_connection_context& context) = 0;
     // Calls `f` with the connection's context on the event loop that handles the connection's
     // messages, after what is running or already queued there, unless the connection has closed by
     // then.  Safe to call from any thread.
@@ -81,10 +80,8 @@ struct p2p_endpoint_stub : public i_p2p_endpoint {
     }
     virtual void invoke_notify_to_peer(
             int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) {}
-    virtual bool drop_connection(const epee::net_utils::connection_context_base& context) {
-        return false;
-    }
-    virtual void request_callback(const epee::net_utils::connection_context_base& context) {}
+    virtual bool drop_connection(const cryptonote_connection_context& context) { return false; }
+    virtual void request_callback(const cryptonote_connection_context& context) {}
     virtual void call_on_connection(
             const connection_id_t& id, std::function<void(cryptonote_connection_context&)> f) {}
     virtual void for_each_connection(
