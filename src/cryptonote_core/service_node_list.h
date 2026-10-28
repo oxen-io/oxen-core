@@ -34,10 +34,13 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
+#include <stdexcept>
 #include <string_view>
 #include <type_traits>
 
+#include "common/exception.h"
 #include "common/tracy_shim.h"
 #include "common/util.h"
 #include "crypto/crypto.h"
@@ -86,6 +89,22 @@ uint64_t oldest_retained_archive(const cryptonote::network_config& netconf, uint
 struct rescan_context {
     bool skip_verify;
     uint64_t top_block_height;
+};
+
+// Thrown while adding a block to the main chain's SN list when a state change in it references a
+// quorum, from a height that the block can include one from, that the SN list has neither in its
+// in-memory history nor stored.  That happens when the blocks being replayed from a state restored
+// from the in-memory history need quorums from before the start of that history.  The state change
+// can then be neither checked nor applied, and leaving it out would leave the SN list diverged from
+// the rest of the network's; restoring from a stored state instead (see
+// service_node_list::restore_stored_state), which comes with the quorums before it, and replaying
+// from there has the quorum.
+struct missing_quorum : oxen::traced<std::runtime_error> {
+    crypto::hash tx_hash;
+    uint64_t block_height;
+    uint64_t quorum_height;
+
+    missing_quorum(const crypto::hash& tx, uint64_t block, uint64_t quorum);
 };
 
 struct checkpoint_participation_entry {
@@ -1223,12 +1242,15 @@ class service_node_list {
         //
         // Changes to `rewards_db_ptr` (made by the HF21 transition and HF22 fixups) are pending in
         // it until its add_block (see RewardsDB).
+        //
+        // `alt_states` is given (as the states of the alt chain blocks) when this is the state of
+        // an alt chain, and is nullptr for the main chain, which can throw missing_quorum.
         block_add_result update_from_block(
                 const cryptonote::BlockchainDB& db,
                 cryptonote::RewardsDB* rewards_db_ptr,
                 cryptonote::network_type nettype,
                 state_set const& state_history,
-                std::unordered_map<crypto::hash, state_t> const& alt_states,
+                std::unordered_map<crypto::hash, state_t> const* alt_states,
                 const cryptonote::block& block,
                 const std::vector<cryptonote::transaction>& txs,
                 const service_node_keys* my_keys,
@@ -1248,11 +1270,14 @@ class service_node_list {
                 const cryptonote::transaction& tx,
                 uint32_t index);
         // Returns true if a service node changed state (deregistered, decommissioned, or
-        // recommissioned)
+        // recommissioned), and false if the state change is skipped (it doesn't verify, or doesn't
+        // apply to the node's current state).  For the main chain (`alt_states` nullptr: see
+        // update_from_block), one referencing a quorum that isn't to be found, from a height that
+        // the block can include one from, throws missing_quorum instead.
         bool process_state_change_tx(
                 const cryptonote::BlockchainDB& db,
                 state_set const& state_history,
-                std::unordered_map<crypto::hash, state_t> const& alt_states,
+                std::unordered_map<crypto::hash, state_t> const* alt_states,
                 cryptonote::network_type nettype,
                 const cryptonote::block& block,
                 const cryptonote::transaction& tx,

@@ -263,6 +263,14 @@ static bool has_restorable_state(
 
 static auto logcat = log::Cat("service_nodes");
 
+missing_quorum::missing_quorum(const crypto::hash& tx, uint64_t block, uint64_t quorum) :
+        oxen::traced<std::runtime_error>{
+                "State change {} in block {} references the quorum at height {}, which is not "
+                "stored"_format(tx, block, quorum)},
+        tx_hash{tx},
+        block_height{block},
+        quorum_height{quorum} {}
+
 constexpr auto X25519_MAP_PRUNING_INTERVAL = 5min;
 
 // A state change in a block can come from a quorum up to this many blocks back, and so replaying
@@ -1209,7 +1217,7 @@ static service_node_info& duplicate_info(std::shared_ptr<const service_node_info
 bool service_node_list::state_t::process_state_change_tx(
         const cryptonote::BlockchainDB& db,
         state_set const& state_history,
-        std::unordered_map<crypto::hash, state_t> const& alt_states,
+        std::unordered_map<crypto::hash, state_t> const* alt_states,
         cryptonote::network_type nettype,
         const cryptonote::block& block,
         const cryptonote::transaction& tx,
@@ -1219,6 +1227,7 @@ bool service_node_list::state_t::process_state_change_tx(
         return false;
 
     const auto hf_version = block.major_version;
+    const uint64_t block_height = block.get_height();
     cryptonote::tx_extra_service_node_state_change state_change;
     if (!cryptonote::get_service_node_state_change_from_tx_extra(
                 tx.extra, state_change, hf_version)) {
@@ -1237,30 +1246,41 @@ bool service_node_list::state_t::process_state_change_tx(
     else if (archived = load_archived_state(db, sn_list, state_change.block_height); archived)
         quorums = &archived->quorums;
     else {
+        // A state change from outside the heights that the block can include one from fails
+        // verification (see verify_tx_state_change) whether or not its quorum is here, so only a
+        // missing quorum from within them leaves the main chain's SN list without something it
+        // needs.  An alt chain's state is only checked against, never built on (switching to the
+        // alt chain replays its blocks through the main chain's), so carries on without it.
+        const uint64_t quorum_height = state_change.block_height;
+        if (!alt_states && quorum_height < block_height &&
+            block_height < quorum_height + VOTE_LIFETIME)
+            throw missing_quorum{cryptonote::get_transaction_hash(tx), block_height, quorum_height};
         log::error(
                 logcat,
                 "Transaction: {} in block {} {} references quorum height {} but that height is "
                 "not stored!",
                 cryptonote::get_transaction_hash(tx),
-                block.get_height(),
+                block_height,
                 cryptonote::get_block_hash(block),
-                state_change.block_height);
+                quorum_height);
         return false;
     }
 
     cryptonote::tx_verification_context tvc = {};
     if (!verify_tx_state_change(
-                state_change, block.get_height(), tvc, *quorums->obligations, hf_version)) {
+                state_change, block_height, tvc, *quorums->obligations, hf_version)) {
         quorums = nullptr;
-        for (const auto& [hash, alt_state] : alt_states) {
-            if (alt_state.height != state_change.block_height)
-                continue;
+        if (alt_states) {
+            for (const auto& [hash, alt_state] : *alt_states) {
+                if (alt_state.height != state_change.block_height)
+                    continue;
 
-            quorums = &alt_state.quorums;
-            if (!verify_tx_state_change(
-                        state_change, block.get_height(), tvc, *quorums->obligations, hf_version)) {
-                quorums = nullptr;
-                continue;
+                quorums = &alt_state.quorums;
+                if (!verify_tx_state_change(
+                            state_change, block_height, tvc, *quorums->obligations, hf_version)) {
+                    quorums = nullptr;
+                    continue;
+                }
             }
         }
     }
@@ -1297,7 +1317,6 @@ bool service_node_list::state_t::process_state_change_tx(
         return false;
     }
 
-    uint64_t block_height = block.get_height();
     auto& info = duplicate_info(iter->second);
     bool is_me = my_keys && my_keys->pub == key;
 
@@ -3944,7 +3963,7 @@ block_add_result service_node_list::state_t::update_from_block(
         cryptonote::RewardsDB* rewards_db_ptr,
         cryptonote::network_type nettype,
         state_set const& state_history,
-        std::unordered_map<crypto::hash, state_t> const& alt_states,
+        std::unordered_map<crypto::hash, state_t> const* alt_states,
         const cryptonote::block& block,
         const std::vector<cryptonote::transaction>& txs,
         const service_node_keys* my_keys,
@@ -4714,7 +4733,7 @@ block_add_result service_node_list::process_block(
             blockchain.maybe_rewards_db(),
             blockchain.nettype(),
             m_transient->state_history,
-            {},
+            nullptr,
             block,
             txs,
             m_service_node_keys,
@@ -5516,7 +5535,7 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
             blockchain.maybe_rewards_db(),
             blockchain.nettype(),
             m_transient->state_history,
-            m_transient->alt_state,
+            &m_transient->alt_state,
             block,
             info.txs,
             m_service_node_keys,
