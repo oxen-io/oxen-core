@@ -182,6 +182,41 @@ TEST_F(levin_connection, responses_in_order) {
         EXPECT_EQ(got[i], std::to_string(i));
 }
 
+// Responses produced after the request's callback returns (as when requests are handled on
+// another thread) go out in the order they are given, which keeps them matched up.
+TEST_F(levin_connection, deferred_responses) {
+    std::vector<std::pair<uint32_t, std::string>> requests;
+    connect_pair(
+            {.on_invoke = [&](levin::connection&,
+                              uint32_t cmd,
+                              std::string body) -> std::optional<std::pair<int32_t, std::string>> {
+                requests.emplace_back(cmd, std::move(body));
+                return std::nullopt;
+            }},
+            {});
+    std::vector<std::string> got;
+    std::promise<void> done;
+    loop.call([&] {
+        for (int i = 0; i < 5; i++)
+            client_conn->invoke(3, bytes(std::to_string(i)), 5s, [&](int32_t, std::string body) {
+                got.push_back(std::move(body));
+                if (got.size() == 5)
+                    done.set_value();
+            });
+    });
+    // Answer once all five are in
+    while (loop.call_get([&] { return requests.size(); }) < 5)
+        std::this_thread::sleep_for(10ms);
+    loop.call([&] {
+        for (auto& [cmd, body] : requests)
+            server_conn->respond(cmd, 0, bytes(body + "!"));
+    });
+    auto f = done.get_future();
+    get(f);
+    for (int i = 0; i < 5; i++)
+        EXPECT_EQ(got[i], std::to_string(i) + "!");
+}
+
 TEST_F(levin_connection, large_frames) {
     const std::string big(5'000'000, 'z');
     connect_pair(

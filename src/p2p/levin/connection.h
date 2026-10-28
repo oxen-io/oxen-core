@@ -30,10 +30,11 @@ inline constexpr int32_t ERROR_HANDLER_NOT_DEFINED = -6;
 class connection;
 
 struct handlers {
-    // A request that expects a response: returns the response's return code and body.  The
-    // response is sent as soon as this returns, which is what keeps responses in the order their
-    // requests arrived: all a peer has to match them up by.
-    std::function<std::pair<int32_t, std::string>(connection&, uint32_t command, std::string body)>
+    // A request that expects a response: returns the response's return code and body, which is
+    // sent at once, or nullopt to send it later with respond().  Responses must go out in the
+    // order their requests arrived: it is all a peer has to match them up by.
+    std::function<std::optional<std::pair<int32_t, std::string>>(
+            connection&, uint32_t command, std::string body)>
             on_invoke;
     // A request that doesn't
     std::function<void(connection&, uint32_t command, std::string body)> on_notify;
@@ -72,6 +73,9 @@ class connection {
     void set_idle_timeout(std::chrono::milliseconds timeout);
 
     void notify(uint32_t command, std::span<const unsigned char> body);
+
+    // Sends the response to a request whose on_invoke deferred it.
+    void respond(uint32_t command, int32_t return_code, std::span<const unsigned char> body);
 
     // Sends a request expecting a response.  A timeout closes the connection, as a late response
     // would otherwise be taken for the answer to the next invoke; it restarts while a large
