@@ -35,41 +35,19 @@ struct p2p_connection_context : cryptonote_connection_context {
     std::set<oxen::quic::Address> sent_addresses;
 };
 
+class node_server;
+
 // Runs the p2p node's connections.  Each is a levin connection on a libquic event loop.  What the
 // connections deliver (connections opening and closing, requests, notifies and invoke responses)
-// is handled on the loop thread for the commands the handler says can be, and otherwise goes to
-// the handler on one OxenMQ thread, in the order it arrived; either way a connection's requests
+// goes to the node: on the loop thread for the p2p layer's own commands, and otherwise on one
+// OxenMQ thread (the handler thread), in the order it arrived.  Either way a connection's requests
 // are answered in order, as every command that is invoked is handled on the loop.
 class transport {
   public:
-    struct handler {
-        // Returns the response's return code, with its body in `out`.
-        virtual int invoke(
-                int command,
-                std::span<const uint8_t> in,
-                std::string& out,
-                p2p_connection_context& context) = 0;
-        virtual int notify(
-                int command, std::span<const uint8_t> in, p2p_connection_context& context) = 0;
-        // The connection's turn, asked for with request_callback().
-        virtual void callback(p2p_connection_context& context) = 0;
-        virtual void on_connection_new(p2p_connection_context& context) = 0;
-        virtual void on_connection_close(p2p_connection_context& context) = 0;
-        // Whether to accept a connection from `address`; called on the loop thread.
-        virtual bool is_remote_host_allowed(
-                const oxen::quic::Address& address, time_t* t = nullptr) = 0;
-        // Whether `command`'s requests, and the responses to our invokes of it, are handled on
-        // the loop thread as they arrive, rather than on the handler thread.
-        virtual bool handled_on_loop(int command) const = 0;
-
-      protected:
-        ~handler() = default;
-    };
-
     // For epee's async_invoke_remote_command2, which takes a transport like this one
     using connection_context = p2p_connection_context;
 
-    explicit transport(handler& h);
+    explicit transport(node_server& node);
     ~transport();
 
     transport(const transport&) = delete;
@@ -85,14 +63,14 @@ class transport {
     uint16_t port() const { return port_; }
     uint16_t port_ipv6() const { return port_ipv6_; }
 
-    // Starts accepting connections, and delivering to the handler on `thread`.
+    // Starts accepting connections, with `thread` as the handler thread.
     void start(oxenmq::OxenMQ& omq, oxenmq::TaggedThreadID thread);
     // Closes every connection and stops listening, and wakes wait().  Closes still reach the
-    // handler.
+    // node.
     void stop();
     bool stopping() const { return stopping_; }
     void wait();
-    // Drops every connection and stops delivering to the handler.  Call it before the OxenMQ
+    // Drops every connection and stops delivering to the node.  Call it before the OxenMQ
     // instance given to start() goes away.
     void detach();
 
@@ -119,8 +97,6 @@ class transport {
             const connection_id_t& id,
             std::function<void(int, std::span<const uint8_t>, p2p_connection_context&)> cb,
             std::chrono::nanoseconds timeout = {});
-    // Gives the connection's turn to the handler's callback(), on the handler thread.
-    bool request_callback(const connection_id_t& id);
     // Calls `f` with the connection's context on the handler thread, unless it has closed by then.
     bool call_on(const connection_id_t& id, std::function<void(p2p_connection_context&)> f);
 
@@ -166,7 +142,7 @@ class transport {
     void count_out(size_t body_size);
     void update_rate_limits();
 
-    handler& handler_;
+    node_server& node_;
     // Declared first so it is destroyed last: everything below lives on it.
     oxen::quic::Loop loop_;
     std::unique_ptr<levin::listener> listener_ipv4_, listener_ipv6_;

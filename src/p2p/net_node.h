@@ -75,7 +75,11 @@ struct peer_stats {
     uint64_t total_connection_time = 0;
 };
 
-class node_server : public transport::handler, public i_p2p_endpoint {
+class node_server : public i_p2p_endpoint {
+    // For what the connections deliver: invoke(), notify(), on_connection_new(),
+    // on_connection_close() and is_remote_host_allowed()
+    friend class transport;
+
     struct by_conn_id {};
     struct by_peer_id {};
     struct by_addr {};
@@ -141,7 +145,7 @@ class node_server : public transport::handler, public i_p2p_endpoint {
     bool log_peerlist();
     bool log_connections();
 
-    virtual uint64_t get_public_connections_count();
+    uint64_t get_public_connections_count() override;
     size_t get_public_outgoing_connections_count();
     size_t get_public_white_peers_count();
     size_t get_public_gray_peers_count();
@@ -151,22 +155,22 @@ class node_server : public transport::handler, public i_p2p_endpoint {
     uint32_t get_max_out_public_peers() const;
     void change_max_in_public_peers(size_t count);
     uint32_t get_max_in_public_peers() const;
-    virtual bool block_host(
+    bool block_host(
             const oxen::quic::Address& adress,
-            time_t seconds = tools::to_seconds(cryptonote::p2p::IP_BLOCK_TIME));
-    virtual bool unblock_host(const oxen::quic::Address& address);
-    virtual bool block_subnet(
+            time_t seconds = tools::to_seconds(cryptonote::p2p::IP_BLOCK_TIME)) override;
+    bool unblock_host(const oxen::quic::Address& address) override;
+    bool block_subnet(
             const oxen::quic::ipv4_range& subnet,
             time_t seconds = tools::to_seconds(cryptonote::p2p::IP_BLOCK_TIME));
-    virtual bool unblock_subnet(const oxen::quic::ipv4_range& subnet);
-    virtual bool is_host_blocked(const oxen::quic::Address& address, time_t* seconds) {
+    bool unblock_subnet(const oxen::quic::ipv4_range& subnet);
+    bool is_host_blocked(const oxen::quic::Address& address, time_t* seconds) {
         return !is_remote_host_allowed(address, seconds);
     }
-    virtual std::map<std::string, time_t> get_blocked_hosts() {
+    std::map<std::string, time_t> get_blocked_hosts() override {
         std::shared_lock lock{m_blocked_hosts_lock};
         return m_blocked_hosts;
     }
-    virtual std::map<oxen::quic::ipv4_range, time_t> get_blocked_subnets() {
+    std::map<oxen::quic::ipv4_range, time_t> get_blocked_subnets() override {
         std::shared_lock lock{m_blocked_hosts_lock};
         return m_blocked_subnets;
     }
@@ -181,9 +185,14 @@ class node_server : public transport::handler, public i_p2p_endpoint {
   private:
     fs::path get_peerlist_file() const;
 
-    // transport::handler's invoke() and notify(), dispatching to the invoke map
-    CHAIN_LEVIN_INVOKE_MAP2(p2p_connection_context);
-    CHAIN_LEVIN_NOTIFY_MAP2(p2p_connection_context);
+    // For the transport: dispatch through the invoke map.  invoke() returns the response's return
+    // code, with its body in `out`.
+    int invoke(
+            int command,
+            std::span<const uint8_t> in,
+            std::string& out,
+            p2p_connection_context& context);
+    int notify(int command, std::span<const uint8_t> in, p2p_connection_context& context);
 
     BEGIN_INVOKE_MAP2(node_server)
     HANDLE_INVOKE_T2(COMMAND_HANDSHAKE, handle_handshake)
@@ -221,34 +230,30 @@ class node_server : public transport::handler, public i_p2p_endpoint {
     bool make_default_config();
     bool store_config();
 
-    //----------------- transport::handler ---------------------------------------------------------
-    // (and invoke() and notify(), from the invoke map above, and is_remote_host_allowed() below)
-    virtual void on_connection_new(p2p_connection_context& context);
-    virtual void on_connection_close(p2p_connection_context& context);
-    virtual void callback(p2p_connection_context& context);
-    virtual bool handled_on_loop(int command) const;
+    void on_connection_new(p2p_connection_context& context);
+    void on_connection_close(p2p_connection_context& context);
     //----------------- i_p2p_endpoint -------------------------------------------------------------
-    virtual bool relay_notify_to_list(
+    bool relay_notify_to_list(
             int command,
             const std::span<const uint8_t> data_buff,
-            std::span<const connection_id_t> connections);
-    virtual bool invoke_notify_to_peer(
+            std::span<const connection_id_t> connections) override;
+    bool invoke_notify_to_peer(
             int command,
             const std::span<const uint8_t> req_buff,
-            const epee::net_utils::connection_context_base& context);
-    virtual bool drop_connection(const epee::net_utils::connection_context_base& context);
-    virtual void request_callback(const epee::net_utils::connection_context_base& context);
-    virtual void call_on_connection(
+            const epee::net_utils::connection_context_base& context) override;
+    bool drop_connection(const epee::net_utils::connection_context_base& context) override;
+    void request_callback(const epee::net_utils::connection_context_base& context) override;
+    void call_on_connection(
             const epee::net_utils::connection_context_base& context,
-            std::function<void(cryptonote_connection_context&)> f);
-    virtual void for_each_connection(
-            std::function<bool(cryptonote_connection_context&, peerid_type)> f);
-    virtual bool for_connection(
+            std::function<void(cryptonote_connection_context&)> f) override;
+    void for_each_connection(
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) override;
+    bool for_connection(
             const connection_id_t&,
-            std::function<bool(cryptonote_connection_context&, peerid_type)> f);
-    virtual bool add_host_fail(const oxen::quic::Address& address);
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) override;
+    bool add_host_fail(const oxen::quic::Address& address) override;
     //-----------------------------------------------------------------------------------------------
-    virtual bool is_remote_host_allowed(const oxen::quic::Address& address, time_t* t = NULL);
+    bool is_remote_host_allowed(const oxen::quic::Address& address, time_t* t = nullptr);
     //-----------------------------------------------------------------------------------------------
     bool handle_command_line(const boost::program_options::variables_map& vm);
     bool idle_worker();
