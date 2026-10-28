@@ -149,7 +149,6 @@ namespace net_utils
     virtual bool do_send(shared_sv message)=0;
     virtual bool close()=0;
     virtual bool send_done()=0;
-    virtual bool call_run_once_service_io()=0;
     virtual bool request_callback()=0;
     virtual boost::asio::io_service& get_io_service()=0;
     //protect from deletion connection object(with protocol instance) during external call "invoke"

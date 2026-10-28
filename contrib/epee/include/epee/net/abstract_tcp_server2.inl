@@ -127,7 +127,7 @@ namespace net_utils
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::start(bool is_income, bool is_multithreaded)
+  bool connection<t_protocol_handler>::start(bool is_income)
   try {
     boost::system::error_code ec;
     auto remote_ep = socket().remote_endpoint(ec);
@@ -142,7 +142,6 @@ namespace net_utils
     if(!self)
       return false;
 
-    m_is_multithreaded = is_multithreaded;
     // Loopback or otherwise not publicly routable
     m_local = !remote.is_public_ip();
 
@@ -371,33 +370,6 @@ namespace net_utils
     // handler returns. The connection class's destructor closes the socket.
   } catch (const std::exception& ex) {
     oxen::log::error(logcat, "Failed to handle connection read: {}", ex.what());
-  }
-  //---------------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool connection<t_protocol_handler>::call_run_once_service_io()
-  try {
-    if(!m_is_multithreaded)
-    {
-      //single thread model, we can wait in blocked call
-      size_t cnt = GET_IO_SERVICE(socket()).run_one();
-      if(!cnt)//service is going to quit
-        return false;
-    }else
-    {
-      //multi thread model, we can't(!) wait in blocked call
-      //so we make non blocking call and releasing CPU by calling sleep(0); 
-      //if no handlers were called
-      //TODO: Maybe we need to have have critical section + event + callback to upper protocol to
-      //ask it inside(!) critical region if we still able to go in event wait...
-      size_t cnt = GET_IO_SERVICE(socket()).poll_one();
-      if(!cnt)
-        std::this_thread::sleep_for(1ms);
-    }
-
-    return true;
-  } catch (const std::exception& e) {
-    oxen::log::error(logcat, "Failed to run connection io service: {}", e.what());
-    return false;
   }
   //---------------------------------------------------------------------------------
     template<class t_protocol_handler>
@@ -1046,7 +1018,7 @@ namespace net_utils
       boost::asio::socket_base::keep_alive opt(true);
       conn->socket().set_option(opt);
 
-      if (!conn->start(true, 1 < m_threads_count))
+      if (!conn->start(true))
       {
         conn->cancel();
         return;
@@ -1229,7 +1201,7 @@ namespace net_utils
         std::lock_guard lock{connections_mutex};
         connections_.erase(new_connection_l);
     }
-    bool r = new_connection_l->start(false, 1 < m_threads_count);
+    bool r = new_connection_l->start(false);
     if (r)
     {
       new_connection_l->get_context(conn_context);
@@ -1344,7 +1316,7 @@ namespace net_utils
                   std::lock_guard lock{connections_mutex};
                   connections_.erase(new_connection_l);
               }
-            bool r = new_connection_l->start(false, 1 < m_threads_count);
+            bool r = new_connection_l->start(false);
             if (r)
             {
               new_connection_l->get_context(conn_context);

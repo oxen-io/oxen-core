@@ -107,7 +107,7 @@ namespace net_utils
     virtual ~connection() noexcept(false);
 
     /// Start the first asynchronous operation for the connection.
-    bool start(bool is_income, bool is_multithreaded);
+    bool start(bool is_income);
 
     void get_context(t_connection_context& context_){context_ = context;}
 
@@ -125,7 +125,6 @@ namespace net_utils
     virtual bool do_send(shared_sv message); ///< (see do_send from i_service_endpoint)
     virtual bool send_done();
     virtual bool close();
-    virtual bool call_run_once_service_io();
     virtual bool request_callback();
     virtual boost::asio::io_service& get_io_service();
     virtual bool add_ref();

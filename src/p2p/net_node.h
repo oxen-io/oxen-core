@@ -52,7 +52,6 @@
 #include "cryptonote_protocol/levin_notify.h"
 #include "cryptonote_protocol/peer_history.h"
 #include "epee/net/abstract_tcp_server2.h"
-#include "epee/net/levin_protocol_handler.h"
 #include "epee/net/levin_protocol_handler_async.h"
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "net/address.h"
@@ -267,11 +266,6 @@ class node_server
             std::span<const connection_id_t> connections);
     virtual bool send_txs(
             std::vector<std::string> txs, const connection_id_t& source, bool pad_txs);
-    virtual bool invoke_command_to_peer(
-            int command,
-            const std::span<const uint8_t> req_buff,
-            std::string& resp_buff,
-            const epee::net_utils::connection_context_base& context);
     virtual bool invoke_notify_to_peer(
             int command,
             const std::span<const uint8_t> req_buff,
