@@ -569,16 +569,6 @@ static void log_detailed_peer_stats(
 }
 //-----------------------------------------------------------------------------------
 bool node_server::run() {
-    // creating thread to log number of connections
-    mPeersLoggerThread.emplace([&]() {
-        log::debug(logcat, "Thread monitor number of peers - start");
-        while (!is_closing && !m_transport.stopping()) {
-            m_network.m_current_number_of_in_peers = get_incoming_connections_count();
-            std::this_thread::sleep_for(1s);
-        }
-        log::debug(logcat, "Thread monitor number of peers - done");
-    });  // lambda
-
     m_transport.start();
     auto& loop = m_transport.loop();
     m_idle_timers.push_back(loop.add_timer(1s, [this] { idle_worker(); }));
@@ -725,8 +715,6 @@ uint64_t node_server::get_public_connections_count() {
 }
 //-----------------------------------------------------------------------------------
 bool node_server::deinit() {
-    kill();
-
     m_transport.detach();
     return store_config();
 }
@@ -1821,9 +1809,9 @@ int node_server::handle_handshake(
         return 1;
     }
 
-    if (m_network.m_current_number_of_in_peers >=
-        m_network.m_config.m_net_config.max_in_connection_count)  // in peers limit
-    {
+    // (Counting this connection)
+    if (get_incoming_connections_count() >
+        m_network.m_config.m_net_config.max_in_connection_count) {
         log::warning(
                 logcat,
                 "{}COMMAND_HANDSHAKE came, but already have max incoming connections, so dropping "

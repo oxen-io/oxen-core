@@ -90,22 +90,14 @@ class node_server : public i_p2p_endpoint {
     };
 
     struct network {
-        network() :
-                m_bind_ip(),
-                m_bind_ipv6_address(),
-                m_peerlist(),
-                m_config{},
-                m_current_number_of_in_peers(0) {
-            set_config_defaults();
-        }
+        network() { set_config_defaults(); }
 
         std::string m_bind_ip;
         std::string m_bind_ipv6_address;
         uint16_t m_port = 0;
         uint16_t m_port_ipv6 = 0;
         peerlist_manager m_peerlist;
-        config m_config;
-        std::atomic<unsigned int> m_current_number_of_in_peers;
+        config m_config{};
 
       private:
         void set_config_defaults() noexcept {
@@ -127,8 +119,7 @@ class node_server : public i_p2p_endpoint {
             m_external_port(0),
             m_allow_local_ip(false),
             m_hide_my_port(false),
-            m_offline(false),
-            is_closing(false) {}
+            m_offline(false) {}
 
     static void init_options(
             boost::program_options::options_description& desc,
@@ -346,14 +337,6 @@ class node_server : public i_p2p_endpoint {
     bool gray_peerlist_housekeeping();
     bool check_incoming_connections();
 
-    void kill() {  ///< will be called e.g. from deinit()
-        log::info(globallogcat, "Killing the net_node");
-        is_closing = true;
-        if (mPeersLoggerThread)
-            mPeersLoggerThread->join();  // make sure the thread finishes
-        log::info(globallogcat, "Joined extra background net_node threads");
-    }
-
     // debug functions
     std::string print_connections_container();
 
@@ -373,8 +356,6 @@ class node_server : public i_p2p_endpoint {
     bool m_offline;
     bool m_use_ipv6;
     bool m_require_ipv4;
-    std::atomic<bool> is_closing;
-    std::optional<std::thread> mPeersLoggerThread;
     std::unordered_map<peerid_type, peer_stats> peer_stats_map;
     std::mutex peer_stats_map_mutex;
 
