@@ -127,7 +127,7 @@ namespace detail {
  */
 class core_rpc_server {
   public:
-    core_rpc_server(core& cr, nodetool::node_server<cryptonote::protocol_handler>& p2p);
+    core_rpc_server(core& cr, nodetool::node_server& p2p);
 
     static void init_options(
             boost::program_options::options_description& desc,
@@ -287,9 +287,9 @@ class core_rpc_server {
             GET_PENDING_EVENTS& pending, json&& entry, const eth::event::ServiceNodePurge& purge);
 
     core& m_core;
-    nodetool::node_server<cryptonote::protocol_handler>& m_p2p;
+    nodetool::node_server& m_p2p;
 };
 
 }  // namespace cryptonote::rpc
 
-BOOST_CLASS_VERSION(nodetool::node_server<cryptonote::protocol_handler>, 1);
+BOOST_CLASS_VERSION(nodetool::node_server, 1);

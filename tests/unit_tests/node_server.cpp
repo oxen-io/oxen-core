@@ -39,7 +39,7 @@
 
 // These only use the p2p server's own state, so the core under its protocol handler is never
 // initialized.
-using Server = nodetool::node_server<cryptonote::protocol_handler>;
+using Server = nodetool::node_server;
 
 static bool is_blocked(Server &server, const oxen::quic::Address &address, time_t *t = NULL)
 {

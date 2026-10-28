@@ -66,6 +66,7 @@ target_link_libraries(rpc
     version
   PRIVATE
     cryptonote_protocol
+    p2p
     Boost::thread
     sqlitedb
     logging
