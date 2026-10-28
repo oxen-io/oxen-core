@@ -463,27 +463,6 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
     res.status = STATUS_OK;
     return res;
 }
-GET_ALT_BLOCKS_HASHES_BIN::response core_rpc_server::invoke(
-        GET_ALT_BLOCKS_HASHES_BIN::request&&, rpc_context) {
-    GET_ALT_BLOCKS_HASHES_BIN::response res{};
-
-    std::vector<block> blks;
-
-    if (!m_core.blockchain.get_alternative_blocks(blks)) {
-        res.status = "Failed";
-        return res;
-    }
-
-    res.blks_hashes.reserve(blks.size());
-
-    for (auto const& blk : blks) {
-        res.blks_hashes.push_back(tools::hex_guts(get_block_hash(blk)));
-    }
-
-    log::debug(logcat, "on_get_alt_blocks_hashes: {} blocks ", blks.size());
-    res.status = STATUS_OK;
-    return res;
-}
 //------------------------------------------------------------------------------------------------------------------------------
 GET_BLOCKS_BY_HEIGHT_BIN::response core_rpc_server::invoke(
         GET_BLOCKS_BY_HEIGHT_BIN::request&& req, rpc_context) {
@@ -610,24 +589,6 @@ void core_rpc_server::invoke(GET_OUTPUTS& get_outputs, rpc_context context) {
     }
 
     get_outputs.response["status"] = STATUS_OK;
-}
-//------------------------------------------------------------------------------------------------------------------------------
-GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::response core_rpc_server::invoke(
-        GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::request&& req, rpc_context) {
-    GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::response res{};
-
-    bool r = m_core.blockchain.get_tx_outputs_gindexs(req.txid, res.o_indexes);
-    if (!r) {
-        // A transaction still known to exist but not found is one from before the history kept
-        if (const auto start = history_start(); start && m_core.blockchain.db().tx_exists(req.txid))
-            res.status = history_not_kept(start).message;
-        else
-            res.status = "Failed";
-        return res;
-    }
-    res.status = STATUS_OK;
-    log::debug(logcat, "GET_TX_GLOBAL_OUTPUTS_INDEXES: [{}]", res.o_indexes.size());
-    return res;
 }
 
 namespace {
