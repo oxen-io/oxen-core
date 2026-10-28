@@ -35,14 +35,15 @@
 #include <utility>
 #include <vector>
 
+#include "cryptonote_basic/connection_context.h"
 #include "epee/net/net_utils_base.h"
 #include "p2p_protocol_defs.h"
 
 namespace nodetool {
 
+using cryptonote::cryptonote_connection_context;
 using epee::connection_id_t;
 
-template <class t_connection_context>
 struct i_p2p_endpoint {
     virtual bool relay_notify_to_list(
             int command,
@@ -55,9 +56,11 @@ struct i_p2p_endpoint {
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context) = 0;
     virtual void request_callback(const epee::net_utils::connection_context_base& context) = 0;
     virtual uint64_t get_public_connections_count() = 0;
-    virtual void for_each_connection(std::function<bool(t_connection_context&, peerid_type)> f) = 0;
+    virtual void for_each_connection(
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) = 0;
     virtual bool for_connection(
-            const connection_id_t&, std::function<bool(t_connection_context&, peerid_type)> f) = 0;
+            const connection_id_t&,
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) = 0;
     virtual bool block_host(const oxen::quic::Address& address, time_t seconds = 0) = 0;
     virtual bool unblock_host(const oxen::quic::Address& address) = 0;
     virtual std::map<std::string, time_t> get_blocked_hosts() = 0;
@@ -65,8 +68,7 @@ struct i_p2p_endpoint {
     virtual bool add_host_fail(const oxen::quic::Address& address) = 0;
 };
 
-template <class t_connection_context>
-struct p2p_endpoint_stub : public i_p2p_endpoint<t_connection_context> {
+struct p2p_endpoint_stub : public i_p2p_endpoint {
     virtual bool relay_notify_to_list(
             int command,
             const std::span<const uint8_t> data_buff,
@@ -83,9 +85,11 @@ struct p2p_endpoint_stub : public i_p2p_endpoint<t_connection_context> {
         return false;
     }
     virtual void request_callback(const epee::net_utils::connection_context_base& context) {}
-    virtual void for_each_connection(std::function<bool(t_connection_context&, peerid_type)> f) {}
+    virtual void for_each_connection(
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) {}
     virtual bool for_connection(
-            const connection_id_t&, std::function<bool(t_connection_context&, peerid_type)> f) {
+            const connection_id_t&,
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) {
         return false;
     }
 

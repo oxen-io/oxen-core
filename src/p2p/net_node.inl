@@ -128,7 +128,7 @@ bool node_server<t_payload_net_handler>::init_config() try {
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>
 void node_server<t_payload_net_handler>::for_each_connection(
-        std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type)> f) {
+        std::function<bool(cryptonote_connection_context&, peerid_type)> f) {
     m_network.m_net_server.get_config_object().foreach_connection(
             [&](p2p_connection_context& cntx) { return f(cntx, cntx.peer_id); });
 }
@@ -136,7 +136,7 @@ void node_server<t_payload_net_handler>::for_each_connection(
 template <class t_payload_net_handler>
 bool node_server<t_payload_net_handler>::for_connection(
         const connection_id_t& connection_id,
-        std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type)> f) {
+        std::function<bool(cryptonote_connection_context&, peerid_type)> f) {
     return m_network.m_net_server.get_config_object().for_connection(
             connection_id, [&](p2p_connection_context& cntx) { return f(cntx, cntx.peer_id); });
 }
