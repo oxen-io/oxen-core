@@ -38,7 +38,11 @@ static constexpr bool handled_on_loop(int command) {
         case NOTIFY_REQUEST_GET_TXS::ID:
         case NOTIFY_REQUEST_CHAIN::ID:
         case NOTIFY_REQUEST_FLUFFY_MISSING_TX::ID:
-        case NOTIFY_REQUEST_BLOCK_BLINKS::ID: return true;
+        case NOTIFY_REQUEST_BLOCK_BLINKS::ID:
+        case NOTIFY_NEW_TRANSACTIONS::ID:
+        case NOTIFY_BTENCODED_UPTIME_PROOF::ID:
+        case NOTIFY_NEW_SERVICE_NODE_VOTE::ID:
+        case NOTIFY_RESPONSE_BLOCK_BLINKS::ID: return true;
         default: return false;
     }
 }

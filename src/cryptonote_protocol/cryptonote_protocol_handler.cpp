@@ -862,15 +862,13 @@ int protocol_handler::handle_uptime_proof(
     // submitted automatically by the daemon itself instead of
     // using my own proof relayed by other nodes.
 
-    (void)context;
-    bool my_uptime_proof_confirmation = false;
-
-    if (m_core.handle_uptime_proof(arg, my_uptime_proof_confirmation)) {
-        if (!my_uptime_proof_confirmation) {
+    chain_job([this, arg = std::move(arg)]() mutable {
+        bool my_uptime_proof_confirmation = false;
+        if (m_core.handle_uptime_proof(arg, my_uptime_proof_confirmation) &&
+            !my_uptime_proof_confirmation)
             // Not excluding the peer who sent it, so that they learn that we received it.
             relay_uptime_proof(arg, std::nullopt);
-        }
-    }
+    });
     return 1;
 }
 
@@ -892,29 +890,30 @@ int protocol_handler::handle_notify_new_service_node_vote(
         return 1;
     }
 
-    for (auto it = arg.votes.begin(); it != arg.votes.end();) {
-        cryptonote::vote_verification_context vvc = {};
-        m_core.add_service_node_vote(*it, vvc);
+    chain_job([this, id = context.m_connection_id, arg = std::move(arg)]() mutable {
+        for (auto it = arg.votes.begin(); it != arg.votes.end();) {
+            cryptonote::vote_verification_context vvc = {};
+            m_core.add_service_node_vote(*it, vvc);
 
-        if (vvc.m_verification_failed) {
-            log::info(logcat, "Vote type: {}, verification failed, dropping connection", it->type);
-            drop_connection(
-                    context,
-                    false /*add_fail*/,
-                    false /*flush_all_spans i.e. delete cached block data from this peer*/);
-            return 1;
+            if (vvc.m_verification_failed) {
+                log::info(
+                        logcat,
+                        "Vote type: {}, verification failed, dropping connection",
+                        it->type);
+                drop_connection(id, false, false);
+                return;
+            }
+
+            if (vvc.m_added_to_pool) {
+                it++;
+            } else {
+                it = arg.votes.erase(it);
+            }
         }
 
-        if (vvc.m_added_to_pool) {
-            it++;
-        } else {
-            it = arg.votes.erase(it);
-        }
-    }
-
-    if (arg.votes.size())
-        relay_service_node_votes(arg, context.m_connection_id);
-
+        if (arg.votes.size())
+            relay_service_node_votes(arg, id);
+    });
     return 1;
 }
 
@@ -1017,14 +1016,6 @@ int protocol_handler::handle_notify_new_transactions(
             "Received NOTIFY_NEW_TRANSACTIONS ({} txes w/ {} blinks)",
             arg.txs.size(),
             arg.blinks.size());
-    for (const auto& blob : arg.txs)
-        if (logcat->should_log(log::Level::info)) {
-            cryptonote::transaction tx;
-            crypto::hash hash;
-            bool ret = cryptonote::parse_and_validate_tx_from_blob(blob, tx, hash);
-            if (ret)
-                log::info(log::Cat("net.p2p.msg"), "Including transaction {}", hash);
-        }
 
     if (context.m_state != cryptonote_connection_context::state_normal)
         return 1;
@@ -1037,6 +1028,22 @@ int protocol_handler::handle_notify_new_transactions(
         log::debug(logcat, "{}Received new tx while syncing, ignored", context);
         return 1;
     }
+
+    chain_job([this, id = context.m_connection_id, arg = std::move(arg), syncing]() mutable {
+        add_new_transactions(arg, id, syncing);
+    });
+    return 1;
+}
+//------------------------------------------------------------------------------------------------------------------------
+void protocol_handler::add_new_transactions(
+        NOTIFY_NEW_TRANSACTIONS::request& arg, const connection_id_t& id, bool syncing) {
+    if (logcat->should_log(log::Level::info))
+        for (const auto& blob : arg.txs) {
+            cryptonote::transaction tx;
+            crypto::hash hash;
+            if (cryptonote::parse_and_validate_tx_from_blob(blob, tx, hash))
+                log::info(log::Cat("net.p2p.msg"), "Including transaction {}", hash);
+        }
 
     bool bad_blinks = false;
     auto parsed_blinks = m_core.parse_incoming_blinks(arg.blinks);
@@ -1117,7 +1124,7 @@ int protocol_handler::handle_notify_new_transactions(
     // on to our peers because they probably already have it: we just missed it somehow.
     if (arg.txs.size() && !arg.requested) {
         // TODO: add announce usage here
-        relay_transactions(arg, context.m_connection_id);
+        relay_transactions(arg, id);
     }
 
     // If we're still syncing (which implies this was a requested tx list) then it's quite possible
@@ -1130,10 +1137,8 @@ int protocol_handler::handle_notify_new_transactions(
                 (!all_okay && bad_blinks ? "Tx and Blink"
                  : !all_okay             ? "Tx"
                                          : "Blink"));
-        drop_connection(context, false, false);
+        drop_connection(id, false, false);
     }
-
-    return 1;
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_request_get_blocks(
@@ -2711,35 +2716,32 @@ int protocol_handler::handle_response_block_blinks(
             "Received NOTIFY_RESPONSE_BLOCK_BLINKS: txs.size()={}",
             arg.txs.size());
 
-    m_core.mempool.keep_missing_blinks(arg.txs);
-    if (arg.txs.empty()) {
-        log::debug(
-                logcat,
-                "NOTIFY_RESPONSE_BLOCKS_BLINKS included only blink txes we already knew about");
-        return 1;
-    }
-
-    NOTIFY_REQUEST_GET_TXS::request req;
-    while (!arg.txs.empty()) {
-        if (arg.txs.size() <= CURRENCY_PROTOCOL_MAX_TXS_REQUEST_COUNT)
-            req.txs = std::move(arg.txs);
-        else {
-            req.txs = {arg.txs.end() - CURRENCY_PROTOCOL_MAX_TXS_REQUEST_COUNT, arg.txs.end()};
-            arg.txs.resize(arg.txs.size() - CURRENCY_PROTOCOL_MAX_TXS_REQUEST_COUNT);
+    chain_job([this, id = context.m_connection_id, arg = std::move(arg)]() mutable {
+        m_core.mempool.keep_missing_blinks(arg.txs);
+        if (arg.txs.empty()) {
+            log::debug(
+                    logcat,
+                    "NOTIFY_RESPONSE_BLOCKS_BLINKS included only blink txes we already knew about");
+            return;
         }
 
-        log::info(
-                log::Cat("net.p2p.msg"),
-                "-->>NOTIFY_REQUEST_GET_TXS: requesting for tx & blink data, txs.size()={}",
-                req.txs.size());
-        post_notify<NOTIFY_REQUEST_GET_TXS>(req, context);
-    }
-    log::debug(
-            logcat,
-            "{}state: {} in state {}",
-            context,
-            "requesting missing blink txs",
-            cryptonote::get_protocol_state_string(context.m_state));
+        NOTIFY_REQUEST_GET_TXS::request req;
+        while (!arg.txs.empty()) {
+            if (arg.txs.size() <= CURRENCY_PROTOCOL_MAX_TXS_REQUEST_COUNT)
+                req.txs = std::move(arg.txs);
+            else {
+                req.txs = {arg.txs.end() - CURRENCY_PROTOCOL_MAX_TXS_REQUEST_COUNT, arg.txs.end()};
+                arg.txs.resize(arg.txs.size() - CURRENCY_PROTOCOL_MAX_TXS_REQUEST_COUNT);
+            }
+
+            log::info(
+                    log::Cat("net.p2p.msg"),
+                    "-->>NOTIFY_REQUEST_GET_TXS: requesting for tx & blink data, txs.size()={}",
+                    req.txs.size());
+            post_notify<NOTIFY_REQUEST_GET_TXS>(req, id);
+        }
+        log::debug(logcat, "[{}] requesting missing blink txs", id);
+    });
     return 1;
 }
 //------------------------------------------------------------------------------------------------------------------------
