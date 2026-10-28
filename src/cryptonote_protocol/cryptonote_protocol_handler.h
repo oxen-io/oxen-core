@@ -88,8 +88,12 @@ class protocol_handler : public i_cryptonote_protocol {
     // bool process_handshake_data(const std::string& data, cryptonote_connection_context& context);
     bool process_payload_sync_data(
             CORE_SYNC_DATA&& hshd, cryptonote_connection_context& context, bool is_inital);
-    bool get_payload_sync_data(std::string& data);
-    bool get_payload_sync_data(CORE_SYNC_DATA& hshd);
+    // Our sync data, for handshakes and timed syncs, as refresh_sync_data() last published it.  It
+    // takes no chain locks, so it can be read from anywhere.
+    CORE_SYNC_DATA get_payload_sync_data() const;
+    // Recomputes our sync data from the chain and mempool, whose locks it takes: called after
+    // adding blocks, and each second (for blink checksums, and blocks added elsewhere).
+    void refresh_sync_data();
     bool on_callback(cryptonote_connection_context& context);
     core& get_core() { return m_core; }
     bool is_synchronized() { return m_synchronized; }
@@ -210,8 +214,6 @@ class protocol_handler : public i_cryptonote_protocol {
             NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg,
             cryptonote_connection_context& exclude_context);
     //----------------------------------------------------------------------------------
-    // bool get_payload_sync_data(HANDSHAKE_DATA::request& hshd, cryptonote_connection_context&
-    // context);
     // `caller` says where the request comes from, for logging.
     bool request_missing_objects(
             cryptonote_connection_context& context,
@@ -267,6 +269,9 @@ class protocol_handler : public i_cryptonote_protocol {
     // (time, height) samples for sync_rate; reset whenever a sync (re)starts.
     std::deque<std::pair<std::chrono::steady_clock::time_point, uint64_t>> m_sync_rate_samples;
     std::mutex m_sync_rate_mutex;
+
+    mutable std::mutex m_sync_data_mutex;
+    CORE_SYNC_DATA m_sync_data{};
 
     std::mutex m_buffer_mutex;
     boost::circular_buffer<size_t> m_avg_buffer = boost::circular_buffer<size_t>(10);
