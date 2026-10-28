@@ -1394,29 +1394,27 @@ crypto::hash get_block_longhash(
     const auto bd = get_block_hashing_blob(b);
     const auto hf_version = b.major_version;
 
-    crypto::cn_slow_hash_type cn_type = cn_slow_hash_type::heavy_v1;
-    if (nettype == network_type::FAKECHAIN) {
-        cn_type = cn_slow_hash_type::turtle_lite_v2;
-    } else {
-        if (hf_version >= hf::hf12_checkpointing) {
-            rx_slow_hash(
-                    randomx_context.current_blockchain_height,
-                    randomx_context.seed_height,
-                    randomx_context.seed_block_hash.data(),
-                    bd.data(),
-                    bd.size(),
-                    result.data(),
-                    miners,
-                    0);
-            return result;
-        }
+    // A fake chain (core tests, --regtest) only needs a stand-in for proof of work: a slow hash
+    // there just makes every block cost a memory-hard hash to mine and again to verify.
+    if (nettype == network_type::FAKECHAIN)
+        return crypto::cn_fast_hash(bd.data(), bd.size());
 
-        if (hf_version >= hf::hf11_infinite_staking)
-            cn_type = cn_slow_hash_type::turtle_lite_v2;
-        else if (hf_version >= hf::hf7)
-            cn_type = crypto::cn_slow_hash_type::heavy_v2;
+    if (hf_version >= hf::hf12_checkpointing) {
+        rx_slow_hash(
+                randomx_context.current_blockchain_height,
+                randomx_context.seed_height,
+                randomx_context.seed_block_hash.data(),
+                bd.data(),
+                bd.size(),
+                result.data(),
+                miners,
+                0);
+        return result;
     }
 
+    const auto cn_type = hf_version >= hf::hf11_infinite_staking ? cn_slow_hash_type::turtle_lite_v2
+                       : hf_version >= hf::hf7                   ? cn_slow_hash_type::heavy_v2
+                                                                 : cn_slow_hash_type::heavy_v1;
     crypto::cn_slow_hash(bd.data(), bd.size(), result, cn_type);
     return result;
 }
