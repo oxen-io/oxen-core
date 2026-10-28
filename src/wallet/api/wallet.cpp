@@ -978,50 +978,12 @@ bool WalletImpl::init(
         uint64_t upper_transaction_size_limit,
         const std::string& daemon_username,
         const std::string& daemon_password,
-        bool use_ssl ENABLE_IF_LIGHT_WALLET(, bool lightWallet)) {
+        bool use_ssl) {
     clearStatus();
-#ifdef ENABLE_LIGHT_WALLET
-    wallet()->set_light_wallet(lightWallet);
-#endif
     if (daemon_username != "")
         m_daemon_login.emplace(daemon_username, daemon_password);
     return doInit(daemon_address, upper_transaction_size_limit, use_ssl);
 }
-
-#ifdef ENABLE_LIGHT_WALLET
-EXPORT
-bool WalletImpl::lightWalletLogin(bool& isNewWallet) const {
-    return wallet()->light_wallet_login(isNewWallet);
-}
-
-EXPORT
-bool WalletImpl::lightWalletImportWalletRequest(
-        std::string& payment_id,
-        uint64_t& fee,
-        bool& new_request,
-        bool& request_fulfilled,
-        std::string& payment_address,
-        std::string& status) {
-    try {
-        tools::light_rpc::IMPORT_WALLET_REQUEST::response response{};
-        if (!wallet()->light_wallet_import_wallet_request(response)) {
-            setStatusError("Failed to send import wallet request");
-            return false;
-        }
-        fee = response.import_fee;
-        payment_id = response.payment_id;
-        new_request = response.new_request;
-        request_fulfilled = response.request_fulfilled;
-        payment_address = response.payment_address;
-        status = response.status;
-    } catch (const std::exception& e) {
-        log::error(logcat, "Error sending import wallet request: {}", e.what());
-        setStatusError(e.what());
-        return false;
-    }
-    return true;
-}
-#endif
 
 EXPORT
 void WalletImpl::setRefreshFromBlockHeight(uint64_t refresh_from_block_height) {
@@ -1088,13 +1050,7 @@ std::vector<Wallet::stake_info>* WalletImpl::listCurrentStakes() const {
 EXPORT
 uint64_t WalletImpl::blockChainHeight() const {
     // This call is thread-safe
-    auto& w = m_wallet_ptr;
-#ifdef ENABLE_LIGHT_WALLET
-    if (w->light_wallet()) {
-        return w->get_light_wallet_scanned_block_height();
-    }
-#endif
-    return w->get_blockchain_current_height();
+    return m_wallet_ptr->get_blockchain_current_height();
 }
 EXPORT
 uint64_t WalletImpl::approximateBlockChainHeight() const {
@@ -1112,11 +1068,6 @@ uint64_t WalletImpl::daemonBlockChainHeight() const {
     // auto w = wallet();
     auto& w = m_wallet_ptr;
 
-#ifdef ENABLE_LIGHT_WALLET
-    if (w->light_wallet()) {
-        return w->get_light_wallet_scanned_block_height();
-    }
-#endif
     if (!m_is_connected)
         return 0;
     std::string err;
@@ -1137,11 +1088,6 @@ uint64_t WalletImpl::daemonBlockChainTargetHeight() const {
     // auto w = wallet();
     auto& w = m_wallet_ptr;
 
-#ifdef ENABLE_LIGHT_WALLET
-    if (w->light_wallet()) {
-        return w->get_light_wallet_blockchain_height();
-    }
-#endif
     if (!m_is_connected)
         return 0;
     std::string err;
@@ -2179,12 +2125,7 @@ Wallet::ConnectionStatus WalletImpl::connected() const {
     m_is_connected = w->check_connection(&version, NULL, DEFAULT_CONNECTION_TIMEOUT_MILLIS);
     if (!m_is_connected)
         return Wallet::ConnectionStatus_Disconnected;
-    if (
-#ifdef ENABLE_LIGHT_WALLET
-            // Version check is not implemented in light wallets nodes/wallets
-            !w->light_wallet() &&
-#endif
-            version.first != rpc::VERSION.first)
+    if (version.first != rpc::VERSION.first)
         return Wallet::ConnectionStatus_WrongVersion;
     return Wallet::ConnectionStatus_Connected;
 }
@@ -2271,11 +2212,7 @@ void WalletImpl::doRefresh() {
 
             // Syncing daemon and refreshing wallet simultaneously is very resource intensive.
             // Disable refresh if wallet is disconnected or daemon isn't synced.
-            if (
-#ifdef ENABLE_LIGHT_WALLET
-                    w->light_wallet() ||
-#endif
-                    daemonSynced()) {
+            if (daemonSynced()) {
                 if (rescan)
                     w->rescan_blockchain(false);
                 w->refresh(trustedDaemon());
