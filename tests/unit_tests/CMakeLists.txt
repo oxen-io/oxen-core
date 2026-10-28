@@ -49,6 +49,7 @@ add_executable(unit_tests
   hmac_keccak.cpp
   ipv4.cpp
   keccak.cpp
+  kv_json.cpp
   levin.cpp
   logging.cpp
   oxen_name_system.cpp

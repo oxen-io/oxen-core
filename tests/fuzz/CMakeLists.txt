@@ -106,18 +106,6 @@ set_property(TARGET load-from-binary_fuzz_tests
   PROPERTY
     FOLDER "tests")
 
-add_executable(load-from-json_fuzz_tests load_from_json.cpp fuzzer.cpp)
-target_link_libraries(load-from-json_fuzz_tests
-  PRIVATE
-    common
-    epee
-    Boost::program_options
-    logging
-    extra)
-set_property(TARGET load-from-json_fuzz_tests
-  PROPERTY
-    FOLDER "tests")
-
 add_executable(base58_fuzz_tests base58.cpp fuzzer.cpp)
 target_link_libraries(base58_fuzz_tests
   PRIVATE

@@ -29,41 +29,12 @@
 #include <string>
 #include <string_view>
 
-#include "parserse_base_utils.h"
 #include "portable_storage.h"
 
 namespace epee
 {
   namespace serialization
   {
-    //-----------------------------------------------------------------------------------------------------------
-    template <typename T>
-    bool load_t_from_json(T& out, std::string_view json_buff)
-    {
-      portable_storage ps;
-      bool rs = ps.load_from_json(json_buff);
-      if(!rs)
-        return false;
-
-      return out.load(ps);
-    }
-    //-----------------------------------------------------------------------------------------------------------
-    template<class t_struct>
-    bool store_t_to_json(t_struct& str_in, std::string& json_buff, size_t indent = 0, bool insert_newlines = true)
-    {
-      portable_storage ps;
-      str_in.store(ps);
-      ps.dump_as_json(json_buff, indent, insert_newlines);
-      return true;
-    }
-    //-----------------------------------------------------------------------------------------------------------
-    template<class t_struct>
-    std::string store_t_to_json(t_struct& str_in, size_t indent = 0, bool insert_newlines = true)
-    {
-      std::string json_buff;
-      store_t_to_json(str_in, json_buff, indent, insert_newlines);
-      return json_buff;
-    }
     //-----------------------------------------------------------------------------------------------------------
     template<class t_struct>
     bool load_t_from_binary(t_struct& out, const std::span<const uint8_t> binary_buff)
