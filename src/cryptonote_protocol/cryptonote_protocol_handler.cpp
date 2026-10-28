@@ -2894,21 +2894,7 @@ void protocol_handler::drop_connection(
         m_p2p->add_host_fail(context.m_remote_address);
 
     m_block_queue.flush_spans(context.m_connection_id, flush_all_spans);
-
-    // If this is the first drop_connection attempt then give the peer a second chance to sort
-    // itself out: it might have send an invalid block because of a blink conflict, and we want it
-    // to be able to get our blinks and do a rollback, but if we close instantly it might not get
-    // them before we close the connection and so might never learn of the problem.
-    if (context.m_drop_count >= 1) {
-        log::debug(
-                logcat,
-                "{}{} a second chance before dropping",
-                context,
-                "giving connect id ",
-                context.m_connection_id);
-        ++context.m_drop_count;
-    } else
-        m_p2p->drop_connection(context);
+    m_p2p->drop_connection(context);
 }
 //------------------------------------------------------------------------------------------------------------------------
 void protocol_handler::drop_connection(
