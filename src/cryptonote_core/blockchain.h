@@ -593,7 +593,8 @@ class Blockchain {
      * @return true unless any blocks or transactions are missing
      */
     bool handle_get_blocks(
-            NOTIFY_REQUEST_GET_BLOCKS::request& arg, NOTIFY_RESPONSE_GET_BLOCKS::request& rsp);
+            const NOTIFY_REQUEST_GET_BLOCKS::request& arg,
+            NOTIFY_RESPONSE_GET_BLOCKS::request& rsp);
 
     /**
      * @brief retrieves a set of transactions
@@ -607,7 +608,7 @@ class Blockchain {
      * @return true unless any transactions are missing
      */
     bool handle_get_txs(
-            NOTIFY_REQUEST_GET_TXS::request& arg, NOTIFY_NEW_TRANSACTIONS::request& rsp);
+            const NOTIFY_REQUEST_GET_TXS::request& arg, NOTIFY_NEW_TRANSACTIONS::request& rsp);
 
     /**
      * @brief get number of outputs of an amount past the minimum spendable age

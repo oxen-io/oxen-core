@@ -226,6 +226,12 @@ class protocol_handler : public i_cryptonote_protocol {
     bool should_download_next_span(cryptonote_connection_context& context, bool standby);
     void drop_connection(
             cryptonote_connection_context& context, bool add_fail, bool flush_all_spans);
+    // For chain jobs: drops the connection from the thread that has its context.
+    void drop_connection(const connection_id_t& id, bool add_fail, bool flush_all_spans);
+    // Queues `f` on the chain thread, after the chain work already queued there.  A chain job has
+    // no connection context: it addresses a connection by id, with post_notify() or
+    // drop_connection().
+    void chain_job(std::function<void()> f);
     bool kick_idle_peers();
     bool check_standby_peers();
     bool update_sync_search();

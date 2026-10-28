@@ -39,8 +39,8 @@ class node_server;
 
 // Runs the p2p node's connections.  Each is a levin connection on a libquic event loop.  What the
 // connections deliver (connections opening and closing, requests, notifies and invoke responses)
-// goes to the node: on the loop thread for the p2p layer's own commands, and otherwise on one
-// OxenMQ thread (the handler thread), in the order it arrived.  Either way a connection's requests
+// goes to the node: on the loop thread for the commands handled there, and otherwise on one OxenMQ
+// thread (the handler thread), in the order it arrived.  Either way a connection's requests
 // are answered in order, as every command that is invoked is handled on the loop.
 class transport {
   public:
