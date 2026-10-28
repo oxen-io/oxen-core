@@ -18,6 +18,7 @@
 
 #include "cryptonote_basic/connection_context.h"
 #include "levin/connection.h"
+#include "levin/messages.h"
 #include "p2p_protocol_defs.h"
 
 struct ev_token_bucket_cfg;
@@ -44,9 +45,6 @@ class node_server;
 // are answered in order, as every command that is invoked is handled on the loop.
 class transport {
   public:
-    // For epee's async_invoke_remote_command2, which takes a transport like this one
-    using connection_context = p2p_connection_context;
-
     explicit transport(node_server& node);
     ~transport();
 
@@ -97,6 +95,28 @@ class transport {
             const connection_id_t& id,
             std::function<void(int, std::span<const uint8_t>, p2p_connection_context&)> cb,
             std::chrono::nanoseconds timeout = {});
+    // invoke_async() of COMMAND: `cb` gets the decoded response (default-constructed if the return
+    // code isn't positive), and ERROR_FORMAT as the code if the response doesn't parse.
+    template <typename COMMAND>
+    int invoke(
+            const connection_id_t& id,
+            const typename COMMAND::request& req,
+            std::function<void(int, typename COMMAND::response&&, p2p_connection_context&)> cb,
+            std::chrono::nanoseconds timeout = {}) {
+        const auto body = levin::encode(req);
+        return invoke_async(
+                COMMAND::ID,
+                oxen::quic::reinterpret_span<const uint8_t>(std::span{body}),
+                id,
+                [cb = std::move(cb)](
+                        int code, std::span<const uint8_t> in, p2p_connection_context& context) {
+                    std::optional<typename COMMAND::response> rsp;
+                    if (code > 0 && !(rsp = levin::decode<typename COMMAND::response>(in)))
+                        code = levin::ERROR_FORMAT;
+                    cb(code, rsp ? std::move(*rsp) : typename COMMAND::response{}, context);
+                },
+                timeout);
+    }
     // Calls `f` with the connection's context on the handler thread, unless it has closed by then.
     bool call_on(const connection_id_t& id, std::function<void(p2p_connection_context&)> f);
 

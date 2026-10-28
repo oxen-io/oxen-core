@@ -28,6 +28,8 @@ inline constexpr int32_t ERROR_CONNECTION_NOT_FOUND = -2;
 inline constexpr int32_t ERROR_CONNECTION_DESTROYED = -3;
 inline constexpr int32_t ERROR_TIMEDOUT = -4;
 inline constexpr int32_t ERROR_HANDLER_NOT_DEFINED = -6;
+// A request or response whose body doesn't parse as the command's
+inline constexpr int32_t ERROR_FORMAT = -7;
 
 class connection;
 
