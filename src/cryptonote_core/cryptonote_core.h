@@ -327,10 +327,9 @@ class core final {
     bool handle_block_found(block& b, block_verification_context& bvc);
 
     /**
-     * @brief called when a transaction is relayed; return the hash of the parsed tx, or null hash
-     * on parse failure.
+     * @brief called when a transaction is relayed, to mark it as relayed in the mempool.
      */
-    crypto::hash on_transaction_relayed(const std::string& tx);
+    void on_transaction_relayed(const std::string& tx);
 
     /**
      * @brief adds command line options to the given options set
