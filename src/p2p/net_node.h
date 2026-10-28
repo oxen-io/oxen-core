@@ -326,17 +326,6 @@ class node_server : public epee::levin::levin_commands_handler<p2p_connection_co
     // The outgoing connections plus the pending attempts not yet connected, which is what counts
     // against the outgoing connection limit.
     size_t get_outgoing_and_pending_count();
-    // Draw from a truncated exponential with the given rate, truncated to produce values in [0,
-    // N), and then take the integer floor to get a [0, N-1] value.  This distribution prefers
-    // earlier values: with the default rate and the *untruncated* distribution, [0] is selected
-    // around 13% of the time, indices in 0-9 are selected with probability 0.75 (this is where the
-    // default comes from), and indices < 20 are selected with probability 0.9375, and indices < 50
-    // with probability ~0.999.
-    //
-    // The *truncated* distribution scales these probabilities up slightly depending on the amount
-    // of truncation.  (For example, with max_index of 19, those probabilities increase by a factor
-    // of 1.06667, and with max_index of 9, they increase by 4/3).
-    size_t get_random_exp_index(size_t size, double rate = 0.13862943611198906);
     // Whether we are connected, or connecting, to an address
     bool is_peer_used(const oxen::quic::Address& addr);
     // Whether a peerlist_entry or anchor_peerlist_entry is in use: its address (as above), or its
