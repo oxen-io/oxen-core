@@ -157,6 +157,11 @@ struct network_config final {
     // the tip of the chain.
     const uint64_t HISTORY_RECENT_KEEP_WINDOW;
 
+    // Specifies how many blocks' worth of quorums the SNL keeps in memory below the head of the
+    // chain, for replaying blocks from the states that a detach within HISTORY_RECENT_KEEP_WINDOW
+    // may restore (see oldest_recent_restore_height in service_node_list.cpp).
+    const uint64_t HISTORY_QUORUMS_KEEP_WINDOW;
+
     /// (HF21+) Number of blocks after a registration expires (i.e. regular requested removals,
     /// *not* deregs) during which the node is protected from liquidation-with-penalty.  Regular
     /// removals can still be submitted to remove it from the ETH pubkey list, but *not* penalizing

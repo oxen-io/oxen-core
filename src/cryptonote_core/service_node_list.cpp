@@ -317,6 +317,34 @@ static uint64_t min_recent_height(cryptonote::network_type nettype, uint64_t hei
     return result;
 }
 
+// The lowest height that a detach of up to HISTORY_RECENT_KEEP_WINDOW blocks may restore the SN
+// list to from the in-memory history.  It restores to a height that the rewards can restore to as
+// well, which (below their few in-memory heights) is the height of a rewards snapshot, taken every
+// STATE_SNAPSHOT_INTERVAL blocks: at worst, the snapshot height at or below the start of the
+// window.
+//
+// Below the window, the in-memory history keeps the state at this height, and the quorums (as
+// only_loaded_quorums states) of the HISTORY_QUORUMS_KEEP_WINDOW heights below the top, which takes
+// in the PREDECESSOR_QUORUMS heights before it that replaying the blocks after it needs.  With
+// LMDB, where the recent states are only in memory and in the short-term blob, that is what keeps
+// such a detach (at startup, from pop_blocks or for a reorg) from having to restore from the last
+// archived state instead, and replay the up to HISTORY_ARCHIVE_INTERVAL blocks since.  With the
+// states in the database, the stored snapshots come with their predecessor quorums, so there it
+// only saves restoring a stored snapshot.
+static uint64_t oldest_recent_restore_height(cryptonote::network_type nettype, uint64_t height) {
+    const uint64_t keep_from = min_recent_height(nettype, height);
+    return keep_from - keep_from % STATE_SNAPSHOT_INTERVAL;
+}
+
+// HISTORY_QUORUMS_KEEP_WINDOW rounds up the furthest back the quorums needed for that go: the start
+// of the HISTORY_RECENT_KEEP_WINDOW window, the up to STATE_SNAPSHOT_INTERVAL - 1 heights further
+// down to the snapshot height, and the PREDECESSOR_QUORUMS heights before that.
+static_assert(std::ranges::all_of(cryptonote::ALL_NETWORKS, [](cryptonote::network_type nettype) {
+    const auto& netconf = cryptonote::get_config(nettype);
+    return netconf.HISTORY_QUORUMS_KEEP_WINDOW >=
+           netconf.HISTORY_RECENT_KEEP_WINDOW + STATE_SNAPSHOT_INTERVAL - 1 + PREDECESSOR_QUORUMS;
+}));
+
 uint64_t oldest_retained_archive(const cryptonote::network_config& netconf, uint64_t height) {
     uint64_t oldest = height < netconf.HISTORY_ARCHIVE_KEEP_WINDOW
                             ? 0
@@ -4698,13 +4726,34 @@ block_add_result service_node_list::process_block(
         }
     }
 
-    // NOTE: Cull recent history
+    // NOTE: Cull recent history: below the window, keep just the state that a detach may restore
+    // to and the quorums before it (see oldest_recent_restore_height).
     const uint64_t cull_recent_height = min_recent_height(blockchain.nettype(), m_state.height);
     {
         ZoneScopedN("Cull recent history");
         state_set& set = m_transient->state_history;
-        while (set.size() && set.begin()->height < cull_recent_height)
+        const uint64_t restore_from =
+                oldest_recent_restore_height(blockchain.nettype(), m_state.height);
+        const uint64_t quorums_window = netconf.HISTORY_QUORUMS_KEEP_WINDOW;
+        const uint64_t keep_quorums_from =
+                m_state.height > quorums_window ? m_state.height - quorums_window : 0;
+        while (set.size() && set.begin()->height < keep_quorums_from)
             set.erase(set.begin());
+        for (auto it = set.begin(); it != set.end() && it->height < cull_recent_height;) {
+            if (it->only_loaded_quorums || it->height == restore_from) {
+                ++it;
+                continue;
+            }
+            auto node = set.extract(it++);
+            state_t& state = node.value();
+            state_t quorums_only{this};
+            quorums_only.only_loaded_quorums = true;
+            quorums_only.height = state.height;
+            quorums_only.block_hash = state.block_hash;
+            quorums_only.quorums = std::move(state.quorums);
+            state = std::move(quorums_only);
+            set.insert(it, std::move(node));
+        }
     }
 
     // NOTE: Cull archive history.  The cull height only advances once per archive interval, so we
@@ -5060,7 +5109,8 @@ std::optional<quorum> service_node_list::state_t::get_pulse_quorum() const {
         return std::nullopt;
 
     auto prev_state = sn_list->m_transient->state_history.find(height - 1);
-    if (prev_state == sn_list->m_transient->state_history.end()) {
+    if (prev_state == sn_list->m_transient->state_history.end() ||
+        prev_state->only_loaded_quorums) {
         log::error(logcat, "Unable to retrieve state_t history for {}", height - 1);
         return std::nullopt;
     }
@@ -5506,7 +5556,7 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     // NOTE: Check if alt block forks off some historical state on the canonical chain
     if (!starting_state) {
         auto it = m_transient->state_history.find(block_height - 1);
-        if (it != m_transient->state_history.end())
+        if (it != m_transient->state_history.end() && !it->only_loaded_quorums)
             if (block.prev_id == it->block_hash)
                 starting_state = &(*it);
     }
