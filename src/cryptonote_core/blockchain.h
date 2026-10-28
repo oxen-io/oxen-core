@@ -1363,6 +1363,8 @@ class Blockchain {
 
     // some invalid blocks
     std::set<crypto::hash> m_invalid_blocks;
+    // Guards m_invalid_blocks on its own, as have_block reads it without the blockchain lock
+    mutable std::mutex m_invalid_blocks_mutex;
 
     std::vector<BlockAddHook> m_block_add_hooks;
     std::vector<BlockAddHook> m_alt_block_add_hooks;

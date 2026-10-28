@@ -3725,7 +3725,7 @@ bool Blockchain::find_blockchain_supplement(
 //------------------------------------------------------------------
 bool Blockchain::add_block_as_invalid(cryptonote::block const& block) {
     log::trace(logcat, "Blockchain::{}", __func__);
-    std::unique_lock lock{*this};
+    std::lock_guard lock{m_invalid_blocks_mutex};
     auto i_res = m_invalid_blocks.insert(get_block_hash(block));
     if (!i_res.second) {
         log::error(logcat, "at insertion invalid block returned status failed");
@@ -3749,7 +3749,7 @@ hf Blockchain::get_network_version(std::optional<uint64_t> height) const {
 //------------------------------------------------------------------
 void Blockchain::flush_invalid_blocks() {
     log::trace(logcat, "Blockchain::{}", __func__);
-    std::unique_lock lock{*this};
+    std::lock_guard lock{m_invalid_blocks_mutex};
     m_invalid_blocks.clear();
 }
 
@@ -3954,7 +3954,9 @@ std::unordered_map<eth::bls_public_key, bool> Blockchain::get_removable_nodes() 
 //------------------------------------------------------------------
 bool Blockchain::have_block(const crypto::hash& id) const {
     log::trace(logcat, "Blockchain::{}", __func__);
-    std::unique_lock lock{*this};
+    // No blockchain lock: the database reads are each consistent by themselves, so that the p2p
+    // layer can ask without waiting out a block being added (at worst it gets the answer from
+    // before that block).
 
     if (m_db->block_exists(id)) {
         log::debug(logcat, "block {} found in main chain", id);
@@ -3966,6 +3968,7 @@ bool Blockchain::have_block(const crypto::hash& id) const {
         return true;
     }
 
+    std::lock_guard lock{m_invalid_blocks_mutex};
     if (m_invalid_blocks.count(id)) {
         log::debug(logcat, "block {} found in m_invalid_blocks", id);
         return true;

@@ -379,12 +379,17 @@ bool protocol_handler::process_payload_sync_data(
         // height *and* different than the last height the peer sent then we will request the blink
         // txes for that height.
 
-        const uint64_t immutable_height = m_core.blockchain.get_immutable_height();
+        uint64_t immutable_height;
+        std::map<uint64_t, crypto::hash> our_blink_hashes;
+        {
+            std::lock_guard lock{m_sync_data_mutex};
+            immutable_height = m_sync_immutable_height;
+            our_blink_hashes = m_sync_blink_checksums;
+        }
         // Delete any irrelevant heights > 0 (the mempool) and <= the immutable height
         context.m_blink_state.erase(
                 context.m_blink_state.lower_bound(1),
                 context.m_blink_state.lower_bound(immutable_height + 1));
-        auto our_blink_hashes = m_core.mempool.get_blink_checksums();
         uint64_t last_height;
         log::debug(logcat, "Peer sent {} blink hashes", hshd.blink_blocks.size());
         for (size_t i = 0; i < hshd.blink_blocks.size(); i++) {
@@ -546,8 +551,11 @@ void protocol_handler::refresh_sync_data() {
         hshd.blink_blocks.push_back(h.first);
         hshd.blink_hash.push_back(h.second);
     }
+    const uint64_t immutable_height = m_core.blockchain.get_immutable_height();
     std::lock_guard lock{m_sync_data_mutex};
     m_sync_data = std::move(hshd);
+    m_sync_immutable_height = immutable_height;
+    m_sync_blink_checksums = std::move(our_blink_hashes);
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_notify_new_fluffy_block(
