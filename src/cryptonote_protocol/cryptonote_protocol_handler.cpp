@@ -95,11 +95,18 @@ bool protocol_handler::init(const boost::program_options::variables_map& vm) {
     m_block_download_max_size = command_line::get_arg(vm, cryptonote::arg_block_download_max_size);
 
     // Every change to the chain, from wherever it comes, goes through one of these, so our sync
-    // data is never behind the chain.  (Called before the core, and so the chain, initializes.)
+    // data keeps up with the chain (to the end of each span, while we add spans).  (Called before
+    // the core, and so the chain, initializes.)
     auto& chain = m_core.blockchain;
     chain.hook_init([this] { refresh_sync_data(); });
-    chain.hook_block_post_add([this](const auto&) { refresh_sync_data(); });
-    chain.hook_blockchain_detached([this](const auto&) { refresh_sync_data(); });
+    chain.hook_block_post_add([this](const auto&) {
+        if (!m_defer_sync_refresh)
+            refresh_sync_data();
+    });
+    chain.hook_blockchain_detached([this](const auto&) {
+        if (!m_defer_sync_refresh)
+            refresh_sync_data();
+    });
 
     return true;
 }
@@ -1590,12 +1597,17 @@ int protocol_handler::try_add_next_blocks(cryptonote_connection_context& context
                     log::error(logcat, "Failure in prepare_handle_incoming_blocks");
                     return 1;
                 }
+                m_defer_sync_refresh = true;
 
                 {
                     bool remove_spans = false;
                     OXEN_DEFER {
                         if (!m_core.cleanup_handle_incoming_blocks())
                             log::warning(logcat, "Failure in cleanup_handle_incoming_blocks");
+                        // Only once the chain lock is released, so that a change made by another
+                        // thread between the two is caught by this refresh if not by its own.
+                        m_defer_sync_refresh = false;
+                        refresh_sync_data();
 
                         // in case the peer had dropped beforehand, remove the span anyway so other
                         // threads can wake up and get it

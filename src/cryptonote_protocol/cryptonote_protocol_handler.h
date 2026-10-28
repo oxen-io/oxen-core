@@ -244,6 +244,10 @@ class protocol_handler : public i_cryptonote_protocol {
     // Recomputes the sync data below from the chain and mempool, whose locks it takes.  Called only
     // from the chain's hooks, as the chain changes.
     void refresh_sync_data();
+    // Set while we add a span of blocks, so that the chain's hooks leave the refresh to the end of
+    // the span rather than doing it for every block.  Nothing else can change the chain meanwhile,
+    // as adding a span holds the chain lock throughout.
+    std::atomic<bool> m_defer_sync_refresh{false};
     // What refresh_sync_data() publishes: our sync data, and what checking a peer's sync data
     // against ours needs, so that neither takes chain locks.
     mutable std::mutex m_sync_data_mutex;
