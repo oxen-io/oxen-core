@@ -586,11 +586,11 @@ struct GET_INFO : PUBLIC, LEGACY, NO_ARGS {
 /// Outputs:
 ///
 /// - `status` -- General RPC status string. `"OK"` means everything looks good.
-/// - `start_time` -- something.
-/// - `total_packets_in` -- something.
-/// - `total_bytes_in` -- something.
-/// - `total_packets_out` -- something.
-/// - `total_bytes_out` -- something.
+/// - `start_time` -- The unix timestamp at which the daemon started.
+/// - `total_packets_in` -- The number of p2p messages (levin frames) received since then.
+/// - `total_bytes_in` -- The bytes of those messages, headers included.
+/// - `total_packets_out` -- The number of p2p messages sent since then.
+/// - `total_bytes_out` -- The bytes of those messages, headers included.
 struct GET_NET_STATS : LEGACY, NO_ARGS {
     static constexpr auto names() { return NAMES("get_net_stats"); }
 };

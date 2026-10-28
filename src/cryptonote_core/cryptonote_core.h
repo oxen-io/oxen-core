@@ -828,6 +828,9 @@ class core final {
         return m_omq_auth;
     }
     oxenmq::TaggedThreadID const& pulse_thread_id() const { return *m_pulse_thread_id; }
+    // The thread the p2p layer handles everything its connections deliver on, in order.  Exists
+    // once start_oxenmq() has been called.
+    oxenmq::TaggedThreadID const& p2p_thread_id() const { return *m_p2p_thread_id; }
 
     /// Service Node's storage server, lokinet, and Sesion Router versions
     std::array<uint16_t, 3> ss_version;
@@ -980,5 +983,6 @@ class core final {
     } m_coinbase_cache;
 
     std::optional<oxenmq::TaggedThreadID> m_pulse_thread_id;
+    std::optional<oxenmq::TaggedThreadID> m_p2p_thread_id;
 };
 }  // namespace cryptonote

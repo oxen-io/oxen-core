@@ -44,6 +44,8 @@ using namespace std::literals;
 namespace cryptonote {
 
 struct cryptonote_connection_context : public epee::net_utils::connection_context_base {
+    using connection_context_base::connection_context_base;
+
     enum state {
         state_before_handshake = 0,  // default state
         state_synchronizing,

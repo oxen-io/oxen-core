@@ -37,6 +37,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <boost/asio/ip/tcp.hpp>
 #include <chrono>
 #include <functional>
 #include <limits>
@@ -179,14 +180,14 @@ bool node_server::init_config() try {
 //-----------------------------------------------------------------------------------
 void node_server::for_each_connection(
         std::function<bool(cryptonote_connection_context&, peerid_type)> f) {
-    m_network.m_net_server.get_config_object().foreach_connection(
+    m_transport.foreach_connection(
             [&](p2p_connection_context& cntx) { return f(cntx, cntx.peer_id); });
 }
 //-----------------------------------------------------------------------------------
 bool node_server::for_connection(
         const connection_id_t& connection_id,
         std::function<bool(cryptonote_connection_context&, peerid_type)> f) {
-    return m_network.m_net_server.get_config_object().for_connection(
+    return m_transport.for_connection(
             connection_id, [&](p2p_connection_context& cntx) { return f(cntx, cntx.peer_id); });
 }
 //-----------------------------------------------------------------------------------
@@ -250,14 +251,13 @@ bool node_server::block_host(
 
     // drop any connection to that address
     std::vector<connection_id_t> conns;
-    auto& net_config = m_network.m_net_server.get_config_object();
-    net_config.foreach_connection([&](const p2p_connection_context& cntxt) {
+    m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
         if (net::same_host(cntxt.m_remote_address, addr))
             conns.push_back(cntxt.m_connection_id);
         return true;
     });
     for (const auto& c : conns)
-        net_config.close(c);
+        m_transport.close(c);
 
     log::info(logcat, fg(fmt::terminal_color::cyan), "Host {} blocked", addr.host());
     return true;
@@ -288,14 +288,13 @@ bool node_server::block_subnet(
 
     // drop any connection to that subnet
     std::vector<connection_id_t> conns;
-    auto& net_config = m_network.m_net_server.get_config_object();
-    net_config.foreach_connection([&](const p2p_connection_context& cntxt) {
+    m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
         if (cntxt.m_remote_address.is_ipv4() && subnet.contains(cntxt.m_remote_address.to_ipv4()))
             conns.push_back(cntxt.m_connection_id);
         return true;
     });
     for (const auto& c : conns)
-        net_config.close(c);
+        m_transport.close(c);
 
     log::info(logcat, fg(fmt::terminal_color::cyan), "Subnet {} blocked.", subnet);
     return true;
@@ -402,19 +401,27 @@ bool node_server::handle_command_line(
     if (!set_max_in_peers(command_line::get_arg(vm, arg_in_peers)))
         return false;
 
-    if (!set_tos_flag(vm, command_line::get_arg(vm, arg_tos_flag)))
-        return false;
+    m_transport.set_tos(command_line::get_arg(vm, arg_tos_flag));
 
-    if (!set_rate_up_limit(vm, command_line::get_arg(vm, arg_limit_rate_up)))
-        return false;
-
-    if (!set_rate_down_limit(vm, command_line::get_arg(vm, arg_limit_rate_down)))
-        return false;
-
-    if (!set_rate_limit(vm, command_line::get_arg(vm, arg_limit_rate)))
-        return false;
+    int64_t up = command_line::get_arg(vm, arg_limit_rate_up);
+    int64_t down = command_line::get_arg(vm, arg_limit_rate_down);
+    // --limit-rate sets the limit in each direction not given a limit of its own
+    if (const int64_t both = command_line::get_arg(vm, arg_limit_rate); both != -1) {
+        if (up == -1 || up == cryptonote::p2p::DEFAULT_LIMIT_RATE_UP)
+            up = both;
+        if (down == -1 || down == cryptonote::p2p::DEFAULT_LIMIT_RATE_DOWN)
+            down = both;
+    }
+    set_rate_limits(
+            up == -1 ? cryptonote::p2p::DEFAULT_LIMIT_RATE_UP : up,
+            down == -1 ? cryptonote::p2p::DEFAULT_LIMIT_RATE_DOWN : down);
 
     return true;
+}
+//-----------------------------------------------------------------------------------
+void node_server::set_rate_limits(uint64_t up_kbps, uint64_t down_kbps) {
+    m_transport.set_rate_limits(up_kbps, down_kbps);
+    log::info(logcat, "Set limit-up to {} kB/s and limit-down to {} kB/s", up_kbps, down_kbps);
 }
 //-----------------------------------------------------------------------------------
 static bool append_net_address(
@@ -490,28 +497,17 @@ bool node_server::init(const boost::program_options::variables_map& vm) {
     // only in case if we really sure that we have external visible ip
     m_have_address = true;
 
-    // configure self
-
-    m_network.m_net_server.set_threads_prefix("P2P");
-
     // from here onwards, it's online stuff
     if (m_offline)
         return res;
 
-    // try to bind
-    auto& net_server = m_network.m_net_server;
-    net_server.get_config_object().set_handler(this);
-    net_server.get_config_object().m_invoke_timeout =
-            std::chrono::milliseconds{cryptonote::p2p::DEFAULT_INVOKE_TIMEOUT};
+    m_transport.invoke_timeout = cryptonote::p2p::DEFAULT_INVOKE_TIMEOUT;
 
     if (!m_network.m_bind_ip.empty()) {
-        std::string ipv6_addr;
-        uint16_t ipv6_port = 0;
-        net_server.set_connection_filter(this);
+        std::optional<oxen::quic::Address> ipv6;
         log::info(logcat, "Binding (IPv4) on {}:{}", m_network.m_bind_ip, m_network.m_port);
         if (!m_network.m_bind_ipv6_address.empty() && m_use_ipv6) {
-            ipv6_addr = m_network.m_bind_ipv6_address;
-            ipv6_port = m_network.m_port_ipv6;
+            ipv6.emplace(m_network.m_bind_ipv6_address, m_network.m_port_ipv6);
             log::info(
                     logcat,
                     "Binding (IPv6) on {}:{}",
@@ -519,24 +515,17 @@ bool node_server::init(const boost::program_options::variables_map& vm) {
                     m_network.m_port_ipv6);
         }
         try {
-            res = net_server.init_server(
-                    m_network.m_port,
-                    m_network.m_bind_ip,
-                    ipv6_port,
-                    ipv6_addr,
-                    m_use_ipv6,
+            m_transport.listen(
+                    oxen::quic::Address{m_network.m_bind_ip, m_network.m_port},
+                    ipv6,
                     m_require_ipv4);
-            if (!res) {
-                log::error(logcat, "Failed to bind server");
-                return false;
-            }
         } catch (const std::exception& e) {
-            log::error(logcat, "{}", e.what());
-            res = false;
+            log::error(logcat, "Failed to bind server: {}", e.what());
+            return false;
         }
     }
 
-    m_listening_port = net_server.get_binded_port();
+    m_listening_port = m_transport.port();
     log::info(
             logcat,
             fg(fmt::terminal_color::green),
@@ -544,7 +533,7 @@ bool node_server::init(const boost::program_options::variables_map& vm) {
             m_network.m_bind_ip,
             m_listening_port);
     if (m_use_ipv6) {
-        m_listening_port_ipv6 = net_server.get_binded_port_ipv6();
+        m_listening_port_ipv6 = m_transport.port_ipv6();
         log::info(
                 logcat,
                 fg(fmt::terminal_color::green),
@@ -576,25 +565,28 @@ bool node_server::run() {
     // creating thread to log number of connections
     mPeersLoggerThread.emplace([&]() {
         log::debug(logcat, "Thread monitor number of peers - start");
-        while (!is_closing && !m_network.m_net_server.is_stop_signal_sent()) {
+        while (!is_closing && !m_transport.stopping()) {
             m_network.m_current_number_of_in_peers = get_incoming_connections_count();
             std::this_thread::sleep_for(1s);
         }
         log::debug(logcat, "Thread monitor number of peers - done");
     });  // lambda
 
-    m_network.m_net_server.add_idle_handler([this] { return idle_worker(); }, 1s);
-    m_network.m_net_server.add_idle_handler([this] { return m_payload_handler.on_idle(); }, 1s);
+    auto& core = m_payload_handler.get_core();
+    auto& omq = core.omq();
+    const auto& thread = core.p2p_thread_id();
+    m_transport.start(omq, thread);
+    m_idle_timers.push_back(omq.add_timer([this] { idle_worker(); }, 1s, true, thread));
+    m_idle_timers.push_back(
+            omq.add_timer([this] { m_payload_handler.on_idle(); }, 1s, true, thread));
 
-    // here you can set worker threads count
-    int thrds_count = 10;
-    // go to loop
-    log::info(logcat, "Run net_service loop( {} threads)...", thrds_count);
-    if (!m_network.m_net_server.run_server(thrds_count, true)) {
-        log::error(logcat, "Failed to run net tcp server!");
-    }
+    log::info(logcat, "p2p network running");
+    m_transport.wait();
+    for (const auto& timer : m_idle_timers)
+        omq.cancel_timer(timer);
+    m_idle_timers.clear();
 
-    log::info(logcat, "net_service loop stopped.");
+    log::info(logcat, "p2p network stopped.");
     log_detailed_peer_stats(peer_stats_map, peer_stats_map_mutex);
     return true;
 }
@@ -728,14 +720,13 @@ static std::optional<std::pair<peerid_type, size_t>> select_best_peer(
 }
 //-----------------------------------------------------------------------------------
 uint64_t node_server::get_public_connections_count() {
-    return m_network.m_net_server.get_config_object().get_connections_count();
+    return m_transport.get_connections_count();
 }
 //-----------------------------------------------------------------------------------
 bool node_server::deinit() {
     kill();
 
-    if (!m_offline)
-        m_network.m_net_server.deinit_server();
+    m_transport.detach();
     return store_config();
 }
 //-----------------------------------------------------------------------------------
@@ -762,17 +753,8 @@ bool node_server::store_config() try {
 //-----------------------------------------------------------------------------------
 bool node_server::send_stop_signal() {
     log::debug(logcat, "[node] sending stop signal");
-    m_network.m_net_server.send_stop_signal();
+    m_transport.stop();
     log::debug(logcat, "[node] Stop signal sent");
-
-    std::list<connection_id_t> connection_ids;
-    auto& net_config = m_network.m_net_server.get_config_object();
-    net_config.foreach_connection([&](const p2p_connection_context& cntxt) {
-        connection_ids.push_back(cntxt.m_connection_id);
-        return true;
-    });
-    for (const auto& connection_id : connection_ids)
-        net_config.close(connection_id);
     m_payload_handler.stop();
     return true;
 }
@@ -801,7 +783,7 @@ void node_server::do_handshake_with_peer(
             connection_id,
             COMMAND_HANDSHAKE::ID,
             arg,
-            m_network.m_net_server.get_config_object(),
+            m_transport,
             [this, anchor, just_take_peerlist, finish](
                     int code, response_t&& rsp, p2p_connection_context& context) {
                 bool timeout = false;
@@ -874,7 +856,7 @@ void node_server::do_handshake_with_peer(
                             peer_stats_map, peer_stats_map_mutex, context.peer_id);
                     // A timed out or destroyed connection has already been closed
                     if (!timeout)
-                        m_network.m_net_server.get_config_object().close(context.m_connection_id);
+                        m_transport.close(context.m_connection_id);
                 }
                 finish(ok ? &context : nullptr);
             },
@@ -882,7 +864,7 @@ void node_server::do_handshake_with_peer(
 
     if (!r) {
         log::warning(logcat, "COMMAND_HANDSHAKE invoke could not be sent");
-        m_network.m_net_server.get_config_object().close(connection_id);
+        m_transport.close(connection_id);
         finish(nullptr);
     }
 }
@@ -898,7 +880,7 @@ bool node_server::do_peer_timed_sync(
             context_.m_connection_id,
             COMMAND_TIMED_SYNC::ID,
             arg,
-            m_network.m_net_server.get_config_object(),
+            m_transport,
             [this](int code, response_t&& rsp, p2p_connection_context& context) {
                 context.m_in_timedsync = false;
                 if (code < 0) {
@@ -917,7 +899,7 @@ bool node_server::do_peer_timed_sync(
                             "{}COMMAND_TIMED_SYNC: failed to handle_remote_peerlist(...), closing "
                             "connection.",
                             context);
-                    m_network.m_net_server.get_config_object().close(context.m_connection_id);
+                    m_transport.close(context.m_connection_id);
                     add_host_fail(context.m_remote_address);
                 }
                 if (!context.m_is_income)
@@ -925,7 +907,7 @@ bool node_server::do_peer_timed_sync(
                             context.peer_id, context.m_remote_address, rsp.payload_data.history);
                 if (!m_payload_handler.process_payload_sync_data(
                             std::move(rsp.payload_data), context, false)) {
-                    m_network.m_net_server.get_config_object().close(context.m_connection_id);
+                    m_transport.close(context.m_connection_id);
                 }
             });
 
@@ -950,7 +932,7 @@ bool node_server::is_peer_used(const Entry& peer) {
         return true;
 
     bool used = false;
-    m_network.m_net_server.get_config_object().foreach_connection(
+    m_transport.foreach_connection(
             [&](const p2p_connection_context& cntxt) {
                 if (cntxt.peer_id == peer.id) {
                     used = true;
@@ -964,7 +946,7 @@ bool node_server::is_peer_used(const Entry& peer) {
 bool node_server::is_addr_connected(
         const oxen::quic::Address& peer) {
     bool connected = false;
-    m_network.m_net_server.get_config_object().foreach_connection(
+    m_transport.foreach_connection(
             [&](const p2p_connection_context& cntxt) {
                 if (!cntxt.m_is_income && peer == cntxt.m_remote_address) {
                     connected = true;
@@ -1015,20 +997,18 @@ bool node_server::connect_and_handshake(
             done(success);
     };
 
-    bool started = m_network.m_net_server.connect_async(
-            na.host(),
-            std::to_string(na.port()),
-            m_network.m_config.m_net_config.connection_timeout.count(),
+    m_transport.connect(
+            na,
+            m_network.m_config.m_net_config.connection_timeout,
             [this, na, priority, peer_type, just_take_peerlist, first_seen_stamp, finish](
-                    const typename net_server::t_connection_context& con,
-                    const boost::system::error_code& ec) {
-                if (ec) {
+                    p2p_connection_context* con) {
+                if (!con) {
                     log::info(logcat, "{}Connect failed to {}", priority, na.to_string());
                     finish(false);
-                    return false;
+                    return;
                 }
                 do_handshake_with_peer(
-                        con.m_connection_id,
+                        con->m_connection_id,
                         peer_type == PeerType::anchor,
                         just_take_peerlist,
                         [this, na, priority, just_take_peerlist, first_seen_stamp, finish](
@@ -1045,7 +1025,7 @@ bool node_server::connect_and_handshake(
 
                             if (just_take_peerlist) {
                                 log::debug(logcat, "{}CONNECTION HANDSHAKED OK AND CLOSED.", *context);
-                                m_network.m_net_server.get_config_object().close(
+                                m_transport.close(
                                         context->m_connection_id);
                                 finish(true);
                                 return;
@@ -1065,15 +1045,18 @@ bool node_server::connect_and_handshake(
                             log::debug(logcat, "{}CONNECTION HANDSHAKED OK.", *context);
                             finish(true);
                         });
-                return true;
             },
-            m_network.m_bind_ip);
-
-    if (!started) {
-        log::info(logcat, "{}Connect failed to {}", priority, na.to_string());
-        finish(false);
-    }
-    return started;
+            outgoing_bind_address(na));
+    return true;
+}
+//-----------------------------------------------------------------------------------
+std::optional<oxen::quic::Address> node_server::outgoing_bind_address(
+        const oxen::quic::Address& remote) const {
+    // --p2p-bind-ip binds outgoing IPv4 connections too, unless it is the any address
+    const auto& ip = m_network.m_bind_ip;
+    if (!remote.is_ipv4() || ip.empty() || ip == "0" || ip == "0.0.0.0")
+        return std::nullopt;
+    return oxen::quic::Address{ip, 0};
 }
 //-----------------------------------------------------------------------------------
 bool node_server::is_connect_pending(const oxen::quic::Address& na) {
@@ -1084,7 +1067,7 @@ bool node_server::is_connect_pending(const oxen::quic::Address& na) {
 size_t node_server::get_outgoing_and_pending_count() {
     size_t count = 0;
     std::set<oxen::quic::Address> connected;
-    m_network.m_net_server.get_config_object().foreach_connection(
+    m_transport.foreach_connection(
             [&](const p2p_connection_context& cntxt) {
                 if (!cntxt.m_is_income) {
                     ++count;
@@ -1171,7 +1154,7 @@ std::vector<size_t> node_server::connectable_peers(
         std::set<oxen::quic::Address> addr;
         std::unordered_set<peerid_type> peer;
     } seen;
-    m_network.m_net_server.get_config_object().foreach_connection(
+    m_transport.foreach_connection(
             [&](const p2p_connection_context& cntxt) {
                 seen.addr.insert(cntxt.m_remote_address);
                 seen.peer.insert(cntxt.peer_id);
@@ -1209,7 +1192,7 @@ bool node_server::make_new_connection_from_peerlist(
     auto& peerlist = m_network.m_peerlist;
     std::set<size_t> tried_peers;
 
-    for (size_t rand_count = 0; rand_count < 3 && !m_network.m_net_server.is_stop_signal_sent();
+    for (size_t rand_count = 0; rand_count < 3 && !m_transport.stopping();
          rand_count++) {
         size_t random_index;
 
@@ -1339,7 +1322,7 @@ auto node_server::check_sync_peers(const cryptonote::sync_need& need)
     m_unhelpful_peers.forget_servable(need.height);
 
     sync_peers peers;
-    m_network.m_net_server.get_config_object().foreach_connection([&](const p2p_connection_context&
+    m_transport.foreach_connection([&](const p2p_connection_context&
                                                                               cntxt) {
         if (cntxt.m_state == cryptonote::cryptonote_connection_context::state_before_handshake)
             return true;
@@ -1369,7 +1352,7 @@ auto node_server::check_sync_peers(const cryptonote::sync_need& need)
 }
 //-----------------------------------------------------------------------------------
 bool node_server::connections_maker() {
-    if (m_offline || m_network.m_net_server.is_stop_signal_sent())
+    if (m_offline || m_transport.stopping())
         return true;
 
     // Nothing here waits for a connection: each attempt started counts as pending until its
@@ -1424,7 +1407,7 @@ bool node_server::connections_maker() {
                         peers.droppable->height,
                         cryptonote::describe_history(peers.droppable->history),
                         need->height);
-                m_network.m_net_server.get_config_object().close(peers.droppable->connection_id);
+                m_transport.close(peers.droppable->connection_id);
             }
         }
     } else {
@@ -1499,7 +1482,7 @@ bool node_server::make_expected_connections_count(
     size_t conn_count = get_outgoing_and_pending_count();
     // add new connections from white peers
     if (conn_count < expected_connections) {
-        if (m_network.m_net_server.is_stop_signal_sent())
+        if (m_transport.stopping())
             return false;
 
         log::debug(
@@ -1530,7 +1513,7 @@ size_t node_server::get_public_outgoing_connections_count() {
 //-----------------------------------------------------------------------------------
 size_t node_server::get_outgoing_connections_count() {
     size_t count = 0;
-    m_network.m_net_server.get_config_object().foreach_connection(
+    m_transport.foreach_connection(
             [&](const p2p_connection_context& cntxt) {
                 if (!cntxt.m_is_income)
                     ++count;
@@ -1541,7 +1524,7 @@ size_t node_server::get_outgoing_connections_count() {
 //-----------------------------------------------------------------------------------
 size_t node_server::get_incoming_connections_count() {
     size_t count = 0;
-    m_network.m_net_server.get_config_object().foreach_connection(
+    m_transport.foreach_connection(
             [&](const p2p_connection_context& cntxt) {
                 if (cntxt.m_is_income)
                     ++count;
@@ -1602,7 +1585,7 @@ bool node_server::peer_sync_idle_maker() {
     typedef std::list<std::pair<epee::net_utils::connection_context_base, peerid_type>>
             local_connects_type;
     local_connects_type cncts;
-    m_network.m_net_server.get_config_object().foreach_connection(
+    m_transport.foreach_connection(
             [&](p2p_connection_context& cntxt) {
                 if (cntxt.peer_id && !cntxt.m_in_timedsync) {
                     cntxt.m_in_timedsync = true;
@@ -1678,16 +1661,22 @@ int node_server::handle_get_support_flags(
 //-----------------------------------------------------------------------------------
 void node_server::request_callback(
         const epee::net_utils::connection_context_base& context) {
-    m_network.m_net_server.get_config_object().request_callback(context.m_connection_id);
+    m_transport.request_callback(context.m_connection_id);
+}
+//-----------------------------------------------------------------------------------
+void node_server::call_on_connection(
+        const epee::net_utils::connection_context_base& context,
+        std::function<void(cryptonote_connection_context&)> f) {
+    m_transport.call_on(
+            context.m_connection_id, [f = std::move(f)](p2p_connection_context& c) { f(c); });
 }
 //-----------------------------------------------------------------------------------
 bool node_server::relay_notify_to_list(
         int command,
         const std::span<const uint8_t> data_buff,
         std::span<const connection_id_t> connections) {
-    auto& net_config = m_network.m_net_server.get_config_object();
     for (const auto& c_id : connections)
-        net_config.notify(command, data_buff, c_id);
+        m_transport.notify(command, data_buff, c_id);
     return true;
 }
 //-----------------------------------------------------------------------------------
@@ -1699,14 +1688,12 @@ bool node_server::invoke_notify_to_peer(
         int command,
         const std::span<const uint8_t> req_buff,
         const epee::net_utils::connection_context_base& context) {
-    int res = m_network.m_net_server.get_config_object().notify(
-            command, req_buff, context.m_connection_id);
-    return res > 0;
+    return m_transport.notify(command, req_buff, context.m_connection_id) > 0;
 }
 //-----------------------------------------------------------------------------------
 bool node_server::drop_connection(
         const epee::net_utils::connection_context_base& context) {
-    m_network.m_net_server.get_config_object().close(context.m_connection_id);
+    m_transport.close(context.m_connection_id);
     return true;
 }
 //-----------------------------------------------------------------------------------
@@ -1724,44 +1711,26 @@ bool node_server::try_ping(
     oxen::quic::Address address = context.m_remote_address;
     address.set_port(my_port);
 
-    peerid_type pr = node_data.peer_id;
-    bool r = m_network.m_net_server.connect_async(
-            address.host(),
-            std::to_string(my_port),
-            m_network.m_config.m_net_config.ping_connection_timeout.count(),
-            [cb, /*context,*/ address, pr, &context, this](
-                    const typename net_server::t_connection_context& ping_context,
-                    const boost::system::error_code& ec) -> bool {
-                if (ec) {
-                    log::warning(
-                            logcat,
-                            "{}back ping connect failed to {}",
-                            ping_context,
-                            address.to_string());
-                    return false;
+    const peerid_type pr = node_data.peer_id;
+    m_transport.connect(
+            address,
+            m_network.m_config.m_net_config.ping_connection_timeout,
+            [this, cb, address, pr](p2p_connection_context* ping_context) {
+                if (!ping_context) {
+                    log::warning(logcat, "Back ping connect failed to {}", address.to_string());
+                    return;
                 }
-                COMMAND_PING::request req{};
-                COMMAND_PING::response rsp{};
-                // vc2010 workaround
-                /*std::string ip_ = ip;
-                std::string port_=port;
-                peerid_type pr_ = pr;
-                auto cb_ = cb;*/
-
-                // GCC 5.1.0 gives error with second use of uint64_t (peerid_type) variable.
-                peerid_type pr_ = pr;
-
-                auto& net_config = m_network.m_net_server.get_config_object();
+                const auto ping_id = ping_context->m_connection_id;
                 bool inv_call_res =
                         epee::net_utils::async_invoke_remote_command2<COMMAND_PING::response>(
-                                ping_context.m_connection_id,
+                                ping_id,
                                 COMMAND_PING::ID,
-                                req,
-                                net_config,
-                                [=, this](
+                                COMMAND_PING::request{},
+                                m_transport,
+                                [this, cb, address, pr, ping_id](
                                         int code,
                                         const COMMAND_PING::response& rsp,
-                                        p2p_connection_context& /*context*/) {
+                                        p2p_connection_context& ping_context) {
                                     if (code <= 0) {
                                         log::warning(
                                                 logcat,
@@ -1772,44 +1741,35 @@ bool node_server::try_ping(
                                                 epee::levin::get_err_descr(code));
                                         return;
                                     }
-
-                                    auto& net_config = m_network.m_net_server.get_config_object();
+                                    m_transport.close(ping_id);
                                     if (rsp.status != COMMAND_PING::OK_RESPONSE ||
                                         pr != rsp.peer_id) {
                                         log::warning(
                                                 logcat,
-                                                "{}{}\" from{}, hsh_peer_id={}, rsp.peer_id={}",
+                                                "{}Back ping invoke wrong response \"{}\" from {}, "
+                                                "hsh_peer_id={}, rsp.peer_id={}",
                                                 ping_context,
-                                                "back ping invoke wrong response \"",
                                                 rsp.status,
                                                 address.to_string(),
-                                                pr_,
+                                                peerid_to_string(pr),
                                                 peerid_to_string(rsp.peer_id));
-                                        net_config.close(ping_context.m_connection_id);
                                         return;
                                     }
-                                    net_config.close(ping_context.m_connection_id);
                                     cb();
                                 });
 
                 if (!inv_call_res) {
                     log::warning(
                             logcat,
-                            "{}{}",
-                            ping_context,
-                            "back ping invoke failed to ",
+                            "{}Back ping invoke failed to {}",
+                            *ping_context,
                             address.to_string());
-                    update_peer_failed_connection(peer_stats_map, peer_stats_map_mutex, context.peer_id);
-                    net_config.close(ping_context.m_connection_id);
-                    return false;
+                    update_peer_failed_connection(peer_stats_map, peer_stats_map_mutex, pr);
+                    m_transport.close(ping_id);
                 }
-                return true;
             },
-            m_network.m_bind_ip);
-    if (!r) {
-        log::warning(logcat, "{}Failed to call connect_async, network error.", context);
-    }
-    return r;
+            outgoing_bind_address(address));
+    return true;
 }
 //-----------------------------------------------------------------------------------
 int node_server::handle_timed_sync(
@@ -1982,7 +1942,7 @@ bool node_server::log_connections() {
 std::string node_server::print_connections_container() {
 
     std::stringstream ss;
-    m_network.m_net_server.get_config_object().foreach_connection(
+    m_transport.foreach_connection(
             [&](const p2p_connection_context& cntxt) {
                 ss << cntxt.m_remote_address.to_string() << " \t\tpeer_id "
                    << peerid_to_string(cntxt.peer_id) << " \t\tconn_id " << cntxt.m_connection_id
@@ -2000,7 +1960,7 @@ void node_server::on_connection_close(p2p_connection_context& context) {
     const auto connection_time = std::chrono::duration_cast<std::chrono::seconds>(
         std::chrono::steady_clock::now() - context.m_started).count();
     update_peer_stats(peer_stats_map, peer_stats_map_mutex, context.peer_id, connection_time);
-    if (!m_network.m_net_server.is_stop_signal_sent() && !context.m_is_income)
+    if (!m_transport.stopping() && !context.m_is_income)
         m_network.m_peerlist.remove_from_peer_anchor(context.m_remote_address);
 
     m_payload_handler.on_connection_close(context);
@@ -2074,11 +2034,10 @@ bool node_server::set_max_in_peers(int64_t max) {
 }
 
 void node_server::change_max_out_public_peers(size_t count) {
-    auto& net_config = m_network.m_net_server.get_config_object();
-    const auto current = net_config.get_out_connections_count();
+    const auto current = m_transport.get_out_connections_count();
     m_network.m_config.m_net_config.max_out_connection_count = count;
     if (current > count)
-        net_config.del_out_connections(current - count);
+        m_transport.del_out_connections(current - count);
     m_payload_handler.set_max_out_peers(count);
 }
 
@@ -2087,78 +2046,14 @@ uint32_t node_server::get_max_out_public_peers() const {
 }
 
 void node_server::change_max_in_public_peers(size_t count) {
-    auto& net_config = m_network.m_net_server.get_config_object();
-    const auto current = net_config.get_in_connections_count();
+    const auto current = m_transport.get_in_connections_count();
     m_network.m_config.m_net_config.max_in_connection_count = count;
     if (current > count)
-        net_config.del_in_connections(current - count);
+        m_transport.del_in_connections(current - count);
 }
 
 uint32_t node_server::get_max_in_public_peers() const {
     return m_network.m_config.m_net_config.max_in_connection_count;
-}
-
-bool node_server::set_tos_flag(
-        const boost::program_options::variables_map& /*vm*/, int flag) {
-    if (flag == -1) {
-        return true;
-    }
-    epee::net_utils::connection<
-            epee::levin::async_protocol_handler<p2p_connection_context>>::set_tos_flag(flag);
-    log::debug(logcat, "Set ToS flag  {}", flag);
-    return true;
-}
-
-bool node_server::set_rate_up_limit(
-        const boost::program_options::variables_map& /*vm*/, int64_t limit) {
-    this->islimitup = (limit != -1) && (limit != cryptonote::p2p::DEFAULT_LIMIT_RATE_UP);
-
-    if (limit == -1) {
-        limit = cryptonote::p2p::DEFAULT_LIMIT_RATE_UP;
-    }
-
-    epee::net_utils::connection<
-            epee::levin::async_protocol_handler<p2p_connection_context>>::set_rate_up_limit(limit);
-    log::info(logcat, "Set limit-up to {} kB/s", limit);
-    return true;
-}
-
-bool node_server::set_rate_down_limit(
-        const boost::program_options::variables_map& /*vm*/, int64_t limit) {
-    this->islimitdown = (limit != -1) && (limit != cryptonote::p2p::DEFAULT_LIMIT_RATE_DOWN);
-    if (limit == -1) {
-        limit = cryptonote::p2p::DEFAULT_LIMIT_RATE_DOWN;
-    }
-    epee::net_utils::connection<epee::levin::async_protocol_handler<p2p_connection_context>>::
-            set_rate_down_limit(limit);
-    log::info(logcat, "Set limit-down to {} kB/s", limit);
-    return true;
-}
-
-bool node_server::set_rate_limit(
-        const boost::program_options::variables_map& /*vm*/, int64_t limit) {
-    int64_t limit_up = 0;
-    int64_t limit_down = 0;
-
-    if (limit == -1) {
-        limit_up = cryptonote::p2p::DEFAULT_LIMIT_RATE_UP;
-        limit_down = cryptonote::p2p::DEFAULT_LIMIT_RATE_DOWN;
-    } else {
-        limit_up = limit;
-        limit_down = limit;
-    }
-    if (!this->islimitup) {
-        epee::net_utils::connection<epee::levin::async_protocol_handler<p2p_connection_context>>::
-                set_rate_up_limit(limit_up);
-        log::info(logcat, "Set limit-up to {} kB/s", limit_up);
-    }
-    if (!this->islimitdown) {
-        epee::net_utils::connection<epee::levin::async_protocol_handler<p2p_connection_context>>::
-                set_rate_down_limit(limit_down);
-        log::info(logcat, "Set limit-down to {} kB/s", limit_down);
-    }
-
-    return true;
 }
 
 bool node_server::has_too_many_connections(
@@ -2166,7 +2061,7 @@ bool node_server::has_too_many_connections(
     const size_t max_connections = m_nettype == cryptonote::network_type::MAINNET ? 1 : 20;
     size_t count = 0;
 
-    m_network.m_net_server.get_config_object().foreach_connection(
+    m_transport.foreach_connection(
             [&](const p2p_connection_context& cntxt) {
                 if (cntxt.m_is_income && net::same_host(cntxt.m_remote_address, address)) {
                     count++;
@@ -2190,7 +2085,7 @@ bool node_server::gray_peerlist_housekeeping() {
     if (m_payload_handler.needs_new_sync_connections())
         return true;
 
-    if (m_network.m_net_server.is_stop_signal_sent())
+    if (m_transport.stopping())
         return false;
 
     peerlist_entry pe{};

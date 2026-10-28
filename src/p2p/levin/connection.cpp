@@ -4,6 +4,13 @@
 #include <event2/bufferevent.h>
 #include <event2/listener.h>
 
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#else
+#include <netinet/in.h>
+#include <sys/socket.h>
+#endif
+
 #include <array>
 #include <oxen/quic/format.hpp>
 #include <stdexcept>
@@ -59,6 +66,22 @@ void connection::set_idle_timeout(std::chrono::milliseconds timeout) {
         return;
     const auto tv = to_timeval(timeout);
     bufferevent_set_timeouts(bev_, &tv, &tv);
+}
+
+void connection::join_rate_limit_group(bufferevent_rate_limit_group* group) {
+    if (bev_)
+        bufferevent_add_to_rate_limit_group(bev_, group);
+}
+
+void connection::set_tos(int tos) {
+    if (!bev_)
+        return;
+    const auto fd = bufferevent_getfd(bev_);
+    if (remote_.is_ipv6())
+        ::setsockopt(
+                fd, IPPROTO_IPV6, IPV6_TCLASS, reinterpret_cast<const char*>(&tos), sizeof(tos));
+    else
+        ::setsockopt(fd, IPPROTO_IP, IP_TOS, reinterpret_cast<const char*>(&tos), sizeof(tos));
 }
 
 void connection::send(std::string frame) {
@@ -303,9 +326,12 @@ listener::listener(
         oxen::quic::Loop& loop,
         const oxen::quic::Address& bind,
         uint64_t max_body_size,
-        std::function<void(std::shared_ptr<connection>)> on_accept) :
+        std::function<void(std::shared_ptr<connection>)> on_accept,
+        bool accepting) :
         loop_{loop}, max_body_size_{max_body_size}, on_accept_{std::move(on_accept)} {
     unsigned flags = LEV_OPT_CLOSE_ON_FREE | LEV_OPT_REUSEABLE;
+    if (!accepting)
+        flags |= LEV_OPT_DISABLED;
     // An IPv6 listener takes only IPv6, so that an IPv4 one can share its port
     if (bind.is_ipv6())
         flags |= LEV_OPT_BIND_IPV6ONLY;
@@ -329,6 +355,10 @@ listener::listener(
 listener::~listener() {
     if (listener_)
         evconnlistener_free(listener_);
+}
+
+void listener::accept() {
+    evconnlistener_enable(listener_);
 }
 
 void listener::on_accept(

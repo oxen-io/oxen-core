@@ -33,8 +33,6 @@
 
 #include <array>
 #include <atomic>
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/ip/tcp.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <functional>
@@ -52,25 +50,15 @@
 #include "cryptonote_config.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "cryptonote_protocol/peer_history.h"
-#include "epee/net/abstract_tcp_server2.h"
-#include "epee/net/levin_protocol_handler_async.h"
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "net/address.h"
 #include "net/fwd.h"
 #include "net_node_common.h"
 #include "net_peerlist.h"
 #include "p2p_protocol_defs.h"
-
-namespace boost::asio {
-using io_service = io_context;
-}
+#include "transport.h"
 
 namespace nodetool {
-struct p2p_connection_context : cryptonote_connection_context {
-    peerid_type peer_id = 0;
-    bool m_in_timedsync = false;
-    std::set<oxen::quic::Address> sent_addresses;
-};
 
 enum class PeerType { anchor = 0, white, gray };
 inline constexpr std::string_view to_string(PeerType pt) {
@@ -87,15 +75,10 @@ struct peer_stats {
     uint64_t total_connection_time = 0;
 };
 
-class node_server : public epee::levin::levin_commands_handler<p2p_connection_context>,
-                    public i_p2p_endpoint,
-                    public epee::net_utils::i_connection_filter {
+class node_server : public transport::handler, public i_p2p_endpoint {
     struct by_conn_id {};
     struct by_peer_id {};
     struct by_addr {};
-
-    using net_server = epee::net_utils::boosted_tcp_server<
-            epee::levin::async_protocol_handler<p2p_connection_context>>;
 
     struct config {
         network_config m_net_config{};
@@ -104,7 +87,6 @@ class node_server : public epee::levin::levin_commands_handler<p2p_connection_co
 
     struct network {
         network() :
-                m_net_server(epee::net_utils::e_connection_type_P2P),
                 m_bind_ip(),
                 m_bind_ipv6_address(),
                 m_peerlist(),
@@ -113,7 +95,6 @@ class node_server : public epee::levin::levin_commands_handler<p2p_connection_co
             set_config_defaults();
         }
 
-        net_server m_net_server;
         std::string m_bind_ip;
         std::string m_bind_ipv6_address;
         uint16_t m_port = 0;
@@ -190,16 +171,19 @@ class node_server : public epee::levin::levin_commands_handler<p2p_connection_co
         return m_blocked_subnets;
     }
 
-  private:
-    bool islimitup = false;
-    bool islimitdown = false;
+    // The rate limits all connections share, in kB/s
+    uint64_t get_rate_up_limit() const { return m_transport.rate_up_limit(); }
+    uint64_t get_rate_down_limit() const { return m_transport.rate_down_limit(); }
+    void set_rate_limits(uint64_t up_kbps, uint64_t down_kbps);
 
+    transport::traffic get_traffic() const { return m_transport.totals(); }
+
+  private:
     fs::path get_peerlist_file() const;
 
-    CHAIN_LEVIN_INVOKE_MAP2(p2p_connection_context);  // move levin_commands_handler interface
-                                                      // invoke(...) callbacks into invoke map
-    CHAIN_LEVIN_NOTIFY_MAP2(p2p_connection_context);  // move levin_commands_handler interface
-                                                      // notify(...) callbacks into nothing
+    // transport::handler's invoke() and notify(), dispatching to the invoke map
+    CHAIN_LEVIN_INVOKE_MAP2(p2p_connection_context);
+    CHAIN_LEVIN_NOTIFY_MAP2(p2p_connection_context);
 
     BEGIN_INVOKE_MAP2(node_server)
     HANDLE_INVOKE_T2(COMMAND_HANDSHAKE, handle_handshake)
@@ -237,8 +221,8 @@ class node_server : public epee::levin::levin_commands_handler<p2p_connection_co
     bool make_default_config();
     bool store_config();
 
-    //----------------- levin_commands_handler
-    //-------------------------------------------------------------
+    //----------------- transport::handler ---------------------------------------------------------
+    // (and invoke() and notify(), from the invoke map above, and is_remote_host_allowed() below)
     virtual void on_connection_new(p2p_connection_context& context);
     virtual void on_connection_close(p2p_connection_context& context);
     virtual void callback(p2p_connection_context& context);
@@ -253,13 +237,16 @@ class node_server : public epee::levin::levin_commands_handler<p2p_connection_co
             const epee::net_utils::connection_context_base& context);
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context);
     virtual void request_callback(const epee::net_utils::connection_context_base& context);
+    virtual void call_on_connection(
+            const epee::net_utils::connection_context_base& context,
+            std::function<void(cryptonote_connection_context&)> f);
     virtual void for_each_connection(
             std::function<bool(cryptonote_connection_context&, peerid_type)> f);
     virtual bool for_connection(
             const connection_id_t&,
             std::function<bool(cryptonote_connection_context&, peerid_type)> f);
     virtual bool add_host_fail(const oxen::quic::Address& address);
-    //----------------- i_connection_filter --------------------------------------------------------
+    //-----------------------------------------------------------------------------------------------
     virtual bool is_remote_host_allowed(const oxen::quic::Address& address, time_t* t = NULL);
     //-----------------------------------------------------------------------------------------------
     bool handle_command_line(const boost::program_options::variables_map& vm);
@@ -323,6 +310,9 @@ class node_server : public epee::levin::levin_commands_handler<p2p_connection_co
             uint64_t first_seen_stamp = 0,
             std::function<void(bool success)> done = nullptr);
     bool is_connect_pending(const oxen::quic::Address& na);
+    // The local address to make an outgoing connection to `remote` from, if not the default
+    std::optional<oxen::quic::Address> outgoing_bind_address(
+            const oxen::quic::Address& remote) const;
     // The outgoing connections plus the pending attempts not yet connected, which is what counts
     // against the outgoing connection limit.
     size_t get_outgoing_and_pending_count();
@@ -353,11 +343,6 @@ class node_server : public epee::levin::levin_commands_handler<p2p_connection_co
 
     bool set_max_out_peers(int64_t max);
     bool set_max_in_peers(int64_t max);
-    bool set_tos_flag(const boost::program_options::variables_map& vm, int limit);
-
-    bool set_rate_up_limit(const boost::program_options::variables_map& vm, int64_t limit);
-    bool set_rate_down_limit(const boost::program_options::variables_map& vm, int64_t limit);
-    bool set_rate_limit(const boost::program_options::variables_map& vm, int64_t limit);
 
     bool has_too_many_connections(const oxen::quic::Address& address);
     size_t get_incoming_connections_count();
@@ -431,6 +416,9 @@ class node_server : public epee::levin::levin_commands_handler<p2p_connection_co
     std::mutex m_pending_connects_mutex;
 
     network m_network;
+    transport m_transport{*this};
+    // The OxenMQ timers running idle_worker and the protocol handler's on_idle while we run
+    std::vector<oxenmq::TimerID> m_idle_timers;
 
     std::map<std::string, time_t> m_conn_fails_cache;
     std::shared_mutex m_conn_fails_cache_lock;

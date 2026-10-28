@@ -55,6 +55,11 @@ struct i_p2p_endpoint {
             const epee::net_utils::connection_context_base& context) = 0;
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context) = 0;
     virtual void request_callback(const epee::net_utils::connection_context_base& context) = 0;
+    // Calls `f` with the connection's context on the thread that handles the connection's
+    // messages, after what is already queued there, unless the connection has closed by then.
+    virtual void call_on_connection(
+            const epee::net_utils::connection_context_base& context,
+            std::function<void(cryptonote_connection_context&)> f) = 0;
     virtual uint64_t get_public_connections_count() = 0;
     virtual void for_each_connection(
             std::function<bool(cryptonote_connection_context&, peerid_type)> f) = 0;
@@ -85,6 +90,9 @@ struct p2p_endpoint_stub : public i_p2p_endpoint {
         return false;
     }
     virtual void request_callback(const epee::net_utils::connection_context_base& context) {}
+    virtual void call_on_connection(
+            const epee::net_utils::connection_context_base& context,
+            std::function<void(cryptonote_connection_context&)> f) {}
     virtual void for_each_connection(
             std::function<bool(cryptonote_connection_context&, peerid_type)> f) {}
     virtual bool for_connection(

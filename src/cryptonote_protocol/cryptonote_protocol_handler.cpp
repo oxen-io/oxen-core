@@ -48,7 +48,6 @@
 #include "cryptonote_basic/verification_context.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_core/tx_pool.h"
-#include "epee/net/network_throttle-detail.hpp"
 #include "net/address.h"
 #include "common/random.h"
 #include "common/lock.h"
@@ -1278,9 +1277,10 @@ namespace cryptonote
     std::string_view caller = "try_add_next_blocks, m_sync_lock busy";
 
     {
-      // We try to lock the sync lock. If we can, it means no other thread is
-      // currently adding blocks, so we do that for as long as we can from the
-      // block queue. Then, we go back to download.
+      // We try to lock the sync lock. If we can, it means no other thread is currently adding
+      // blocks, so we add the next span from the block queue, and queue ourself to add the one
+      // after, so that what else the connections deliver is handled between spans rather than
+      // after all of them.  Then, we go back to download.
       const std::unique_lock sync{m_sync_lock, std::try_to_lock};
       if (!sync)
       {
@@ -1565,6 +1565,10 @@ namespace cryptonote
             if (current_blockchain_height >= target_blockchain_height)
               on_connection_synchronized();
           }
+
+          if (!m_stopping)
+            m_p2p->call_on_connection(context, [this](cryptonote_connection_context& c) { try_add_next_blocks(c); });
+          break;
         }
       }
 

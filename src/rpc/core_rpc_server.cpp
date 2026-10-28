@@ -73,7 +73,6 @@
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/tx_sanity_check.h"
 #include "cryptonote_core/uptime_proof.h"
-#include "epee/net/network_throttle.hpp"
 #include "l2_tracker/events.h"
 #include "l2_tracker/l2_tracker_proxy.h"
 #include "logging/oxen_logger.h"
@@ -352,22 +351,12 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_NET_STATS& get_net_stats, rpc_context) {
     get_net_stats.response["start_time"] = m_core.get_start_time();
-    {
-        std::lock_guard lock{
-                epee::net_utils::network_throttle_manager::m_lock_get_global_throttle_in};
-        auto [packets, bytes] =
-                epee::net_utils::network_throttle_manager::get_global_throttle_in().get_stats();
-        get_net_stats.response["total_packets_in"] = packets;
-        get_net_stats.response["total_bytes_in"] = bytes;
-    }
-    {
-        std::lock_guard lock{
-                epee::net_utils::network_throttle_manager::m_lock_get_global_throttle_out};
-        auto [packets, bytes] =
-                epee::net_utils::network_throttle_manager::get_global_throttle_out().get_stats();
-        get_net_stats.response["total_packets_out"] = packets;
-        get_net_stats.response["total_bytes_out"] = bytes;
-    }
+    // "Packets" are levin frames
+    const auto traffic = m_p2p.get_traffic();
+    get_net_stats.response["total_packets_in"] = traffic.frames_in;
+    get_net_stats.response["total_bytes_in"] = traffic.bytes_in;
+    get_net_stats.response["total_packets_out"] = traffic.frames_out;
+    get_net_stats.response["total_bytes_out"] = traffic.bytes_out;
     get_net_stats.response["status"] = STATUS_OK;
 }
 namespace {
@@ -2129,26 +2118,28 @@ void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_con
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_LIMIT& limit, rpc_context) {
     limit.response = {
-            {"limit_down", epee::net_utils::connection_basic::get_rate_down_limit()},
-            {"limit_up", epee::net_utils::connection_basic::get_rate_up_limit()},
+            {"limit_down", m_p2p.get_rate_down_limit()},
+            {"limit_up", m_p2p.get_rate_up_limit()},
             {"status", STATUS_OK}};
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(SET_LIMIT& limit, rpc_context) {
     // -1 = reset to default
     //  0 = do not modify
-    if (limit.request.limit_down != 0)
-        epee::net_utils::connection_basic::set_rate_down_limit(
-                limit.request.limit_down == -1 ? p2p::DEFAULT_LIMIT_RATE_DOWN
-                                               : limit.request.limit_down);
-
-    if (limit.request.limit_up != 0)
-        epee::net_utils::connection_basic::set_rate_up_limit(
-                limit.request.limit_up == -1 ? p2p::DEFAULT_LIMIT_RATE_UP : limit.request.limit_up);
+    auto new_limit = [](int64_t requested, uint64_t current, uint64_t dflt) -> uint64_t {
+        return requested == 0 ? current : requested == -1 ? dflt : requested;
+    };
+    m_p2p.set_rate_limits(
+            new_limit(
+                    limit.request.limit_up, m_p2p.get_rate_up_limit(), p2p::DEFAULT_LIMIT_RATE_UP),
+            new_limit(
+                    limit.request.limit_down,
+                    m_p2p.get_rate_down_limit(),
+                    p2p::DEFAULT_LIMIT_RATE_DOWN));
 
     limit.response = {
-            {"limit_down", epee::net_utils::connection_basic::get_rate_down_limit()},
-            {"limit_up", epee::net_utils::connection_basic::get_rate_up_limit()},
+            {"limit_down", m_p2p.get_rate_down_limit()},
+            {"limit_up", m_p2p.get_rate_up_limit()},
             {"status", STATUS_OK}};
 }
 //------------------------------------------------------------------------------------------------------------------------------
