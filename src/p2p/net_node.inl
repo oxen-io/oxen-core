@@ -300,8 +300,8 @@ bool node_server<t_payload_net_handler>::handle_command_line(
 
     m_network.m_bind_ip = command_line::get_arg(vm, arg_p2p_bind_ip);
     m_network.m_bind_ipv6_address = command_line::get_arg(vm, arg_p2p_bind_ipv6_address);
-    m_network.m_port = "{}"_format(command_line::get_arg(vm, arg_p2p_bind_port));
-    m_network.m_port_ipv6 = "{}"_format(command_line::get_arg(vm, arg_p2p_bind_port_ipv6));
+    m_network.m_port = command_line::get_arg(vm, arg_p2p_bind_port);
+    m_network.m_port_ipv6 = command_line::get_arg(vm, arg_p2p_bind_port_ipv6);
     m_external_port = command_line::get_arg(vm, arg_p2p_external_port);
     m_allow_local_ip = command_line::get_arg(vm, arg_p2p_allow_local_ip);
     m_offline = command_line::get_arg(vm, cryptonote::arg_offline);
@@ -454,8 +454,8 @@ bool node_server<t_payload_net_handler>::init(const boost::program_options::vari
     static_cast<std::array<unsigned char, 16>&>(m_network_id) = get_config(m_nettype).NETWORK_ID;
 
     m_config_folder = tools::utf8_path(command_line::get_arg(vm, cryptonote::arg_data_dir));
-    if (m_network.m_port != std::to_string(cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT))
-        m_config_folder /= m_network.m_port;
+    if (m_network.m_port != cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT)
+        m_config_folder /= std::to_string(m_network.m_port);
 
     res = init_config();
     if (!res) {
@@ -490,8 +490,8 @@ bool node_server<t_payload_net_handler>::init(const boost::program_options::vari
             std::chrono::milliseconds{cryptonote::p2p::DEFAULT_INVOKE_TIMEOUT};
 
     if (!m_network.m_bind_ip.empty()) {
-        std::string ipv6_addr = "";
-        std::string ipv6_port = "";
+        std::string ipv6_addr;
+        uint16_t ipv6_port = 0;
         net_server.set_connection_filter(this);
         log::info(logcat, "Binding (IPv4) on {}:{}", m_network.m_bind_ip, m_network.m_port);
         if (!m_network.m_bind_ipv6_address.empty() && m_use_ipv6) {

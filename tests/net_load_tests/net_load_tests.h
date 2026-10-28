@@ -207,8 +207,8 @@ namespace net_load_tests
   };
 
   const unsigned int min_thread_count = 2;
-  const std::string clt_port("36230");
-  const std::string srv_port("36231");
+  constexpr uint16_t clt_port = 36230;
+  constexpr uint16_t srv_port = 36231;
 
   enum command_ids
   {
