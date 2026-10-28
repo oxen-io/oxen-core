@@ -177,8 +177,7 @@ void core_rpc_server::init_options(
 }
 //------------------------------------------------------------------------------------------------------------------------------
 core_rpc_server::core_rpc_server(
-        core& cr,
-        nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core>>& p2p) :
+        core& cr, nodetool::node_server<cryptonote::protocol_handler>& p2p) :
         m_core(cr), m_p2p(p2p) {}
 //------------------------------------------------------------------------------------------------------------------------------
 bool core_rpc_server::check_core_ready() {

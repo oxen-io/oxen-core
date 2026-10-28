@@ -61,8 +61,7 @@ class daemon {
   private:
     boost::program_options::variables_map vm;
 
-    /// 💩
-    using protocol_handler = cryptonote::t_cryptonote_protocol_handler<cryptonote::core>;
+    using protocol_handler = cryptonote::protocol_handler;
     using node_server = nodetool::node_server<protocol_handler>;
 
     // Core objects; these are in unique ptrs because we want daemon to be movable and most of these

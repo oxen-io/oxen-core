@@ -56,17 +56,17 @@
 #define CURRENCY_PROTOCOL_MAX_TXS_REQUEST_COUNT 5000
 
 namespace cryptonote {
-template <class t_core>
-class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
+class core;
+
+class protocol_handler : public i_cryptonote_protocol {
   public:
     using connection_context = cryptonote_connection_context;
-    using cryptonote_protocol_handler = t_cryptonote_protocol_handler<t_core>;
 
-    t_cryptonote_protocol_handler(t_core& rcore, bool offline = false);
+    protocol_handler(core& rcore, bool offline = false);
 
-    virtual ~t_cryptonote_protocol_handler() = default;
+    virtual ~protocol_handler() = default;
 
-    BEGIN_INVOKE_MAP2(cryptonote_protocol_handler)
+    BEGIN_INVOKE_MAP2(protocol_handler)
     HANDLE_NOTIFY_T2(NOTIFY_NEW_TRANSACTIONS, handle_notify_new_transactions)
     HANDLE_NOTIFY_T2(NOTIFY_REQUEST_GET_BLOCKS, handle_request_get_blocks)
     HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_GET_BLOCKS, handle_response_get_blocks)
@@ -91,7 +91,7 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     bool get_payload_sync_data(std::string& data);
     bool get_payload_sync_data(CORE_SYNC_DATA& hshd);
     bool on_callback(cryptonote_connection_context& context);
-    t_core& get_core() { return m_core; }
+    core& get_core() { return m_core; }
     bool is_synchronized() { return m_synchronized; }
     void log_connections();
     std::list<connection_info> get_connections();
@@ -229,7 +229,7 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     int try_add_next_blocks(cryptonote_connection_context& context);
     void skip_unneeded_hashes(cryptonote_connection_context& context, bool check_block_queue) const;
 
-    t_core& m_core;
+    core& m_core;
 
     nodetool::p2p_endpoint_stub m_p2p_stub;
     nodetool::i_p2p_endpoint* m_p2p;

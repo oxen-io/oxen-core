@@ -60,6 +60,22 @@ struct sync_need {
     uint64_t target;
 };
 
+// What a sync still needs given our chain height, the lowest block not yet downloaded or queued
+// for download, and the network's height; nullopt if there is nothing the peer policy should act
+// on.
+//
+// Downloading runs ahead of adding blocks, often all the way to the target, and then what is
+// "needed" next is whatever block the target just moved on to: the newest block, which only the
+// peers that have announced it yet appear able to serve.  Within the margin of the target no peer's
+// history can be what stops it serving, only its height lagging the tip by a block or two, so that
+// is no sync need.
+constexpr std::optional<sync_need> sync_need_for(
+        uint64_t height, uint64_t next_needed, uint64_t target) {
+    if (target <= height || next_needed + PEER_HISTORY_MARGIN >= target)
+        return std::nullopt;
+    return sync_need{next_needed, target};
+}
+
 // The peers connected to while syncing that turned out unable to serve what the sync needed, so
 // that picking peers to connect to passes them over even though their peerlist entries say they
 // could (the entries don't say how far a peer's own chain has got).
