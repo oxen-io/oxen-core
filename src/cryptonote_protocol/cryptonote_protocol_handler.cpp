@@ -2535,9 +2535,6 @@ int protocol_handler::handle_response_chain_entry(
             "received chain",
             cryptonote::get_protocol_state_string(context.m_state));
 
-    context.m_last_request_time.reset();
-    context.m_chain_requested = false;
-
     m_sync_download_chain_size += arg.m_block_ids.size() * sizeof(crypto::hash);
 
     if (!arg.m_block_ids.size()) {
@@ -2567,9 +2564,7 @@ int protocol_handler::handle_response_chain_entry(
         drop_connection(context, false, false);
         return 1;
     }
-    context.m_remote_blockchain_height = arg.total_height;
-    context.m_last_response_height = arg.start_height + arg.m_block_ids.size() - 1;
-    if (context.m_last_response_height > context.m_remote_blockchain_height) {
+    if (arg.start_height + arg.m_block_ids.size() - 1 > arg.total_height) {
         log::error(
                 logcat,
                 "sent wrong NOTIFY_RESPONSE_CHAIN_ENTRY, with m_total_height={}, m_start_height= "
@@ -2581,33 +2576,49 @@ int protocol_handler::handle_response_chain_entry(
         return 1;
     }
 
-    uint64_t n_use_blocks =
-            m_core.blockchain.prevalidate_block_hashes(arg.start_height, arg.m_block_ids);
+    // Checking the hashes against our compiled-in ones reads (and fills in) what the chain thread
+    // clears as it adds blocks.  The chain request stays outstanding until the check comes back,
+    // so that nothing asks this peer for its chain again meanwhile.
+    chain_job([this, id = context.m_connection_id, arg = std::move(arg)]() mutable {
+        const uint64_t n_use_blocks =
+                m_core.blockchain.prevalidate_block_hashes(arg.start_height, arg.m_block_ids);
+        m_p2p->call_on_connection(
+                id,
+                [this, arg = std::move(arg), n_use_blocks](
+                        cryptonote_connection_context& context) mutable {
+                    use_chain_entry(arg, n_use_blocks, context);
+                });
+    });
+    return 1;
+}
+//------------------------------------------------------------------------------------------------------------------------
+void protocol_handler::use_chain_entry(
+        NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg,
+        uint64_t n_use_blocks,
+        cryptonote_connection_context& context) {
+    context.m_last_request_time.reset();
+    context.m_chain_requested = false;
+
     if (n_use_blocks + HASH_OF_HASHES_STEP <= arg.m_block_ids.size()) {
         log::error(logcat, "Most blocks are invalid, dropping connection");
         drop_connection(context, true, false);
-        return 1;
+        return;
     }
 
-    context.m_needed_objects.clear();
-    uint64_t added = 0;
-    for (auto& bl_id : arg.m_block_ids) {
-        context.m_needed_objects.push_back(bl_id);
-        if (++added == n_use_blocks)
-            break;
-    }
-    context.m_last_response_height -= arg.m_block_ids.size() - n_use_blocks;
+    context.m_remote_blockchain_height = arg.total_height;
+    context.m_last_response_height = arg.start_height + n_use_blocks - 1;
+    context.m_needed_objects.assign(
+            arg.m_block_ids.begin(),
+            arg.m_block_ids.begin() + std::min<uint64_t>(n_use_blocks, arg.m_block_ids.size()));
 
     if (!request_missing_objects(context, false, false, "chain entry")) {
         log::error(logcat, "Failed to request missing objects, dropping connection");
         drop_connection(context, false, false);
-        return 1;
+        return;
     }
 
     if (arg.total_height > m_core.get_target_blockchain_height())
         m_core.set_target_blockchain_height(arg.total_height);
-
-    return 1;
 }
 
 //------------------------------------------------------------------------------------------------------------------------
