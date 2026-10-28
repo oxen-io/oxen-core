@@ -33,6 +33,7 @@ oxen_add_library(cncrypto
   chacha.c
   chacha.cpp
   cleared.cpp
+  cleared_string.cpp
   crypto-ops-data.c
   crypto-ops.c
   crypto.cpp

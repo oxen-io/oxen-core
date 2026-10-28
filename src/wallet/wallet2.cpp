@@ -597,7 +597,7 @@ namespace {
         false. Gcc will coerce this into unique_ptr(nullptr), but clang correctly
         fails. This large wrapper is for the use of that macro */
         std::unique_ptr<tools::wallet2> wallet;
-        epee::wipeable_string password;
+        crypto::cleared_string password;
         const auto do_generate = [&]() -> bool {
             std::string buf;
             if (!tools::slurp_file(json_file, buf)) {
@@ -1196,13 +1196,13 @@ wallet_keys_unlocker::wallet_keys_unlocker(
         locked = false;
         return;
     }
-    const epee::wipeable_string pass = password->password();
+    const crypto::cleared_string pass = password->password();
     w.generate_chacha_key_from_password(pass, key);
     w.decrypt_keys(key);
 }
 
 wallet_keys_unlocker::wallet_keys_unlocker(
-        wallet2& w, bool locked, const epee::wipeable_string& password) :
+        wallet2& w, bool locked, const crypto::cleared_string& password) :
         w(w), locked(locked) {
     std::lock_guard lock{lockers_mutex};
     if (lockers++ > 0)
@@ -1240,13 +1240,13 @@ void wallet_device_callback::on_button_pressed() {
         wallet->on_device_button_pressed();
 }
 
-std::optional<epee::wipeable_string> wallet_device_callback::on_pin_request() {
+std::optional<crypto::cleared_string> wallet_device_callback::on_pin_request() {
     if (wallet)
         return wallet->on_device_pin_request();
     return std::nullopt;
 }
 
-std::optional<epee::wipeable_string> wallet_device_callback::on_passphrase_request(
+std::optional<crypto::cleared_string> wallet_device_callback::on_passphrase_request(
         bool& on_device) {
     if (wallet)
         return wallet->on_device_passphrase_request(on_device);
@@ -1516,7 +1516,7 @@ bool wallet2::is_deterministic() const {
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::get_seed(
-        epee::wipeable_string& electrum_words, const epee::wipeable_string& passphrase) const {
+        crypto::cleared_string& electrum_words, const crypto::cleared_string& passphrase) const {
     bool keys_deterministic = is_deterministic();
     if (!keys_deterministic) {
         std::cout << "This is not a deterministic wallet" << std::endl;
@@ -1539,7 +1539,7 @@ bool wallet2::get_seed(
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::get_multisig_seed(
-        epee::wipeable_string& seed, const epee::wipeable_string& passphrase, bool raw) const {
+        crypto::cleared_string& seed, const crypto::cleared_string& passphrase, bool raw) const {
     bool ready;
     uint32_t threshold, total;
     if (!multisig(&ready, &threshold, &total)) {
@@ -1558,7 +1558,7 @@ bool wallet2::get_multisig_seed(
     crypto::secret_key skey;
     crypto::public_key pkey;
     const account_keys& keys = get_account().get_keys();
-    epee::wipeable_string data;
+    crypto::cleared_string data;
     data.append((const char*)&threshold, sizeof(uint32_t));
     data.append((const char*)&total, sizeof(uint32_t));
     skey = keys.m_spend_secret_key;
@@ -1582,7 +1582,7 @@ bool wallet2::get_multisig_seed(
     }
 
     if (raw) {
-        epee::wipeable_string seed;
+        crypto::cleared_string seed;
         seed.reserve(oxenc::to_hex_size(data.size()));
         oxenc::to_hex(data.data(), data.data() + data.size(), std::back_inserter(seed));
     } else {
@@ -1995,7 +1995,7 @@ void wallet2::scan_output(
             if (pool)
                 reason = (blink) ? blink_reason : pool_reason;
 
-            std::optional<epee::wipeable_string> pwd = m_callback->on_get_password(reason);
+            std::optional<crypto::cleared_string> pwd = m_callback->on_get_password(reason);
             THROW_WALLET_EXCEPTION_IF(
                     !pwd,
                     error::password_needed,
@@ -4466,7 +4466,7 @@ void wallet2::clear_soft(bool keep_key_images) {
  * \return                Whether it was successful.
  */
 bool wallet2::store_keys(
-        const fs::path& keys_file_name, const epee::wipeable_string& password, bool watch_only) {
+        const fs::path& keys_file_name, const crypto::cleared_string& password, bool watch_only) {
     std::optional<wallet2::keys_file_data> keys_file_data =
             get_keys_file_data(password, watch_only);
     if (!keys_file_data) {
@@ -4507,7 +4507,7 @@ bool wallet2::store_keys(
 }
 //----------------------------------------------------------------------------------------------------
 std::optional<wallet2::keys_file_data> wallet2::get_keys_file_data(
-        const epee::wipeable_string& password, bool watch_only) {
+        const crypto::cleared_string& password, bool watch_only) {
     std::string account_data;
     std::string multisig_signers;
     std::string multisig_derivations;
@@ -4685,7 +4685,7 @@ std::optional<wallet2::keys_file_data> wallet2::get_keys_file_data(
     return keys_file_data;
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::setup_keys(const epee::wipeable_string& password) {
+void wallet2::setup_keys(const crypto::cleared_string& password) {
     crypto::chacha_key key;
     crypto::generate_chacha_key(password.data(), password.size(), key, m_kdf_rounds);
     // re-encrypt, but keep viewkey unencrypted
@@ -4705,8 +4705,8 @@ void wallet2::setup_keys(const epee::wipeable_string& password) {
 //----------------------------------------------------------------------------------------------------
 void wallet2::change_password(
         const fs::path& filename,
-        const epee::wipeable_string& original_password,
-        const epee::wipeable_string& new_password) {
+        const crypto::cleared_string& original_password,
+        const crypto::cleared_string& new_password) {
     if (m_ask_password == AskPasswordToDecrypt && !m_unattended && !m_watch_only)
         decrypt_keys(original_password);
     setup_keys(new_password);
@@ -4720,7 +4720,7 @@ void wallet2::change_password(
  * \param keys_file_name Name of wallet file
  * \param password       Password of wallet file
  */
-bool wallet2::load_keys(const fs::path& keys_file_name, const epee::wipeable_string& password) {
+bool wallet2::load_keys(const fs::path& keys_file_name, const crypto::cleared_string& password) {
     std::string keys_file_buf;
     bool r = tools::slurp_file(keys_file_name, keys_file_buf);
     THROW_WALLET_EXCEPTION_IF(!r, error::file_read_error, keys_file_name);
@@ -4745,14 +4745,14 @@ bool wallet2::load_keys(const fs::path& keys_file_name, const epee::wipeable_str
     return r;
 }
 //----------------------------------------------------------------------------------------------------
-bool wallet2::load_keys_buf(const std::string& keys_buf, const epee::wipeable_string& password) {
+bool wallet2::load_keys_buf(const std::string& keys_buf, const crypto::cleared_string& password) {
     std::optional<crypto::chacha_key> keys_to_encrypt;
     return wallet2::load_keys_buf(keys_buf, password, keys_to_encrypt);
 }
 //----------------------------------------------------------------------------------------------------
 bool wallet2::load_keys_buf(
         const std::string& keys_buf,
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         std::optional<crypto::chacha_key>& keys_to_encrypt) {
 
     // Decrypt the contents
@@ -5113,7 +5113,7 @@ bool wallet2::load_keys_buf(
  * can be used prior to rewriting wallet keys file, to ensure user has entered the correct password
  *
  */
-bool wallet2::verify_password(const epee::wipeable_string& password) {
+bool wallet2::verify_password(const crypto::cleared_string& password) {
     // this temporary unlocking is necessary for Windows (otherwise the file couldn't be loaded).
     unlock_keys_file();
     bool r = verify_password(
@@ -5142,7 +5142,7 @@ bool wallet2::verify_password(const epee::wipeable_string& password) {
  */
 bool wallet2::verify_password(
         const fs::path& keys_file_name,
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         bool no_spend_key,
         hw::device& hwdev,
         uint64_t kdf_rounds) {
@@ -5223,13 +5223,13 @@ void wallet2::decrypt_keys(const crypto::chacha_key& key) {
     m_account.decrypt_keys(key);
 }
 
-void wallet2::encrypt_keys(const epee::wipeable_string& password) {
+void wallet2::encrypt_keys(const crypto::cleared_string& password) {
     crypto::chacha_key key;
     crypto::generate_chacha_key(password.data(), password.size(), key, m_kdf_rounds);
     encrypt_keys(key);
 }
 
-void wallet2::decrypt_keys(const epee::wipeable_string& password) {
+void wallet2::decrypt_keys(const crypto::cleared_string& password) {
     crypto::chacha_key key;
     crypto::generate_chacha_key(password.data(), password.size(), key, m_kdf_rounds);
     decrypt_keys(key);
@@ -5247,7 +5247,7 @@ void wallet2::setup_new_blockchain() {
 void wallet2::create_keys_file(
         const fs::path& wallet_,
         bool watch_only,
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         bool create_address_file) {
     if (!wallet_.empty()) {
         bool r = store_keys(m_keys_file, password, watch_only);
@@ -5276,7 +5276,7 @@ void wallet2::create_keys_file(
 bool wallet2::query_device(
         hw::device::type& device_type,
         const fs::path& keys_file_name,
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         uint64_t kdf_rounds) {
     rapidjson::Document json;
     wallet2::keys_file_data keys_file_data;
@@ -5353,8 +5353,8 @@ void wallet2::init_type(hw::device::type device_type) {
  */
 void wallet2::generate(
         const fs::path& wallet_,
-        const epee::wipeable_string& password,
-        const epee::wipeable_string& multisig_data,
+        const crypto::cleared_string& password,
+        const crypto::cleared_string& multisig_data,
         bool create_address_file) {
     clear();
     prepare_file_names(wallet_);
@@ -5452,7 +5452,7 @@ void wallet2::generate(
  */
 crypto::secret_key wallet2::generate(
         const fs::path& wallet_,
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         const crypto::secret_key& recovery_param,
         bool recover,
         bool two_random,
@@ -5536,7 +5536,7 @@ uint64_t wallet2::estimate_blockchain_height() {
  */
 void wallet2::generate(
         const fs::path& wallet_,
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         const cryptonote::account_public_address& account_public_address,
         const crypto::secret_key& viewkey,
         bool create_address_file) {
@@ -5577,7 +5577,7 @@ void wallet2::generate(
  */
 void wallet2::generate(
         const fs::path& wallet_,
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         const cryptonote::account_public_address& account_public_address,
         const crypto::secret_key& spendkey,
         const crypto::secret_key& viewkey,
@@ -5608,7 +5608,7 @@ void wallet2::generate(
 
 void wallet2::restore_from_device(
         const fs::path& wallet_,
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         const std::string& device_name,
         bool create_address_file,
         std::optional<std::string> hwdev_label,
@@ -5661,7 +5661,7 @@ void wallet2::restore_from_device(
 }
 
 std::string wallet2::make_multisig(
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         const std::vector<crypto::secret_key>& view_keys,
         const std::vector<crypto::public_key>& spend_keys,
         uint32_t threshold) {
@@ -5821,7 +5821,7 @@ std::string wallet2::make_multisig(
 }
 
 std::string wallet2::exchange_multisig_keys(
-        const epee::wipeable_string& password, const std::vector<std::string>& info) {
+        const crypto::cleared_string& password, const std::vector<std::string>& info) {
     THROW_WALLET_EXCEPTION_IF(info.empty(), error::wallet_internal_error, "Empty multisig info");
 
     if (!info[0].starts_with(MULTISIG_EXTRA_INFO_MAGIC)) {
@@ -5840,7 +5840,7 @@ std::string wallet2::exchange_multisig_keys(
 }
 
 std::string wallet2::exchange_multisig_keys(
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         std::unordered_set<crypto::public_key> derivations,
         std::vector<crypto::public_key> signers) {
     if (derivations.empty()) {
@@ -6038,7 +6038,7 @@ void wallet2::unpack_multisig_info(
 }
 
 std::string wallet2::make_multisig(
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         const std::vector<std::string>& info,
         uint32_t threshold) {
     std::vector<crypto::secret_key> secret_keys(info.size());
@@ -6048,7 +6048,7 @@ std::string wallet2::make_multisig(
 }
 
 bool wallet2::finalize_multisig(
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         const std::unordered_set<crypto::public_key>& pkeys,
         std::vector<crypto::public_key> signers) {
     bool ready;
@@ -6088,7 +6088,7 @@ bool wallet2::unpack_extra_multisig_info(
 }
 
 bool wallet2::finalize_multisig(
-        const epee::wipeable_string& password, const std::vector<std::string>& info) {
+        const crypto::cleared_string& password, const std::vector<std::string>& info) {
     std::unordered_set<crypto::public_key> public_keys;
     std::vector<crypto::public_key> signers;
     if (!unpack_extra_multisig_info(info, signers, public_keys)) {
@@ -6242,7 +6242,7 @@ bool wallet2::has_unknown_key_images() const {
  * there) \param wallet_name Name of wallet file (should exist) \param password    Password for
  * wallet file
  */
-void wallet2::rewrite(const fs::path& wallet_name, const epee::wipeable_string& password) {
+void wallet2::rewrite(const fs::path& wallet_name, const crypto::cleared_string& password) {
     if (wallet_name.empty())
         return;
     prepare_file_names(wallet_name);
@@ -6259,7 +6259,7 @@ void wallet2::rewrite(const fs::path& wallet_name, const epee::wipeable_string& 
  */
 void wallet2::write_watch_only_wallet(
         const fs::path& wallet_name,
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         fs::path& new_keys_filename) {
     prepare_file_names(wallet_name);
     std::error_code ec;
@@ -6342,13 +6342,13 @@ bool wallet2::generate_chacha_key_from_secret_keys(crypto::chacha_key& key) cons
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::generate_chacha_key_from_password(
-        const epee::wipeable_string& pass, crypto::chacha_key& key) const {
+        const crypto::cleared_string& pass, crypto::chacha_key& key) const {
     crypto::generate_chacha_key(pass.data(), pass.size(), key, m_kdf_rounds);
 }
 //----------------------------------------------------------------------------------------------------
 void wallet2::load(
         const fs::path& wallet_,
-        const epee::wipeable_string& password,
+        const crypto::cleared_string& password,
         const std::string& keys_buf,
         const std::string& cache_buf) {
     clear();
@@ -6600,10 +6600,10 @@ const fs::path& wallet2::path() const {
 //----------------------------------------------------------------------------------------------------
 void wallet2::store() {
     if (!m_wallet_file.empty())
-        store_to("", epee::wipeable_string());
+        store_to("", crypto::cleared_string());
 }
 //----------------------------------------------------------------------------------------------------
-void wallet2::store_to(const fs::path& path, const epee::wipeable_string& password) {
+void wallet2::store_to(const fs::path& path, const crypto::cleared_string& password) {
     trim_hashchain();
 
     // if file is the same, we do:
@@ -6684,7 +6684,7 @@ void wallet2::store_to(const fs::path& path, const epee::wipeable_string& passwo
 }
 //----------------------------------------------------------------------------------------------------
 std::optional<wallet2::cache_file_data> wallet2::get_cache_file_data(
-        const epee::wipeable_string& passwords) {
+        const crypto::cleared_string& passwords) {
     trim_hashchain();
     try {
         std::stringstream oss;
@@ -15891,7 +15891,7 @@ std::string wallet2::encrypt_with_view_secret_key(
     return encrypt(plaintext, get_account().get_keys().m_view_secret_key, authenticated);
 }
 //----------------------------------------------------------------------------------------------------
-epee::wipeable_string wallet2::decrypt(
+crypto::cleared_string wallet2::decrypt(
         std::string_view ciphertext, const crypto::secret_key& skey, bool authenticated) const {
     const size_t prefix_size = sizeof(chacha_iv) + (authenticated ? sizeof(crypto::signature) : 0);
     THROW_WALLET_EXCEPTION_IF(
@@ -15914,7 +15914,7 @@ epee::wipeable_string wallet2::decrypt(
                 error::wallet_internal_error,
                 "Failed to authenticate ciphertext");
     }
-    epee::wipeable_string buffer;
+    crypto::cleared_string buffer;
     buffer.resize(ciphertext.size() - prefix_size);
     crypto::chacha20(
             ciphertext.data() + sizeof(iv),
@@ -15925,7 +15925,7 @@ epee::wipeable_string wallet2::decrypt(
     return buffer;
 }
 //----------------------------------------------------------------------------------------------------
-epee::wipeable_string wallet2::decrypt_with_view_secret_key(
+crypto::cleared_string wallet2::decrypt_with_view_secret_key(
         std::string_view ciphertext, bool authenticated) const {
     return decrypt(ciphertext, get_account().get_keys().m_view_secret_key, authenticated);
 }
@@ -16258,13 +16258,13 @@ void wallet2::on_device_button_pressed() {
         m_callback->on_device_button_pressed();
 }
 //----------------------------------------------------------------------------------------------------
-std::optional<epee::wipeable_string> wallet2::on_device_pin_request() {
+std::optional<crypto::cleared_string> wallet2::on_device_pin_request() {
     if (nullptr != m_callback)
         return m_callback->on_device_pin_request();
     return std::nullopt;
 }
 //----------------------------------------------------------------------------------------------------
-std::optional<epee::wipeable_string> wallet2::on_device_passphrase_request(bool& on_device) {
+std::optional<crypto::cleared_string> wallet2::on_device_passphrase_request(bool& on_device) {
     if (nullptr != m_callback)
         return m_callback->on_device_passphrase_request(on_device);
     else

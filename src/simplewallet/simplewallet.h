@@ -47,11 +47,11 @@
 #include "common/i18n.h"
 #include "common/password.h"
 #include "common/periodic_task.h"
+#include "crypto/cleared_string.h"
 #include "crypto/crypto.h"  // for definition of crypto::secret_key
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "epee/console_handler.h"
-#include "epee/wipeable_string.h"
 #include "wallet/wallet2.h"
 
 /*!
@@ -100,24 +100,24 @@ class simple_wallet : public tools::i_wallet2_callback {
     //! `none`
     std::optional<tools::password_container> get_and_verify_password() const;
 
-    std::optional<epee::wipeable_string> new_wallet(
+    std::optional<crypto::cleared_string> new_wallet(
             const boost::program_options::variables_map& vm,
             const crypto::secret_key& recovery_key,
             bool recover,
             bool two_random,
             const std::string& old_language);
-    std::optional<epee::wipeable_string> new_wallet(
+    std::optional<crypto::cleared_string> new_wallet(
             const boost::program_options::variables_map& vm,
             const cryptonote::account_public_address& address,
             const std::optional<crypto::secret_key>& spendkey,
             const crypto::secret_key& viewkey);
-    std::optional<epee::wipeable_string> new_wallet(
+    std::optional<crypto::cleared_string> new_wallet(
             const boost::program_options::variables_map& vm,
-            const epee::wipeable_string& multisig_keys,
+            const crypto::cleared_string& multisig_keys,
             const std::string& old_language);
-    std::optional<epee::wipeable_string> new_device_wallet(
+    std::optional<crypto::cleared_string> new_device_wallet(
             const boost::program_options::variables_map& vm);
-    std::optional<epee::wipeable_string> open_wallet(
+    std::optional<crypto::cleared_string> open_wallet(
             const boost::program_options::variables_map& vm);
     bool close_wallet();
 
@@ -357,7 +357,7 @@ class simple_wallet : public tools::i_wallet2_callback {
      * \brief Prints the seed with a nice message
      * \param seed seed to print
      */
-    void print_seed(const epee::wipeable_string& seed);
+    void print_seed(const crypto::cleared_string& seed);
 
     /*!
      * \brief Gets the word seed language from the user.
@@ -406,10 +406,10 @@ class simple_wallet : public tools::i_wallet2_callback {
             const cryptonote::subaddress_index& subaddr_index);
     virtual void on_skip_transaction(
             uint64_t height, const crypto::hash& txid, const cryptonote::transaction& tx);
-    virtual std::optional<epee::wipeable_string> on_get_password(const char* reason);
+    virtual std::optional<crypto::cleared_string> on_get_password(const char* reason);
     virtual void on_device_button_request(uint64_t code);
-    virtual std::optional<epee::wipeable_string> on_device_pin_request();
-    virtual std::optional<epee::wipeable_string> on_device_passphrase_request(bool& on_device);
+    virtual std::optional<crypto::cleared_string> on_device_pin_request();
+    virtual std::optional<crypto::cleared_string> on_device_passphrase_request(bool& on_device);
     //----------------------------------------------------------
 
     friend class refresh_progress_reporter_t;
@@ -447,7 +447,7 @@ class simple_wallet : public tools::i_wallet2_callback {
     std::string m_subaddress_lookahead;
     std::string m_restore_date;  // optional - converted to m_restore_height
 
-    epee::wipeable_string m_electrum_seed;  // electrum-style seed parameter
+    crypto::cleared_string m_electrum_seed;  // electrum-style seed parameter
 
     crypto::secret_key m_recovery_key{};  // recovery key (used as random for wallet gen)
     bool m_restore_deterministic_wallet;  // recover flag

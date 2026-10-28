@@ -46,8 +46,8 @@
 #include "subaddress_index.h"
 #include "tx_extra.h"
 
-namespace epee {
-class wipeable_string;
+namespace crypto {
+class cleared_string;
 }
 
 namespace service_nodes {
@@ -425,8 +425,8 @@ void get_tx_tree_hash(const std::vector<crypto::hash>& tx_hashes, crypto::hash& 
 crypto::hash get_tx_tree_hash(const std::vector<crypto::hash>& tx_hashes);
 crypto::hash get_tx_tree_hash(const block& b);
 
-crypto::secret_key encrypt_key(crypto::secret_key key, const epee::wipeable_string& passphrase);
-crypto::secret_key decrypt_key(crypto::secret_key key, const epee::wipeable_string& passphrase);
+crypto::secret_key encrypt_key(crypto::secret_key key, const crypto::cleared_string& passphrase);
+crypto::secret_key decrypt_key(crypto::secret_key key, const crypto::cleared_string& passphrase);
 #define CHECKED_GET_SPECIFIC_VARIANT(variant_var, specific_type, variable_name, fail_return_val) \
     if (!std::holds_alternative<specific_type>(variant_var)) {                                   \
         oxen::log::error(                                                                        \

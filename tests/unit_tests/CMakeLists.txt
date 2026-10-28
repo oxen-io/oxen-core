@@ -87,7 +87,7 @@ add_executable(unit_tests
   output_selection.cpp
   vercmp.cpp
   ringdb.cpp
-  wipeable_string.cpp
+  cleared_string.cpp
   aligned.cpp)
 
 target_link_libraries(unit_tests

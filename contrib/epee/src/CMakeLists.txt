@@ -28,7 +28,6 @@
 
 oxen_add_library(epee
     portable_storage.cpp
-    wipeable_string.cpp
 )
 
 if (TARGET readline)
