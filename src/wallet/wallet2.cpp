@@ -1576,11 +1576,7 @@ bool wallet2::get_multisig_seed(
 
     if (!passphrase.empty()) {
         crypto::secret_key key;
-        crypto::cn_slow_hash(
-                passphrase.data(),
-                passphrase.size(),
-                (crypto::hash&)key,
-                crypto::cn_slow_hash_type::heavy_v1);
+        crypto::cn_heavy_v1(passphrase.view(), key.data_);
         sc_reduce32(key.data());
         data = encrypt(data.view(), key, true);
     }
