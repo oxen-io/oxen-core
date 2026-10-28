@@ -60,3 +60,10 @@ struct gen_double_spend_in_different_chains : public test_chain_unit_base
 {
   bool generate(std::vector<test_event_entry>& events) const;
 };
+
+// A reorg onto an alt chain that fails partway (on a double spend) restores the original chain:
+// what watches the chain through its hooks must see it restored, not left detached.
+struct gen_double_spend_failed_reorg_hooks : public test_chain_unit_base
+{
+  bool generate(std::vector<test_event_entry>& events) const;
+};
