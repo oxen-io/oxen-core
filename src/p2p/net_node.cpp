@@ -957,19 +957,22 @@ size_t node_server::get_random_exp_index(
     return res;
 }
 //-----------------------------------------------------------------------------------
+bool node_server::is_peer_used(const oxen::quic::Address& addr) {
+    return is_connect_pending(addr) || is_addr_connected(addr);
+}
+//-----------------------------------------------------------------------------------
 template <typename Entry>
 bool node_server::is_peer_used(const Entry& peer) {
     if (m_network.m_config.m_peer_id == peer.id)
         return true;  // dont make connections to ourself
 
-    if (is_connect_pending(peer.adr))
+    if (is_peer_used(peer.adr))
         return true;
 
     bool used = false;
     m_network.m_net_server.get_config_object().foreach_connection(
             [&](const p2p_connection_context& cntxt) {
-                if (cntxt.peer_id == peer.id ||
-                    (!cntxt.m_is_income && peer.adr == cntxt.m_remote_address)) {
+                if (cntxt.peer_id == peer.id) {
                     used = true;
                     return false;  // stop enumerating
                 }
@@ -1338,7 +1341,7 @@ void node_server::connect_to_seed() {
     const size_t n_seeds = m_seed_nodes.size();
     for (size_t i = 0; i < n_seeds; ++i) {
         const auto& seed = m_seed_nodes[m_next_seed++ % n_seeds];
-        if (is_peer_used(peerlist_entry{.adr = seed}))
+        if (is_peer_used(seed))
             continue;
         connect_and_handshake(seed, PeerType::white, true, 0, 0, [this, n_seeds](bool success) {
             if (success)

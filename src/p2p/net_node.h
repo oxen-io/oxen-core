@@ -337,7 +337,10 @@ class node_server : public epee::levin::levin_commands_handler<p2p_connection_co
     // of truncation.  (For example, with max_index of 19, those probabilities increase by a factor
     // of 1.06667, and with max_index of 9, they increase by 4/3).
     size_t get_random_exp_index(size_t size, double rate = 0.13862943611198906);
-    // Takes a peerlist_entry or anchor_peerlist_entry
+    // Whether we are connected, or connecting, to an address
+    bool is_peer_used(const oxen::quic::Address& addr);
+    // Whether a peerlist_entry or anchor_peerlist_entry is in use: its address (as above), or its
+    // peer, which may be ourself or already connected from another address.
     template <typename Entry>
     bool is_peer_used(const Entry& peer);
     bool is_addr_connected(const oxen::quic::Address& peer);
