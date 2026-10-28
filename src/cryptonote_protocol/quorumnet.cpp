@@ -909,10 +909,7 @@ namespace {
         if (became_approved) {
             log::info(logcat, "Accumulated enough signatures for blink tx: enabling tx relay");
             auto& pool = qnet.core.mempool;
-            {
-                auto lock = pool.blink_unique_lock();
-                pool.add_existing_blink(btxptr);
-            }
+            pool.add_existing_blink(btxptr);
             pool.set_relayable({{btx.get_txhash()}});
             qnet.core.relay_txpool_transactions();
         }

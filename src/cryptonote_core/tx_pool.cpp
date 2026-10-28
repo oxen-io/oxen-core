@@ -583,8 +583,12 @@ bool tx_memory_pool::add_new_blink(
     auto hf_version = m_blockchain.get_network_version(blink.height);
     bool result = add_tx(tx, tvc, tx_pool_options::new_blink(approved, hf_version), hf_version);
     if (result && approved) {
-        auto lock = blink_unique_lock();
-        m_blinks[txhash] = blink_ptr;
+        {
+            auto lock = blink_unique_lock();
+            m_blinks[txhash] = blink_ptr;
+        }
+        for (const auto& hook : m_blink_added_hooks)
+            hook();
     } else if (!result) {
         // Adding failed, but might have failed because another thread inserted it, so check again
         // for existence of the blink
@@ -596,11 +600,15 @@ bool tx_memory_pool::add_new_blink(
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::add_existing_blink(std::shared_ptr<blink_tx> blink_ptr) {
     assert(blink_ptr && blink_ptr->approved());
-    auto& ptr = m_blinks[blink_ptr->get_txhash()];
-    if (ptr)
-        return false;
-
-    ptr = blink_ptr;
+    {
+        auto lock = blink_unique_lock();
+        auto& ptr = m_blinks[blink_ptr->get_txhash()];
+        if (ptr)
+            return false;
+        ptr = blink_ptr;
+    }
+    for (const auto& hook : m_blink_added_hooks)
+        hook();
     return true;
 }
 //---------------------------------------------------------------------------------
