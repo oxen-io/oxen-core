@@ -1877,6 +1877,18 @@ bool protocol_handler::check_standby_peers() {
 int protocol_handler::handle_request_chain(
         NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_connection_context& context) {
     log::debug(logcat, "Received NOTIFY_REQUEST_CHAIN ({} blocks)", arg.block_ids.size());
+    // Finding the split point looks up each hash in turn, holding the blockchain lock, so no more
+    // than an oxend's short chain history could hold.
+    if (arg.block_ids.size() > SHORT_CHAIN_HISTORY_MAX_COUNT) {
+        log::error(
+                logcat,
+                "sent a chain request of {} block ids, more than the {} limit, dropping "
+                "connection",
+                arg.block_ids.size(),
+                SHORT_CHAIN_HISTORY_MAX_COUNT);
+        drop_connection(context, true, false);
+        return 1;
+    }
     chain_job([this, id = context.m_connection_id, arg = std::move(arg)] {
         NOTIFY_RESPONSE_CHAIN_ENTRY::request r;
         if (!m_core.blockchain.find_blockchain_supplement(arg.block_ids, r)) {

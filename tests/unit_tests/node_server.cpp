@@ -176,6 +176,27 @@ TEST(protocol_handler, oversized_chain_entry_drops_peer)
   EXPECT_EQ(p2p.dropped[0], context.m_connection_id);
 }
 
+TEST(protocol_handler, oversized_chain_request_drops_peer)
+{
+  cryptonote::core pr_core;
+  cryptonote::protocol_handler cprotocol(pr_core);
+  drop_recorder p2p;
+  cprotocol.set_p2p_endpoint(&p2p);
+
+  cryptonote::NOTIFY_REQUEST_CHAIN::request request{};
+  request.block_ids.resize(cryptonote::SHORT_CHAIN_HISTORY_MAX_COUNT + 1);
+  const auto body = nodetool::levin::encode(request);
+
+  cryptonote::cryptonote_connection_context context{
+      epee::connection_id_t::random(), MAKE_IPV4_ADDRESS(1,2,3,4), false};
+  cprotocol.notify(
+      cryptonote::NOTIFY_REQUEST_CHAIN::ID,
+      oxen::quic::reinterpret_span<const uint8_t>(std::span{body}),
+      context);
+  ASSERT_EQ(p2p.dropped.size(), 1);
+  EXPECT_EQ(p2p.dropped[0], context.m_connection_id);
+}
+
 TEST(sync_need, heights)
 {
   using cryptonote::sync_need_for;
