@@ -1265,8 +1265,7 @@ void core_rpc_server::invoke(SUBMIT_TRANSACTION& tx, rpc_context) {
     // Why is is the RPC handler's responsibility to tell the p2p protocol to relay a transaction?!
     NOTIFY_NEW_TRANSACTIONS::request r{};
     r.txs.push_back(std::move(tx.request.tx));
-    cryptonote_connection_context fake_context{};
-    m_core.get_protocol()->relay_transactions(r, fake_context);
+    m_core.get_protocol()->relay_transactions(r, std::nullopt);
 
     tx.response["status"] = STATUS_OK;
 }
@@ -2176,10 +2175,9 @@ void core_rpc_server::invoke(RELAY_TX& relay_tx, rpc_context) {
         }
 
         if (std::string txblob; m_core.mempool.get_transaction(txid, txblob)) {
-            cryptonote_connection_context fake_context{};
             NOTIFY_NEW_TRANSACTIONS::request r{};
             r.txs.push_back(txblob);
-            m_core.get_protocol()->relay_transactions(r, fake_context);
+            m_core.get_protocol()->relay_transactions(r, std::nullopt);
             // TODO: make sure that tx has reached other nodes here, probably wait to receive
             // reflections from other nodes
         } else {

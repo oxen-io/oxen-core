@@ -43,6 +43,8 @@ using namespace std::literals;
 
 namespace cryptonote {
 
+using epee::connection_id_t;
+
 struct cryptonote_connection_context : public epee::net_utils::connection_context_base {
     using connection_context_base::connection_context_base;
 

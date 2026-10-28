@@ -2317,13 +2317,11 @@ bool core::relay_txpool_transactions() {
     // we attempt to relay txes that should be relayed, but were not
     std::vector<std::pair<crypto::hash, std::string>> txs;
     if (mempool.get_relayable_transactions(txs) && !txs.empty()) {
-        cryptonote_connection_context fake_context{};
-        tx_verification_context tvc{};
         NOTIFY_NEW_TRANSACTIONS::request r{};
         for (auto it = txs.begin(); it != txs.end(); ++it) {
             r.txs.push_back(it->second);
         }
-        get_protocol()->relay_transactions(r, fake_context);
+        get_protocol()->relay_transactions(r, std::nullopt);
         mempool.set_relayed(txs);
     }
     return true;
@@ -2334,7 +2332,6 @@ bool core::submit_uptime_proof() {
         return true;
 
     try {
-        cryptonote_connection_context fake_context{};
         bool relayed;
         auto height = blockchain.get_current_blockchain_height() -
                       1;  // -1 or would use new rules 1 block too early
@@ -2350,7 +2347,7 @@ bool core::submit_uptime_proof() {
                 srouter_version,
                 lokinet_version);
         auto req = proof.generate_request(hf_version);
-        relayed = get_protocol()->relay_uptime_proof(req, fake_context);
+        relayed = get_protocol()->relay_uptime_proof(req, std::nullopt);
 
         if (relayed)
             log::info(
@@ -2462,8 +2459,7 @@ bool core::relay_service_node_votes() {
     if (!p2p_votes.empty()) {
         NOTIFY_NEW_SERVICE_NODE_VOTE::request req{};
         req.votes = std::move(p2p_votes);
-        cryptonote_connection_context fake_context{};
-        get_protocol()->relay_service_node_votes(req, fake_context);
+        get_protocol()->relay_service_node_votes(req, std::nullopt);
     }
 
     return true;
@@ -2550,12 +2546,11 @@ bool core::handle_block_found(block& b, block_verification_context& bvc) {
             return false;
         }
 
-        cryptonote_connection_context exclude_context{};
         NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
         arg.current_blockchain_height = blockchain.get_current_blockchain_height();
         arg.b = blocks[0];
 
-        m_pprotocol->relay_block(arg, exclude_context);
+        m_pprotocol->relay_block(arg, std::nullopt);
     }
     return true;
 }

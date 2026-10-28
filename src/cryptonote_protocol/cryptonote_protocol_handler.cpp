@@ -806,7 +806,7 @@ int protocol_handler::handle_notify_new_fluffy_block(
                 NOTIFY_NEW_FLUFFY_BLOCK::request reg_arg{};
                 reg_arg.current_blockchain_height = arg.current_blockchain_height;
                 reg_arg.b = b;
-                relay_block(reg_arg, context);
+                relay_block(reg_arg, context.m_connection_id);
             } else if (bvc.m_marked_as_orphaned && context.request_outstanding()) {
                 // The response to what is outstanding carries the sync with this peer on
                 context.m_state = cryptonote_connection_context::state_synchronizing;
@@ -867,12 +867,8 @@ int protocol_handler::handle_uptime_proof(
 
     if (m_core.handle_uptime_proof(arg, my_uptime_proof_confirmation)) {
         if (!my_uptime_proof_confirmation) {
-            // NOTE: The default exclude context contains the peer who sent us this
-            // uptime proof, we want to ensure we relay it back so they know that the
-            // peer they relayed to received their uptime and confirm it, so send in an
-            // empty context so we don't omit the source peer from the relay back.
-            cryptonote_connection_context empty_context = {};
-            relay_uptime_proof(arg, empty_context);
+            // Not excluding the peer who sent it, so that they learn that we received it.
+            relay_uptime_proof(arg, std::nullopt);
         }
     }
     return 1;
@@ -917,7 +913,7 @@ int protocol_handler::handle_notify_new_service_node_vote(
     }
 
     if (arg.votes.size())
-        relay_service_node_votes(arg, context);
+        relay_service_node_votes(arg, context.m_connection_id);
 
     return 1;
 }
@@ -1121,7 +1117,7 @@ int protocol_handler::handle_notify_new_transactions(
     // on to our peers because they probably already have it: we just missed it somehow.
     if (arg.txs.size() && !arg.requested) {
         // TODO: add announce usage here
-        relay_transactions(arg, context);
+        relay_transactions(arg, context.m_connection_id);
     }
 
     // If we're still syncing (which implies this was a requested tx list) then it's quite possible
@@ -2748,12 +2744,12 @@ int protocol_handler::handle_response_block_blinks(
 }
 //------------------------------------------------------------------------------------------------------------------------
 bool protocol_handler::relay_block(
-        NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context) {
+        NOTIFY_NEW_FLUFFY_BLOCK::request& arg, std::optional<connection_id_t> exclude) {
     // sort peers between fluffy ones and others
     std::vector<connection_id_t> fluffyConnections;
-    m_p2p->for_each_connection([&exclude_context, &fluffyConnections](
+    m_p2p->for_each_connection([&exclude, &fluffyConnections](
                                        connection_context& context, nodetool::peerid_type peer_id) {
-        if (peer_id && exclude_context.m_connection_id != context.m_connection_id) {
+        if (peer_id && context.m_connection_id != exclude) {
             log::debug(
                     logcat, "{}PEER FLUFFY BLOCKS - RELAYING THIN/COMPACT WHATEVER BLOCK", context);
             fluffyConnections.push_back(context.m_connection_id);
@@ -2788,31 +2784,28 @@ bool protocol_handler::relay_block(
 }
 //------------------------------------------------------------------------------------------------------------------------
 bool protocol_handler::relay_uptime_proof(
-        NOTIFY_BTENCODED_UPTIME_PROOF::request& arg,
-        cryptonote_connection_context& exclude_context) {
-    bool result = relay_to_synchronized_peers<NOTIFY_BTENCODED_UPTIME_PROOF>(arg, exclude_context);
-    return result;
+        NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, std::optional<connection_id_t> exclude) {
+    return relay_to_synchronized_peers<NOTIFY_BTENCODED_UPTIME_PROOF>(arg, exclude);
 }
 //------------------------------------------------------------------------------------------------------------------------
 bool protocol_handler::relay_service_node_votes(
-        NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg,
-        cryptonote_connection_context& exclude_context) {
-    bool result = relay_to_synchronized_peers<NOTIFY_NEW_SERVICE_NODE_VOTE>(arg, exclude_context);
+        NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg, std::optional<connection_id_t> exclude) {
+    bool result = relay_to_synchronized_peers<NOTIFY_NEW_SERVICE_NODE_VOTE>(arg, exclude);
     if (result)
         m_core.set_service_node_votes_relayed(arg.votes);
     return result;
 }
 //------------------------------------------------------------------------------------------------------------------------
 bool protocol_handler::relay_transactions(
-        NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& exclude_context) {
+        NOTIFY_NEW_TRANSACTIONS::request& arg, std::optional<connection_id_t> exclude) {
     // no check for success, so tell core they're relayed unconditionally
     for (auto& tx_blob : arg.txs)
         m_core.on_transaction_relayed(tx_blob);
 
     std::vector<connection_id_t> connections;
     m_p2p->for_each_connection(
-            [&exclude_context, &connections](connection_context& context, nodetool::peerid_type) {
-                if (context.m_connection_id != exclude_context.m_connection_id)
+            [&exclude, &connections](connection_context& context, nodetool::peerid_type) {
+                if (context.m_connection_id != exclude)
                     connections.push_back(context.m_connection_id);
                 return true;
             });

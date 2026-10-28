@@ -30,6 +30,8 @@
 
 #pragma once
 
+#include <optional>
+
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "p2p/net_node_common.h"
@@ -37,43 +39,37 @@ namespace cryptonote {
 /************************************************************************/
 /*                                                                      */
 /************************************************************************/
+// The relays send to every suitable peer except `exclude`, if given: the peer it came from.  They
+// are safe to call from any thread.
 struct i_cryptonote_protocol {
     virtual bool relay_block(
-            NOTIFY_NEW_FLUFFY_BLOCK::request& arg,
-            cryptonote_connection_context& exclude_context) = 0;
+            NOTIFY_NEW_FLUFFY_BLOCK::request& arg, std::optional<connection_id_t> exclude) = 0;
     virtual bool relay_transactions(
-            NOTIFY_NEW_TRANSACTIONS::request& arg,
-            cryptonote_connection_context& exclude_context) = 0;
+            NOTIFY_NEW_TRANSACTIONS::request& arg, std::optional<connection_id_t> exclude) = 0;
     virtual bool relay_uptime_proof(
             NOTIFY_BTENCODED_UPTIME_PROOF::request& arg,
-            cryptonote_connection_context& exclude_context) = 0;
-    // virtual bool request_objects(NOTIFY_REQUEST_GET_OBJECTS::request& arg,
-    // cryptonote_connection_context& context)=0;
+            std::optional<connection_id_t> exclude) = 0;
     virtual bool relay_service_node_votes(
-            NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg,
-            cryptonote_connection_context& exclude_context) = 0;
+            NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg, std::optional<connection_id_t> exclude) = 0;
 };
 
 /************************************************************************/
 /*                                                                      */
 /************************************************************************/
 struct cryptonote_protocol_stub : public i_cryptonote_protocol {
-    virtual bool relay_block(
-            NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context) {
+    bool relay_block(NOTIFY_NEW_FLUFFY_BLOCK::request&, std::optional<connection_id_t>) override {
         return false;
     }
-    virtual bool relay_transactions(
-            NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& exclude_context) {
+    bool relay_transactions(
+            NOTIFY_NEW_TRANSACTIONS::request&, std::optional<connection_id_t>) override {
         return false;
     }
-    virtual bool relay_service_node_votes(
-            NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg,
-            cryptonote_connection_context& exclude_context) {
+    bool relay_service_node_votes(
+            NOTIFY_NEW_SERVICE_NODE_VOTE::request&, std::optional<connection_id_t>) override {
         return false;
     }
-    virtual bool relay_uptime_proof(
-            NOTIFY_BTENCODED_UPTIME_PROOF::request& arg,
-            cryptonote_connection_context& exclude_context) {
+    bool relay_uptime_proof(
+            NOTIFY_BTENCODED_UPTIME_PROOF::request&, std::optional<connection_id_t>) override {
         return false;
     }
 };
