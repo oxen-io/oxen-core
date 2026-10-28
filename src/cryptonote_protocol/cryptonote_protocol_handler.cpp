@@ -2798,33 +2798,9 @@ bool protocol_handler::relay_service_node_votes(
 //------------------------------------------------------------------------------------------------------------------------
 bool protocol_handler::relay_transactions(
         NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& exclude_context) {
-    // no check for success, so tell core they're relayed unconditionally and snag a copy of the
-    // hash so that we can look up any associated blink data we should include.
-    std::vector<crypto::hash> relayed_txes;
-    relayed_txes.reserve(arg.txs.size());
-    for (auto& tx_blob : arg.txs) {
-        if (auto hash = m_core.on_transaction_relayed(tx_blob))
-            relayed_txes.push_back(hash);
-    }
-
-    // Rebuild arg.blinks from blink data that we have because we don't necessarily have the same
-    // blink data that got sent to us (we may have additional blink info, or may have rejected some
-    // of the incoming blink data).
-    arg.blinks.clear();
-    if (is_hard_fork_at_least(
-                m_core.get_nettype(),
-                feature::BLINK,
-                m_core.blockchain.get_current_blockchain_height())) {
-        auto& pool = m_core.mempool;
-        auto lock = pool.blink_shared_lock();
-        for (auto& hash : relayed_txes) {
-            if (auto blink = pool.get_blink(hash)) {
-                arg.blinks.emplace_back();
-                auto l = blink->shared_lock();
-                blink->fill_serialization_data(arg.blinks.back());
-            }
-        }
-    }
+    // no check for success, so tell core they're relayed unconditionally
+    for (auto& tx_blob : arg.txs)
+        m_core.on_transaction_relayed(tx_blob);
 
     std::vector<connection_id_t> connections;
     m_p2p->for_each_connection(

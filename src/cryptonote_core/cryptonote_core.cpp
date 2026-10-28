@@ -2438,17 +2438,16 @@ bool core::handle_uptime_proof(
     return result;
 }
 //-----------------------------------------------------------------------------------------------
-crypto::hash core::on_transaction_relayed(const std::string& tx_blob) {
+void core::on_transaction_relayed(const std::string& tx_blob) {
     std::vector<std::pair<crypto::hash, std::string>> txs;
     cryptonote::transaction tx;
     crypto::hash tx_hash;
     if (!parse_and_validate_tx_from_blob(tx_blob, tx, tx_hash)) {
         log::error(logcat, "Failed to parse relayed transaction");
-        return crypto::null<crypto::hash>;
+        return;
     }
-    txs.push_back(std::make_pair(tx_hash, std::move(tx_blob)));
+    txs.push_back(std::make_pair(tx_hash, tx_blob));
     mempool.set_relayed(txs);
-    return tx_hash;
 }
 //-----------------------------------------------------------------------------------------------
 bool core::relay_service_node_votes() {
