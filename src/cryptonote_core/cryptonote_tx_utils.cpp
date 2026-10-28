@@ -1390,7 +1390,6 @@ crypto::hash get_block_longhash(
         const block& b,
         uint64_t height,
         int miners) {
-    crypto::hash result{};
     const auto bd = get_block_hashing_blob(b);
     const auto hf_version = b.major_version;
 
@@ -1400,6 +1399,7 @@ crypto::hash get_block_longhash(
         return crypto::cn_fast_hash(bd.data(), bd.size());
 
     if (hf_version >= hf::hf12_checkpointing) {
+        crypto::hash result;
         rx_slow_hash(
                 randomx_context.current_blockchain_height,
                 randomx_context.seed_height,
@@ -1411,12 +1411,11 @@ crypto::hash get_block_longhash(
                 0);
         return result;
     }
-
-    const auto cn_type = hf_version >= hf::hf11_infinite_staking ? cn_slow_hash_type::turtle_lite_v2
-                       : hf_version >= hf::hf7                   ? cn_slow_hash_type::heavy_v2
-                                                                 : cn_slow_hash_type::heavy_v1;
-    crypto::cn_slow_hash(bd.data(), bd.size(), result, cn_type);
-    return result;
+    if (hf_version >= hf::hf11_infinite_staking)
+        return crypto::cn_turtle_lite_v2(bd);
+    if (hf_version >= hf::hf7)
+        return crypto::cn_heavy_v2(bd);
+    return crypto::cn_heavy_v1(bd);
 }
 
 crypto::hash get_block_longhash_w_blockchain(

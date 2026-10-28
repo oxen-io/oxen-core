@@ -1787,17 +1787,13 @@ crypto::hash get_tx_tree_hash(const block& b) {
 }
 //---------------------------------------------------------------
 crypto::secret_key encrypt_key(crypto::secret_key key, const epee::wipeable_string& passphrase) {
-    crypto::hash hash;
-    crypto::cn_slow_hash(
-            passphrase.data(), passphrase.size(), hash, crypto::cn_slow_hash_type::heavy_v1);
+    const auto hash = crypto::cn_heavy_v1(passphrase.view());
     sc_add(key.data(), key.data(), hash.data());
     return key;
 }
 //---------------------------------------------------------------
 crypto::secret_key decrypt_key(crypto::secret_key key, const epee::wipeable_string& passphrase) {
-    crypto::hash hash;
-    crypto::cn_slow_hash(
-            passphrase.data(), passphrase.size(), hash, crypto::cn_slow_hash_type::heavy_v1);
+    const auto hash = crypto::cn_heavy_v1(passphrase.view());
     sc_sub(key.data(), key.data(), hash.data());
     return key;
 }

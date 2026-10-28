@@ -3349,11 +3349,7 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm) {
             if (!seed_pass.empty()) {
                 if (m_restore_multisig_wallet) {
                     crypto::secret_key key;
-                    crypto::cn_slow_hash(
-                            seed_pass.data(),
-                            seed_pass.size(),
-                            (crypto::hash&)key,
-                            crypto::cn_slow_hash_type::heavy_v1);
+                    crypto::cn_heavy_v1(seed_pass.view(), key.data_);
                     sc_reduce32(key.data());
                     multisig_keys = m_wallet->decrypt(
                             std::string(multisig_keys.data(), multisig_keys.size()), key, true);
