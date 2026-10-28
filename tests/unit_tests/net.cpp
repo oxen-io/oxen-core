@@ -926,6 +926,26 @@ TEST(get_network_address, ipv4subnet)
 
     address = net::get_ipv4_subnet_address("12.34.56.78/16");
     EXPECT_STREQ("12.34.0.0/16", address->str().c_str());
+
+    address = net::get_ipv4_subnet_address("1.2.3.4/23");
+    EXPECT_STREQ("1.2.2.0/23", address->str().c_str());
+    EXPECT_FALSE(address->matches(MAKE_IP(1,2,1,255)));
+    EXPECT_TRUE(address->matches(MAKE_IP(1,2,2,0)));
+    EXPECT_TRUE(address->matches(MAKE_IP(1,2,3,255)));
+    EXPECT_FALSE(address->matches(MAKE_IP(1,2,4,0)));
+    EXPECT_FALSE(address->matches(MAKE_IP(1,2,131,4)));
+
+    address = net::get_ipv4_subnet_address("10.20.30.40/1");
+    EXPECT_STREQ("0.0.0.0/1", address->str().c_str());
+    EXPECT_TRUE(address->matches(MAKE_IP(127,255,255,255)));
+    EXPECT_FALSE(address->matches(MAKE_IP(128,0,0,0)));
+
+    address = net::get_ipv4_subnet_address("5.6.7.8", true);
+    EXPECT_TRUE(address->matches(MAKE_IP(5,6,7,8)));
+    EXPECT_FALSE(address->matches(MAKE_IP(5,6,7,9)));
+
+    address = net::get_ipv4_subnet_address("5.6.7.8/0");
+    EXPECT_TRUE(address->matches(MAKE_IP(255,255,255,255)));
 }
 
 TEST(dandelionpp_map, traits)

@@ -154,8 +154,14 @@ struct network_config final {
 
     // Specifies how many consecutive blocks of state from the SNL, SQL DB and BLS aggregator cache
     // to store from the head of the chain to support quick reorganisations that are small and near
-    // the tip of the chain.
+    // the tip of the chain.  (Within it the SNL keeps full states only where they may be needed,
+    // and otherwise just their quorums: see service_node_list::process_block.)
     const uint64_t HISTORY_RECENT_KEEP_WINDOW;
+
+    // Specifies how many blocks' worth of quorums the SNL keeps in memory below the head of the
+    // chain, for replaying blocks from the states that a detach within HISTORY_RECENT_KEEP_WINDOW
+    // may restore (see oldest_recent_restore_height in service_node_list.cpp).
+    const uint64_t HISTORY_QUORUMS_KEEP_WINDOW;
 
     /// (HF21+) Number of blocks after a registration expires (i.e. regular requested removals,
     /// *not* deregs) during which the node is protected from liquidation-with-penalty.  Regular

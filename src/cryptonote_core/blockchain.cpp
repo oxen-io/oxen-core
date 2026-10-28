@@ -327,7 +327,7 @@ struct block_load_context {
     uint64_t height;
 };
 
-bool Blockchain::load_missing_blocks_into_oxen_subsystems(
+bool Blockchain::replay_blocks_into_oxen_subsystems(
         const std::atomic<bool>* abort, bool use_threaded_load) {
     ZoneScoped;
     constexpr auto no_hf_height = std::numeric_limits<uint64_t>::max();
@@ -697,6 +697,15 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
 
                 try {
                     service_node_list.block_add(blk, txs, checkpoint_ptr, rescan);
+                } catch (const service_nodes::missing_quorum&) {
+                    // Commit, rather than roll back, the blocks replayed before this one: the
+                    // ONS's in-memory height already counts them, and the caller restores just the
+                    // SN list and the rewards, to a stored state at or below the last of them.
+                    if (chain_batch) {
+                        chain_batch = false;
+                        m_db->batch_stop();
+                    }
+                    throw;
                 } catch (const std::exception& e) {
                     log::critical(
                             logcat,
@@ -770,6 +779,56 @@ bool Blockchain::load_missing_blocks_into_oxen_subsystems(
         load_context.thread.join();
     }
     return true;
+}
+
+bool Blockchain::load_missing_blocks_into_oxen_subsystems(
+        const std::atomic<bool>* abort, bool use_threaded_load) {
+    std::optional<uint64_t> restored;
+    while (true) {
+        try {
+            return replay_blocks_into_oxen_subsystems(abort, use_threaded_load);
+        } catch (const service_nodes::missing_quorum& e) {
+            // Replaying from a stored state has every quorum it needs (stored with the state, or
+            // added to the in-memory history by the replay), so one restore is all that can help.
+            if (restored) {
+                log::error(
+                        globallogcat,
+                        "{}, even replaying from the stored service node list state at height {}; "
+                        "unable to bring the service node list up to date",
+                        e.what(),
+                        *restored);
+                return false;
+            }
+            restored = restore_snl_for_missing_quorum(e);
+            if (!restored)
+                return false;
+        }
+    }
+}
+
+std::optional<uint64_t> Blockchain::restore_snl_for_missing_quorum(
+        const service_nodes::missing_quorum& e) {
+    log::warning(
+            globallogcat,
+            "{}: the service node list's recent history doesn't go back that far, so it is being "
+            "restored from the newest stored state at or below height {}",
+            e.what(),
+            e.block_height - 1);
+    auto restored = service_node_list.restore_stored_state(e.block_height - 1);
+    if (restored)
+        log::warning(
+                globallogcat,
+                "Restored the service node list from the stored state at height {}; replaying "
+                "blocks from height {}",
+                *restored,
+                *restored + 1);
+    else
+        log::error(
+                globallogcat,
+                "Unable to restore the service node list: there is no stored state at or below "
+                "height {} that it can be restored to",
+                e.block_height - 1);
+    return restored;
 }
 
 static bool exec_detach_hooks(
