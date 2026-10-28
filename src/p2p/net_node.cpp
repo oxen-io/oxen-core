@@ -1641,8 +1641,25 @@ int node_server::handle_get_support_flags(
     return 1;
 }
 //-----------------------------------------------------------------------------------
+int node_server::invoke(
+        int command,
+        std::span<const uint8_t> in,
+        std::string& out,
+        p2p_connection_context& context) {
+    bool handled = false;
+    return handle_invoke_map(false, command, in, out, context, handled);
+}
+//-----------------------------------------------------------------------------------
+int node_server::notify(int command, std::span<const uint8_t> in, p2p_connection_context& context) {
+    bool handled = false;
+    std::string unused;
+    return handle_invoke_map(true, command, in, unused, context, handled);
+}
+//-----------------------------------------------------------------------------------
 void node_server::request_callback(const epee::net_utils::connection_context_base& context) {
-    m_transport.request_callback(context.m_connection_id);
+    m_transport.call_on(context.m_connection_id, [this](p2p_connection_context& c) {
+        m_payload_handler.on_callback(c);
+    });
 }
 //-----------------------------------------------------------------------------------
 void node_server::call_on_connection(
@@ -1659,17 +1676,6 @@ bool node_server::relay_notify_to_list(
     for (const auto& c_id : connections)
         m_transport.notify(command, data_buff, c_id);
     return true;
-}
-//-----------------------------------------------------------------------------------
-void node_server::callback(p2p_connection_context& context) {
-    m_payload_handler.on_callback(context);
-}
-//-----------------------------------------------------------------------------------
-bool node_server::handled_on_loop(int command) const {
-    // Our own commands, which take no chain locks, so that answering a peer (these are the only
-    // commands ever invoked) never waits behind chain work.
-    return command == COMMAND_HANDSHAKE::ID || command == COMMAND_TIMED_SYNC::ID ||
-           command == COMMAND_PING::ID || command == COMMAND_REQUEST_SUPPORT_FLAGS::ID;
 }
 //-----------------------------------------------------------------------------------
 bool node_server::invoke_notify_to_peer(

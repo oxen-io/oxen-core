@@ -5,6 +5,7 @@
 #include <oxen/quic/format.hpp>
 
 #include "logging/oxen_logger.h"
+#include "net_node.h"
 
 namespace nodetool {
 
@@ -22,7 +23,16 @@ static std::span<const uint8_t> as_span(std::string_view s) {
     return {reinterpret_cast<const uint8_t*>(s.data()), s.size()};
 }
 
-transport::transport(handler& h) : handler_{h} {}
+// Whether `command`'s requests, and the responses to our invokes of it, are handled on the loop as
+// they arrive rather than on the handler thread: the p2p layer's own commands, which take no chain
+// locks, so that answering a peer (these are the only commands ever invoked) never waits behind
+// chain work.
+static constexpr bool handled_on_loop(int command) {
+    return command == COMMAND_HANDSHAKE::ID || command == COMMAND_TIMED_SYNC::ID ||
+           command == COMMAND_PING::ID || command == COMMAND_REQUEST_SUPPORT_FLAGS::ID;
+}
+
+transport::transport(node_server& node) : node_{node} {}
 
 transport::~transport() {
     detach();
@@ -46,7 +56,7 @@ void transport::listen(
         bool require_ipv4) {
     loop_.call_get([&] {
         auto on_accept = [this](std::shared_ptr<levin::connection> conn) {
-            if (stopping_ || !handler_.is_remote_host_allowed(conn->remote()))
+            if (stopping_ || !node_.is_remote_host_allowed(conn->remote()))
                 return;  // Dropping it closes it
             add(std::move(conn), true);
         };
@@ -148,11 +158,11 @@ std::shared_ptr<transport::peer> transport::add(
             {.on_invoke = [this, wp](levin::connection& c, uint32_t command, std::string body)
                      -> std::optional<std::pair<int32_t, std::string>> {
                  count_in(body.size());
-                 if (handler_.handled_on_loop(command)) {
+                 if (handled_on_loop(command)) {
                      auto p = wp.lock();
                      received(*p, c.bytes_received(), c.last_recv());
                      std::string out;
-                     const int code = handler_.invoke(command, as_span(body), out, p->context);
+                     const int code = node_.invoke(command, as_span(body), out, p->context);
                      count_out(out.size());
                      return std::pair<int32_t, std::string>{code, std::move(out)};
                  }
@@ -167,7 +177,7 @@ std::shared_ptr<transport::peer> transport::add(
                          return;
                      received(*p, bytes, at);
                      std::string out;
-                     const int code = handler_.invoke(command, as_span(body), out, p->context);
+                     const int code = node_.invoke(command, as_span(body), out, p->context);
                      count_out(out.size());
                      loop_.call([p, command, code, out = std::move(out)] {
                          p->conn->respond(
@@ -181,10 +191,10 @@ std::shared_ptr<transport::peer> transport::add(
              .on_notify =
                      [this, wp](levin::connection& c, uint32_t command, std::string body) {
                          count_in(body.size());
-                         if (handler_.handled_on_loop(command)) {
+                         if (handled_on_loop(command)) {
                              auto p = wp.lock();
                              received(*p, c.bytes_received(), c.last_recv());
-                             handler_.notify(command, as_span(body), p->context);
+                             node_.notify(command, as_span(body), p->context);
                              return;
                          }
                          post([this,
@@ -197,7 +207,7 @@ std::shared_ptr<transport::peer> transport::add(
                              if (!p)
                                  return;
                              received(*p, bytes, at);
-                             handler_.notify(command, as_span(body), p->context);
+                             node_.notify(command, as_span(body), p->context);
                          });
                      },
              .on_close =
@@ -206,7 +216,7 @@ std::shared_ptr<transport::peer> transport::add(
                              auto p = wp.lock();
                              if (!p)
                                  return;
-                             handler_.on_connection_close(p->context);
+                             node_.on_connection_close(p->context);
                              std::lock_guard lock{mutex_};
                              peers_.erase(p->context.m_connection_id);
                          });
@@ -216,7 +226,7 @@ std::shared_ptr<transport::peer> transport::add(
         std::lock_guard lock{mutex_};
         peers_.emplace(id, p);
     }
-    post([this, p] { handler_.on_connection_new(p->context); });
+    post([this, p] { node_.on_connection_new(p->context); });
     return p;
 }
 
@@ -359,7 +369,7 @@ int transport::invoke_async(
                 [this, p, command, cb](int32_t code, std::string response) {
                     if (code >= 0)
                         count_in(response.size());
-                    if (handler_.handled_on_loop(command)) {
+                    if (handled_on_loop(command)) {
                         cb(code, as_span(response), p->context);
                         return;
                     }
@@ -369,10 +379,6 @@ int transport::invoke_async(
                 });
     });
     return 1;
-}
-
-bool transport::request_callback(const connection_id_t& id) {
-    return call_on(id, [this](p2p_connection_context& c) { handler_.callback(c); });
 }
 
 bool transport::call_on(const connection_id_t& id, std::function<void(p2p_connection_context&)> f) {
