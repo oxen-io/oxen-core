@@ -39,6 +39,7 @@
 #include <concepts>
 #include <cstdint>
 #include <exception>
+#include <nlohmann/json.hpp>
 
 #include "common/command_line.h"
 #include "common/guts.h"
@@ -51,7 +52,9 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/oxen_name_system.h"
 #include "daemonizer/daemonizer.h"
+#include "epee/storages/portable_storage.h"
 #include "epee/wipeable_string.h"
+#include "kv_json.h"
 #include "mnemonics/electrum-words.h"
 #include "multisig/multisig.h"
 #include "rpc/common/rpc_args.h"
@@ -94,11 +97,9 @@ namespace {
     }
 
     using rpc_func_data = std::pair<
-            bool,             // restricted
-            std::string (*)(  // function to invoke
-                    epee::serialization::portable_storage& ps,
-                    epee::serialization::storage_entry id,
-                    std::optional<epee::serialization::storage_entry> params,
+            bool,                // restricted
+            nlohmann::json (*)(  // function to invoke; returns the json_rpc "result" value
+                    const nlohmann::json* params,
                     tools::wallet_rpc_server& server)>;
 
     template <std::derived_from<RPC_COMMAND> RPC>
@@ -116,27 +117,25 @@ namespace {
                 "or does not return a Response");
         rpc_func_data invoke = {
                 std::is_base_of_v<RESTRICTED, RPC>,
-                [](epee::serialization::portable_storage& ps,
-                   epee::serialization::storage_entry id,
-                   std::optional<epee::serialization::storage_entry> params,
-                   tools::wallet_rpc_server& server) {
+                [](const nlohmann::json* params, tools::wallet_rpc_server& server) {
                     Request req{};
                     if (params) {
-                        if (auto* section = std::get_if<epee::serialization::section>(&*params)) {
-                            if (!req.load(ps, section))
-                                throw tools::wallet_rpc_server::parse_error{
-                                        "Failed to parse JSON parameters"};
-                        } else
+                        if (!params->is_object())
                             throw std::runtime_error{
                                     "only top-level JSON object values are currently supported"};
+                        epee::serialization::portable_storage ps;
+                        try {
+                            ps.root() = tools::kv_json::to_section(*params);
+                        } catch (const std::invalid_argument& e) {
+                            throw tools::wallet_rpc_server::parse_error{e.what()};
+                        }
+                        if (!req.load(ps))
+                            throw tools::wallet_rpc_server::parse_error{
+                                    "Failed to parse JSON parameters"};
                     }
-                    epee::json_rpc::response<Response> r{
-                            "2.0", server.invoke(std::move(req)), std::move(id)};
-                    std::string response;
-                    epee::serialization::store_t_to_json(r, response);
-                    if (response.capacity() > response.size())
-                        response += '\n';
-                    return response;
+                    epee::serialization::portable_storage ps;
+                    server.invoke(std::move(req)).store(ps);
+                    return tools::kv_json::to_json(ps.root());
                 }};
 
         for (const auto& name : RPC::names())
@@ -219,34 +218,34 @@ void wallet_rpc_server::handle_json_rpc_request(HttpResponse& res, HttpRequest& 
         else
             body = (buffer += d);
 
-        epee::serialization::portable_storage ps;
-        if (!ps.load_from_json(body))
+        nlohmann::json request;
+        try {
+            request = nlohmann::json::parse(body);
+        } catch (const nlohmann::json::parse_error&) {
+        }
+        if (!request.is_object())
             return jsonrpc_error_response(res, -32700, "Parse error", {});
 
         nlohmann::json id;
-        epee::serialization::storage_entry epee_id;
-        if (std::string str_val; ps.get_value("id", str_val, nullptr)) {
-            epee_id = str_val;
-            id = std::move(str_val);
-        } else if (int64_t i64_val; ps.get_value("id", i64_val, nullptr)) {
-            epee_id = i64_val;
-            id = i64_val;
-        } else {
+        if (auto it = request.find("id");
+            it != request.end() && (it->is_string() || it->is_number_integer()))
+            id = *it;
+        else
             return jsonrpc_error_response(
                     res,
                     -32700,
                     "Parse error, missing a valid (string or integer) JSON RPC 'id'",
                     {});
-        }
 
-        std::string method;
-        if (!ps.get_value("method", method, nullptr)) {
+        auto method_it = request.find("method");
+        if (method_it == request.end() || !method_it->is_string()) {
             log::info(
                     logcat,
                     "Invalid JSON RPC request from {}: no 'method' in request",
                     get_remote_address(res));
             return jsonrpc_error_response(res, -32600, "Invalid Request", id);
         }
+        const auto& method = method_it->get_ref<const std::string&>();
 
         auto it = rpc_commands.find(method);
         if (it == rpc_commands.end()) {
@@ -276,17 +275,18 @@ void wallet_rpc_server::handle_json_rpc_request(HttpResponse& res, HttpRequest& 
                     res, error_code::DENIED, method + " is not available in restricted mode.", {});
         }
 
-        // Try to load "params" into a generic epee value; if it fails (because there is no
-        // "params") then clear it and pass a null optionsl.
-        auto params = std::make_optional<epee::serialization::storage_entry>();
-        if (!ps.get_value("params", *params, nullptr))
-            params.reset();
+        const nlohmann::json* params = nullptr;
+        if (auto it = request.find("params"); it != request.end() && !it->is_null())
+            params = &*it;
 
         std::string result;
         wallet_rpc_error json_error{-32603, "Internal error"};
 
         try {
-            result = invoke_ptr(ps, std::move(epee_id), std::move(params), *this);
+            nlohmann::json response{
+                    {"jsonrpc", "2.0"}, {"id", id}, {"result", invoke_ptr(params, *this)}};
+            result = response.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+            result += '\n';
             json_error.code = 0;
         } catch (const parse_error& e) {
             json_error = {-32602, "Invalid params"};  // Reserved json code/message value for

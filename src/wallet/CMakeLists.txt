@@ -33,6 +33,7 @@ oxen_add_library(wallet
   ringdb.cpp
   node_rpc_proxy.cpp
   transfer_view.cpp
+  kv_json.cpp
 )
 
 target_link_libraries(wallet

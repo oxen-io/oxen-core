@@ -31,8 +31,6 @@
 #include "portable_storage_base.h"
 #include "portable_storage_to_bin.h"
 #include "portable_storage_from_bin.h"
-#include "portable_storage_to_json.h"
-#include "portable_storage_from_json.h"
 #include "portable_storage_val_converters.h"
 #include "../byte_span.h"
 
@@ -140,8 +138,10 @@ namespace epee
       bool store_to_binary(std::string& target);
       bool load_from_binary(const std::span<const uint8_t> target);
       bool load_from_binary(std::string_view target) { return load_from_binary(epee::strspan<uint8_t>(target)); }
-      bool dump_as_json(std::string& targetObj, size_t indent = 0, bool insert_newlines = true);
-      bool load_from_json(std::string_view source);
+
+      /// The top-level section, which is what serializable types store into and load from when
+      /// not given a parent section.
+      section& root() { return m_root; }
 
       /// Lets you store a pointer to some arbitrary context object; typically used to pass some
       /// context to dependent child objects.
@@ -158,7 +158,6 @@ namespace epee
 
     private:
       section m_root;
-      section* get_root_section() {return &m_root;}
       storage_entry* find_storage_entry(const std::string& pentry_name, section* psection);
       template<class entry_type>
       storage_entry* insert_new_entry_get_storage_entry(const std::string& pentry_name, section* psection, const entry_type& entry);
