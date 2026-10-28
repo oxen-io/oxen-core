@@ -332,11 +332,11 @@ bool peerlist_manager::set_peer_just_seen(
         return true;
 
     std::lock_guard lock{m_peerlist_lock};
-    peerlist_entry ple;
-    ple.adr = addr;
-    ple.id = peer;
-    ple.last_seen = time(NULL);
-    ple.history = history;
+    const peerlist_entry ple{
+            .adr = addr,
+            .id = peer,
+            .last_seen = static_cast<int64_t>(time(nullptr)),
+            .history = history};
     // This comes from the peer itself, so unlike what append_with_peer_white is given it replaces
     // the whole entry, last seen time and history included.
     auto by_addr_it = m_peers_white.get<by_addr>().find(addr);

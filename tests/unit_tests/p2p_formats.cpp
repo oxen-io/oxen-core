@@ -19,20 +19,16 @@ using namespace std::literals;
 namespace {
 
 nodetool::peerlist_entry ipv4_entry() {
-    nodetool::peerlist_entry e{};
-    e.adr = oxen::quic::Address{oxen::quic::ipv4{51, 0, 18, 255}, 65535};
-    e.id = 0x0102030405060708;
-    e.last_seen = 1700000000;
-    e.history = 1000;
-    return e;
+    return {.adr = oxen::quic::Address{oxen::quic::ipv4{51, 0, 18, 255}, 65535},
+            .id = 0x0102030405060708,
+            .last_seen = 1700000000,
+            .history = 1000};
 }
 
 nodetool::peerlist_entry ipv6_entry() {
-    nodetool::peerlist_entry e{};
-    e.adr = oxen::quic::Address{oxen::quic::ipv6{"2001:db8::1"s}, 22022};
-    e.id = 0x0102030405060708;
-    e.last_seen = 1700000000;
-    return e;
+    return {.adr = oxen::quic::Address{oxen::quic::ipv6{"2001:db8::1"s}, 22022},
+            .id = 0x0102030405060708,
+            .last_seen = 1700000000};
 }
 
 // clang-format off
