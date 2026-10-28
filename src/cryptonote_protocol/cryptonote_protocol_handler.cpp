@@ -607,286 +607,230 @@ void protocol_handler::refresh_chain_state() {
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_notify_new_fluffy_block(
         NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& context) {
-    if (log::Cat("net.p2p,msg")->should_log(log::Level::info)) {
-        crypto::hash hash;
-        cryptonote::block b;
-        bool ret = cryptonote::parse_and_validate_block_from_blob(arg.b.block, b, &hash);
-        if (ret)
-            log::info(
-                    log::Cat("net.p2p.msg"),
-                    "Received NOTIFY_NEW_FLUFFY_BLOCK {} (height {}, {} txes)",
-                    hash,
-                    arg.current_blockchain_height,
-                    arg.b.txs.size());
-    }
-
-    if (context.m_state != cryptonote_connection_context::state_normal)
-        return 1;
-    if (!is_synchronized() ||
-        m_no_sync)  // can happen if a peer connection goes to normal but another thread still
-                    // hasn't finished adding queued blocks
-    {
-        log::debug(logcat, "{}Received new block while syncing, ignored", context);
-        return 1;
-    }
-
-    m_core.miner.pause();
-
     block new_block;
-    if (parse_and_validate_block_from_blob(arg.b.block, new_block)) {
-        // This is a second notification, we must have asked for some missing tx
-        if (!context.m_requested_objects.empty()) {
-            // What we asked for != to what we received ..
-            if (context.m_requested_objects.size() != arg.b.txs.size()) {
-                log::error(
-                        logcat,
-                        "NOTIFY_NEW_FLUFFY_BLOCK -> request/response mismatch, block = {}, "
-                        "requested = {}, received = {}, dropping connection",
-                        get_blob_hash(arg.b.block),
-                        context.m_requested_objects.size(),
-                        new_block.tx_hashes.size());
-                drop_connection(context, false, false);
-                m_core.miner.resume();
-                return 1;
-            }
-        }
-
-        std::vector<std::string> have_tx;
-
-        // Instead of requesting missing transactions by hash like BTC,
-        // we do it by index (thanks to a suggestion from moneromooo) because
-        // we're way cooler .. and also because they're smaller than hashes.
-        //
-        // Also, remember to pepper some whitespace changes around to bother
-        // moneromooo ... only because I <3 him.
-        std::vector<uint64_t> need_tx_indices;
-
-        transaction tx;
-        crypto::hash tx_hash;
-
-        for (auto& tx_blob : arg.b.txs) {
-            if (parse_and_validate_tx_from_blob(tx_blob, tx)) {
-                try {
-                    if (!get_transaction_hash(tx, tx_hash)) {
-                        log::info(
-                                logcat,
-                                "NOTIFY_NEW_FLUFFY_BLOCK: get_transaction_hash failed, dropping "
-                                "connection");
-                        drop_connection(context, false, false);
-                        m_core.miner.resume();
-                        return 1;
-                    }
-                } catch (...) {
-                    log::info(
-                            logcat,
-                            "NOTIFY_NEW_FLUFFY_BLOCK: get_transaction_hash failed, exception "
-                            "thrown, dropping connection");
-                    drop_connection(context, false, false);
-                    m_core.miner.resume();
-                    return 1;
-                }
-
-                // hijacking m_requested objects in connection context to patch up
-                // a possible DOS vector pointed out by @monero-moo where peers keep
-                // sending (0...n-1) transactions.
-                // If requested objects is not empty, then we must have asked for
-                // some missing transacionts, make sure that they're all there.
-                //
-                // Can I safely re-use this field? I think so, but someone check me!
-                if (!context.m_requested_objects.empty()) {
-                    auto req_tx_it = context.m_requested_objects.find(tx_hash);
-                    if (req_tx_it == context.m_requested_objects.end()) {
-                        log::error(
-                                logcat,
-                                "Peer sent wrong transaction (NOTIFY_NEW_FLUFFY_BLOCK): "
-                                "transaction with id = {} wasn't requested, dropping connection",
-                                tx_hash);
-                        drop_connection(context, false, false);
-                        m_core.miner.resume();
-                        return 1;
-                    }
-
-                    context.m_requested_objects.erase(req_tx_it);
-                }
-
-                // we might already have the tx that the peer
-                // sent in our pool, so don't verify again..
-                if (!m_core.mempool.have_tx(tx_hash)) {
-                    log::debug(logcat, "Incoming tx {} not in pool, adding", tx_hash);
-                    cryptonote::tx_verification_context tvc{};
-                    if (!m_core.handle_incoming_tx(tx_blob, tvc, tx_pool_options::from_block()) ||
-                        tvc.m_verifivation_failed) {
-                        log::info(
-                                logcat,
-                                "Block verification failed: transaction verification failed, "
-                                "dropping connection");
-                        drop_connection(context, false, false);
-                        m_core.miner.resume();
-                        return 1;
-                    }
-
-                    //
-                    // future todo:
-                    // tx should only not be added to pool if verification failed, but
-                    // maybe in the future could not be added for other reasons
-                    // according to monero-moo so keep track of these separately ..
-                    //
-                }
-            } else {
-                log::error(
-                        logcat,
-                        "sent wrong tx: failed to parse and validate transaction: {}, dropping "
-                        "connection",
-                        oxenc::to_hex(tx_blob));
-                drop_connection(context, false, false);
-                m_core.miner.resume();
-                return 1;
-            }
-        }
-
-        // The initial size equality check could have been fooled if the sender
-        // gave us the number of transactions we asked for, but not the right
-        // ones. This check make sure the transactions we asked for were the
-        // ones we received.
-        if (context.m_requested_objects.size()) {
-            log::error(
-                    logcat,
-                    "NOTIFY_NEW_FLUFFY_BLOCK: peer sent the number of transaction requested, but "
-                    "not the actual transactions requested, context.m_requested_objects.size() = "
-                    "{}, dropping connection",
-                    context.m_requested_objects.size());
-
-            drop_connection(context, false, false);
-            m_core.miner.resume();
-            return 1;
-        }
-
-        size_t tx_idx = 0;
-        for (auto& tx_hash : new_block.tx_hashes) {
-            std::string txblob;
-            if (m_core.mempool.get_transaction(tx_hash, txblob)) {
-                have_tx.push_back(txblob);
-            } else {
-                std::vector<crypto::hash> tx_ids;
-                std::vector<transaction> txes;
-                std::unordered_set<crypto::hash> missing;
-                tx_ids.push_back(tx_hash);
-                if (m_core.blockchain.get_transactions(tx_ids, txes, &missing) && missing.empty()) {
-                    if (txes.size() == 1) {
-                        have_tx.push_back(tx_to_blob(txes.front()));
-                    } else {
-                        log::error(
-                                logcat,
-                                "1 tx requested, none not found, but {} returned",
-                                txes.size());
-                        m_core.miner.resume();
-                        return 1;
-                    }
-                } else {
-                    log::debug(logcat, "Tx {} not found in pool", tx_hash);
-                    need_tx_indices.push_back(tx_idx);
-                }
-            }
-
-            ++tx_idx;
-        }
-
-        if (!need_tx_indices.empty())  // drats, we don't have everything..
-        {
-            // request non-mempool txs
-            log::debug(
-                    logcat, "We are missing {} txes for this fluffy block", need_tx_indices.size());
-            for (auto txidx : need_tx_indices)
-                log::debug(logcat, "  tx {}", new_block.tx_hashes[txidx]);
-            NOTIFY_REQUEST_FLUFFY_MISSING_TX::request missing_tx_req;
-            missing_tx_req.block_hash = get_block_hash(new_block);
-            missing_tx_req.current_blockchain_height = arg.current_blockchain_height;
-            missing_tx_req.missing_tx_indices = std::move(need_tx_indices);
-
-            m_core.miner.resume();
-            log::info(
-                    log::Cat("net.p2p.msg"),
-                    "-->>NOTIFY_REQUEST_FLUFFY_MISSING_TX: missing_tx_indices.size()={}",
-                    missing_tx_req.missing_tx_indices.size());
-            post_notify<NOTIFY_REQUEST_FLUFFY_MISSING_TX>(missing_tx_req, context);
-        } else  // whoo-hoo we've got em all ..
-        {
-            log::debug(logcat, "We have all needed txes for this fluffy block");
-
-            block_complete_entry b = {};
-            b.block = arg.b.block;
-            b.txs = have_tx;
-
-            std::vector<block_complete_entry> blocks;
-            blocks.push_back(b);
-
-            std::vector<block> pblocks;
-            if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks)) {
-                log::warning(logcat, "Failure in prepare_handle_incoming_blocks");
-                m_core.miner.resume();
-                return 1;
-            }
-
-            block_verification_context bvc{};
-            m_core.handle_incoming_block(
-                    arg.b.block,
-                    pblocks.empty() ? NULL : &pblocks[0],
-                    bvc,
-                    nullptr /*checkpoint*/);  // got block from handle_notify_new_block
-            if (!m_core.cleanup_handle_incoming_blocks(true)) {
-                log::warning(logcat, "Failure in cleanup_handle_incoming_blocks");
-                m_core.miner.resume();
-                return 1;
-            }
-            m_core.miner.resume();
-
-            if (bvc.m_verifivation_failed) {
-                log::warning(logcat, "Block verification failed, dropping connection");
-                drop_connection(context, true, false);
-                return 1;
-            }
-            if (bvc.m_added_to_main_chain) {
-                // TODO: Add here announce protocol usage
-                NOTIFY_NEW_FLUFFY_BLOCK::request reg_arg{};
-                reg_arg.current_blockchain_height = arg.current_blockchain_height;
-                reg_arg.b = b;
-                relay_block(reg_arg, context.m_connection_id);
-            } else if (bvc.m_marked_as_orphaned && context.request_outstanding()) {
-                // The response to what is outstanding carries the sync with this peer on
-                context.m_state = cryptonote_connection_context::state_synchronizing;
-            } else if (bvc.m_marked_as_orphaned) {
-                context.m_needed_objects.clear();
-                context.m_state = cryptonote_connection_context::state_synchronizing;
-                NOTIFY_REQUEST_CHAIN::request r{};
-                r.block_ids = get_chain_state()->short_history;
-                log::info(
-                        log::Cat("net.p2p.msg"),
-                        "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()={}",
-                        r.block_ids.size());
-                context.m_chain_requested = true;
-                context.m_last_request_time = std::chrono::steady_clock::now();
-                post_notify<NOTIFY_REQUEST_CHAIN>(r, context);
-                log::debug(
-                        logcat,
-                        "{}state: {} in state {}",
-                        context,
-                        "requesting chain",
-                        cryptonote::get_protocol_state_string(context.m_state));
-            }
-        }
-    } else {
+    crypto::hash block_hash;
+    if (!parse_and_validate_block_from_blob(arg.b.block, new_block, block_hash)) {
         log::error(
                 logcat,
                 "sent wrong block: failed to parse and validate block: {}, dropping connection",
                 oxenc::to_hex(arg.b.block));
-
-        m_core.miner.resume();
         drop_connection(context, false, false);
+        return 1;
+    }
+    log::info(
+            log::Cat("net.p2p.msg"),
+            "Received NOTIFY_NEW_FLUFFY_BLOCK {} (height {}, {} txes)",
+            block_hash,
+            arg.current_blockchain_height,
+            arg.b.txs.size());
 
+    if (context.m_state != cryptonote_connection_context::state_normal)
+        return 1;
+    // can happen if a peer connection goes to normal but another thread still hasn't finished
+    // adding queued blocks
+    if (!is_synchronized() || m_no_sync) {
+        log::debug(logcat, "{}Received new block while syncing, ignored", context);
         return 1;
     }
 
+    // This is a second notification, we must have asked for some missing tx
+    if (!context.m_requested_objects.empty() &&
+        context.m_requested_objects.size() != arg.b.txs.size()) {
+        log::error(
+                logcat,
+                "NOTIFY_NEW_FLUFFY_BLOCK -> request/response mismatch, block = {}, requested = {}, "
+                "received = {}, dropping connection",
+                block_hash,
+                context.m_requested_objects.size(),
+                new_block.tx_hashes.size());
+        drop_connection(context, false, false);
+        return 1;
+    }
+
+    std::vector<crypto::hash> tx_hashes;
+    tx_hashes.reserve(arg.b.txs.size());
+    for (auto& tx_blob : arg.b.txs) {
+        transaction tx;
+        crypto::hash& tx_hash = tx_hashes.emplace_back();
+        if (!parse_and_validate_tx_from_blob(tx_blob, tx, tx_hash)) {
+            log::error(
+                    logcat,
+                    "sent wrong tx: failed to parse and validate transaction: {}, dropping "
+                    "connection",
+                    oxenc::to_hex(tx_blob));
+            drop_connection(context, false, false);
+            return 1;
+        }
+
+        // hijacking m_requested objects in connection context to patch up a possible DOS vector
+        // pointed out by @monero-moo where peers keep sending (0...n-1) transactions.  If
+        // requested objects is not empty, then we must have asked for some missing transacionts,
+        // make sure that they're all there.
+        if (!context.m_requested_objects.empty()) {
+            auto req_tx_it = context.m_requested_objects.find(tx_hash);
+            if (req_tx_it == context.m_requested_objects.end()) {
+                log::error(
+                        logcat,
+                        "Peer sent wrong transaction (NOTIFY_NEW_FLUFFY_BLOCK): transaction with "
+                        "id = {} wasn't requested, dropping connection",
+                        tx_hash);
+                drop_connection(context, false, false);
+                return 1;
+            }
+            context.m_requested_objects.erase(req_tx_it);
+        }
+    }
+
+    // The initial size equality check could have been fooled if the sender gave us the number of
+    // transactions we asked for, but not the right ones. This check make sure the transactions we
+    // asked for were the ones we received.
+    if (context.m_requested_objects.size()) {
+        log::error(
+                logcat,
+                "NOTIFY_NEW_FLUFFY_BLOCK: peer sent the number of transaction requested, but not "
+                "the actual transactions requested, context.m_requested_objects.size() = {}, "
+                "dropping connection",
+                context.m_requested_objects.size());
+        drop_connection(context, false, false);
+        return 1;
+    }
+
+    chain_job([this,
+               id = context.m_connection_id,
+               arg = std::move(arg),
+               new_block,
+               tx_hashes = std::move(tx_hashes)]() mutable {
+        add_fluffy_block(arg, new_block, tx_hashes, id);
+    });
     return 1;
+}
+//------------------------------------------------------------------------------------------------------------------------
+void protocol_handler::add_fluffy_block(
+        NOTIFY_NEW_FLUFFY_BLOCK::request& arg,
+        const block& new_block,
+        const std::vector<crypto::hash>& tx_hashes,
+        const connection_id_t& id) {
+    m_core.miner.pause();
+    OXEN_DEFER {
+        m_core.miner.resume();
+    };
+
+    for (size_t i = 0; i < arg.b.txs.size(); i++) {
+        // we might already have the tx that the peer sent in our pool, so don't verify again..
+        if (m_core.mempool.have_tx(tx_hashes[i]))
+            continue;
+        log::debug(logcat, "Incoming tx {} not in pool, adding", tx_hashes[i]);
+        cryptonote::tx_verification_context tvc{};
+        if (!m_core.handle_incoming_tx(arg.b.txs[i], tvc, tx_pool_options::from_block()) ||
+            tvc.m_verifivation_failed) {
+            log::info(
+                    logcat,
+                    "Block verification failed: transaction verification failed, dropping "
+                    "connection");
+            drop_connection(id, false, false);
+            return;
+        }
+    }
+
+    // Instead of requesting missing transactions by hash like BTC, we do it by index (thanks to a
+    // suggestion from moneromooo) because we're way cooler .. and also because they're smaller
+    // than hashes.
+    std::vector<std::string> have_tx;
+    std::vector<uint64_t> need_tx_indices;
+    size_t tx_idx = 0;
+    for (auto& tx_hash : new_block.tx_hashes) {
+        std::string txblob;
+        if (m_core.mempool.get_transaction(tx_hash, txblob)) {
+            have_tx.push_back(txblob);
+        } else {
+            std::vector<crypto::hash> tx_ids;
+            std::vector<transaction> txes;
+            std::unordered_set<crypto::hash> missing;
+            tx_ids.push_back(tx_hash);
+            if (m_core.blockchain.get_transactions(tx_ids, txes, &missing) && missing.empty()) {
+                if (txes.size() != 1) {
+                    log::error(
+                            logcat, "1 tx requested, none not found, but {} returned", txes.size());
+                    return;
+                }
+                have_tx.push_back(tx_to_blob(txes.front()));
+            } else {
+                log::debug(logcat, "Tx {} not found in pool", tx_hash);
+                need_tx_indices.push_back(tx_idx);
+            }
+        }
+        ++tx_idx;
+    }
+
+    if (!need_tx_indices.empty()) {
+        log::debug(logcat, "We are missing {} txes for this fluffy block", need_tx_indices.size());
+        for (auto txidx : need_tx_indices)
+            log::debug(logcat, "  tx {}", new_block.tx_hashes[txidx]);
+        NOTIFY_REQUEST_FLUFFY_MISSING_TX::request missing_tx_req;
+        missing_tx_req.block_hash = get_block_hash(new_block);
+        missing_tx_req.current_blockchain_height = arg.current_blockchain_height;
+        missing_tx_req.missing_tx_indices = std::move(need_tx_indices);
+        log::info(
+                log::Cat("net.p2p.msg"),
+                "-->>NOTIFY_REQUEST_FLUFFY_MISSING_TX: missing_tx_indices.size()={}",
+                missing_tx_req.missing_tx_indices.size());
+        post_notify<NOTIFY_REQUEST_FLUFFY_MISSING_TX>(missing_tx_req, id);
+        return;
+    }
+
+    log::debug(logcat, "We have all needed txes for this fluffy block");
+    block_complete_entry b = {};
+    b.block = arg.b.block;
+    b.txs = have_tx;
+    std::vector<block_complete_entry> blocks;
+    blocks.push_back(b);
+
+    std::vector<block> pblocks;
+    if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks)) {
+        log::warning(logcat, "Failure in prepare_handle_incoming_blocks");
+        return;
+    }
+    block_verification_context bvc{};
+    m_core.handle_incoming_block(
+            arg.b.block, pblocks.empty() ? NULL : &pblocks[0], bvc, nullptr /*checkpoint*/);
+    if (!m_core.cleanup_handle_incoming_blocks(true)) {
+        log::warning(logcat, "Failure in cleanup_handle_incoming_blocks");
+        return;
+    }
+
+    if (bvc.m_verifivation_failed) {
+        log::warning(logcat, "Block verification failed, dropping connection");
+        drop_connection(id, true, false);
+    } else if (bvc.m_added_to_main_chain) {
+        // TODO: Add here announce protocol usage
+        NOTIFY_NEW_FLUFFY_BLOCK::request reg_arg{};
+        reg_arg.current_blockchain_height = arg.current_blockchain_height;
+        reg_arg.b = b;
+        relay_block(reg_arg, id);
+    } else if (bvc.m_marked_as_orphaned) {
+        m_p2p->call_on_connection(id, [this](cryptonote_connection_context& context) {
+            context.m_state = cryptonote_connection_context::state_synchronizing;
+            // The response to what is outstanding carries the sync with this peer on
+            if (context.request_outstanding())
+                return;
+            context.m_needed_objects.clear();
+            NOTIFY_REQUEST_CHAIN::request r{};
+            r.block_ids = get_chain_state()->short_history;
+            log::info(
+                    log::Cat("net.p2p.msg"),
+                    "-->>NOTIFY_REQUEST_CHAIN: m_block_ids.size()={}",
+                    r.block_ids.size());
+            context.m_chain_requested = true;
+            context.m_last_request_time = std::chrono::steady_clock::now();
+            post_notify<NOTIFY_REQUEST_CHAIN>(r, context);
+            log::debug(
+                    logcat,
+                    "{}state: {} in state {}",
+                    context,
+                    "requesting chain",
+                    cryptonote::get_protocol_state_string(context.m_state));
+        });
+    }
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_uptime_proof(
