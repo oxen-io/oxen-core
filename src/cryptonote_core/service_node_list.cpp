@@ -1239,7 +1239,7 @@ bool service_node_list::state_t::process_state_change_tx(
     else {
         log::error(
                 logcat,
-                "Transaction: {} in block {} {} references quorum height but that height is "
+                "Transaction: {} in block {} {} references quorum height {} but that height is "
                 "not stored!",
                 cryptonote::get_transaction_hash(tx),
                 block.get_height(),
