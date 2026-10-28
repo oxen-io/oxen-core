@@ -108,6 +108,36 @@ void protocol_handler::set_p2p_endpoint(nodetool::i_p2p_endpoint* p2p) {
         m_p2p = &m_p2p_stub;
 }
 //------------------------------------------------------------------------------------------------------------------------
+using nodetool::levin::notify_entry;
+using P = protocol_handler;
+const nodetool::levin::notify_table<P, cryptonote_connection_context>
+        protocol_handler::notify_handlers{
+                notify_entry<NOTIFY_NEW_TRANSACTIONS, &P::handle_notify_new_transactions>(),
+                notify_entry<NOTIFY_REQUEST_GET_BLOCKS, &P::handle_request_get_blocks>(),
+                notify_entry<NOTIFY_RESPONSE_GET_BLOCKS, &P::handle_response_get_blocks>(),
+                notify_entry<NOTIFY_REQUEST_GET_TXS, &P::handle_request_get_txs>(),
+                notify_entry<NOTIFY_REQUEST_CHAIN, &P::handle_request_chain>(),
+                notify_entry<NOTIFY_RESPONSE_CHAIN_ENTRY, &P::handle_response_chain_entry>(),
+                notify_entry<NOTIFY_NEW_FLUFFY_BLOCK, &P::handle_notify_new_fluffy_block>(),
+                notify_entry<
+                        NOTIFY_REQUEST_FLUFFY_MISSING_TX,
+                        &P::handle_request_fluffy_missing_tx>(),
+                notify_entry<NOTIFY_BTENCODED_UPTIME_PROOF, &P::handle_uptime_proof>(),
+                notify_entry<
+                        NOTIFY_NEW_SERVICE_NODE_VOTE,
+                        &P::handle_notify_new_service_node_vote>(),
+                notify_entry<NOTIFY_REQUEST_BLOCK_BLINKS, &P::handle_request_block_blinks>(),
+                notify_entry<NOTIFY_RESPONSE_BLOCK_BLINKS, &P::handle_response_block_blinks>(),
+        };
+//------------------------------------------------------------------------------------------------------------------------
+int protocol_handler::notify(
+        int command, std::span<const uint8_t> in, cryptonote_connection_context& context) {
+    auto it = notify_handlers.find(command);
+    if (it == notify_handlers.end())
+        return nodetool::levin::ERROR_HANDLER_NOT_DEFINED;
+    return it->second(*this, in, context);
+}
+//------------------------------------------------------------------------------------------------------------------------
 bool protocol_handler::on_callback(cryptonote_connection_context& context) {
     log::debug(logcat, "callback fired");
 
@@ -559,9 +589,7 @@ void protocol_handler::refresh_sync_data() {
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_notify_new_fluffy_block(
-        int command,
-        NOTIFY_NEW_FLUFFY_BLOCK::request& arg,
-        cryptonote_connection_context& context) {
+        NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& context) {
     if (log::Cat("net.p2p,msg")->should_log(log::Level::info)) {
         crypto::hash hash;
         cryptonote::block b;
@@ -846,9 +874,7 @@ int protocol_handler::handle_notify_new_fluffy_block(
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_uptime_proof(
-        int command,
-        NOTIFY_BTENCODED_UPTIME_PROOF::request& arg,
-        cryptonote_connection_context& context) {
+        NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& context) {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_BTENCODED_UPTIME_PROOF");
     // NOTE: Don't relay your own uptime proof, otherwise we have the following situation
 
@@ -874,9 +900,7 @@ int protocol_handler::handle_uptime_proof(
 
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_notify_new_service_node_vote(
-        int command,
-        NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg,
-        cryptonote_connection_context& context) {
+        NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg, cryptonote_connection_context& context) {
     log::info(
             log::Cat("net.p2p.msg"),
             "Received NOTIFY_NEW_SERVICE_NODE_VOTE ({} txes)",
@@ -919,9 +943,7 @@ int protocol_handler::handle_notify_new_service_node_vote(
 
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_request_fluffy_missing_tx(
-        int command,
-        NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg,
-        cryptonote_connection_context& context) {
+        NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg, cryptonote_connection_context& context) {
     log::info(
             log::Cat("net.p2p.msg"),
             "Received NOTIFY_REQUEST_FLUFFY_MISSING_TX ({} txes), block hash {}",
@@ -1008,9 +1030,7 @@ int protocol_handler::handle_request_fluffy_missing_tx(
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_notify_new_transactions(
-        int command,
-        NOTIFY_NEW_TRANSACTIONS::request& arg,
-        cryptonote_connection_context& context) {
+        NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& context) {
     log::info(
             log::Cat("net.p2p.msg"),
             "Received NOTIFY_NEW_TRANSACTIONS ({} txes w/ {} blinks)",
@@ -1142,9 +1162,7 @@ void protocol_handler::add_new_transactions(
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_request_get_blocks(
-        int command,
-        NOTIFY_REQUEST_GET_BLOCKS::request& arg,
-        cryptonote_connection_context& context) {
+        NOTIFY_REQUEST_GET_BLOCKS::request& arg, cryptonote_connection_context& context) {
     log::info(
             log::Cat("net.p2p.msg"),
             "Received NOTIFY_REQUEST_GET_BLOCKS ({} blocks)",
@@ -1182,9 +1200,7 @@ int protocol_handler::handle_request_get_blocks(
 //------------------------------------------------------------------------------------------------------------------------
 
 int protocol_handler::handle_response_get_blocks(
-        int command,
-        NOTIFY_RESPONSE_GET_BLOCKS::request& arg,
-        cryptonote_connection_context& context) {
+        NOTIFY_RESPONSE_GET_BLOCKS::request& arg, cryptonote_connection_context& context) {
     log::debug(logcat, "Received NOTIFY_RESPONSE_GET_BLOCKS ({} blocks)", arg.blocks.size());
     log::debug(
             log::Cat("net.p2p.msg"),
@@ -1813,7 +1829,7 @@ skip:
 // Tells the other end to send us the given txes (typically with attached blink data) as if they
 // are new transactions.
 int protocol_handler::handle_request_get_txs(
-        int command, NOTIFY_REQUEST_GET_TXS::request& arg, cryptonote_connection_context& context) {
+        NOTIFY_REQUEST_GET_TXS::request& arg, cryptonote_connection_context& context) {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_REQUEST_GET_TXS ({} txs)", arg.txs.size());
 
     if (arg.txs.size() > CURRENCY_PROTOCOL_MAX_TXS_REQUEST_COUNT) {
@@ -1942,7 +1958,7 @@ bool protocol_handler::check_standby_peers() {
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_request_chain(
-        int command, NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_connection_context& context) {
+        NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_connection_context& context) {
     log::debug(logcat, "Received NOTIFY_REQUEST_CHAIN ({} blocks)", arg.block_ids.size());
     chain_job([this, id = context.m_connection_id, arg = std::move(arg)] {
         NOTIFY_RESPONSE_CHAIN_ENTRY::request r;
@@ -2594,9 +2610,7 @@ size_t protocol_handler::get_synchronizing_connections_count() {
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_response_chain_entry(
-        int command,
-        NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg,
-        cryptonote_connection_context& context) {
+        NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg, cryptonote_connection_context& context) {
     log::info(
             log::Cat("net.p2p.msg"),
             "Received NOTIFY_RESPONSE_CHAIN_ENTRY: m_block_ids.size()={}, m_start_height={}, "
@@ -2688,9 +2702,7 @@ int protocol_handler::handle_response_chain_entry(
 
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_request_block_blinks(
-        int command,
-        NOTIFY_REQUEST_BLOCK_BLINKS::request& arg,
-        cryptonote_connection_context& context) {
+        NOTIFY_REQUEST_BLOCK_BLINKS::request& arg, cryptonote_connection_context& context) {
     log::info(
             log::Cat("net.p2p.msg"),
             "Received NOTIFY_REQUEST_BLOCK_BLINKS: heights.size()={}",
@@ -2708,9 +2720,7 @@ int protocol_handler::handle_request_block_blinks(
 }
 //------------------------------------------------------------------------------------------------------------------------
 int protocol_handler::handle_response_block_blinks(
-        int command,
-        NOTIFY_RESPONSE_BLOCK_BLINKS::request& arg,
-        cryptonote_connection_context& context) {
+        NOTIFY_RESPONSE_BLOCK_BLINKS::request& arg, cryptonote_connection_context& context) {
     log::info(
             log::Cat("net.p2p.msg"),
             "Received NOTIFY_RESPONSE_BLOCK_BLINKS: txs.size()={}",

@@ -50,7 +50,7 @@
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_protocol_defs.h"
 #include "cryptonote_protocol_handler_common.h"
-#include "epee/storages/levin_abstract_invoke2.h"
+#include "p2p/levin/messages.h"
 #include "peer_history.h"
 
 #define CURRENCY_PROTOCOL_MAX_OBJECT_REQUEST_COUNT 500
@@ -67,20 +67,9 @@ class protocol_handler : public i_cryptonote_protocol {
 
     virtual ~protocol_handler() = default;
 
-    BEGIN_INVOKE_MAP2(protocol_handler)
-    HANDLE_NOTIFY_T2(NOTIFY_NEW_TRANSACTIONS, handle_notify_new_transactions)
-    HANDLE_NOTIFY_T2(NOTIFY_REQUEST_GET_BLOCKS, handle_request_get_blocks)
-    HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_GET_BLOCKS, handle_response_get_blocks)
-    HANDLE_NOTIFY_T2(NOTIFY_REQUEST_GET_TXS, handle_request_get_txs)
-    HANDLE_NOTIFY_T2(NOTIFY_REQUEST_CHAIN, handle_request_chain)
-    HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_CHAIN_ENTRY, handle_response_chain_entry)
-    HANDLE_NOTIFY_T2(NOTIFY_NEW_FLUFFY_BLOCK, handle_notify_new_fluffy_block)
-    HANDLE_NOTIFY_T2(NOTIFY_REQUEST_FLUFFY_MISSING_TX, handle_request_fluffy_missing_tx)
-    HANDLE_NOTIFY_T2(NOTIFY_BTENCODED_UPTIME_PROOF, handle_uptime_proof)
-    HANDLE_NOTIFY_T2(NOTIFY_NEW_SERVICE_NODE_VOTE, handle_notify_new_service_node_vote)
-    HANDLE_NOTIFY_T2(NOTIFY_REQUEST_BLOCK_BLINKS, handle_request_block_blinks)
-    HANDLE_NOTIFY_T2(NOTIFY_RESPONSE_BLOCK_BLINKS, handle_response_block_blinks)
-    END_INVOKE_MAP2()
+    // Handles a notify from a peer; returns ERROR_HANDLER_NOT_DEFINED for a command that isn't one
+    // of ours.
+    int notify(int command, std::span<const uint8_t> in, cryptonote_connection_context& context);
 
     bool on_idle();
     bool init(const boost::program_options::variables_map& vm);
@@ -123,55 +112,34 @@ class protocol_handler : public i_cryptonote_protocol {
     bool wait_for_history(
             cryptonote_connection_context& context, const std::optional<sync_need>& need);
 
+    static const nodetool::levin::notify_table<protocol_handler, cryptonote_connection_context>
+            notify_handlers;
+
     //----------------- commands handlers ----------------------------------------------
     int handle_notify_new_transactions(
-            int command,
-            NOTIFY_NEW_TRANSACTIONS::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& context);
     int handle_request_get_blocks(
-            int command,
-            NOTIFY_REQUEST_GET_BLOCKS::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_REQUEST_GET_BLOCKS::request& arg, cryptonote_connection_context& context);
     int handle_response_get_blocks(
-            int command,
-            NOTIFY_RESPONSE_GET_BLOCKS::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_RESPONSE_GET_BLOCKS::request& arg, cryptonote_connection_context& context);
     int handle_request_get_txs(
-            int command,
-            NOTIFY_REQUEST_GET_TXS::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_REQUEST_GET_TXS::request& arg, cryptonote_connection_context& context);
     int handle_request_chain(
-            int command,
-            NOTIFY_REQUEST_CHAIN::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_connection_context& context);
     int handle_response_chain_entry(
-            int command,
-            NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg, cryptonote_connection_context& context);
     int handle_notify_new_fluffy_block(
-            int command,
-            NOTIFY_NEW_FLUFFY_BLOCK::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& context);
     int handle_request_fluffy_missing_tx(
-            int command,
-            NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg, cryptonote_connection_context& context);
     int handle_uptime_proof(
-            int command,
-            NOTIFY_BTENCODED_UPTIME_PROOF::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& context);
     int handle_notify_new_service_node_vote(
-            int command,
-            NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg, cryptonote_connection_context& context);
     int handle_request_block_blinks(
-            int command,
-            NOTIFY_REQUEST_BLOCK_BLINKS::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_REQUEST_BLOCK_BLINKS::request& arg, cryptonote_connection_context& context);
     int handle_response_block_blinks(
-            int command,
-            NOTIFY_RESPONSE_BLOCK_BLINKS::request& arg,
-            cryptonote_connection_context& context);
+            NOTIFY_RESPONSE_BLOCK_BLINKS::request& arg, cryptonote_connection_context& context);
 
     //----------------- i_bc_protocol_layout ---------------------------------------
     template <class T>
@@ -189,11 +157,10 @@ class protocol_handler : public i_cryptonote_protocol {
                 });
 
         if (connections.size()) {
-            std::string arg_buff;
-            epee::serialization::store_t_to_binary(arg, arg_buff);
+            const auto body = nodetool::levin::encode(arg);
             return m_p2p->relay_notify_to_list(
                     T::ID,
-                    oxen::quic::reinterpret_span<const uint8_t>(std::span{arg_buff}),
+                    oxen::quic::reinterpret_span<const uint8_t>(std::span{body}),
                     connections);
         }
 
@@ -299,10 +266,9 @@ class protocol_handler : public i_cryptonote_protocol {
     // For chain jobs, which have only the connection's id
     template <class t_parameter>
     bool post_notify(typename t_parameter::request& arg, const connection_id_t& id) {
-        std::string blob;
-        epee::serialization::store_t_to_binary(arg, blob);
+        const auto body = nodetool::levin::encode(arg);
         return m_p2p->invoke_notify_to_peer(
-                t_parameter::ID, oxen::quic::reinterpret_span<const uint8_t>(std::span{blob}), id);
+                t_parameter::ID, oxen::quic::reinterpret_span<const uint8_t>(std::span{body}), id);
     }
 };
 

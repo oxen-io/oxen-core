@@ -38,6 +38,7 @@
 #include <functional>
 #include <set>
 #include <shared_mutex>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -50,7 +51,6 @@
 #include "cryptonote_config.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "cryptonote_protocol/peer_history.h"
-#include "epee/storages/levin_abstract_invoke2.h"
 #include "net/address.h"
 #include "net/fwd.h"
 #include "net_node_common.h"
@@ -185,43 +185,32 @@ class node_server : public i_p2p_endpoint {
   private:
     fs::path get_peerlist_file() const;
 
-    // For the transport: dispatch through the invoke map.  invoke() returns the response's return
-    // code, with its body in `out`.
+    // For the transport.  invoke() handles the commands invoked on us (which are all the p2p
+    // layer's), returning the response's return code with its body in `out`; notifies are all the
+    // cryptonote protocol's.
     int invoke(
             int command,
             std::span<const uint8_t> in,
             std::string& out,
             p2p_connection_context& context);
     int notify(int command, std::span<const uint8_t> in, p2p_connection_context& context);
-
-    BEGIN_INVOKE_MAP2(node_server)
-    HANDLE_INVOKE_T2(COMMAND_HANDSHAKE, handle_handshake)
-    HANDLE_INVOKE_T2(COMMAND_TIMED_SYNC, handle_timed_sync)
-    HANDLE_INVOKE_T2(COMMAND_PING, handle_ping)
-    // TODO: remove after HF19
-    HANDLE_INVOKE_T2(COMMAND_REQUEST_SUPPORT_FLAGS, handle_get_support_flags)
-    CHAIN_INVOKE_MAP_TO_OBJ_FORCE_CONTEXT(m_payload_handler, cryptonote_connection_context&)
-    END_INVOKE_MAP2()
+    static const levin::invoke_table<node_server, p2p_connection_context> invoke_handlers;
 
     //----------------- commands handlers ----------------------------------------------
     int handle_handshake(
-            int command,
-            typename COMMAND_HANDSHAKE::request& arg,
-            typename COMMAND_HANDSHAKE::response& rsp,
+            COMMAND_HANDSHAKE::request& arg,
+            COMMAND_HANDSHAKE::response& rsp,
             p2p_connection_context& context);
     int handle_timed_sync(
-            int command,
-            typename COMMAND_TIMED_SYNC::request& arg,
-            typename COMMAND_TIMED_SYNC::response& rsp,
+            COMMAND_TIMED_SYNC::request& arg,
+            COMMAND_TIMED_SYNC::response& rsp,
             p2p_connection_context& context);
     int handle_ping(
-            int command,
             COMMAND_PING::request& arg,
             COMMAND_PING::response& rsp,
             p2p_connection_context& context);
     // TODO: remove after HF19
     int handle_get_support_flags(
-            int command,
             COMMAND_REQUEST_SUPPORT_FLAGS::request& arg,
             COMMAND_REQUEST_SUPPORT_FLAGS::response& rsp,
             p2p_connection_context& context);

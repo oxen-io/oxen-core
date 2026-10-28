@@ -47,6 +47,7 @@
 #include <optional>
 #include <random>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 #include "common/command_line.h"
@@ -57,8 +58,9 @@
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
+#include "epee/net/levin_base.h"
 #include "epee/net/net_utils_base.h"
-#include "epee/storages/levin_abstract_invoke2.h"
+#include "levin/messages.h"
 #include "net/error.h"
 #include "net/parse.h"
 #include "networks.h"
@@ -761,28 +763,15 @@ void node_server::do_handshake_with_peer(
         bool anchor,
         bool just_take_peerlist,
         std::function<void(p2p_connection_context*)> done) {
-    using request_t = typename COMMAND_HANDSHAKE::request;
-    using response_t = typename COMMAND_HANDSHAKE::response;
-
-    request_t arg{};
+    COMMAND_HANDSHAKE::request arg{};
     get_local_node_data(arg.node_data);
     arg.payload_data = m_payload_handler.get_payload_sync_data();
 
-    // The levin layer can fail an invoke both by calling back with an error and by returning
-    // false, so this makes sure `done` is called only once.
-    auto finished = std::make_shared<std::atomic<bool>>(false);
-    auto finish = [finished, done = std::move(done)](p2p_connection_context* context) {
-        if (!finished->exchange(true))
-            done(context);
-    };
-
-    bool r = epee::net_utils::async_invoke_remote_command2<response_t>(
+    const int r = m_transport.invoke<COMMAND_HANDSHAKE>(
             connection_id,
-            COMMAND_HANDSHAKE::ID,
             arg,
-            m_transport,
-            [this, anchor, just_take_peerlist, finish](
-                    int code, response_t&& rsp, p2p_connection_context& context) {
+            [this, anchor, just_take_peerlist, done](
+                    int code, COMMAND_HANDSHAKE::response&& rsp, p2p_connection_context& context) {
                 bool timeout = false;
                 const bool ok = [&] {
                     if (code < 0) {
@@ -792,8 +781,8 @@ void node_server::do_handshake_with_peer(
                                 context,
                                 code,
                                 epee::levin::get_err_descr(code));
-                        timeout = code == LEVIN_ERROR_CONNECTION_TIMEDOUT ||
-                                  code == LEVIN_ERROR_CONNECTION_DESTROYED;
+                        timeout = code == levin::ERROR_TIMEDOUT ||
+                                  code == levin::ERROR_CONNECTION_DESTROYED;
                         return false;
                     }
 
@@ -857,30 +846,26 @@ void node_server::do_handshake_with_peer(
                     if (!timeout)
                         m_transport.close(context.m_connection_id);
                 }
-                finish(ok ? &context : nullptr);
+                done(ok ? &context : nullptr);
             },
             std::chrono::milliseconds{cryptonote::p2p::DEFAULT_HANDSHAKE_INVOKE_TIMEOUT});
 
-    if (!r) {
+    if (r < 0) {
         log::warning(logcat, "COMMAND_HANDSHAKE invoke could not be sent");
         m_transport.close(connection_id);
-        finish(nullptr);
+        done(nullptr);
     }
 }
 //-----------------------------------------------------------------------------------
 bool node_server::do_peer_timed_sync(
         const epee::net_utils::connection_context_base& context_, peerid_type /*peer_id*/) {
-    using request_t = typename COMMAND_TIMED_SYNC::request;
-    using response_t = typename COMMAND_TIMED_SYNC::response;
-    request_t arg{};
+    COMMAND_TIMED_SYNC::request arg{};
     arg.payload_data = m_payload_handler.get_payload_sync_data();
 
-    bool r = epee::net_utils::async_invoke_remote_command2<response_t>(
+    const int r = m_transport.invoke<COMMAND_TIMED_SYNC>(
             context_.m_connection_id,
-            COMMAND_TIMED_SYNC::ID,
             arg,
-            m_transport,
-            [this](int code, response_t&& rsp, p2p_connection_context& context) {
+            [this](int code, COMMAND_TIMED_SYNC::response&& rsp, p2p_connection_context& context) {
                 context.m_in_timedsync = false;
                 if (code < 0) {
                     log::warning(
@@ -910,7 +895,7 @@ bool node_server::do_peer_timed_sync(
                 }
             });
 
-    if (!r) {
+    if (r < 0) {
         log::warning(logcat, "{}COMMAND_TIMED_SYNC Failed", context_);
         return false;
     }
@@ -1633,7 +1618,6 @@ bool node_server::get_local_node_data(basic_node_data& node_data) {
 }
 //-----------------------------------------------------------------------------------
 int node_server::handle_get_support_flags(
-        int /*command*/,
         COMMAND_REQUEST_SUPPORT_FLAGS::request& /*arg*/,
         COMMAND_REQUEST_SUPPORT_FLAGS::response& rsp,
         p2p_connection_context& /*context*/) {
@@ -1641,19 +1625,28 @@ int node_server::handle_get_support_flags(
     return 1;
 }
 //-----------------------------------------------------------------------------------
+const levin::invoke_table<node_server, p2p_connection_context> node_server::invoke_handlers{
+        levin::invoke_entry<COMMAND_HANDSHAKE, &node_server::handle_handshake>(),
+        levin::invoke_entry<COMMAND_TIMED_SYNC, &node_server::handle_timed_sync>(),
+        levin::invoke_entry<COMMAND_PING, &node_server::handle_ping>(),
+        levin::invoke_entry<
+                COMMAND_REQUEST_SUPPORT_FLAGS,
+                &node_server::handle_get_support_flags>(),
+};
+//-----------------------------------------------------------------------------------
 int node_server::invoke(
         int command,
         std::span<const uint8_t> in,
         std::string& out,
         p2p_connection_context& context) {
-    bool handled = false;
-    return handle_invoke_map(false, command, in, out, context, handled);
+    auto it = invoke_handlers.find(command);
+    if (it == invoke_handlers.end())
+        return levin::ERROR_HANDLER_NOT_DEFINED;
+    return it->second(*this, in, out, context);
 }
 //-----------------------------------------------------------------------------------
 int node_server::notify(int command, std::span<const uint8_t> in, p2p_connection_context& context) {
-    bool handled = false;
-    std::string unused;
-    return handle_invoke_map(true, command, in, unused, context, handled);
+    return m_payload_handler.notify(command, in, context);
 }
 //-----------------------------------------------------------------------------------
 void node_server::request_callback(const epee::net_utils::connection_context_base& context) {
@@ -1709,52 +1702,48 @@ bool node_server::try_ping(
                     log::warning(logcat, "Back ping connect failed to {}", address.to_string());
                     return;
                 }
-                const auto ping_id = ping_context->m_connection_id;
-                bool inv_call_res =
-                        epee::net_utils::async_invoke_remote_command2<COMMAND_PING::response>(
-                                ping_id,
-                                COMMAND_PING::ID,
-                                COMMAND_PING::request{},
-                                m_transport,
-                                [this, cb, address, pr, ping_id](
-                                        int code,
-                                        const COMMAND_PING::response& rsp,
-                                        p2p_connection_context& ping_context) {
-                                    if (code <= 0) {
-                                        log::warning(
-                                                logcat,
-                                                "{}Failed to invoke COMMAND_PING to {}({}, {})",
-                                                ping_context,
-                                                address.to_string(),
-                                                code,
-                                                epee::levin::get_err_descr(code));
-                                        return;
-                                    }
-                                    m_transport.close(ping_id);
-                                    if (rsp.status != COMMAND_PING::OK_RESPONSE ||
-                                        pr != rsp.peer_id) {
-                                        log::warning(
-                                                logcat,
-                                                "{}Back ping invoke wrong response \"{}\" from {}, "
-                                                "hsh_peer_id={}, rsp.peer_id={}",
-                                                ping_context,
-                                                rsp.status,
-                                                address.to_string(),
-                                                peerid_to_string(pr),
-                                                peerid_to_string(rsp.peer_id));
-                                        return;
-                                    }
-                                    cb();
-                                });
+                const auto ping_conn = ping_context->m_connection_id;
+                const int inv_call_res = m_transport.invoke<COMMAND_PING>(
+                        ping_conn,
+                        COMMAND_PING::request{},
+                        [this, cb, address, pr, ping_conn](
+                                int code,
+                                COMMAND_PING::response&& rsp,
+                                p2p_connection_context& ping_context) {
+                            if (code <= 0) {
+                                log::warning(
+                                        logcat,
+                                        "{}Failed to invoke COMMAND_PING to {}({}, {})",
+                                        ping_context,
+                                        address.to_string(),
+                                        code,
+                                        epee::levin::get_err_descr(code));
+                                return;
+                            }
+                            m_transport.close(ping_conn);
+                            if (rsp.status != COMMAND_PING::OK_RESPONSE || pr != rsp.peer_id) {
+                                log::warning(
+                                        logcat,
+                                        "{}Back ping invoke wrong response \"{}\" from {}, "
+                                        "hsh_peer_id={}, rsp.peer_id={}",
+                                        ping_context,
+                                        rsp.status,
+                                        address.to_string(),
+                                        peerid_to_string(pr),
+                                        peerid_to_string(rsp.peer_id));
+                                return;
+                            }
+                            cb();
+                        });
 
-                if (!inv_call_res) {
+                if (inv_call_res < 0) {
                     log::warning(
                             logcat,
                             "{}Back ping invoke failed to {}",
                             *ping_context,
                             address.to_string());
                     update_peer_failed_connection(peer_stats_map, peer_stats_map_mutex, pr);
-                    m_transport.close(ping_id);
+                    m_transport.close(ping_conn);
                 }
             },
             outgoing_bind_address(address));
@@ -1762,9 +1751,8 @@ bool node_server::try_ping(
 }
 //-----------------------------------------------------------------------------------
 int node_server::handle_timed_sync(
-        int command,
-        typename COMMAND_TIMED_SYNC::request& arg,
-        typename COMMAND_TIMED_SYNC::response& rsp,
+        COMMAND_TIMED_SYNC::request& arg,
+        COMMAND_TIMED_SYNC::response& rsp,
         p2p_connection_context& context) {
     if (!m_payload_handler.process_payload_sync_data(std::move(arg.payload_data), context, false)) {
         log::warning(
@@ -1792,9 +1780,8 @@ int node_server::handle_timed_sync(
 }
 //-----------------------------------------------------------------------------------
 int node_server::handle_handshake(
-        int /*command*/,
-        typename COMMAND_HANDSHAKE::request& arg,
-        typename COMMAND_HANDSHAKE::response& rsp,
+        COMMAND_HANDSHAKE::request& arg,
+        COMMAND_HANDSHAKE::response& rsp,
         p2p_connection_context& context) {
     if (arg.node_data.network_id != m_network_id) {
 
@@ -1901,7 +1888,6 @@ int node_server::handle_handshake(
 }
 //-----------------------------------------------------------------------------------
 int node_server::handle_ping(
-        int /*command*/,
         COMMAND_PING::request& /*arg*/,
         COMMAND_PING::response& rsp,
         p2p_connection_context& context) {
