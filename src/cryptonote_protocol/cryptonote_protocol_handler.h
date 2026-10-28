@@ -84,7 +84,7 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
     bool on_idle();
     bool init(const boost::program_options::variables_map& vm);
     bool deinit();
-    void set_p2p_endpoint(nodetool::i_p2p_endpoint<connection_context>* p2p);
+    void set_p2p_endpoint(nodetool::i_p2p_endpoint* p2p);
     // bool process_handshake_data(const std::string& data, cryptonote_connection_context& context);
     bool process_payload_sync_data(
             CORE_SYNC_DATA&& hshd, cryptonote_connection_context& context, bool is_inital);
@@ -231,8 +231,8 @@ class t_cryptonote_protocol_handler : public i_cryptonote_protocol {
 
     t_core& m_core;
 
-    nodetool::p2p_endpoint_stub<connection_context> m_p2p_stub;
-    nodetool::i_p2p_endpoint<connection_context>* m_p2p;
+    nodetool::p2p_endpoint_stub m_p2p_stub;
+    nodetool::i_p2p_endpoint* m_p2p;
     std::atomic<uint32_t> m_syncronized_connections_count;
     std::atomic<bool> m_synchronized;
     std::atomic<bool> m_stopping;

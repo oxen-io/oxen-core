@@ -95,7 +95,7 @@ template <class t_payload_net_handler>
 class node_server
         : public epee::levin::levin_commands_handler<
                   p2p_connection_context_t<typename t_payload_net_handler::connection_context>>,
-          public i_p2p_endpoint<typename t_payload_net_handler::connection_context>,
+          public i_p2p_endpoint,
           public epee::net_utils::i_connection_filter {
     struct by_conn_id {};
     struct by_peer_id {};
@@ -267,12 +267,10 @@ class node_server
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context);
     virtual void request_callback(const epee::net_utils::connection_context_base& context);
     virtual void for_each_connection(
-            std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type)>
-                    f);
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f);
     virtual bool for_connection(
             const connection_id_t&,
-            std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type)>
-                    f);
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f);
     virtual bool add_host_fail(const oxen::quic::Address& address);
     //----------------- i_connection_filter --------------------------------------------------------
     virtual bool is_remote_host_allowed(const oxen::quic::Address& address, time_t* t = NULL);
