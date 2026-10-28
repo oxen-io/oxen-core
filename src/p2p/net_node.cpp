@@ -346,14 +346,12 @@ bool node_server::handle_command_line(
     if (command_line::has_arg(vm, arg_p2p_add_peer)) {
         std::vector<std::string> perrs = command_line::get_arg(vm, arg_p2p_add_peer);
         for (const std::string& pr_str : perrs) {
-            nodetool::peerlist_entry pe{};
-            pe.id = crypto::rand<uint64_t>();
             const uint16_t default_port = cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT;
             expect<oxen::quic::Address> adr =
                     net::get_network_address(pr_str, default_port);
             if (adr) {
-                pe.adr = std::move(*adr);
-                m_command_line_peers.push_back(std::move(pe));
+                m_command_line_peers.push_back(
+                        {.adr = std::move(*adr), .id = crypto::rand<uint64_t>()});
                 continue;
             }
             if (adr != net::error::unsupported_address) {
@@ -367,11 +365,8 @@ bool node_server::handle_command_line(
                 log::error(logcat, "Failed to parse or resolve address from string: {}", pr_str);
                 return false;
             }
-            for (const oxen::quic::Address& addr : resolved_addrs) {
-                pe.id = crypto::rand<uint64_t>();
-                pe.adr = addr;
-                m_command_line_peers.push_back(pe);
-            }
+            for (const oxen::quic::Address& addr : resolved_addrs)
+                m_command_line_peers.push_back({.adr = addr, .id = crypto::rand<uint64_t>()});
         }
     }
 
@@ -1073,18 +1068,16 @@ bool node_server::connect_and_handshake(
                                 return;
                             }
 
-                            peerlist_entry pe_local{};
-                            pe_local.adr = na;
-                            pe_local.id = context->peer_id;
-                            pe_local.last_seen = static_cast<int64_t>(time(nullptr));
-                            pe_local.history = context->m_history;
-                            m_network.m_peerlist.append_with_peer_white(pe_local);
-
-                            anchor_peerlist_entry ape{};
-                            ape.adr = na;
-                            ape.id = context->peer_id;
-                            ape.first_seen = first_seen_stamp ? first_seen_stamp : time(nullptr);
-                            m_network.m_peerlist.append_with_peer_anchor(ape);
+                            m_network.m_peerlist.append_with_peer_white(
+                                    {.adr = na,
+                                     .id = context->peer_id,
+                                     .last_seen = static_cast<int64_t>(time(nullptr)),
+                                     .history = context->m_history});
+                            m_network.m_peerlist.append_with_peer_anchor(
+                                    {.adr = na,
+                                     .id = context->peer_id,
+                                     .first_seen = static_cast<int64_t>(
+                                             first_seen_stamp ? first_seen_stamp : time(nullptr))});
 
                             log::debug(logcat, "{}CONNECTION HANDSHAKED OK.", *context);
                             finish(true);
@@ -1345,9 +1338,7 @@ void node_server::connect_to_seed() {
     const size_t n_seeds = m_seed_nodes.size();
     for (size_t i = 0; i < n_seeds; ++i) {
         const auto& seed = m_seed_nodes[m_next_seed++ % n_seeds];
-        peerlist_entry pe_seed{};
-        pe_seed.adr = seed;
-        if (is_peer_used(pe_seed))
+        if (is_peer_used(peerlist_entry{.adr = seed}))
             continue;
         connect_and_handshake(seed, PeerType::white, true, 0, 0, [this, n_seeds](bool success) {
             if (success)
@@ -1951,15 +1942,13 @@ int node_server::handle_handshake(
         // try ping to be sure that we can add this peer to peer_list
         try_ping(arg.node_data, context, [peer_id_l, port_l, context, this]() {
             // called only(!) if success pinged, update local peerlist
-            peerlist_entry pe;
-            pe.adr = context.m_remote_address;
-            pe.adr.set_port(port_l);
-            time_t last_seen;
-            time(&last_seen);
-            pe.last_seen = static_cast<int64_t>(last_seen);
-            pe.id = peer_id_l;
-            pe.history = context.m_history;
-            m_network.m_peerlist.append_with_peer_white(pe);
+            oxen::quic::Address adr = context.m_remote_address;
+            adr.set_port(port_l);
+            m_network.m_peerlist.append_with_peer_white(
+                    {.adr = std::move(adr),
+                     .id = peer_id_l,
+                     .last_seen = static_cast<int64_t>(time(nullptr)),
+                     .history = context.m_history});
             log::debug(
                     logcat,
                     "{}PING SUCCESS {}:{}",

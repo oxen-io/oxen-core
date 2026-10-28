@@ -39,8 +39,8 @@ TEST(peer_list, peer_list_general)
   nodetool::peerlist_manager plm;
   plm.init(nodetool::peerlist_types{}, false);
 #define MAKE_IPV4_ADDRESS(a,b,c,d,e) oxen::quic::Address{oxen::quic::ipv4(a,b,c,d),e}
-#define ADD_GRAY_NODE(addr_, id_, last_seen_) {  nodetool::peerlist_entry ple; ple.last_seen=last_seen_;ple.adr = addr_; ple.id = id_;plm.append_with_peer_gray(ple);}
-#define ADD_WHITE_NODE(addr_, id_, last_seen_) {  nodetool::peerlist_entry ple;ple.last_seen=last_seen_; ple.adr = addr_; ple.id = id_;plm.append_with_peer_white(ple);}
+#define ADD_GRAY_NODE(addr_, id_, last_seen_) plm.append_with_peer_gray({.adr = addr_, .id = id_, .last_seen = last_seen_})
+#define ADD_WHITE_NODE(addr_, id_, last_seen_) plm.append_with_peer_white({.adr = addr_, .id = id_, .last_seen = last_seen_})
 
 #define PRINT_HEAD(step) {std::vector<nodetool::peerlist_entry> bs_head; bool r = plm.get_peerlist_head(bs_head, 100);std::cout << "step " << step << ": " << bs_head.size() << std::endl;}
 
