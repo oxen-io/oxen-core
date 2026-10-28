@@ -2000,16 +2000,38 @@ bool protocol_handler::should_download_next_span(
 void protocol_handler::skip_unneeded_hashes(
         cryptonote_connection_context& context, bool check_block_queue) const {
     // take out blocks we already have
+    const auto& needed = context.m_needed_objects;
     size_t skip = 0;
-    while (skip < context.m_needed_objects.size() &&
-           (m_core.blockchain.have_block(context.m_needed_objects[skip]) ||
-            (check_block_queue && m_block_queue.have(context.m_needed_objects[skip])))) {
-        // if we're popping the last hash, record it so we can ask again from that hash,
-        // this prevents never being able to progress on peers we get old hash lists from
-        if (skip + 1 == context.m_needed_objects.size())
-            context.m_last_known_hash = context.m_needed_objects[skip];
-        ++skip;
+
+    // The needed hashes are of consecutive blocks, ending at m_last_response_height, so those in
+    // our main chain are found by comparing against our hashes for those heights, fetched with one
+    // query rather than a lookup per hash.  (If the peer's hashes aren't what it claims, they just
+    // stop matching, and the checks below carry on from there.)
+    const uint64_t height = chain_height();
+    if (!needed.empty() && context.m_last_response_height + 1 >= needed.size()) {
+        const uint64_t first = context.m_last_response_height + 1 - needed.size();
+        if (first < height) {
+            try {
+                const auto ours = m_core.blockchain.db().get_hashes_range(
+                        first, std::min<uint64_t>(first + needed.size(), height) - 1);
+                while (skip < ours.size() && ours[skip] == needed[skip])
+                    ++skip;
+            } catch (const BLOCK_DNE&) {
+                // Blocks popped since we got the height: the checks below will do
+            }
+        }
     }
+
+    // Then those we have off the main chain (alt blocks, and blocks known to be invalid), or have
+    // already queued
+    while (skip < needed.size() && ((check_block_queue && m_block_queue.have(needed[skip])) ||
+                                    m_core.blockchain.have_block(needed[skip])))
+        ++skip;
+
+    // if we're popping the last hash, record it so we can ask again from that hash,
+    // this prevents never being able to progress on peers we get old hash lists from
+    if (skip > 0 && skip == needed.size())
+        context.m_last_known_hash = needed.back();
     if (skip > 0) {
         log::debug(
                 logcat, "{}skipping {}/{} blocks", context, skip, context.m_needed_objects.size());
