@@ -53,7 +53,6 @@ endif()
 add_subdirectory(core_tests)
 add_subdirectory(fuzz)
 add_subdirectory(crypto)
-add_subdirectory(core_proxy)
 add_subdirectory(unit_tests)
 add_subdirectory(difficulty)
 add_subdirectory(hash)
@@ -77,7 +76,6 @@ set(enabled_tests
     core_tests
     difficulty
     hash
-    core_proxy
     fuzz
     unit_tests)
 

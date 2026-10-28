@@ -29,7 +29,7 @@
 oxen_add_library(cryptonote_protocol
   block_queue.cpp
   peer_history.cpp
-  cryptonote_protocol_handler.inl
+  cryptonote_protocol_handler.cpp
   cryptonote_protocol_defs.cpp
   quorumnet.cpp
   p2p_net_node_instantiation.cpp

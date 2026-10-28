@@ -74,19 +74,17 @@ namespace cryptonote
   using seconds_f = std::chrono::duration<double>;
 
   //-----------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-    t_cryptonote_protocol_handler<t_core>::t_cryptonote_protocol_handler(t_core& rcore, bool offline):m_core(rcore),
-                                                                                                              m_p2p(&m_p2p_stub),
-                                                                                                              m_syncronized_connections_count(0),
-                                                                                                              m_synchronized(offline),
-                                                                                                              m_stopping(false),
-                                                                                                              m_no_sync(false)
-
+  protocol_handler::protocol_handler(core& rcore, bool offline) :
+      m_core(rcore),
+      m_p2p(&m_p2p_stub),
+      m_syncronized_connections_count(0),
+      m_synchronized(offline),
+      m_stopping(false),
+      m_no_sync(false)
   {
   }
   //-----------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::init(const boost::program_options::variables_map& vm)
+  bool protocol_handler::init(const boost::program_options::variables_map& vm)
   {
     m_sync_start_time = std::chrono::steady_clock::now();
     m_last_add_end_time = std::chrono::steady_clock::now();
@@ -101,14 +99,12 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::deinit()
+  bool protocol_handler::deinit()
   {
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::set_p2p_endpoint(nodetool::i_p2p_endpoint* p2p)
+  void protocol_handler::set_p2p_endpoint(nodetool::i_p2p_endpoint* p2p)
   {
     if(p2p)
       m_p2p = p2p;
@@ -116,8 +112,7 @@ namespace cryptonote
       m_p2p = &m_p2p_stub;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::on_callback(cryptonote_connection_context& context)
+  bool protocol_handler::on_callback(cryptonote_connection_context& context)
   {
     log::debug(logcat, "callback fired");
 
@@ -196,8 +191,7 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::log_connections()
+  void protocol_handler::log_connections()
   {
     std::stringstream ss;
     ss.precision(1);
@@ -261,8 +255,7 @@ namespace cryptonote
   //------------------------------------------------------------------------------------------------------------------------
   // Returns a list of connection_info objects describing each open p2p connection
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  std::list<connection_info> t_cryptonote_protocol_handler<t_core>::get_connections()
+  std::list<connection_info> protocol_handler::get_connections()
   {
     std::list<connection_info> connections;
 
@@ -326,8 +319,7 @@ namespace cryptonote
     return connections;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::process_payload_sync_data(CORE_SYNC_DATA&& hshd, cryptonote_connection_context& context, bool is_initial)
+  bool protocol_handler::process_payload_sync_data(CORE_SYNC_DATA&& hshd, cryptonote_connection_context& context, bool is_initial)
   {
     // Kept up to date even when the rest of the sync data is ignored below: the peer policy and
     // our peerlist go by it.
@@ -501,8 +493,7 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::get_payload_sync_data(CORE_SYNC_DATA& hshd)
+  bool protocol_handler::get_payload_sync_data(CORE_SYNC_DATA& hshd)
   {
     std::tie(hshd.current_height, hshd.top_id) = m_core.blockchain.get_tail_id();
     hshd.top_version = get_network_version(m_core.get_nettype(), hshd.current_height);
@@ -520,8 +511,7 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-    template<class t_core>
-    bool t_cryptonote_protocol_handler<t_core>::get_payload_sync_data(std::string& data)
+    bool protocol_handler::get_payload_sync_data(std::string& data)
   {
     CORE_SYNC_DATA hsd{};
     get_payload_sync_data(hsd);
@@ -529,8 +519,7 @@ namespace cryptonote
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_notify_new_fluffy_block(int command, NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& context)
   {
     if(log::Cat("net.p2p,msg")->should_log(log::Level::info))
     {
@@ -796,8 +785,7 @@ namespace cryptonote
     return 1;
   }  
   //------------------------------------------------------------------------------------------------------------------------  
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_uptime_proof(int command, NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_uptime_proof(int command, NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& context)
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_BTENCODED_UPTIME_PROOF");
     // NOTE: Don't relay your own uptime proof, otherwise we have the following situation
@@ -830,8 +818,7 @@ namespace cryptonote
   }
 
   //------------------------------------------------------------------------------------------------------------------------  
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_notify_new_service_node_vote(int command, NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_notify_new_service_node_vote(int command, NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg, cryptonote_connection_context& context)
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_NEW_SERVICE_NODE_VOTE ({} txes)", arg.votes.size());
 
@@ -873,8 +860,7 @@ namespace cryptonote
   }
 
   //------------------------------------------------------------------------------------------------------------------------  
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_request_fluffy_missing_tx(int command, NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_request_fluffy_missing_tx(int command, NOTIFY_REQUEST_FLUFFY_MISSING_TX::request& arg, cryptonote_connection_context& context)
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_REQUEST_FLUFFY_MISSING_TX ({} txes), block hash {}", arg.missing_tx_indices.size(), arg.block_hash);
     
@@ -953,8 +939,7 @@ namespace cryptonote
     return 1;        
   }
   //------------------------------------------------------------------------------------------------------------------------  
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_notify_new_transactions(int command, NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_notify_new_transactions(int command, NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& context)
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_NEW_TRANSACTIONS ({} txes w/ {} blinks)", arg.txs.size(), arg.blinks.size());
     for (const auto &blob: arg.txs)
@@ -1066,8 +1051,7 @@ namespace cryptonote
     return 1;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_request_get_blocks(int command, NOTIFY_REQUEST_GET_BLOCKS::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_request_get_blocks(int command, NOTIFY_REQUEST_GET_BLOCKS::request& arg, cryptonote_connection_context& context)
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_REQUEST_GET_BLOCKS ({} blocks)", arg.blocks.size());
     if (arg.blocks.size() > CURRENCY_PROTOCOL_MAX_OBJECT_REQUEST_COUNT)
@@ -1091,8 +1075,7 @@ namespace cryptonote
   //------------------------------------------------------------------------------------------------------------------------
 
 
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_response_get_blocks(int command, NOTIFY_RESPONSE_GET_BLOCKS::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_response_get_blocks(int command, NOTIFY_RESPONSE_GET_BLOCKS::request& arg, cryptonote_connection_context& context)
   {
     log::debug(logcat, "Received NOTIFY_RESPONSE_GET_BLOCKS ({} blocks)", arg.blocks.size());
     log::debug(log::Cat("net.p2p.msg"), "{}state: {} in state {}", context, "received blocks", cryptonote::get_protocol_state_string(context.m_state));
@@ -1213,8 +1196,7 @@ namespace cryptonote
   }
 
   // Get an estimate for the remaining sync time from given current to target blockchain height, in seconds
-  template<class t_core>
-  uint64_t t_cryptonote_protocol_handler<t_core>::get_estimated_remaining_sync_seconds(uint64_t current_blockchain_height, uint64_t target_blockchain_height)
+  uint64_t protocol_handler::get_estimated_remaining_sync_seconds(uint64_t current_blockchain_height, uint64_t target_blockchain_height)
   {
     // The average sync speed varies so much, even averaged over quite long time periods like 10 minutes,
     // that using some sliding window would be difficult to implement without often leading to bad estimates.
@@ -1241,8 +1223,7 @@ namespace cryptonote
   }
 
   // Return a textual remaining sync time estimate, or the empty string if waiting period not yet over
-  template<class t_core>
-  std::string t_cryptonote_protocol_handler<t_core>::get_periodic_sync_estimate(uint64_t current_blockchain_height, uint64_t target_blockchain_height)
+  std::string protocol_handler::get_periodic_sync_estimate(uint64_t current_blockchain_height, uint64_t target_blockchain_height)
   {
     std::string text;
     const auto now = std::chrono::steady_clock::now();
@@ -1259,8 +1240,7 @@ namespace cryptonote
     return text;
   }
 
-  template<class t_core>
-  double t_cryptonote_protocol_handler<t_core>::average_sync_rate(uint64_t current_blockchain_height) const
+  double protocol_handler::average_sync_rate(uint64_t current_blockchain_height) const
   {
     seconds_f sync_time = std::chrono::steady_clock::now() - m_sync_start_time;
     if (sync_time.count() <= 0 || current_blockchain_height <= m_sync_start_height)
@@ -1268,8 +1248,7 @@ namespace cryptonote
     return (current_blockchain_height - m_sync_start_height) / sync_time.count();
   }
 
-  template<class t_core>
-  double t_cryptonote_protocol_handler<t_core>::sync_rate(uint64_t current_blockchain_height)
+  double protocol_handler::sync_rate(uint64_t current_blockchain_height)
   {
     constexpr auto WINDOW = 60s;
     // Shorter than this, the window could hold just a couple of spans added back to back, giving
@@ -1293,8 +1272,7 @@ namespace cryptonote
     return blocks_per_second >= 100 ? "{:.0f}"_format(blocks_per_second) : "{:.1f}"_format(blocks_per_second);
   }
 
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::try_add_next_blocks(cryptonote_connection_context& context)
+  int protocol_handler::try_add_next_blocks(cryptonote_connection_context& context)
   {
     bool force_next_span = false;
     std::string_view caller = "try_add_next_blocks, m_sync_lock busy";
@@ -1610,8 +1588,7 @@ skip:
   //------------------------------------------------------------------------------------------------------------------------
   // Tells the other end to send us the given txes (typically with attached blink data) as if they
   // are new transactions.
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_request_get_txs(int command, NOTIFY_REQUEST_GET_TXS::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_request_get_txs(int command, NOTIFY_REQUEST_GET_TXS::request& arg, cryptonote_connection_context& context)
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_REQUEST_GET_TXS ({} txs)", arg.txs.size());
 
@@ -1635,8 +1612,7 @@ skip:
     return 1;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::on_idle()
+  bool protocol_handler::on_idle()
   {
     m_idle_peer_kicker.do_call([this] { return kick_idle_peers(); });
     m_standby_checker.do_call([this] { return check_standby_peers(); });
@@ -1644,8 +1620,7 @@ skip:
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::kick_idle_peers()
+  bool protocol_handler::kick_idle_peers()
   {
     log::trace(logcat, "Checking for idle peers...");
     m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id)->bool
@@ -1671,8 +1646,7 @@ skip:
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::update_sync_search()
+  bool protocol_handler::update_sync_search()
   {
     const uint64_t target = m_core.get_target_blockchain_height();
     const uint64_t height = m_core.blockchain.get_current_blockchain_height();
@@ -1712,8 +1686,7 @@ skip:
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::check_standby_peers()
+  bool protocol_handler::check_standby_peers()
   {
     m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id)->bool
     {
@@ -1727,8 +1700,7 @@ skip:
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_request_chain(int command, NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_request_chain(int command, NOTIFY_REQUEST_CHAIN::request& arg, cryptonote_connection_context& context)
   {
     log::debug(logcat, "Received NOTIFY_REQUEST_CHAIN ({} blocks)", arg.block_ids.size());
     NOTIFY_RESPONSE_CHAIN_ENTRY::request r;
@@ -1743,8 +1715,7 @@ skip:
     return 1;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::should_download_next_span(cryptonote_connection_context& context, bool standby)
+  bool protocol_handler::should_download_next_span(cryptonote_connection_context& context, bool standby)
   {
     std::chrono::steady_clock::time_point request_time;
     connection_id_t connection_id{};
@@ -1829,8 +1800,7 @@ skip:
     return false;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::skip_unneeded_hashes(cryptonote_connection_context& context, bool check_block_queue) const
+  void protocol_handler::skip_unneeded_hashes(cryptonote_connection_context& context, bool check_block_queue) const
   {
     // take out blocks we already have
     size_t skip = 0;
@@ -1849,8 +1819,7 @@ skip:
     }
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::request_missing_objects(cryptonote_connection_context& context, bool check_having_blocks, bool force_next_span, std::string_view caller)
+  bool protocol_handler::request_missing_objects(cryptonote_connection_context& context, bool check_having_blocks, bool force_next_span, std::string_view caller)
   {
     // The response to an outstanding request calls this again when it arrives.  Requesting now
     // would leave two requests outstanding, and when the first response arrived, the objects
@@ -2163,8 +2132,7 @@ skip:
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::on_connection_synchronized()
+  bool protocol_handler::on_connection_synchronized()
   {
     bool val_expected = false;
     uint64_t current_blockchain_height = m_core.blockchain.get_current_blockchain_height();
@@ -2201,8 +2169,7 @@ You are now synchronized with the network.
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  size_t t_cryptonote_protocol_handler<t_core>::get_synchronizing_connections_count()
+  size_t protocol_handler::get_synchronizing_connections_count()
   {
     size_t count = 0;
     m_p2p->for_each_connection([&](cryptonote_connection_context& context, nodetool::peerid_type peer_id)->bool{
@@ -2213,8 +2180,7 @@ You are now synchronized with the network.
     return count;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_response_chain_entry(int command, NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_response_chain_entry(int command, NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg, cryptonote_connection_context& context)
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_RESPONSE_CHAIN_ENTRY: m_block_ids.size()={}, m_start_height={}, m_total_height={}", arg.m_block_ids.size(), arg.start_height, arg.total_height);
     log::debug(logcat, "{}state: {} in state {}", context, "received chain", cryptonote::get_protocol_state_string(context.m_state));
@@ -2285,8 +2251,7 @@ You are now synchronized with the network.
   }
 
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_request_block_blinks(int command, NOTIFY_REQUEST_BLOCK_BLINKS::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_request_block_blinks(int command, NOTIFY_REQUEST_BLOCK_BLINKS::request& arg, cryptonote_connection_context& context)
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_REQUEST_BLOCK_BLINKS: heights.size()={}", arg.heights.size());
     NOTIFY_RESPONSE_BLOCK_BLINKS::request r;
@@ -2298,8 +2263,7 @@ You are now synchronized with the network.
     return 1;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  int t_cryptonote_protocol_handler<t_core>::handle_response_block_blinks(int command, NOTIFY_RESPONSE_BLOCK_BLINKS::request& arg, cryptonote_connection_context& context)
+  int protocol_handler::handle_response_block_blinks(int command, NOTIFY_RESPONSE_BLOCK_BLINKS::request& arg, cryptonote_connection_context& context)
   {
     log::info(log::Cat("net.p2p.msg"), "Received NOTIFY_RESPONSE_BLOCK_BLINKS: txs.size()={}", arg.txs.size());
 
@@ -2328,8 +2292,7 @@ You are now synchronized with the network.
     return 1;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::relay_block(NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context)
+  bool protocol_handler::relay_block(NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context)
   {
     // sort peers between fluffy ones and others
     std::vector<connection_id_t> fluffyConnections;
@@ -2366,15 +2329,13 @@ You are now synchronized with the network.
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::relay_uptime_proof(NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context)
+  bool protocol_handler::relay_uptime_proof(NOTIFY_BTENCODED_UPTIME_PROOF::request& arg, cryptonote_connection_context& exclude_context)
   {
     bool result = relay_to_synchronized_peers<NOTIFY_BTENCODED_UPTIME_PROOF>(arg, exclude_context);
     return result;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::relay_service_node_votes(NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg, cryptonote_connection_context& exclude_context)
+  bool protocol_handler::relay_service_node_votes(NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg, cryptonote_connection_context& exclude_context)
   {
     bool result = relay_to_synchronized_peers<NOTIFY_NEW_SERVICE_NODE_VOTE>(arg, exclude_context);
     if (result)
@@ -2382,8 +2343,7 @@ You are now synchronized with the network.
     return result;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& exclude_context)
+  bool protocol_handler::relay_transactions(NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& exclude_context)
   {
     // no check for success, so tell core they're relayed unconditionally and snag a copy of the
     // hash so that we can look up any associated blink data we should include.
@@ -2429,8 +2389,7 @@ You are now synchronized with the network.
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  std::string t_cryptonote_protocol_handler<t_core>::get_peers_overview() const
+  std::string protocol_handler::get_peers_overview() const
   {
     std::ostringstream ss;
     const auto now = std::chrono::steady_clock::now();
@@ -2444,8 +2403,7 @@ You are now synchronized with the network.
     return ss.str();
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::needs_new_sync_connections() const
+  bool protocol_handler::needs_new_sync_connections() const
   {
     const uint64_t target = m_core.get_target_blockchain_height();
     const uint64_t height = m_core.blockchain.get_current_blockchain_height();
@@ -2462,30 +2420,17 @@ You are now synchronized with the network.
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  std::optional<sync_need> t_cryptonote_protocol_handler<t_core>::get_sync_need() const
+  std::optional<sync_need> protocol_handler::get_sync_need() const
   {
     // At the tip, every new block raises the target (from a peer's sync data or the block itself)
     // a moment before we add it, when peers not yet heard from would look unable to serve it.
     if (m_synchronized)
       return std::nullopt;
-    const uint64_t target = m_core.get_target_blockchain_height();
     const uint64_t height = m_core.blockchain.get_current_blockchain_height();
-    if (target <= height)
-      return std::nullopt;
-    // Downloading runs ahead of adding blocks, often all the way to the target, and then what is
-    // "needed" next is whatever block the target just moved on to: the newest block, which only
-    // the peers that have announced it yet appear able to serve.  Within the margin of the target
-    // no peer's history can be what stops it serving, only its height lagging the tip by a block
-    // or two, so there is no sync need the peer policy should act on.
-    const uint64_t need = m_block_queue.get_next_needed_height(height);
-    if (need + PEER_HISTORY_MARGIN >= target)
-      return std::nullopt;
-    return sync_need{need, target};
+    return sync_need_for(height, m_block_queue.get_next_needed_height(height), m_core.get_target_blockchain_height());
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  bool t_cryptonote_protocol_handler<t_core>::wait_for_history(cryptonote_connection_context& context, const std::optional<sync_need>& need)
+  bool protocol_handler::wait_for_history(cryptonote_connection_context& context, const std::optional<sync_need>& need)
   {
     if (!need || !peer_no_longer_keeps(need->height, context.m_remote_blockchain_height, context.m_history))
       return false;
@@ -2495,8 +2440,7 @@ You are now synchronized with the network.
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::drop_connection(cryptonote_connection_context &context, bool add_fail, bool flush_all_spans)
+  void protocol_handler::drop_connection(cryptonote_connection_context &context, bool add_fail, bool flush_all_spans)
   {
     log::debug(logcat, "{}dropping connection id {}, add_fail {}, flush_all_spans {}", context, context.m_connection_id, add_fail, flush_all_spans);
 
@@ -2518,8 +2462,7 @@ You are now synchronized with the network.
       m_p2p->drop_connection(context);
   }
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::on_connection_close(cryptonote_connection_context &context)
+  void protocol_handler::on_connection_close(cryptonote_connection_context &context)
   {
     uint64_t target = 0;
     m_p2p->for_each_connection([&](const connection_context& cntxt, nodetool::peerid_type peer_id) {
@@ -2541,8 +2484,7 @@ You are now synchronized with the network.
   }
 
   //------------------------------------------------------------------------------------------------------------------------
-  template<class t_core>
-  void t_cryptonote_protocol_handler<t_core>::stop()
+  void protocol_handler::stop()
   {
     m_stopping = true;
     m_core.stop();

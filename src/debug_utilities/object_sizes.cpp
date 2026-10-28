@@ -88,9 +88,8 @@ int main(int argc, char* argv[]) {
 
     SL(nodetool::peerlist_entry);
     SL(nodetool::anchor_peerlist_entry);
-    SL(nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core>>);
-    SL(nodetool::p2p_connection_context_t<
-            cryptonote::t_cryptonote_protocol_handler<cryptonote::core>::connection_context>);
+    SL(nodetool::node_server<cryptonote::protocol_handler>);
+    SL(nodetool::p2p_connection_context_t<cryptonote::protocol_handler::connection_context>);
 
     SL(nodetool::network_config);
     SL(nodetool::basic_node_data);
