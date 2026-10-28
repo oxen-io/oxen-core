@@ -329,11 +329,11 @@ int transport::notify(int command, std::span<const uint8_t> body, const connecti
         return levin::ERROR_CONNECTION_NOT_FOUND;
     if (stopping_)
         return levin::ERROR_CONNECTION_DESTROYED;
-    p->context.m_send_cnt += body.size();
-    p->context.m_last_send = std::chrono::steady_clock::now();
     count_out(body.size());
     loop_.call(
             [p, command, b = std::string{reinterpret_cast<const char*>(body.data()), body.size()}] {
+                p->context.m_send_cnt += b.size();
+                p->context.m_last_send = std::chrono::steady_clock::now();
                 p->conn->notify(
                         command, {reinterpret_cast<const unsigned char*>(b.data()), b.size()});
             });
@@ -353,8 +353,6 @@ int transport::invoke_async(
         return levin::ERROR_CONNECTION_DESTROYED;
     if (timeout == timeout.zero())
         timeout = invoke_timeout;
-    p->context.m_send_cnt += body.size();
-    p->context.m_last_send = std::chrono::steady_clock::now();
     count_out(body.size());
     loop_.call([this,
                 p,
@@ -362,6 +360,8 @@ int transport::invoke_async(
                 b = std::string{reinterpret_cast<const char*>(body.data()), body.size()},
                 timeout = std::chrono::duration_cast<std::chrono::milliseconds>(timeout),
                 cb = std::move(cb)] {
+        p->context.m_send_cnt += b.size();
+        p->context.m_last_send = std::chrono::steady_clock::now();
         p->conn->invoke(
                 command,
                 {reinterpret_cast<const unsigned char*>(b.data()), b.size()},

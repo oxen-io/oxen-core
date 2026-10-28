@@ -240,11 +240,11 @@ class node_server : public i_p2p_endpoint {
     bool invoke_notify_to_peer(
             int command,
             const std::span<const uint8_t> req_buff,
-            const epee::net_utils::connection_context_base& context) override;
+            const connection_id_t& id) override;
     bool drop_connection(const epee::net_utils::connection_context_base& context) override;
     void request_callback(const epee::net_utils::connection_context_base& context) override;
     void call_on_connection(
-            const epee::net_utils::connection_context_base& context,
+            const connection_id_t& id,
             std::function<void(cryptonote_connection_context&)> f) override;
     void for_each_connection(
             std::function<bool(cryptonote_connection_context&, peerid_type)> f) override;

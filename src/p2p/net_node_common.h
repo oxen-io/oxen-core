@@ -49,17 +49,16 @@ struct i_p2p_endpoint {
             int command,
             const std::span<const uint8_t> data_buff,
             std::span<const connection_id_t> connections) = 0;
+    // Safe to call from any thread.
     virtual bool invoke_notify_to_peer(
-            int command,
-            const std::span<const uint8_t> req_buff,
-            const epee::net_utils::connection_context_base& context) = 0;
+            int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) = 0;
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context) = 0;
     virtual void request_callback(const epee::net_utils::connection_context_base& context) = 0;
     // Calls `f` with the connection's context on the thread that handles the connection's
     // messages, after what is already queued there, unless the connection has closed by then.
+    // Safe to call from any thread.
     virtual void call_on_connection(
-            const epee::net_utils::connection_context_base& context,
-            std::function<void(cryptonote_connection_context&)> f) = 0;
+            const connection_id_t& id, std::function<void(cryptonote_connection_context&)> f) = 0;
     virtual uint64_t get_public_connections_count() = 0;
     virtual void for_each_connection(
             std::function<bool(cryptonote_connection_context&, peerid_type)> f) = 0;
@@ -81,9 +80,7 @@ struct p2p_endpoint_stub : public i_p2p_endpoint {
         return false;
     }
     virtual bool invoke_notify_to_peer(
-            int command,
-            const std::span<const uint8_t> req_buff,
-            const epee::net_utils::connection_context_base& context) {
+            int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) {
         return true;
     }
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context) {
@@ -91,8 +88,7 @@ struct p2p_endpoint_stub : public i_p2p_endpoint {
     }
     virtual void request_callback(const epee::net_utils::connection_context_base& context) {}
     virtual void call_on_connection(
-            const epee::net_utils::connection_context_base& context,
-            std::function<void(cryptonote_connection_context&)> f) {}
+            const connection_id_t& id, std::function<void(cryptonote_connection_context&)> f) {}
     virtual void for_each_connection(
             std::function<bool(cryptonote_connection_context&, peerid_type)> f) {}
     virtual bool for_connection(

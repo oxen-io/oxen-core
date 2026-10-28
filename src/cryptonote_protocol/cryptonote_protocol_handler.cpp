@@ -1790,9 +1790,9 @@ int protocol_handler::try_add_next_blocks(cryptonote_connection_context& context
 
                 refresh_sync_data();
                 if (!m_stopping)
-                    m_p2p->call_on_connection(context, [this](cryptonote_connection_context& c) {
-                        try_add_next_blocks(c);
-                    });
+                    m_p2p->call_on_connection(
+                            context.m_connection_id,
+                            [this](cryptonote_connection_context& c) { try_add_next_blocks(c); });
                 break;
             }
         }

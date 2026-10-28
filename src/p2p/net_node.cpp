@@ -1663,10 +1663,8 @@ void node_server::request_callback(const epee::net_utils::connection_context_bas
 }
 //-----------------------------------------------------------------------------------
 void node_server::call_on_connection(
-        const epee::net_utils::connection_context_base& context,
-        std::function<void(cryptonote_connection_context&)> f) {
-    m_transport.call_on(
-            context.m_connection_id, [f = std::move(f)](p2p_connection_context& c) { f(c); });
+        const connection_id_t& id, std::function<void(cryptonote_connection_context&)> f) {
+    m_transport.call_on(id, [f = std::move(f)](p2p_connection_context& c) { f(c); });
 }
 //-----------------------------------------------------------------------------------
 bool node_server::relay_notify_to_list(
@@ -1679,10 +1677,8 @@ bool node_server::relay_notify_to_list(
 }
 //-----------------------------------------------------------------------------------
 bool node_server::invoke_notify_to_peer(
-        int command,
-        const std::span<const uint8_t> req_buff,
-        const epee::net_utils::connection_context_base& context) {
-    return m_transport.notify(command, req_buff, context.m_connection_id) > 0;
+        int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) {
+    return m_transport.notify(command, req_buff, id) > 0;
 }
 //-----------------------------------------------------------------------------------
 bool node_server::drop_connection(const epee::net_utils::connection_context_base& context) {
