@@ -97,7 +97,6 @@ namespace net_utils
 		bool is_loopback() const;
 		bool is_local() const;
 		static constexpr address_type get_type_id() noexcept { return address_type::ipv6; }
-		static constexpr zone get_zone() noexcept { return zone::public_; }
 		static constexpr bool is_blockable() noexcept { return true; }
 
 		static const uint8_t ID = 2;
@@ -138,7 +137,6 @@ namespace net_utils
 			virtual bool is_loopback() const = 0;
 			virtual bool is_local() const = 0;
 			virtual address_type get_type_id() const = 0;
-			virtual zone get_zone() const = 0;
 			virtual bool is_blockable() const = 0;
 		};
 
@@ -169,7 +167,6 @@ namespace net_utils
 			virtual bool is_loopback() const override { return value.is_loopback(); }
 			virtual bool is_local() const override { return value.is_local(); }
 			virtual address_type get_type_id() const override { return value.get_type_id(); }
-			virtual zone get_zone() const override { return value.get_zone(); }
 			virtual bool is_blockable() const override { return value.is_blockable(); }
 		};
 
@@ -218,7 +215,6 @@ namespace net_utils
 		bool is_loopback() const { return self ? self->is_loopback() : false; }
 		bool is_local() const { return self ? self->is_local() : false; }
 		address_type get_type_id() const { return self ? self->get_type_id() : address_type::invalid; }
-		zone get_zone() const { return self ? self->get_zone() : zone::invalid; }
 		bool is_blockable() const { return self ? self->is_blockable() : false; }
 		template<typename Type> const Type &as() const { return as_mutable<const Type>(); }
 

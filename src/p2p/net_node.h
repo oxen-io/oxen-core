@@ -114,8 +114,8 @@ class node_server
         uint64_t m_peer_id{crypto::rand<uint64_t>()};
     };
 
-    struct network_zone {
-        network_zone() :
+    struct network {
+        network() :
                 m_net_server(epee::net_utils::e_connection_type_P2P),
                 m_bind_ip(),
                 m_bind_ipv6_address(),
@@ -164,7 +164,6 @@ class node_server
             m_hide_my_port(false),
             m_offline(false),
             is_closing(false) {}
-    virtual ~node_server();
 
     static void init_options(
             boost::program_options::options_description& desc,
@@ -181,7 +180,6 @@ class node_server
     bool log_peerlist();
     bool log_connections();
 
-    // These functions only return information for the "public" zone
     virtual uint64_t get_public_connections_count();
     size_t get_public_outgoing_connections_count();
     size_t get_public_white_peers_count();
@@ -269,7 +267,7 @@ class node_server
     virtual bool relay_notify_to_list(
             int command,
             const std::span<const uint8_t> data_buff,
-            std::vector<std::pair<epee::net_utils::zone, connection_id_t>> connections);
+            std::span<const connection_id_t> connections);
     virtual bool send_txs(
             std::vector<std::string> txs, const connection_id_t& source, bool pad_txs);
     virtual bool invoke_command_to_peer(
@@ -300,7 +298,7 @@ class node_server
     bool handle_remote_peerlist(
             const std::vector<peerlist_entry>& peerlist,
             const epee::net_utils::connection_context_base& context);
-    bool get_local_node_data(basic_node_data& node_data, const network_zone& zone);
+    bool get_local_node_data(basic_node_data& node_data);
     // bool get_local_handshake_data(handshake_data& hshd);
 
     bool sanitize_peerlist(std::vector<peerlist_entry>& local_peerlist);
@@ -318,13 +316,9 @@ class node_server
     // already, nor recently failed, and, given what a sync needs, only those whose peerlist entry
     // says they can serve it and that haven't already turned out not to.
     std::vector<size_t> connectable_peers(
-            network_zone& zone,
-            bool use_white_list,
-            const std::optional<cryptonote::sync_need>& need = std::nullopt);
+            bool use_white_list, const std::optional<cryptonote::sync_need>& need = std::nullopt);
     bool make_new_connection_from_peerlist(
-            network_zone& zone,
-            bool use_white_list,
-            const std::optional<cryptonote::sync_need>& need = std::nullopt);
+            bool use_white_list, const std::optional<cryptonote::sync_need>& need = std::nullopt);
     struct droppable_peer {
         epee::connection_id_t connection_id;
         epee::net_utils::network_address address;
@@ -341,7 +335,7 @@ class node_server
     };
     // While syncing, counts the connected peers that can serve what the sync needs, recording the
     // outgoing ones that can't as unhelpful.
-    sync_peers check_sync_peers(network_zone& zone, const cryptonote::sync_need& need);
+    sync_peers check_sync_peers(const cryptonote::sync_need& need);
     bool try_to_connect_and_handshake_with_new_peer(
             const epee::net_utils::network_address& na,
             bool just_take_peerlist = false,
@@ -359,14 +353,14 @@ class node_server
     // of truncation.  (For example, with max_index of 19, those probabilities increase by a factor
     // of 1.06667, and with max_index of 9, they increase by 4/3).
     size_t get_random_exp_index(size_t size, double rate = 0.13862943611198906);
-    bool is_peer_used(const peerlist_entry& peer);
-    bool is_peer_used(const anchor_peerlist_entry& peer);
+    // Takes a peerlist_entry or anchor_peerlist_entry
+    template <typename Entry>
+    bool is_peer_used(const Entry& peer);
     bool is_addr_connected(const epee::net_utils::network_address& peer);
     template <class t_callback>
     bool try_ping(
             basic_node_data& node_data, p2p_connection_context& context, const t_callback& cb);
-    bool make_expected_connections_count(
-            network_zone& zone, PeerType peer_type, size_t expected_connections);
+    bool make_expected_connections_count(PeerType peer_type, size_t expected_connections);
     void record_addr_failed(const epee::net_utils::network_address& addr);
     bool is_addr_recently_failed(const epee::net_utils::network_address& addr);
     bool is_priority_node(const epee::net_utils::network_address& na);
@@ -381,8 +375,8 @@ class node_server
             const command_line::arg_descriptor<std::vector<std::string>>& arg,
             Container& container);
 
-    bool set_max_out_peers(network_zone& zone, int64_t max);
-    bool set_max_in_peers(network_zone& zone, int64_t max);
+    bool set_max_out_peers(int64_t max);
+    bool set_max_in_peers(int64_t max);
     bool set_tos_flag(const boost::program_options::variables_map& vm, int limit);
 
     bool set_rate_up_limit(const boost::program_options::variables_map& vm, int64_t limit);
@@ -391,9 +385,7 @@ class node_server
 
     bool has_too_many_connections(const epee::net_utils::network_address& address);
     size_t get_incoming_connections_count();
-    size_t get_incoming_connections_count(network_zone&);
     size_t get_outgoing_connections_count();
-    size_t get_outgoing_connections_count(network_zone&);
 
     bool check_connection_and_handshake_with_peer(
             const epee::net_utils::network_address& na, uint64_t last_seen_stamp);
@@ -457,15 +449,9 @@ class node_server
     uint64_t m_peer_livetime;
     // keep connections to initiate some interactions
 
-    static std::optional<p2p_connection_context> public_connect(
-            network_zone&, epee::net_utils::network_address const&);
+    std::optional<p2p_connection_context> public_connect(epee::net_utils::network_address const&);
 
-    /* A `std::map` provides constant iterators and key/value pointers even with
-    inserts/erases to _other_ elements. This makes the configuration step easier
-    since references can safely be stored on the stack. Do not insert/erase
-    after configuration and before destruction, lock safety would need to be
-    added. `std::map::operator[]` WILL insert! */
-    std::map<epee::net_utils::zone, network_zone> m_network_zones;
+    network m_network;
 
     std::map<std::string, time_t> m_conn_fails_cache;
     std::shared_mutex m_conn_fails_cache_lock;

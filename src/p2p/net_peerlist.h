@@ -80,8 +80,8 @@ class peerlist_storage {
     //! Save peers from `this` and `other` in one file at `path`.
     bool store(const fs::path& path, const peerlist_types& other) const;
 
-    //! \return Peers in `zone` and from remove from `this`.
-    peerlist_types take_zone(epee::net_utils::zone zone);
+    //! \return The loaded peers, removing them from `this`.
+    peerlist_types take();
 
   private:
     peerlist_types m_types;

@@ -43,13 +43,6 @@ using namespace std::literals;
 		ipv6 = 2,
 	};
 
-	enum class zone : std::uint8_t
-	{
-		// Do not change values, peerlist storage depends on them
-		invalid = 0,
-		public_ = 1, // public is keyword
-	};
-
     //! \return String name of address type
     constexpr std::string_view to_string(address_type a) noexcept {
       switch (a) {
@@ -59,17 +52,8 @@ using namespace std::literals;
       }
     }
 
-	//! \return String name of zone or "invalid" on error.
-    constexpr std::string_view to_string(zone value) noexcept {
-      switch(value) {
-        case zone::public_: return "public"sv;
-        default:            return "invalid"sv;
-      }
-    }
-
 	// implementations in src/net_utils_base.cpp
 
     std::ostream& operator<<(std::ostream& o, address_type a);
-    std::ostream& operator<<(std::ostream& o, zone z);
 
 } // epee::net_utils
