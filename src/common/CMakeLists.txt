@@ -60,6 +60,11 @@ if (BACKCOMPAT)
   target_sources(common PRIVATE compat/glibc_compat.cpp)
 endif()
 
+if (TARGET readline)
+  target_sources(common PRIVATE readline_buffer.cpp)
+  target_link_libraries(common PUBLIC readline)
+endif()
+
 target_link_libraries(common
   PUBLIC
     cncrypto

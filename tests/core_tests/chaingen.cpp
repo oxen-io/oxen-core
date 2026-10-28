@@ -45,7 +45,6 @@
 #include "common/median.h"
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_core/service_node_rules.h"
-#include "epee/console_handler.h"
 #include "common/rules.h"
 
 #include "cryptonote_config.h"

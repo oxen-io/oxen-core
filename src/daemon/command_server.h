@@ -32,15 +32,15 @@
 #include <optional>
 
 #include "common/common_fwd.h"
+#include "common/console_handler.h"
 #include "daemon/command_parser_executor.h"
-#include "epee/console_handler.h"
 
 namespace daemonize {
 
 class command_server {
   private:
     command_parser_executor m_parser;
-    epee::console_handlers_binder m_command_lookup;
+    tools::console_handlers_binder m_command_lookup;
     std::optional<oxenmq::OxenMQ> m_omq;
 
   public:

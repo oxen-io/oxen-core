@@ -30,11 +30,6 @@ oxen_add_library(epee
     portable_storage.cpp
 )
 
-if (TARGET readline)
-  target_sources(epee PRIVATE readline_buffer.cpp)
-  target_link_libraries(epee PUBLIC readline)
-endif()
-
 # Build and install libepee if we're building for GUI
 if (BUILD_GUI_DEPS)
     if(IOS)

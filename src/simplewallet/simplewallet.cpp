@@ -65,15 +65,15 @@
 #include <thread>
 
 #include "common/command_line.h"
+#include "common/console_handler.h"
 #include "common/i18n.h"
+#include "common/readline_suspend.h"
 #include "common/scoped_message_writer.h"
 #include "common/signal_handler.h"
 #include "common/util.h"
 #include "crypto/crypto.h"  // for crypto::secret_key definition
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/oxen_name_system.h"
-#include "epee/console_handler.h"
-#include "epee/readline_suspend.h"
 #include "mnemonics/electrum-words.h"
 #include "multisig/multisig.h"
 #include "ringct/rctSigs.h"

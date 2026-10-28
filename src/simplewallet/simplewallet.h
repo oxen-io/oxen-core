@@ -44,6 +44,7 @@
 #include <string_view>
 #include <thread>
 
+#include "common/console_handler.h"
 #include "common/i18n.h"
 #include "common/password.h"
 #include "common/periodic_task.h"
@@ -51,7 +52,6 @@
 #include "crypto/crypto.h"  // for definition of crypto::secret_key
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
-#include "epee/console_handler.h"
 #include "wallet/wallet2.h"
 
 /*!
@@ -460,7 +460,7 @@ class simple_wallet : public tools::i_wallet2_callback {
     bool m_use_english_language_names;
     bool m_has_locked_key_images;
 
-    epee::console_handlers_binder m_cmd_binder;
+    tools::console_handlers_binder m_cmd_binder;
 
     std::unique_ptr<tools::wallet2> m_wallet;
     refresh_progress_reporter_t m_refresh_progress_reporter;
