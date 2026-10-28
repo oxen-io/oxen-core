@@ -78,12 +78,9 @@ class protocol_handler : public i_cryptonote_protocol {
     // bool process_handshake_data(const std::string& data, cryptonote_connection_context& context);
     bool process_payload_sync_data(
             CORE_SYNC_DATA&& hshd, cryptonote_connection_context& context, bool is_inital);
-    // Our sync data, for handshakes and timed syncs, as refresh_sync_data() last published it.  It
-    // takes no chain locks, so it can be read from anywhere.
+    // Our sync data, for handshakes and timed syncs, as of the last change to the chain.  It takes
+    // no chain locks, so it can be read from anywhere.
     CORE_SYNC_DATA get_payload_sync_data() const;
-    // Recomputes our sync data from the chain and mempool, whose locks it takes: called after
-    // adding blocks, and each second (for blink checksums, and blocks added elsewhere).
-    void refresh_sync_data();
     bool on_callback(cryptonote_connection_context& context);
     core& get_core() { return m_core; }
     bool is_synchronized() { return m_synchronized; }
@@ -244,6 +241,9 @@ class protocol_handler : public i_cryptonote_protocol {
     std::deque<std::pair<std::chrono::steady_clock::time_point, uint64_t>> m_sync_rate_samples;
     std::mutex m_sync_rate_mutex;
 
+    // Recomputes the sync data below from the chain and mempool, whose locks it takes.  Called only
+    // from the chain's hooks, as the chain changes.
+    void refresh_sync_data();
     // What refresh_sync_data() publishes: our sync data, and what checking a peer's sync data
     // against ours needs, so that neither takes chain locks.
     mutable std::mutex m_sync_data_mutex;
