@@ -49,7 +49,6 @@
 #include "common/util.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_config.h"
-#include "cryptonote_protocol/levin_notify.h"
 #include "cryptonote_protocol/peer_history.h"
 #include "epee/net/abstract_tcp_server2.h"
 #include "epee/net/levin_protocol_handler_async.h"
@@ -117,7 +116,6 @@ class node_server
                 m_net_server(epee::net_utils::e_connection_type_P2P),
                 m_bind_ip(),
                 m_bind_ipv6_address(),
-                m_notifier(),
                 m_peerlist(),
                 m_config{},
                 m_current_number_of_out_peers(0),
@@ -130,7 +128,6 @@ class node_server
         std::string m_bind_ipv6_address;
         uint16_t m_port = 0;
         uint16_t m_port_ipv6 = 0;
-        cryptonote::levin::notify m_notifier;
         peerlist_manager m_peerlist;
         config m_config;
         std::atomic<unsigned int> m_current_number_of_out_peers;
@@ -264,8 +261,6 @@ class node_server
             int command,
             const std::span<const uint8_t> data_buff,
             std::span<const connection_id_t> connections);
-    virtual bool send_txs(
-            std::vector<std::string> txs, const connection_id_t& source, bool pad_txs);
     virtual bool invoke_notify_to_peer(
             int command,
             const std::span<const uint8_t> req_buff,

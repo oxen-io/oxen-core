@@ -44,15 +44,5 @@ namespace levin
     head.m_flags = flags;
     return head;
   }
-
-  std::string make_notify(int command, std::span<const std::uint8_t> payload)
-  {
-    const bucket_head2 head = make_header(command, payload.size(), LEVIN_PACKET_REQUEST, false);
-    std::string result;
-    result.reserve(sizeof(head) + payload.size());
-    result.append(reinterpret_cast<const char*>(&head), sizeof(head));
-    result.append(reinterpret_cast<const char*>(payload.data()), payload.size());
-    return result;
-  }
 } // levin
 } // epee

@@ -2414,8 +2414,18 @@ You are now synchronized with the network.
       }
     }
 
-    // no check for success, so tell core they're relayed unconditionally
-    m_p2p->send_txs(std::move(arg.txs), exclude_context.m_connection_id, m_core.pad_transactions());
+    std::vector<connection_id_t> connections;
+    m_p2p->for_each_connection([&exclude_context, &connections](connection_context& context, nodetool::peerid_type)
+    {
+      if (context.m_connection_id != exclude_context.m_connection_id)
+        connections.push_back(context.m_connection_id);
+      return true;
+    });
+
+    // Sorted so that the order we relay them in doesn't leak the order we received them in
+    std::sort(arg.txs.begin(), arg.txs.end());
+    const std::string payload = serialize_tx_notify(std::move(arg.txs), m_core.pad_transactions());
+    m_p2p->relay_notify_to_list(NOTIFY_NEW_TRANSACTIONS::ID, oxen::quic::reinterpret_span<const uint8_t>(std::span{payload}), connections);
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------

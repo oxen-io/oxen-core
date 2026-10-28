@@ -84,7 +84,6 @@ public:
   int invoke_async(int command, const std::span<const uint8_t> in_buff, connection_id_t connection_id, const callback_t &cb, std::chrono::nanoseconds timeout = {});
 
   int notify(int command, const std::span<const uint8_t> in_buff, connection_id_t connection_id);
-  int send(epee::shared_sv message, const connection_id_t& connection_id);
   bool close(connection_id_t connection_id);
   bool update_connection_context(const t_connection_context& contxt);
   bool request_callback(connection_id_t connection_id);
@@ -567,26 +566,6 @@ public:
     return 1;
   }
 
-  /*! Sends `message` without adding a levin header. The message must have
-      been created with `make_notify`.
-
-      \return 1 on success */
-  int send(shared_sv message)
-  {
-    OXEN_DEFER { finish_outer_call(); };
-
-    if(m_deletion_initiated)
-      return LEVIN_ERROR_CONNECTION_DESTROYED;
-
-    const std::size_t length = message.view.size();
-    if (!m_pservice_endpoint->do_send(std::move(message)))
-    {
-      return -1;
-    }
-
-    return 1;
-  }
-  //------------------------------------------------------------------------------------------
   connection_id_t get_connection_id() {return m_connection_context.m_connection_id;}
   //------------------------------------------------------------------------------------------
   t_connection_context& get_context_ref() {return m_connection_context;}
@@ -752,14 +731,6 @@ int async_protocol_handler_config<t_connection_context>::notify(int command, con
   async_protocol_handler<t_connection_context>* aph;
   int r = find_and_lock_connection(connection_id, aph);
   return LEVIN_OK == r ? aph->notify(command, in_buff) : r;
-}
-//------------------------------------------------------------------------------------------
-template<class t_connection_context>
-int async_protocol_handler_config<t_connection_context>::send(shared_sv message, const connection_id_t& connection_id)
-{
-  async_protocol_handler<t_connection_context>* aph;
-  int r = find_and_lock_connection(connection_id, aph);
-  return LEVIN_OK == r ? aph->send(std::move(message)) : 0;
 }
 //------------------------------------------------------------------------------------------
 template<class t_connection_context>

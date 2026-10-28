@@ -26,252 +26,12 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <algorithm>
-#include <cstring>
 #include <gtest/gtest.h>
 #include <limits>
-#include <oxen/quic/utils.hpp>
-#include <set>
 
-#include "epee/shared_sv.h"
-#include "crypto/crypto.h"
-#include "cryptonote_basic/connection_context.h"
-#include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
-#include "cryptonote_protocol/levin_notify.h"
-#include "p2p/net_node.h"
 #include "epee/net/levin_base.h"
-
-namespace
-{
-    using epee::connection_id_t;
-
-    class test_endpoint final : public epee::net_utils::i_service_endpoint
-    {
-        boost::asio::io_service& io_service_;
-        std::size_t ref_count_;
-
-        virtual bool do_send(epee::shared_sv message) override final
-        {
-            send_queue_.push_back(std::move(message));
-            return true;
-        }
-
-        virtual bool close() override final
-        {
-            return true;
-        }
-
-        virtual bool send_done() override final
-        {
-            throw std::logic_error{"send_done not implemented"};
-        }
-
-        virtual bool request_callback() override final
-        {
-            throw std::logic_error{"request_callback not implemented"};
-        }
-
-        virtual boost::asio::io_service& get_io_service() override final
-        {
-            return io_service_;
-        }
-
-        virtual bool add_ref() override final
-        {
-            ++ref_count_;
-            return true;
-        }
-
-        virtual bool release() override final
-        {
-            --ref_count_;
-            return true;
-        }
-
-    public:
-        test_endpoint(boost::asio::io_service& io_service)
-          : epee::net_utils::i_service_endpoint(),
-	          io_service_(io_service),
-            ref_count_(0),
-            send_queue_()
-        {}
-
-        virtual ~test_endpoint() noexcept(false) override final
-        {
-            EXPECT_EQ(0u, ref_count_);
-        }
-
-        std::deque<epee::shared_sv> send_queue_;
-    };
-
-    class test_connection
-    {
-        test_endpoint endpoint_;
-        cryptonote::levin::detail::p2p_context context_;
-        epee::levin::async_protocol_handler<cryptonote::levin::detail::p2p_context> handler_;
-
-    public:
-        test_connection(boost::asio::io_service& io_service, cryptonote::levin::connections& connections, const bool is_incoming)
-          : endpoint_(io_service),
-            context_(),
-            handler_(std::addressof(endpoint_), connections, context_)
-        {
-            using base_type = epee::net_utils::connection_context_base;
-            static_cast<base_type&>(context_) = base_type{connection_id_t::random(), {}, is_incoming};
-            handler_.after_init_connection();
-        }
-
-        //\return Number of messages processed
-        std::size_t process_send_queue()
-        {
-            std::size_t count = 0;
-            for ( ; !endpoint_.send_queue_.empty(); ++count, endpoint_.send_queue_.pop_front())
-            {
-                // invalid messages shoudn't be possible in this test;
-                EXPECT_TRUE(handler_.handle_recv(endpoint_.send_queue_.front().data(), endpoint_.send_queue_.front().size()));
-            }
-            return count;
-        }
-
-        const connection_id_t& get_id() const noexcept
-        {
-            return context_.m_connection_id;
-        }
-    };
-
-    struct received_message
-    {
-        connection_id_t connection;
-        int command;
-        std::string payload;
-    };
-
-    class test_receiver final : public epee::levin::levin_commands_handler<cryptonote::levin::detail::p2p_context>
-    {
-        std::deque<received_message> invoked_;
-        std::deque<received_message> notified_;
-
-        template<typename T>
-        static std::pair<connection_id_t, typename T::request> get_message(std::deque<received_message>& queue)
-        {
-            if (queue.empty())
-                throw std::logic_error{"Queue has no received messges"};
-
-            if (queue.front().command != T::ID)
-                throw std::logic_error{"Unexpected ID at front of message queue"};
-
-            epee::serialization::portable_storage storage{};
-            if(!storage.load_from_binary(queue.front().payload))
-                throw std::logic_error{"Unable to parse epee binary format"};
-
-            typename T::request request{};
-            if (!request.load(storage))
-                throw std::logic_error{"Unable to load into expected request"};
-
-            connection_id_t connection = queue.front().connection;
-            queue.pop_front();
-            return {connection, std::move(request)};
-        }
-
-        virtual int invoke(int command, const std::span<const uint8_t> in_buff, std::string& buff_out, cryptonote::levin::detail::p2p_context& context) override final
-        {
-            buff_out.clear();
-            invoked_.push_back(
-                {context.m_connection_id, command, std::string{reinterpret_cast<const char*>(in_buff.data()), in_buff.size()}}
-            );
-            return 1;
-        }
-
-        virtual int notify(int command, const std::span<const uint8_t> in_buff, cryptonote::levin::detail::p2p_context& context) override final
-        {
-            notified_.push_back(
-                {context.m_connection_id, command, std::string{reinterpret_cast<const char*>(in_buff.data()), in_buff.size()}}
-            );
-            return 1;
-        }
-
-        virtual void callback(cryptonote::levin::detail::p2p_context& context) override final
-        {}
-
-        virtual void on_connection_new(cryptonote::levin::detail::p2p_context&) override final
-        {}
-
-        virtual void on_connection_close(cryptonote::levin::detail::p2p_context&) override final
-        {}
-
-    public:
-        test_receiver()
-          : epee::levin::levin_commands_handler<cryptonote::levin::detail::p2p_context>(),
-            invoked_(),
-            notified_()
-        {}
-
-        virtual ~test_receiver() noexcept override final{}
-
-        std::size_t invoked_size() const noexcept
-        {
-            return invoked_.size();
-        }
-
-        std::size_t notified_size() const noexcept
-        {
-            return notified_.size();
-        }
-
-        template<typename T>
-        std::pair<connection_id_t, typename T::request> get_invoked()
-        {
-            return get_message<T>(invoked_);
-        }
-
-        template<typename T>
-        std::pair<connection_id_t, typename T::request> get_notification()
-        {
-            return get_message<T>(notified_);
-        }
-    };
-
-    class levin_notify : public ::testing::Test
-    {
-        const std::shared_ptr<cryptonote::levin::connections> connections_;
-        std::set<connection_id_t> connection_ids_;
-
-    public:
-        levin_notify()
-          : ::testing::Test(),
-            connections_(std::make_shared<cryptonote::levin::connections>()),
-            connection_ids_(),
-            io_service_(),
-            receiver_(),
-            contexts_()
-        {
-            connections_->set_handler(std::addressof(receiver_), nullptr);
-        }
-
-        virtual void TearDown() override final
-        {
-            EXPECT_EQ(0u, receiver_.invoked_size());
-            EXPECT_EQ(0u, receiver_.notified_size());
-        }
-
-        void add_connection(const bool is_incoming)
-        {
-            contexts_.emplace_back(io_service_, *connections_, is_incoming);
-            EXPECT_TRUE(connection_ids_.emplace(contexts_.back().get_id()).second);
-            EXPECT_EQ(connection_ids_.size(), connections_->get_connections_count());
-        }
-
-        cryptonote::levin::notify make_notifier()
-        {
-            return cryptonote::levin::notify{io_service_, connections_};
-        }
-
-        boost::asio::io_service io_service_;
-        test_receiver receiver_;
-        std::deque<test_connection> contexts_;
-    };
-}
+#include "epee/storages/portable_storage_template_helper.h"
 
 TEST(make_header, no_expect_return)
 {
@@ -297,86 +57,29 @@ TEST(make_header, expect_return)
     EXPECT_EQ(0u, header1.m_flags);
 }
 
-TEST(make_notify, empty_payload)
+TEST(serialize_tx_notify, unpadded)
 {
-    const epee::shared_sv message{epee::levin::make_notify(443, {})};
-    const epee::levin::bucket_head2 header =
-        epee::levin::make_header(443, 0, LEVIN_PACKET_REQUEST, false);
-    ASSERT_EQ(sizeof(header), message.size());
-    EXPECT_TRUE(std::memcmp(std::addressof(header), message.data(), sizeof(header)) == 0);
+    const std::vector<std::string> txs{std::string(100, 'f'), std::string(200, 'e')};
+    const std::string payload = cryptonote::serialize_tx_notify(txs, false);
+
+    cryptonote::NOTIFY_NEW_TRANSACTIONS::request request;
+    ASSERT_TRUE(epee::serialization::load_t_from_binary(request, payload));
+    EXPECT_EQ(txs, request.txs);
+    EXPECT_TRUE(request.blinks.empty());
+    EXPECT_FALSE(request.requested);
+    EXPECT_TRUE(request._.empty());
 }
 
-TEST(make_notify, with_payload)
+TEST(serialize_tx_notify, padded)
 {
-    std::string bytes(100, 'a');
-    std::generate(bytes.begin(), bytes.end(), crypto::random_device{});
+    const std::vector<std::string> txs{std::string(100, 'f'), std::string(200, 'e')};
+    const std::string payload = cryptonote::serialize_tx_notify(txs, true);
+    EXPECT_EQ(0u, payload.size() % 1024);
 
-    const epee::shared_sv message{epee::levin::make_notify(443, oxen::quic::reinterpret_span<const std::uint8_t>(std::span{bytes}))};
-    const epee::levin::bucket_head2 header =
-        epee::levin::make_header(443, bytes.size(), LEVIN_PACKET_REQUEST, false);
-
-    ASSERT_EQ(sizeof(header) + bytes.size(), message.size());
-    EXPECT_TRUE(std::memcmp(std::addressof(header), message.data(), sizeof(header)) == 0);
-    EXPECT_TRUE(std::memcmp(bytes.data(), message.data() + sizeof(header), bytes.size()) == 0);
+    cryptonote::NOTIFY_NEW_TRANSACTIONS::request request;
+    ASSERT_TRUE(epee::serialization::load_t_from_binary(request, payload));
+    EXPECT_EQ(txs, request.txs);
+    EXPECT_TRUE(request.blinks.empty());
+    EXPECT_FALSE(request.requested);
+    EXPECT_FALSE(request._.empty());
 }
-
-TEST_F(levin_notify, defaulted)
-{
-    cryptonote::levin::notify notifier{};
-    EXPECT_FALSE(notifier.send_txs({}, connection_id_t::random(), false));
-}
-
-TEST_F(levin_notify, flood)
-{
-    cryptonote::levin::notify notifier = make_notifier();
-
-    for (unsigned count = 0; count < 10; ++count)
-        add_connection(count % 2 == 0);
-
-    std::vector<std::string> txs(2);
-    txs[0].resize(100, 'f');
-    txs[1].resize(200, 'e');
-
-    ASSERT_EQ(10u, contexts_.size());
-    {
-        auto context = contexts_.begin();
-        EXPECT_TRUE(notifier.send_txs(txs, context->get_id(), false));
-
-        io_service_.restart();
-        ASSERT_LT(0u, io_service_.poll());
-        EXPECT_EQ(0u, context->process_send_queue());
-        for (++context; context != contexts_.end(); ++context)
-            EXPECT_EQ(1u, context->process_send_queue());
-
-        std::sort(txs.begin(), txs.end());
-        ASSERT_EQ(9u, receiver_.notified_size());
-        for (unsigned count = 0; count < 9; ++count)
-        {
-            auto notification = receiver_.get_notification<cryptonote::NOTIFY_NEW_TRANSACTIONS>().second;
-            EXPECT_EQ(txs, notification.txs);
-            EXPECT_TRUE(notification._.empty());
-        }
-    }
-
-    ASSERT_EQ(10u, contexts_.size());
-    {
-        auto context = contexts_.begin();
-        EXPECT_TRUE(notifier.send_txs(txs, context->get_id(), true));
-
-        io_service_.restart();
-        ASSERT_LT(0u, io_service_.poll());
-        EXPECT_EQ(0u, context->process_send_queue());
-        for (++context; context != contexts_.end(); ++context)
-            EXPECT_EQ(1u, context->process_send_queue());
-
-        std::sort(txs.begin(), txs.end());
-        ASSERT_EQ(9u, receiver_.notified_size());
-        for (unsigned count = 0; count < 9; ++count)
-        {
-            auto notification = receiver_.get_notification<cryptonote::NOTIFY_NEW_TRANSACTIONS>().second;
-            EXPECT_EQ(txs, notification.txs);
-            EXPECT_FALSE(notification._.empty());
-        }
-    }
-}
-

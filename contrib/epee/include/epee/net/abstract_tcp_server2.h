@@ -249,11 +249,6 @@ namespace net_utils
       return *m_state;
     }
 
-    std::shared_ptr<typename t_protocol_handler::config_type> get_config_shared()
-    {
-      assert(m_state != nullptr); // always set in constructor
-      return {m_state};
-    }
 
     int get_binded_port(){return m_port;}
     int get_binded_port_ipv6(){return m_port_ipv6;}
