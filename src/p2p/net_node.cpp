@@ -576,7 +576,6 @@ bool node_server::run() {
     auto& core = m_payload_handler.get_core();
     auto& omq = core.omq();
     const auto& thread = core.p2p_thread_id();
-    m_payload_handler.refresh_sync_data();
     m_transport.start(omq, thread);
     m_idle_timers.push_back(omq.add_timer([this] { idle_worker(); }, 1s, true, thread));
     m_idle_timers.push_back(
