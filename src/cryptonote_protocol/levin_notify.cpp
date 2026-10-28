@@ -29,11 +29,11 @@
 #include "levin_notify.h"
 
 #include <algorithm>
+#include <oxen/quic/utils.hpp>
 
 #include "common/varint.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
-#include "epee/byte_span.h"
 #include "p2p/net_node.h"
 
 namespace cryptonote::levin {
@@ -151,7 +151,8 @@ bool notify::send_txs(
 
     const std::string payload = make_tx_payload(std::move(txs), pad_txs);
     epee::shared_sv message{epee::levin::make_notify(
-            NOTIFY_NEW_TRANSACTIONS::ID, epee::strspan<std::uint8_t>(payload))};
+            NOTIFY_NEW_TRANSACTIONS::ID,
+            oxen::quic::reinterpret_span<const std::uint8_t>(std::span{payload}))};
 
     zone_->strand.dispatch(flood_notify{zone_, std::move(message), source}, std::allocator<void>{});
 

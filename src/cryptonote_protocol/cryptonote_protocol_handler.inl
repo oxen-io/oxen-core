@@ -2362,7 +2362,7 @@ You are now synchronized with the network.
       epee::serialization::store_t_to_binary(arg_without_tx_blobs, fluffyBlob);
     }
 
-    m_p2p->relay_notify_to_list(NOTIFY_NEW_FLUFFY_BLOCK::ID, epee::strspan<uint8_t>(fluffyBlob), std::move(fluffyConnections));
+    m_p2p->relay_notify_to_list(NOTIFY_NEW_FLUFFY_BLOCK::ID, oxen::quic::reinterpret_span<const uint8_t>(std::span{fluffyBlob}), std::move(fluffyConnections));
     return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
