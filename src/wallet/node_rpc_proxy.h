@@ -71,57 +71,6 @@ class NodeRPCProxy {
   private:
     bool get_info() const;
 
-    // Invokes an JSON RPC request and checks it for errors, include a check that the response
-    // `.status` value is equal to rpc::STATUS_OK.  Returns the response on success, logs and throws
-    // on error.
-    template <typename RPC>
-    typename RPC::response invoke_json_rpc(const typename RPC::request& req) const {
-        typename RPC::response result;
-        try {
-            result = m_http_client.json_rpc<RPC>(RPC::names().front(), req);
-        } catch (const std::exception& e) {
-            log::error(globallogcat, "{}", e.what());
-            throw;
-        }
-        if (result.status != cryptonote::rpc::STATUS_OK) {
-            std::string error = "Request for " + std::string{RPC::names().front()} + " failed: " +
-                                (result.status == cryptonote::rpc::STATUS_BUSY ? "daemon is busy"
-                                                                               : result.status);
-            log::error(globallogcat, "{}", error);
-            throw std::runtime_error{error};
-        }
-
-        return result;
-    }
-
-    // Makes a json rpc request with the given request value and (if successful) returns a
-    // std::pair<bool, Value>.  Takes two arguments: the request, and a lambda that takes an rvalue
-    // response and returns an value (typically moved via something like `return
-    // std::move(response.whatever)`).
-    template <
-            typename RPC,
-            typename GetValue,
-            typename Value = decltype(std::declval<GetValue>()(typename RPC::response{}))>
-    std::pair<bool, Value> get_result_pair(
-            const typename RPC::request& req,
-            GetValue get_value,
-            uint64_t* check_height = nullptr) const {
-        std::pair<bool, Value> result;
-        auto& [success, value] = result;
-        success = false;
-
-        if (m_offline)
-            return result;
-
-        try {
-            value = get_value(invoke_json_rpc<RPC>(req));
-            success = true;
-        } catch (...) {
-        }
-
-        return result;
-    }
-
     cryptonote::rpc::http_client& m_http_client;
     bool m_offline;
 
