@@ -36,7 +36,6 @@
 #include <type_traits>
 #include <vector>
 
-#include "epee/shared_sv.h"
 #include "crypto/crypto.h"
 #include "epee/net/net_utils_base.h"
 #include "net/address.h"
@@ -73,48 +72,6 @@ namespace
 }
 
 using namespace std::literals;
-
-static_assert(std::is_default_constructible_v<epee::shared_sv>);
-static_assert(std::is_move_constructible_v<epee::shared_sv>);
-static_assert(std::is_copy_constructible_v<epee::shared_sv>);
-static_assert(std::is_move_assignable_v<epee::shared_sv>);
-static_assert(std::is_copy_assignable_v<epee::shared_sv>);
-static_assert(std::is_nothrow_default_constructible_v<epee::shared_sv>);
-static_assert(std::is_nothrow_move_constructible_v<epee::shared_sv>);
-static_assert(std::is_nothrow_move_assignable_v<epee::shared_sv>);
-
-TEST(SharedSV, Tests)
-{
-  epee::shared_sv slice{};
-  auto& view = slice.view;
-
-  EXPECT_TRUE(view.empty());
-  EXPECT_EQ(0u, slice.extract_prefix(0).size());
-  EXPECT_EQ(0u, slice.extract_prefix(1).size());
-
-  using namespace std::literals;
-  epee::shared_sv from_str{"abcdef"s};
-  EXPECT_EQ("abcdef"sv, from_str.view);
-  auto sv2 = from_str.extract_prefix(4);
-  EXPECT_EQ(4, sv2.size());
-  EXPECT_EQ(2, from_str.size());
-  auto sv3 = sv2.extract_prefix(1);
-  EXPECT_EQ("a"sv, sv3.view);
-  EXPECT_EQ("bcd"sv, sv2.view);
-  EXPECT_EQ("ef"sv, from_str.view);
-  EXPECT_EQ(3, from_str.ptr.use_count());
-  sv2 = {};
-  EXPECT_EQ(2, from_str.ptr.use_count());
-  sv3 = {};
-  EXPECT_EQ(1, from_str.ptr.use_count());
-  auto ptr = from_str.ptr;
-  from_str = {};
-  EXPECT_EQ(1, ptr.use_count());
-  ptr.reset();
-  EXPECT_EQ(0, from_str.size());
-  EXPECT_EQ(0, sv2.size());
-  EXPECT_EQ(0, sv3.size());
-}
 
 TEST(NetUtils, Address)
 {
