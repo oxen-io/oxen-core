@@ -31,6 +31,8 @@
 
 // IP blocking adapted from Boolberry
 
+#include "net_node.h"
+
 #include <fmt/color.h>
 #include <fmt/core.h>
 #include <fmt/std.h>
@@ -59,7 +61,6 @@
 #include "epee/storages/levin_abstract_invoke2.h"
 #include "net/error.h"
 #include "net/parse.h"
-#include "net_node.h"
 #include "networks.h"
 #include "p2p_protocol_defs.h"
 #include "version.h"
@@ -125,9 +126,7 @@ const command_line::arg_descriptor<int64_t> arg_limit_rate = {
         "limit-rate", "set limit-rate [kB/s]", -1};
 
 static bool append_net_address(
-        std::vector<oxen::quic::Address>& seed_nodes,
-        std::string_view addr,
-        uint16_t default_port);
+        std::vector<oxen::quic::Address>& seed_nodes, std::string_view addr, uint16_t default_port);
 //-----------------------------------------------------------------------------------
 void node_server::init_options(
         boost::program_options::options_description& desc,
@@ -191,8 +190,7 @@ bool node_server::for_connection(
             connection_id, [&](p2p_connection_context& cntx) { return f(cntx, cntx.peer_id); });
 }
 //-----------------------------------------------------------------------------------
-bool node_server::is_remote_host_allowed(
-        const oxen::quic::Address& address, time_t* t) {
+bool node_server::is_remote_host_allowed(const oxen::quic::Address& address, time_t* t) {
     std::unique_lock lock{m_blocked_hosts_lock};
 
     const time_t now = time(nullptr);
@@ -202,11 +200,7 @@ bool node_server::is_remote_host_allowed(
     if (it != m_blocked_hosts.end()) {
         if (now >= it->second) {
             m_blocked_hosts.erase(it);
-            log::info(
-                    logcat,
-                    fg(fmt::terminal_color::cyan),
-                    "Host {} unblocked.",
-                    address.host());
+            log::info(logcat, fg(fmt::terminal_color::cyan), "Host {} unblocked.", address.host());
             it = m_blocked_hosts.end();
         } else {
             if (t)
@@ -237,8 +231,7 @@ bool node_server::is_remote_host_allowed(
     return true;
 }
 //-----------------------------------------------------------------------------------
-bool node_server::block_host(
-        const oxen::quic::Address& addr, time_t seconds) {
+bool node_server::block_host(const oxen::quic::Address& addr, time_t seconds) {
     const time_t now = time(nullptr);
 
     std::unique_lock lock{m_blocked_hosts_lock};
@@ -263,8 +256,7 @@ bool node_server::block_host(
     return true;
 }
 //-----------------------------------------------------------------------------------
-bool node_server::unblock_host(
-        const oxen::quic::Address& address) {
+bool node_server::unblock_host(const oxen::quic::Address& address) {
     std::unique_lock lock{m_blocked_hosts_lock};
     auto i = m_blocked_hosts.find(address.host());
     if (i == m_blocked_hosts.end())
@@ -274,8 +266,7 @@ bool node_server::unblock_host(
     return true;
 }
 //-----------------------------------------------------------------------------------
-bool node_server::block_subnet(
-        const oxen::quic::ipv4_range& subnet, time_t seconds) {
+bool node_server::block_subnet(const oxen::quic::ipv4_range& subnet, time_t seconds) {
     const time_t now = time(nullptr);
 
     std::unique_lock lock{m_blocked_hosts_lock};
@@ -310,8 +301,7 @@ bool node_server::unblock_subnet(const oxen::quic::ipv4_range& subnet) {
     return true;
 }
 //-----------------------------------------------------------------------------------
-bool node_server::add_host_fail(
-        const oxen::quic::Address& address) {
+bool node_server::add_host_fail(const oxen::quic::Address& address) {
     std::lock_guard lock{m_host_fails_score_lock};
     uint64_t fails = ++m_host_fails_score[address.host()];
     log::debug(logcat, "Host {} fail score={}", address.host(), fails);
@@ -327,8 +317,7 @@ bool node_server::add_host_fail(
     return true;
 }
 //-----------------------------------------------------------------------------------
-bool node_server::handle_command_line(
-        const boost::program_options::variables_map& vm) {
+bool node_server::handle_command_line(const boost::program_options::variables_map& vm) {
 
     m_nettype = command_line::get_network(vm);
 
@@ -346,8 +335,7 @@ bool node_server::handle_command_line(
         std::vector<std::string> perrs = command_line::get_arg(vm, arg_p2p_add_peer);
         for (const std::string& pr_str : perrs) {
             const uint16_t default_port = cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT;
-            expect<oxen::quic::Address> adr =
-                    net::get_network_address(pr_str, default_port);
+            expect<oxen::quic::Address> adr = net::get_network_address(pr_str, default_port);
             if (adr) {
                 m_command_line_peers.push_back(
                         {.adr = std::move(*adr), .id = crypto::rand<uint64_t>()});
@@ -452,9 +440,11 @@ static bool append_net_address(
     io_service io_srv;
     ip::tcp::resolver resolver(io_srv);
     boost::system::error_code ec;
-    ip::tcp::resolver::results_type result = resolver.resolve(host, port, boost::asio::ip::tcp::resolver::canonical_name, ec);
+    ip::tcp::resolver::results_type result =
+            resolver.resolve(host, port, boost::asio::ip::tcp::resolver::canonical_name, ec);
     if (ec) {
-        log::error(logcat, "Failed to resolve host name '{}': {}:{}", host, ec.message(), ec.value());
+        log::error(
+                logcat, "Failed to resolve host name '{}': {}:{}", host, ec.message(), ec.value());
         return false;
     }
 
@@ -551,13 +541,22 @@ cryptonote::protocol_handler& node_server::get_payload_object() {
     return m_payload_handler;
 }
 //-----------------------------------------------------------------------------------
-static void log_detailed_peer_stats(std::unordered_map<peerid_type, peer_stats>& peer_stats_map, std::mutex& peer_stats_map_mutex) {
+static void log_detailed_peer_stats(
+        std::unordered_map<peerid_type, peer_stats>& peer_stats_map,
+        std::mutex& peer_stats_map_mutex) {
     if (log::get_level(logcat) > log::Level::debug)
-      return;
+        return;
     std::unique_lock lock{peer_stats_map_mutex};
     for (const auto& [peer_id, stats] : peer_stats_map) {
-        log::debug(globallogcat, "Peer ID: {}\n\tConnections: {} total, {} failed\n\tLast Connected: {}\n\tTotal Connection Time: {} seconds",
-            peer_id, stats.total_connections, stats.failed_connections, stats.last_connected_timestamp, stats.total_connection_time);
+        log::debug(
+                globallogcat,
+                "Peer ID: {}\n\tConnections: {} total, {} failed\n\tLast Connected: {}\n\tTotal "
+                "Connection Time: {} seconds",
+                peer_id,
+                stats.total_connections,
+                stats.failed_connections,
+                stats.last_connected_timestamp,
+                stats.total_connection_time);
     }
 }
 //-----------------------------------------------------------------------------------
@@ -592,11 +591,10 @@ bool node_server::run() {
 }
 //-----------------------------------------------------------------------------------
 static void update_peer_stats(
-    std::unordered_map<peerid_type, peer_stats>& peer_stats_map, 
-    std::mutex& peer_stats_map_mutex, 
-    const peerid_type peer_id, 
-    uint64_t connection_time
-) {
+        std::unordered_map<peerid_type, peer_stats>& peer_stats_map,
+        std::mutex& peer_stats_map_mutex,
+        const peerid_type peer_id,
+        uint64_t connection_time) {
     std::unique_lock lock{peer_stats_map_mutex};
     auto& stats = peer_stats_map[peer_id];
     stats.total_connections++;
@@ -605,10 +603,9 @@ static void update_peer_stats(
 }
 //-----------------------------------------------------------------------------------
 static void update_peer_failed_connection(
-    std::unordered_map<peerid_type, peer_stats>& peer_stats_map,
-    std::mutex& peer_stats_map_mutex,
-    const peerid_type peer_id
-) {
+        std::unordered_map<peerid_type, peer_stats>& peer_stats_map,
+        std::mutex& peer_stats_map_mutex,
+        const peerid_type peer_id) {
     std::unique_lock lock{peer_stats_map_mutex};
     auto& stats = peer_stats_map[peer_id];
     stats.failed_connections++;
@@ -616,15 +613,15 @@ static void update_peer_failed_connection(
 }
 //-----------------------------------------------------------------------------------
 static double calculate_peer_score(
-    std::unordered_map<peerid_type, peer_stats>& peer_stats_map, 
-    std::mutex& peer_stats_map_mutex, 
-    const peerid_type peer_id) {
+        std::unordered_map<peerid_type, peer_stats>& peer_stats_map,
+        std::mutex& peer_stats_map_mutex,
+        const peerid_type peer_id) {
     std::unique_lock lock{peer_stats_map_mutex};
     constexpr double NEUTRAL_SCORE = 100.0;
     constexpr double MAX_CONNECTION_DURATION_FACTOR = 500.0;
-    constexpr time_t RECENT_DISCONNECT_PENALTY_TIMEFRAME = 60 * 5; // 5 mins
+    constexpr time_t RECENT_DISCONNECT_PENALTY_TIMEFRAME = 60 * 5;  // 5 mins
     constexpr double RECENT_DISCONNECT_PENALTY = 500.0;
-    constexpr double MIN_EXPECTED_UPTIME = 60; // 1 min
+    constexpr double MIN_EXPECTED_UPTIME = 60;  // 1 min
     constexpr double LOW_UPTIME_PENALTY = 100.0;
     constexpr double RECENT_ACTIVITY_CAP = 100.0;
 
@@ -636,59 +633,58 @@ static double calculate_peer_score(
     const peer_stats& stats = it->second;
 
     // Connection Duration Factor will return a score that is from [0, 500] depending on how many
-    // minutes the node has been online 
+    // minutes the node has been online
     double connection_duration_factor = stats.total_connection_time / 60.0;
-    connection_duration_factor = std::min(connection_duration_factor, MAX_CONNECTION_DURATION_FACTOR);
+    connection_duration_factor =
+            std::min(connection_duration_factor, MAX_CONNECTION_DURATION_FACTOR);
 
     double successful_connections = 0.0;
     if (stats.total_connections > stats.failed_connections) {
-      successful_connections = stats.total_connections - stats.failed_connections;
+        successful_connections = stats.total_connections - stats.failed_connections;
     }
 
-    // Success Rate will return a [0,1] percentage of how frequently the connection has succeeded vs total connections
-    double success_rate = (stats.total_connections > 0)
-                              ? successful_connections /
-                                stats.total_connections
-                              : 0.0;
+    // Success Rate will return a [0,1] percentage of how frequently the connection has succeeded vs
+    // total connections
+    double success_rate =
+            (stats.total_connections > 0) ? successful_connections / stats.total_connections : 0.0;
 
-    // Recent Activity factor will return a linearly growing score up until a cap based on how long since we last connected. 
-    // This will be subtracted from the score to penalise people we havent seen in a long time
-    double recent_activity_factor = static_cast<double>(time(nullptr) - stats.last_connected_timestamp) / 3600.0;
+    // Recent Activity factor will return a linearly growing score up until a cap based on how long
+    // since we last connected. This will be subtracted from the score to penalise people we havent
+    // seen in a long time
+    double recent_activity_factor =
+            static_cast<double>(time(nullptr) - stats.last_connected_timestamp) / 3600.0;
     recent_activity_factor = std::min(recent_activity_factor, RECENT_ACTIVITY_CAP);
 
-    // Penalize peers who were recently disconnected, this will be subtracted if we connected to them 
-    // in the last 5 mins. The list should only show people we are currently not connected to so we assume 
-    // they had to have disconnected.
+    // Penalize peers who were recently disconnected, this will be subtracted if we connected to
+    // them in the last 5 mins. The list should only show people we are currently not connected to
+    // so we assume they had to have disconnected.
     double recent_disconnect_penalty = 0.0;
     if (stats.last_connected_timestamp > 0 &&
         (time(nullptr) - stats.last_connected_timestamp) <= RECENT_DISCONNECT_PENALTY_TIMEFRAME) {
         recent_disconnect_penalty = RECENT_DISCONNECT_PENALTY;
     }
 
-    // We expect the node to have a minumum expected uptime, so we look at their average connection time
-    // and if this is less than 20 mins per connection then we give them a penalty
+    // We expect the node to have a minumum expected uptime, so we look at their average connection
+    // time and if this is less than 20 mins per connection then we give them a penalty
     double average_uptime = (successful_connections > 0)
-                                ? stats.total_connection_time / successful_connections
-                                : 0.0;
+                                  ? stats.total_connection_time / successful_connections
+                                  : 0.0;
 
     double low_uptime_penalty = 0.0;
     if (average_uptime < MIN_EXPECTED_UPTIME) {
         low_uptime_penalty = LOW_UPTIME_PENALTY;
     }
 
-    double score = connection_duration_factor * success_rate
-                      - recent_activity_factor
-                      - recent_disconnect_penalty
-                      - low_uptime_penalty;
+    double score = connection_duration_factor * success_rate - recent_activity_factor -
+                   recent_disconnect_penalty - low_uptime_penalty;
 
     return score;
 }
 //-----------------------------------------------------------------------------------
 static std::optional<std::pair<peerid_type, size_t>> select_best_peer(
-      std::unordered_map<peerid_type, peer_stats>& peer_stats_map, 
-      std::mutex& peer_stats_map_mutex, 
-      const std::vector<std::pair<peerid_type, size_t>>& candidate_peers
-    ) {
+        std::unordered_map<peerid_type, peer_stats>& peer_stats_map,
+        std::mutex& peer_stats_map_mutex,
+        const std::vector<std::pair<peerid_type, size_t>>& candidate_peers) {
     // Create a local copy of the candidate peers to shuffle
     std::vector<std::pair<peerid_type, size_t>> shuffled_peers = candidate_peers;
 
@@ -841,7 +837,9 @@ void node_server::do_handshake_with_peer(
 
                     if (rsp.node_data.peer_id == m_network.m_config.m_peer_id) {
                         log::debug(
-                                logcat, "{}Connection to self detected, dropping connection", context);
+                                logcat,
+                                "{}Connection to self detected, dropping connection",
+                                context);
                         return false;
                     }
                     context.m_anchor = anchor;
@@ -932,28 +930,25 @@ bool node_server::is_peer_used(const Entry& peer) {
         return true;
 
     bool used = false;
-    m_transport.foreach_connection(
-            [&](const p2p_connection_context& cntxt) {
-                if (cntxt.peer_id == peer.id) {
-                    used = true;
-                    return false;  // stop enumerating
-                }
-                return true;
-            });
+    m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
+        if (cntxt.peer_id == peer.id) {
+            used = true;
+            return false;  // stop enumerating
+        }
+        return true;
+    });
     return used;
 }
 //-----------------------------------------------------------------------------------
-bool node_server::is_addr_connected(
-        const oxen::quic::Address& peer) {
+bool node_server::is_addr_connected(const oxen::quic::Address& peer) {
     bool connected = false;
-    m_transport.foreach_connection(
-            [&](const p2p_connection_context& cntxt) {
-                if (!cntxt.m_is_income && peer == cntxt.m_remote_address) {
-                    connected = true;
-                    return false;  // stop enumerating
-                }
-                return true;
-            });
+    m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
+        if (!cntxt.m_is_income && peer == cntxt.m_remote_address) {
+            connected = true;
+            return false;  // stop enumerating
+        }
+        return true;
+    });
 
     return connected;
 }
@@ -1024,9 +1019,9 @@ bool node_server::connect_and_handshake(
                             }
 
                             if (just_take_peerlist) {
-                                log::debug(logcat, "{}CONNECTION HANDSHAKED OK AND CLOSED.", *context);
-                                m_transport.close(
-                                        context->m_connection_id);
+                                log::debug(
+                                        logcat, "{}CONNECTION HANDSHAKED OK AND CLOSED.", *context);
+                                m_transport.close(context->m_connection_id);
                                 finish(true);
                                 return;
                             }
@@ -1067,14 +1062,13 @@ bool node_server::is_connect_pending(const oxen::quic::Address& na) {
 size_t node_server::get_outgoing_and_pending_count() {
     size_t count = 0;
     std::set<oxen::quic::Address> connected;
-    m_transport.foreach_connection(
-            [&](const p2p_connection_context& cntxt) {
-                if (!cntxt.m_is_income) {
-                    ++count;
-                    connected.insert(cntxt.m_remote_address);
-                }
-                return true;
-            });
+    m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
+        if (!cntxt.m_is_income) {
+            ++count;
+            connected.insert(cntxt.m_remote_address);
+        }
+        return true;
+    });
     std::lock_guard lock{m_pending_connects_mutex};
     for (const auto& addr : m_pending_connects)
         if (!connected.count(addr))
@@ -1083,14 +1077,12 @@ size_t node_server::get_outgoing_and_pending_count() {
 }
 
 //-----------------------------------------------------------------------------------
-void node_server::record_addr_failed(
-        const oxen::quic::Address& addr) {
+void node_server::record_addr_failed(const oxen::quic::Address& addr) {
     std::unique_lock lock{m_conn_fails_cache_lock};
     m_conn_fails_cache[addr.host()] = time(NULL);
 }
 //-----------------------------------------------------------------------------------
-bool node_server::is_addr_recently_failed(
-        const oxen::quic::Address& addr) {
+bool node_server::is_addr_recently_failed(const oxen::quic::Address& addr) {
     std::shared_lock lock{m_conn_fails_cache_lock};
     auto it = m_conn_fails_cache.find(addr.host());
     if (it == m_conn_fails_cache.end())
@@ -1154,12 +1146,11 @@ std::vector<size_t> node_server::connectable_peers(
         std::set<oxen::quic::Address> addr;
         std::unordered_set<peerid_type> peer;
     } seen;
-    m_transport.foreach_connection(
-            [&](const p2p_connection_context& cntxt) {
-                seen.addr.insert(cntxt.m_remote_address);
-                seen.peer.insert(cntxt.peer_id);
-                return true;
-            });
+    m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
+        seen.addr.insert(cntxt.m_remote_address);
+        seen.peer.insert(cntxt.peer_id);
+        return true;
+    });
     {
         std::lock_guard lock{m_pending_connects_mutex};
         seen.addr.insert(m_pending_connects.begin(), m_pending_connects.end());
@@ -1192,17 +1183,13 @@ bool node_server::make_new_connection_from_peerlist(
     auto& peerlist = m_network.m_peerlist;
     std::set<size_t> tried_peers;
 
-    for (size_t rand_count = 0; rand_count < 3 && !m_transport.stopping();
-         rand_count++) {
+    for (size_t rand_count = 0; rand_count < 3 && !m_transport.stopping(); rand_count++) {
         size_t random_index;
 
         std::vector<size_t> filtered = connectable_peers(use_white_list, need);
 
         if (filtered.empty()) {
-            log::debug(
-                    logcat,
-                    "No available peer in {} list",
-                    (use_white_list ? "white" : "gray"));
+            log::debug(logcat, "No available peer in {} list", (use_white_list ? "white" : "gray"));
             return false;
         }
 
@@ -1214,7 +1201,8 @@ bool node_server::make_new_connection_from_peerlist(
                 if (peerlist.get_white_peer_by_index(pe, filtered[i]))
                     candidate_peers.push_back(std::make_pair(pe.id, filtered[i]));
             }
-            auto maybe_best_peer = select_best_peer(peer_stats_map, peer_stats_map_mutex, candidate_peers);
+            auto maybe_best_peer =
+                    select_best_peer(peer_stats_map, peer_stats_map_mutex, candidate_peers);
             if (!maybe_best_peer)
                 return false;
             random_index = maybe_best_peer->second;
@@ -1223,8 +1211,8 @@ bool node_server::make_new_connection_from_peerlist(
             random_index = filtered[random_index];
         }
 
-        if (random_index >= (use_white_list ? peerlist.get_white_peers_count()
-                                            : peerlist.get_gray_peers_count())) {
+        if (random_index >=
+            (use_white_list ? peerlist.get_white_peers_count() : peerlist.get_gray_peers_count())) {
             log::error(logcat, "random_index < peers size failed!!");
             return false;
         }
@@ -1317,13 +1305,11 @@ void node_server::connect_to_seed() {
     }
 }
 //-----------------------------------------------------------------------------------
-auto node_server::check_sync_peers(const cryptonote::sync_need& need)
-        -> sync_peers {
+auto node_server::check_sync_peers(const cryptonote::sync_need& need) -> sync_peers {
     m_unhelpful_peers.forget_servable(need.height);
 
     sync_peers peers;
-    m_transport.foreach_connection([&](const p2p_connection_context&
-                                                                              cntxt) {
+    m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
         if (cntxt.m_state == cryptonote::cryptonote_connection_context::state_before_handshake)
             return true;
         ++peers.total;
@@ -1468,8 +1454,7 @@ bool node_server::connections_maker() {
     return true;
 }
 //-----------------------------------------------------------------------------------
-bool node_server::make_expected_connections_count(
-        PeerType peer_type, size_t expected_connections) {
+bool node_server::make_expected_connections_count(PeerType peer_type, size_t expected_connections) {
     if (m_offline)
         return false;
 
@@ -1513,23 +1498,21 @@ size_t node_server::get_public_outgoing_connections_count() {
 //-----------------------------------------------------------------------------------
 size_t node_server::get_outgoing_connections_count() {
     size_t count = 0;
-    m_transport.foreach_connection(
-            [&](const p2p_connection_context& cntxt) {
-                if (!cntxt.m_is_income)
-                    ++count;
-                return true;
-            });
+    m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
+        if (!cntxt.m_is_income)
+            ++count;
+        return true;
+    });
     return count;
 }
 //-----------------------------------------------------------------------------------
 size_t node_server::get_incoming_connections_count() {
     size_t count = 0;
-    m_transport.foreach_connection(
-            [&](const p2p_connection_context& cntxt) {
-                if (cntxt.m_is_income)
-                    ++count;
-                return true;
-            });
+    m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
+        if (cntxt.m_is_income)
+            ++count;
+        return true;
+    });
     return count;
 }
 //-----------------------------------------------------------------------------------
@@ -1585,16 +1568,15 @@ bool node_server::peer_sync_idle_maker() {
     typedef std::list<std::pair<epee::net_utils::connection_context_base, peerid_type>>
             local_connects_type;
     local_connects_type cncts;
-    m_transport.foreach_connection(
-            [&](p2p_connection_context& cntxt) {
-                if (cntxt.peer_id && !cntxt.m_in_timedsync) {
-                    cntxt.m_in_timedsync = true;
-                    cncts.push_back(local_connects_type::value_type(
-                            cntxt,
-                            cntxt.peer_id));  // do idle sync only with handshaked connections
-                }
-                return true;
-            });
+    m_transport.foreach_connection([&](p2p_connection_context& cntxt) {
+        if (cntxt.peer_id && !cntxt.m_in_timedsync) {
+            cntxt.m_in_timedsync = true;
+            cncts.push_back(local_connects_type::value_type(
+                    cntxt,
+                    cntxt.peer_id));  // do idle sync only with handshaked connections
+        }
+        return true;
+    });
 
     std::for_each(cncts.begin(), cncts.end(), [&](const auto& vl) {
         do_peer_timed_sync(vl.first, vl.second);
@@ -1604,8 +1586,7 @@ bool node_server::peer_sync_idle_maker() {
     return true;
 }
 //-----------------------------------------------------------------------------------
-bool node_server::sanitize_peerlist(
-        std::vector<peerlist_entry>& local_peerlist) {
+bool node_server::sanitize_peerlist(std::vector<peerlist_entry>& local_peerlist) {
     for (size_t i = 0; i < local_peerlist.size(); ++i) {
         peerlist_entry& be = local_peerlist[i];
         // Loopback, local and unspecified (0.0.0.0, ::) addresses
@@ -1659,8 +1640,7 @@ int node_server::handle_get_support_flags(
     return 1;
 }
 //-----------------------------------------------------------------------------------
-void node_server::request_callback(
-        const epee::net_utils::connection_context_base& context) {
+void node_server::request_callback(const epee::net_utils::connection_context_base& context) {
     m_transport.request_callback(context.m_connection_id);
 }
 //-----------------------------------------------------------------------------------
@@ -1691,8 +1671,7 @@ bool node_server::invoke_notify_to_peer(
     return m_transport.notify(command, req_buff, context.m_connection_id) > 0;
 }
 //-----------------------------------------------------------------------------------
-bool node_server::drop_connection(
-        const epee::net_utils::connection_context_base& context) {
+bool node_server::drop_connection(const epee::net_utils::connection_context_base& context) {
     m_transport.close(context.m_connection_id);
     return true;
 }
@@ -1942,13 +1921,12 @@ bool node_server::log_connections() {
 std::string node_server::print_connections_container() {
 
     std::stringstream ss;
-    m_transport.foreach_connection(
-            [&](const p2p_connection_context& cntxt) {
-                ss << cntxt.m_remote_address.to_string() << " \t\tpeer_id "
-                   << peerid_to_string(cntxt.peer_id) << " \t\tconn_id " << cntxt.m_connection_id
-                   << (cntxt.m_is_income ? " INC" : " OUT") << std::endl;
-                return true;
-            });
+    m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
+        ss << cntxt.m_remote_address.to_string() << " \t\tpeer_id "
+           << peerid_to_string(cntxt.peer_id) << " \t\tconn_id " << cntxt.m_connection_id
+           << (cntxt.m_is_income ? " INC" : " OUT") << std::endl;
+        return true;
+    });
     return ss.str();
 }
 //-----------------------------------------------------------------------------------
@@ -1958,7 +1936,8 @@ void node_server::on_connection_new(p2p_connection_context& context) {
 //-----------------------------------------------------------------------------------
 void node_server::on_connection_close(p2p_connection_context& context) {
     const auto connection_time = std::chrono::duration_cast<std::chrono::seconds>(
-        std::chrono::steady_clock::now() - context.m_started).count();
+                                         std::chrono::steady_clock::now() - context.m_started)
+                                         .count();
     update_peer_stats(peer_stats_map, peer_stats_map_mutex, context.peer_id, connection_time);
     if (!m_transport.stopping() && !context.m_is_income)
         m_network.m_peerlist.remove_from_peer_anchor(context.m_remote_address);
@@ -1968,8 +1947,7 @@ void node_server::on_connection_close(p2p_connection_context& context) {
     log::info(logcat, "[{}] CLOSE CONNECTION", epee::net_utils::print_connection_context(context));
 }
 
-bool node_server::is_priority_node(
-        const oxen::quic::Address& na) {
+bool node_server::is_priority_node(const oxen::quic::Address& na) {
     return (std::find(m_priority_peers.begin(), m_priority_peers.end(), na) !=
             m_priority_peers.end()) ||
            (std::find(m_exclusive_peers.begin(), m_exclusive_peers.end(), na) !=
@@ -1999,8 +1977,7 @@ bool node_server::parse_peers_and_add_to_container(
 
     const uint16_t default_port = cryptonote::get_config(m_nettype).P2P_DEFAULT_PORT;
     for (const std::string& pr_str : perrs) {
-        expect<oxen::quic::Address> adr =
-                net::get_network_address(pr_str, default_port);
+        expect<oxen::quic::Address> adr = net::get_network_address(pr_str, default_port);
         if (adr) {
             container.push_back(std::move(*adr));
             continue;
@@ -2056,23 +2033,21 @@ uint32_t node_server::get_max_in_public_peers() const {
     return m_network.m_config.m_net_config.max_in_connection_count;
 }
 
-bool node_server::has_too_many_connections(
-        const oxen::quic::Address& address) {
+bool node_server::has_too_many_connections(const oxen::quic::Address& address) {
     const size_t max_connections = m_nettype == cryptonote::network_type::MAINNET ? 1 : 20;
     size_t count = 0;
 
-    m_transport.foreach_connection(
-            [&](const p2p_connection_context& cntxt) {
-                if (cntxt.m_is_income && net::same_host(cntxt.m_remote_address, address)) {
-                    count++;
+    m_transport.foreach_connection([&](const p2p_connection_context& cntxt) {
+        if (cntxt.m_is_income && net::same_host(cntxt.m_remote_address, address)) {
+            count++;
 
-                    if (count > max_connections) {
-                        return false;
-                    }
-                }
+            if (count > max_connections) {
+                return false;
+            }
+        }
 
-                return true;
-            });
+        return true;
+    });
 
     return count > max_connections;
 }
