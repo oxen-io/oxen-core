@@ -1506,6 +1506,14 @@ bool Blockchain::rollback_blockchain_switching(
         }
     }
 
+    // The detach hooks saw the chain go back to rollback_height, so the post-add hooks must see it
+    // restored, just as switch_to_alternative_blockchain() has them see the chain it switches to.
+    for (auto it = original_chain.begin(); it != original_chain.end(); ++it) {
+        block_post_add_info hook_data{it->block, it == original_chain.begin(), rollback_height};
+        for (const auto& hook : m_block_post_add_hooks)
+            hook(hook_data);
+    }
+
     log::info(logcat, "Rollback to height {} was successful.", rollback_height);
     if (!original_chain.empty()) {
         log::info(logcat, "Restoration to previous blockchain successful as well.");
