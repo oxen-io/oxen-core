@@ -74,7 +74,6 @@ public:
       void pause() {}
       void resume() {}
   } miner;
-  bool on_idle(){return true;}
   struct fake_blockchain : fake_lockable {
     bool find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, cryptonote::NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp){return true;}
     uint64_t get_current_blockchain_height() const {return 1;}

@@ -1434,6 +1434,7 @@ void core::start_oxenmq() {
         m_omq->add_timer([this]() { check_service_node_time(); }, 5s, false);
         m_omq->add_timer([this]() { check_service_node_ip_address(); }, 15min, false);
     }
+    m_omq->add_timer([this] { run_periodic_tasks(); }, 1s);
     m_omq->start();
 
     // This forces an IP check after initialization instead of deferring it 15 minutes.
@@ -2856,7 +2857,7 @@ void core::do_uptime_proof_call() {
     }
 }
 //-----------------------------------------------------------------------------------------------
-bool core::on_idle() {
+void core::run_periodic_tasks() {
     ZoneScoped;
     m_txpool_auto_relayer.do_call([this] { return relay_txpool_transactions(); });
     m_service_node_vote_relayer.do_call([this] { return relay_service_node_votes(); });
@@ -2885,8 +2886,6 @@ bool core::on_idle() {
     m_systemd_notify_interval.do_call(
             [this] { sd_notify(0, ("WATCHDOG=1\nSTATUS=" + get_status_string()).c_str()); });
 #endif
-
-    return true;
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_disk_space() {

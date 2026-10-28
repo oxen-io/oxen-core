@@ -1641,7 +1641,7 @@ skip:
     m_idle_peer_kicker.do_call([this] { return kick_idle_peers(); });
     m_standby_checker.do_call([this] { return check_standby_peers(); });
     m_sync_search_checker.do_call([this] { return update_sync_search(); });
-    return m_core.on_idle();
+    return true;
   }
   //------------------------------------------------------------------------------------------------------------------------
   template<class t_core>
