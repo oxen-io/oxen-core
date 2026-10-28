@@ -29,6 +29,7 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #include <chrono>
+#include <cstring>
 #include <boost/thread/thread.hpp>
 #include <oxen/quic/utils.hpp>
 
@@ -425,19 +426,24 @@ TEST_F(positive_test_connection_to_levin_protocol_handler_calls, handler_process
   ASSERT_EQ(3, m_commands_handler.callback_counter());
 }
 
-TEST_F(positive_test_connection_to_levin_protocol_handler_calls, handler_processes_handle_read_as_dummy)
+TEST_F(positive_test_connection_to_levin_protocol_handler_calls, handler_skips_neither_request_nor_response)
 {
   // Setup
   const int expected_command = 4673261;
   const std::string in_data(256, 'e');
 
-  const epee::shared_sv noise{epee::levin::make_noise_notify(1024)};
+  // Neither a request nor a response: here with the flags of a Monero noise message, which is
+  // skipped (as are its fragment messages) without dropping the connection.
+  std::string skipped(1024, '\0');
+  const epee::levin::bucket_head2 head =
+      epee::levin::make_header(0, skipped.size() - sizeof(epee::levin::bucket_head2), 0x04 | 0x08, false);
+  std::memcpy(skipped.data(), &head, sizeof(head));
   const epee::shared_sv notify{epee::levin::make_notify(expected_command, oxen::quic::reinterpret_span<const std::uint8_t>(std::span{in_data}))};
 
   test_connection_ptr conn = create_connection();
 
   // Test
-  ASSERT_TRUE(conn->m_protocol_handler.handle_recv(noise.data(), noise.size()));
+  ASSERT_TRUE(conn->m_protocol_handler.handle_recv(skipped.data(), skipped.size()));
 
   // Check connection and levin_commands_handler states
   ASSERT_EQ(0u, m_commands_handler.notify_counter());
@@ -452,60 +458,6 @@ TEST_F(positive_test_connection_to_levin_protocol_handler_calls, handler_process
 
   // Check connection and levin_commands_handler states
   ASSERT_EQ(1u, m_commands_handler.notify_counter());
-  ASSERT_EQ(0u, m_commands_handler.invoke_counter());
-  ASSERT_EQ(expected_command, m_commands_handler.last_command());
-  ASSERT_EQ(in_data, m_commands_handler.last_in_buf());
-  ASSERT_EQ(0u, conn->send_counter());
-  ASSERT_TRUE(conn->last_send_data().empty());
-}
-
-TEST_F(positive_test_connection_to_levin_protocol_handler_calls, handler_processes_handle_read_as_fragment)
-{
-  // Setup
-  const int expected_command = 4673261;
-  const int expected_fragmented_command = 46732;
-  const std::string in_data(256, 'e');
-  std::string in_fragmented_data(1024 * 4, 'c');
-
-  const epee::shared_sv noise{epee::levin::make_noise_notify(1024)};
-  const epee::shared_sv notify{epee::levin::make_notify(expected_command, oxen::quic::reinterpret_span<const std::uint8_t>(std::span{in_data}))};
-  epee::shared_sv fragmented{epee::levin::make_fragmented_notify(noise.view, expected_fragmented_command, oxen::quic::reinterpret_span<const std::uint8_t>(std::span{in_fragmented_data}))};
-
-  EXPECT_EQ(5u, fragmented.size() / 1024);
-  EXPECT_EQ(0u, fragmented.size() % 1024);
-
-  test_connection_ptr conn = create_connection();
-
-  while (!fragmented.view.empty())
-  {
-    if ((fragmented.size() / 1024) % 2 == 1)
-    {
-      ASSERT_TRUE(conn->m_protocol_handler.handle_recv(notify.data(), notify.size()));
-    }
-
-    ASSERT_EQ(3u - (fragmented.size() / 2048), m_commands_handler.notify_counter());
-    ASSERT_EQ(0u, m_commands_handler.invoke_counter());
-    ASSERT_EQ(expected_command, m_commands_handler.last_command());
-    ASSERT_EQ(in_data, m_commands_handler.last_in_buf());
-    ASSERT_EQ(0u, conn->send_counter());
-    ASSERT_TRUE(conn->last_send_data().empty());
-
-    epee::shared_sv next = fragmented.extract_prefix(1024);
-    ASSERT_TRUE(conn->m_protocol_handler.handle_recv(next.data(), next.size()));
-  }
-
-  in_fragmented_data.resize(((1024 - sizeof(epee::levin::bucket_head2)) * 5) - sizeof(epee::levin::bucket_head2)); // add padding zeroes
-  ASSERT_EQ(4u, m_commands_handler.notify_counter());
-  ASSERT_EQ(0u, m_commands_handler.invoke_counter());
-  ASSERT_EQ(expected_fragmented_command, m_commands_handler.last_command());
-  ASSERT_EQ(in_fragmented_data, m_commands_handler.last_in_buf());
-  ASSERT_EQ(0u, conn->send_counter());
-  ASSERT_TRUE(conn->last_send_data().empty());
-
-
-  ASSERT_TRUE(conn->m_protocol_handler.handle_recv(notify.data(), notify.size()));
-
-  ASSERT_EQ(5u, m_commands_handler.notify_counter());
   ASSERT_EQ(0u, m_commands_handler.invoke_counter());
   ASSERT_EQ(expected_command, m_commands_handler.last_command());
   ASSERT_EQ(in_data, m_commands_handler.last_in_buf());
@@ -619,22 +571,6 @@ TEST_F(test_levin_protocol_handler__hanle_recv_with_invalid_data, handles_two_re
 TEST_F(test_levin_protocol_handler__hanle_recv_with_invalid_data, handles_unexpected_response)
 {
   m_req_head.m_flags = LEVIN_PACKET_RESPONSE;
-  prepare_buf();
-
-  ASSERT_FALSE(m_conn->m_protocol_handler.handle_recv(m_buf.data(), m_buf.size()));
-}
-
-TEST_F(test_levin_protocol_handler__hanle_recv_with_invalid_data, handles_short_fragment)
-{
-  m_req_head.m_cb = 1;
-  m_req_head.m_flags = LEVIN_PACKET_BEGIN;
-  m_req_head.m_command = 0;
-  m_in_data.resize(1);
-  prepare_buf();
-
-  ASSERT_TRUE(m_conn->m_protocol_handler.handle_recv(m_buf.data(), m_buf.size()));
-
-  m_req_head.m_flags = LEVIN_PACKET_END;
   prepare_buf();
 
   ASSERT_FALSE(m_conn->m_protocol_handler.handle_recv(m_buf.data(), m_buf.size()));
