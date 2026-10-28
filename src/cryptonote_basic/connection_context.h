@@ -68,7 +68,6 @@ struct cryptonote_connection_context : public epee::net_utils::connection_contex
     std::map<uint64_t, std::pair<crypto::hash, bool>>
             m_blink_state;  // HEIGHT => {CHECKSUM, NEEDED}
     bool m_need_blink_sync{false};
-    uint32_t m_drop_count{0};  // How many times we've wanted to drop
     uint64_t m_remote_blockchain_height{0};
     // The peer's advertised history (see CORE_SYNC_DATA::history): 0 if it has every block;
     // nullopt until its sync data has said (or if it never does).
