@@ -70,7 +70,8 @@ using io_service = io_context;
 
 namespace service_nodes {
 class service_node_list;
-};
+struct missing_quorum;
+};  // namespace service_nodes
 namespace tools {
 class Notify;
 }
@@ -1264,6 +1265,10 @@ class Blockchain {
 
     tx_memory_pool& tx_pool;
 
+    // Brings the SN list (with the rewards) and ONS up to the top of the chain by replaying the
+    // blocks they don't have yet.  If the replay needs a quorum that the SN list's in-memory
+    // history doesn't reach back to (see service_nodes::missing_quorum), the SN list is restored
+    // from a stored state instead and the replay carried on from there.
     bool load_missing_blocks_into_oxen_subsystems(
             const std::atomic<bool>* abort = nullptr, bool use_threaded_load = false);
 
@@ -1275,6 +1280,15 @@ class Blockchain {
 #ifndef IN_UNIT_TESTS
   private:
 #endif
+
+    // One pass of load_missing_blocks_into_oxen_subsystems, which throws missing_quorum (having
+    // kept the blocks replayed before the one that threw it) for that to deal with.
+    bool replay_blocks_into_oxen_subsystems(const std::atomic<bool>* abort, bool use_threaded_load);
+
+    // Restores the SN list and the rewards from the newest stored state that the block of `e` can
+    // be replayed from (see service_nodes::service_node_list::restore_stored_state), returning its
+    // height, or nullopt (logging why) if there is none.  The blocks above it then need replaying.
+    std::optional<uint64_t> restore_snl_for_missing_quorum(const service_nodes::missing_quorum& e);
 
     struct block_pow_verified {
         bool valid;

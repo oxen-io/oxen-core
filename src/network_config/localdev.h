@@ -65,6 +65,7 @@ inline constexpr network_config config{
         .HISTORY_ARCHIVE_INTERVAL = mainnet::config.HISTORY_ARCHIVE_INTERVAL,
         .HISTORY_ARCHIVE_KEEP_WINDOW = mainnet::config.HISTORY_ARCHIVE_KEEP_WINDOW,
         .HISTORY_RECENT_KEEP_WINDOW = mainnet::config.HISTORY_RECENT_KEEP_WINDOW,
+        .HISTORY_QUORUMS_KEEP_WINDOW = mainnet::config.HISTORY_QUORUMS_KEEP_WINDOW,
         // Only permit 1 block because we're running an integration test
         // locally and pulse quorums take time to create blocks which bloat the
         // test duration.
