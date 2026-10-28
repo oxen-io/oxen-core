@@ -222,6 +222,10 @@ class protocol_handler : public i_cryptonote_protocol {
     bool should_download_next_span(cryptonote_connection_context& context, bool standby);
     void drop_connection(
             cryptonote_connection_context& context, bool add_fail, bool flush_all_spans);
+    // The chain job of handle_notify_new_transactions(): verifies and adds the txes (and blinks)
+    // from connection `id`, and relays the new ones.
+    void add_new_transactions(
+            NOTIFY_NEW_TRANSACTIONS::request& arg, const connection_id_t& id, bool syncing);
     // For chain jobs: drops the connection from the thread that has its context.
     void drop_connection(const connection_id_t& id, bool add_fail, bool flush_all_spans);
     // Queues `f` on the chain thread, after the chain work already queued there.  A chain job has
