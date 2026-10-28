@@ -1,7 +1,5 @@
 #pragma once
 
-#include <oxenmq/oxenmq.h>
-
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -38,11 +36,9 @@ struct p2p_connection_context : cryptonote_connection_context {
 
 class node_server;
 
-// Runs the p2p node's connections.  Each is a levin connection on a libquic event loop.  What the
-// connections deliver (connections opening and closing, requests, notifies and invoke responses)
-// goes to the node: on the loop thread for the commands handled there, and otherwise on one OxenMQ
-// thread (the handler thread), in the order it arrived.  Either way a connection's requests
-// are answered in order, as every command that is invoked is handled on the loop.
+// Runs the p2p node's connections.  Each is a levin connection on a libquic event loop, and what
+// the connections deliver (connections opening and closing, requests, notifies and invoke
+// responses) goes to the node on the loop thread, as it arrives.
 class transport {
   public:
     explicit transport(node_server& node);
@@ -61,19 +57,20 @@ class transport {
     uint16_t port() const { return port_; }
     uint16_t port_ipv6() const { return port_ipv6_; }
 
-    // Starts accepting connections, with `thread` as the handler thread.
-    void start(oxenmq::OxenMQ& omq, oxenmq::TaggedThreadID thread);
+    void start();
     // Closes every connection and stops listening, and wakes wait().  Closes still reach the
     // node.
     void stop();
     bool stopping() const { return stopping_; }
     void wait();
-    // Drops every connection and stops delivering to the node.  Call it before the OxenMQ
-    // instance given to start() goes away.
+    // Drops every connection and stops listening, without telling the node.
     void detach();
 
-    // The callbacks run inside the connections lock: they must not wait on the handler thread.
-    // Returning false from foreach_connection's stops it.
+    // The event loop the connections run on, and everything that deals with them.
+    oxen::quic::Loop& loop() { return loop_; }
+
+    // The callbacks run inside the connections lock.  Returning false from foreach_connection's
+    // stops it.
     bool foreach_connection(const std::function<bool(p2p_connection_context&)>& f);
     bool for_connection(
             const connection_id_t& id, const std::function<bool(p2p_connection_context&)>& f);
@@ -87,8 +84,8 @@ class transport {
     // Returns 1 if the notify is queued, or a (negative) levin error code.
     int notify(int command, std::span<const uint8_t> body, const connection_id_t& id);
     // `cb` gets the response's return code and body, or a levin error code (and no body), along
-    // with the connection's context, on the handler thread.  Returns 1 if the invoke is sent, or a
-    // (negative) levin error code if not, in which case `cb` is never called.
+    // with the connection's context, on the loop.  Returns 1 if the invoke is sent, or a (negative)
+    // levin error code if not, in which case `cb` is never called.
     int invoke_async(
             int command,
             std::span<const uint8_t> body,
@@ -117,11 +114,12 @@ class transport {
                 },
                 timeout);
     }
-    // Calls `f` with the connection's context on the handler thread, unless it has closed by then.
+    // Calls `f` with the connection's context on the loop, after what is running or already queued
+    // there, unless it has closed by then.
     bool call_on(const connection_id_t& id, std::function<void(p2p_connection_context&)> f);
 
-    // Connects to `remote` (from `local`, if given) and calls `done` on the handler thread with
-    // the new connection's context, or with nullptr if the connection failed.
+    // Connects to `remote` (from `local`, if given) and calls `done` on the loop with the new
+    // connection's context, or with nullptr if the connection failed.
     void connect(
             const oxen::quic::Address& remote,
             std::chrono::milliseconds timeout,
@@ -154,7 +152,6 @@ class transport {
         std::chrono::steady_clock::time_point sample_start;
     };
 
-    void post(std::function<void()> f);
     std::shared_ptr<peer> find(const connection_id_t& id);
     std::shared_ptr<peer> add(std::shared_ptr<levin::connection> conn, bool incoming);
     void received(peer& p, uint64_t bytes_received, std::chrono::steady_clock::time_point at);
@@ -167,9 +164,6 @@ class transport {
     oxen::quic::Loop loop_;
     std::unique_ptr<levin::listener> listener_ipv4_, listener_ipv6_;
     uint16_t port_ = 0, port_ipv6_ = 0;
-
-    oxenmq::OxenMQ* omq_ = nullptr;
-    std::optional<oxenmq::TaggedThreadID> thread_;
 
     std::recursive_mutex mutex_;
     std::unordered_map<connection_id_t, std::shared_ptr<peer>> peers_;

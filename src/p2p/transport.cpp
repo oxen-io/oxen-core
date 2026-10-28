@@ -23,30 +23,6 @@ static std::span<const uint8_t> as_span(std::string_view s) {
     return {reinterpret_cast<const uint8_t*>(s.data()), s.size()};
 }
 
-// Whether `command`'s requests, and the responses to our invokes of it, are handled on the loop as
-// they arrive rather than on the handler thread: the p2p layer's own commands, which take no chain
-// locks, so that answering a peer (these are the only commands ever invoked) never waits behind
-// chain work; and the cryptonote commands whose handlers queue their own chain jobs.
-static constexpr bool handled_on_loop(int command) {
-    using namespace cryptonote;
-    switch (command) {
-        case COMMAND_HANDSHAKE::ID:
-        case COMMAND_TIMED_SYNC::ID:
-        case COMMAND_PING::ID:
-        case COMMAND_REQUEST_SUPPORT_FLAGS::ID:
-        case NOTIFY_REQUEST_GET_BLOCKS::ID:
-        case NOTIFY_REQUEST_GET_TXS::ID:
-        case NOTIFY_REQUEST_CHAIN::ID:
-        case NOTIFY_REQUEST_FLUFFY_MISSING_TX::ID:
-        case NOTIFY_REQUEST_BLOCK_BLINKS::ID:
-        case NOTIFY_NEW_TRANSACTIONS::ID:
-        case NOTIFY_BTENCODED_UPTIME_PROOF::ID:
-        case NOTIFY_NEW_SERVICE_NODE_VOTE::ID:
-        case NOTIFY_RESPONSE_BLOCK_BLINKS::ID: return true;
-        default: return false;
-    }
-}
-
 transport::transport(node_server& node) : node_{node} {}
 
 transport::~transport() {
@@ -57,12 +33,6 @@ transport::~transport() {
         if (rate_cfg_)
             ev_token_bucket_cfg_free(rate_cfg_);
     });
-}
-
-void transport::post(std::function<void()> f) {
-    std::lock_guard lock{stop_mutex_};
-    if (omq_)
-        omq_->job(std::move(f), *thread_);
 }
 
 void transport::listen(
@@ -98,12 +68,7 @@ void transport::listen(
     });
 }
 
-void transport::start(oxenmq::OxenMQ& omq, oxenmq::TaggedThreadID thread) {
-    {
-        std::lock_guard lock{stop_mutex_};
-        omq_ = &omq;
-        thread_ = thread;
-    }
+void transport::start() {
     loop_.call_get([this] {
         if (listener_ipv4_)
             listener_ipv4_->accept();
@@ -134,10 +99,6 @@ void transport::wait() {
 }
 
 void transport::detach() {
-    {
-        std::lock_guard lock{stop_mutex_};
-        omq_ = nullptr;
-    }
     loop_.call_get([this] {
         listener_ipv4_.reset();
         listener_ipv6_.reset();
@@ -173,75 +134,40 @@ std::shared_ptr<transport::peer> transport::add(
             {.on_invoke = [this, wp](levin::connection& c, uint32_t command, std::string body)
                      -> std::optional<std::pair<int32_t, std::string>> {
                  count_in(body.size());
-                 if (handled_on_loop(command)) {
-                     auto p = wp.lock();
-                     received(*p, c.bytes_received(), c.last_recv());
-                     std::string out;
-                     const int code = node_.invoke(command, as_span(body), out, p->context);
-                     count_out(out.size());
-                     return std::pair<int32_t, std::string>{code, std::move(out)};
-                 }
-                 post([this,
-                       wp,
-                       command,
-                       body = std::move(body),
-                       bytes = c.bytes_received(),
-                       at = c.last_recv()] {
-                     auto p = wp.lock();
-                     if (!p)
-                         return;
-                     received(*p, bytes, at);
-                     std::string out;
-                     const int code = node_.invoke(command, as_span(body), out, p->context);
-                     count_out(out.size());
-                     loop_.call([p, command, code, out = std::move(out)] {
-                         p->conn->respond(
-                                 command,
-                                 code,
-                                 {reinterpret_cast<const unsigned char*>(out.data()), out.size()});
-                     });
-                 });
-                 return std::nullopt;
+                 auto p = wp.lock();
+                 received(*p, c.bytes_received(), c.last_recv());
+                 std::string out;
+                 const int code = node_.invoke(command, as_span(body), out, p->context);
+                 count_out(out.size());
+                 return std::pair<int32_t, std::string>{code, std::move(out)};
              },
              .on_notify =
                      [this, wp](levin::connection& c, uint32_t command, std::string body) {
                          count_in(body.size());
-                         if (handled_on_loop(command)) {
-                             auto p = wp.lock();
-                             received(*p, c.bytes_received(), c.last_recv());
-                             node_.notify(command, as_span(body), p->context);
-                             return;
-                         }
-                         post([this,
-                               wp,
-                               command,
-                               body = std::move(body),
-                               bytes = c.bytes_received(),
-                               at = c.last_recv()] {
-                             auto p = wp.lock();
-                             if (!p)
-                                 return;
-                             received(*p, bytes, at);
-                             node_.notify(command, as_span(body), p->context);
-                         });
+                         auto p = wp.lock();
+                         received(*p, c.bytes_received(), c.last_recv());
+                         node_.notify(command, as_span(body), p->context);
                      },
              .on_close =
                      [this, wp](levin::connection&) {
-                         post([this, wp] {
-                             auto p = wp.lock();
-                             if (!p)
-                                 return;
-                             node_.on_connection_close(p->context);
+                         auto p = wp.lock();
+                         if (!p)
+                             return;
+                         node_.on_connection_close(p->context);
+                         {
                              std::lock_guard lock{mutex_};
                              peers_.erase(p->context.m_connection_id);
-                         });
+                         }
+                         // The peer owns the connection whose callback this is, so it has to
+                         // outlive the callback
+                         loop_.call_soon([p = std::move(p)] {});
                      }});
 
     {
         std::lock_guard lock{mutex_};
         peers_.emplace(id, p);
     }
-    post([this, p] { node_.on_connection_new(p->context); });
+    node_.on_connection_new(p->context);
     return p;
 }
 
@@ -381,16 +307,10 @@ int transport::invoke_async(
                 command,
                 {reinterpret_cast<const unsigned char*>(b.data()), b.size()},
                 timeout,
-                [this, p, command, cb](int32_t code, std::string response) {
+                [this, p, cb](int32_t code, std::string response) {
                     if (code >= 0)
                         count_in(response.size());
-                    if (handled_on_loop(command)) {
-                        cb(code, as_span(response), p->context);
-                        return;
-                    }
-                    post([p, cb, code, response = std::move(response)] {
-                        cb(code, as_span(response), p->context);
-                    });
+                    cb(code, as_span(response), p->context);
                 });
     });
     return 1;
@@ -400,7 +320,9 @@ bool transport::call_on(const connection_id_t& id, std::function<void(p2p_connec
     auto p = find(id);
     if (!p)
         return false;
-    post([this, p, f = std::move(f)] {
+    // call_soon, not call: on the loop itself, f still waits until what's running is done (e.g. a
+    // handshake handler has its response sent before a callback it requests runs).
+    loop_.call_soon([this, p, f = std::move(f)] {
         if (find(p->context.m_connection_id))
             f(p->context);
     });
@@ -420,12 +342,10 @@ void transport::connect(
                 timeout,
                 MAX_BODY_SIZE,
                 [this, done](std::shared_ptr<levin::connection> conn) {
-                    if (!conn || stopping_) {
-                        post([done] { done(nullptr); });
-                        return;
-                    }
+                    if (!conn || stopping_)
+                        return done(nullptr);
                     auto p = add(std::move(conn), false);
-                    post([p, done] { done(&p->context); });
+                    done(&p->context);
                 });
     });
 }
