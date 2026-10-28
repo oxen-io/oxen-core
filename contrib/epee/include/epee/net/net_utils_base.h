@@ -39,6 +39,7 @@
 #include "../serialization/keyvalue_serialization.h"
 #include "../int-util.h"
 #include <fmt/core.h>
+#include <oxenc/endian.h>
 
 #undef OXEN_DEFAULT_LOG_CATEGORY
 #define OXEN_DEFAULT_LOG_CATEGORY "net"
@@ -134,6 +135,11 @@ namespace net_utils
 		uint32_t m_ip;
 		uint8_t m_mask;
 
+		// m_ip is in network byte order, so the mask has to be built in host order (where the
+		// network prefix is the high bits) and then converted.
+		constexpr uint32_t netmask() const noexcept
+		{ return oxenc::host_to_big(static_cast<uint32_t>(0xffffffffull << (32 - m_mask))); }
+
 	public:
 		constexpr ipv4_network_subnet() noexcept
 			: ipv4_network_subnet(0, 0)
@@ -146,9 +152,11 @@ namespace net_utils
 		bool less(const ipv4_network_subnet& other) const noexcept;
 		constexpr bool is_same_host(const ipv4_network_subnet& other) const noexcept
 		{ return subnet() == other.subnet(); }
-                bool matches(const ipv4_network_address &address) const;
+		// `ip` is in network byte order, as with ipv4_network_address::ip().
+		constexpr bool matches(uint32_t ip) const noexcept { return (ip & netmask()) == subnet(); }
+		constexpr bool matches(const ipv4_network_address &address) const noexcept { return matches(address.ip()); }
 
-		constexpr uint32_t subnet() const noexcept { return m_ip & ~(0xffffffffull << m_mask); }
+		constexpr uint32_t subnet() const noexcept { return m_ip & netmask(); }
 		std::string str() const;
 		std::string host_str() const;
 		bool is_loopback() const;

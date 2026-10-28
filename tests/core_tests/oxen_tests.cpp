@@ -511,6 +511,136 @@ bool oxen_quorum_history::generate(std::vector<test_event_entry>& events)
   return true;
 }
 
+// NOTE: - A state change in a block references a quorum from up to VOTE_LIFETIME blocks before it.
+// One whose quorum the SN list has neither in its in-memory history nor stored throws
+// missing_quorum, rather than being skipped (which left the SN list diverged from the network's);
+// one whose quorum is there but doesn't verify its votes, or from too long before the block, is
+// still skipped.  With the SN list reloaded from a stored state (as at startup, with no in-memory
+// history) whose stored predecessor quorums have gone, popping blocks back to after it, so that the
+// replay from it needs one of those quorums, restores the SN list from an older stored state
+// instead, which ends up with the state change applied.
+bool oxen_state_change_missing_quorum::generate(std::vector<test_event_entry>& events)
+{
+  DEFINE_TESTS_ERROR_CONTEXT("oxen_state_change_missing_quorum::generate");
+  using state_t = service_nodes::service_node_list::state_t;
+  using state_set = service_nodes::service_node_list::state_set;
+
+  auto hard_forks = oxen_generate_hard_fork_table();
+  oxen_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().version);
+  add_service_nodes(gen, 11, hard_forks.back().version);
+  gen.add_n_blocks(service_nodes::VOTE_LIFETIME);
+
+  // The state change goes into the block after a stored state snapshot, with a quorum from among
+  // the predecessor quorums stored with the snapshot.
+  while (gen.height() % service_nodes::STATE_SNAPSHOT_INTERVAL != 0)
+    gen.create_and_add_next_block();
+  const uint64_t snapshot = gen.height();
+  const uint64_t quorum_height = snapshot - 50;
+  const uint64_t block_height = snapshot + 1;
+  const auto pk = gen.quorum(quorum_height).obligations->workers[0];
+  const auto tx = gen.create_and_add_state_change_tx(service_nodes::new_state::decommission, pk, 0, 0, quorum_height);
+  gen.create_and_add_next_block({tx});
+  gen.add_n_blocks(29);
+  // Far enough below the top that the rewards can only restore to the snapshot, from below the
+  // replayed block.
+  const uint64_t pop_to = snapshot + 10;
+
+  const state_t before = gen.blocks()[snapshot].service_node_state;
+  const state_t quorum_state = gen.blocks()[quorum_height].service_node_state;
+  state_t wrong_quorum_state = gen.blocks()[quorum_height - 1].service_node_state;
+  wrong_quorum_state.height = quorum_height;
+  CHECK_TEST_CONDITION(wrong_quorum_state.quorums.obligations->validators != quorum_state.quorums.obligations->validators);
+  const auto block = gen.blocks()[block_height].block;
+  const auto late_block = gen.blocks()[quorum_height + service_nodes::VOTE_LIFETIME].block;
+
+  using sn_summary = std::tuple<uint64_t, int64_t, uint64_t, uint32_t, uint64_t, uint64_t>;
+  const auto summarize = [](const service_nodes::service_node_info& info) {
+    return sn_summary{
+        info.registration_height,
+        info.active_since_height,
+        info.last_reward_block_height,
+        info.last_reward_transaction_index,
+        info.total_contributed,
+        info.last_decommission_height};
+  };
+  std::map<crypto::public_key, sn_summary> expected_sns;
+  for (const auto& [pubkey, info] : gen.blocks()[pop_to].service_node_state.service_nodes_infos)
+    expected_sns.emplace(pubkey, summarize(*info));
+  CHECK_TEST_CONDITION(gen.blocks()[pop_to].service_node_state.service_nodes_infos.at(pk)->is_decommissioned());
+
+  oxen_register_callback(events, "check_missing_quorum", [=](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_missing_quorum");
+    auto& db = c.blockchain.db();
+    // Without states stored every STATE_SNAPSHOT_INTERVAL blocks (LMDB), the only stored states
+    // are archived ones, every HISTORY_ARCHIVE_INTERVAL blocks, which this chain is too short for:
+    // there is nothing to restore from.
+    const bool stored_states = db.sqlite_database();
+
+    if (stored_states)
+    {
+      c.service_node_list.init();
+      CHECK_EQ(c.service_node_list.height(), snapshot);
+    }
+
+    // The quorums stored for restoring from the snapshot (with the SQLite backend: LMDB stores them
+    // only before archive heights), so that they are nowhere to be found.
+    {
+      cryptonote::db_wtxn_guard txn_guard{db};
+      db.delete_service_node_archives(snapshot - service_nodes::VOTE_LIFETIME + 1, snapshot);
+    }
+
+    const state_set no_history;
+    const std::unordered_map<crypto::hash, state_t> no_alt_states;
+    auto process = [&](const state_set& history, const std::unordered_map<crypto::hash, state_t>* alt_states, const cryptonote::block& blk) {
+      state_t state = before;
+      return state.process_state_change_tx(db, history, alt_states, cryptonote::network_type::FAKECHAIN, blk, tx, nullptr);
+    };
+
+    bool threw = false;
+    try
+    {
+      process(no_history, nullptr, block);
+    }
+    catch (const service_nodes::missing_quorum& e)
+    {
+      threw = true;
+      CHECK_EQ(e.quorum_height, quorum_height);
+      CHECK_EQ(e.block_height, block_height);
+      CHECK_EQ(e.tx_hash, cryptonote::get_transaction_hash(tx));
+    }
+    CHECK_TEST_CONDITION(threw);
+    CHECK_TEST_CONDITION(!process(no_history, &no_alt_states, block));
+    CHECK_TEST_CONDITION(!process(no_history, nullptr, late_block));
+    CHECK_TEST_CONDITION(!process(state_set{wrong_quorum_state}, nullptr, block));
+    {
+      state_t state = before;
+      CHECK_TEST_CONDITION(state.process_state_change_tx(db, state_set{quorum_state}, nullptr, cryptonote::network_type::FAKECHAIN, block, tx, nullptr));
+      CHECK_TEST_CONDITION(state.service_nodes_infos.at(pk)->is_decommissioned());
+    }
+
+    if (!stored_states)
+      return true;
+
+    // The rewards can restore to the snapshot (but not above it), which is the SN list's current
+    // state, but replaying from it needs the state change's quorum.
+    c.blockchain.pop_blocks(c.blockchain.get_current_blockchain_height() - 1 - pop_to);
+    CHECK_EQ(c.blockchain.get_current_blockchain_height(), pop_to + 1);
+    CHECK_EQ(c.service_node_list.height(), pop_to);
+    CHECK_EQ(c.blockchain.rewards_db().height, pop_to);
+
+    std::map<crypto::public_key, sn_summary> sns;
+    for (const auto& sn : c.service_node_list.get_service_node_list_state())
+      sns.emplace(sn.pubkey, summarize(*sn.info));
+    CHECK_TEST_CONDITION(sns.at(pk) == expected_sns.at(pk));
+    CHECK_EQ(sns.size(), expected_sns.size());
+    CHECK_TEST_CONDITION(sns == expected_sns);
+    return true;
+  });
+  return true;
+}
+
 // NOTE: - Checks that an alt chain eventually takes over the main chain with
 // only 1 checkpoint, by progressively adding 2 more checkpoints at the next
 // available checkpoint heights whilst maintaining equal heights with the main chain
