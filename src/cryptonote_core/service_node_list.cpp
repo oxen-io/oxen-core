@@ -4768,16 +4768,11 @@ void service_node_list::blockchain_detached(uint64_t height) {
     if (m_state.height == target_height && (!rewards || rewards->height == target_height))
         return;
 
-    const uint64_t min_height = min_restore_height(false);
-    auto rewards_can_restore = [rewards, min_height](uint64_t h) {
-        return h >= min_height && (!rewards || rewards->can_restore(h));
-    };
-
     std::string_view detach_label;
     bool restored = false;
 
     // NOTE: The current state, if it isn't above the target
-    if (m_state.height <= target_height && rewards_can_restore(m_state.height)) {
+    if (m_state.height <= target_height && can_restore_to(m_state.height)) {
         restored = true;
         detach_label = " (current state)";
     }
@@ -4787,7 +4782,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
         state_set& set = m_transient->state_history;
         for (auto it = set.rbegin(); it != set.rend(); it++) {
             if (it->only_loaded_quorums || it->height > target_height ||
-                !rewards_can_restore(it->height))
+                !can_restore_to(it->height))
                 continue;
             auto fwd = std::prev(it.base());
             m_state = std::move(*fwd);
@@ -4802,23 +4797,9 @@ void service_node_list::blockchain_detached(uint64_t height) {
 
     // NOTE: The states stored in the DB: those written every STATE_SNAPSHOT_INTERVAL blocks (see
     // store_state_snapshot) and the archived ones.
-    if (!restored) {
-        if (auto stored = find_restorable_state(
-                    blockchain.db(),
-                    this,
-                    min_restore_height(true),
-                    target_height,
-                    rewards_can_restore)) {
-            // The in-memory history holds nothing from at or after it.
-            m_transient->state_history.erase(
-                    m_transient->state_history.lower_bound(stored->height),
-                    m_transient->state_history.end());
-            m_state = std::move(*stored);
-            m_state.initialize_alt_pk_maps();
-            cleanup_zombies_from_state();
-            restored = true;
-            detach_label = " (from stored state)";
-        }
+    if (!restored && load_restorable_state(target_height)) {
+        restored = true;
+        detach_label = " (from stored state)";
     }
 
     if (restored) {
@@ -4880,24 +4861,70 @@ uint64_t service_node_list::min_restore_height(bool stored) const {
     return history_start && stored ? history_start + PREDECESSOR_QUORUMS : history_start;
 }
 
+bool service_node_list::can_restore_to(uint64_t height) const {
+    auto* rewards = blockchain.maybe_rewards_db();
+    return height >= min_restore_height(false) && (!rewards || rewards->can_restore(height));
+}
+
+bool service_node_list::load_restorable_state(uint64_t height) {
+    auto stored = find_restorable_state(
+            blockchain.db(), this, min_restore_height(true), height, [this](uint64_t h) {
+                return can_restore_to(h);
+            });
+    if (!stored)
+        return false;
+    // The in-memory history holds nothing from at or after it.
+    m_transient->state_history.erase(
+            m_transient->state_history.lower_bound(stored->height),
+            m_transient->state_history.end());
+    m_state = std::move(*stored);
+    m_state.initialize_alt_pk_maps();
+    cleanup_zombies_from_state();
+    return true;
+}
+
+std::optional<uint64_t> service_node_list::restore_stored_state(uint64_t height) {
+    ZoneScoped;
+    std::lock_guard lock(m_sn_mutex);
+    const uint64_t prev_height = m_state.height;
+    if (!load_restorable_state(height))
+        return std::nullopt;
+
+    // As with a detach, the replay from here writes the archived states above it afresh; what is
+    // there now was derived from the in-memory history that is being abandoned.
+    {
+        cryptonote::db_wtxn_guard txn_guard{blockchain.db()};
+        blockchain.db().delete_service_node_archives(
+                m_state.height + 1, std::numeric_limits<uint64_t>::max());
+    }
+    log::debug(
+            logcat,
+            "SNL restored from {} to {} (from stored state, looking at or below {})",
+            prev_height,
+            m_state.height,
+            height);
+    if (auto* rewards = blockchain.maybe_rewards_db())
+        rewards->blockchain_detached(m_state.height, blockchain.rewards_write_tx());
+    return m_state.height;
+}
+
 bool service_node_list::can_detach_to(uint64_t height) const {
     const uint64_t target_height = height ? height - 1 : 0;
     if (can_rescan() || before_hf9(target_height))
         return true;
     std::lock_guard lock(m_sn_mutex);
-    auto* rewards = blockchain.maybe_rewards_db();
-    const uint64_t min_height = min_restore_height(false);
-    auto usable = [rewards, min_height](uint64_t h) {
-        return h >= min_height && (!rewards || rewards->can_restore(h));
-    };
 
     // The same places blockchain_detached looks in
-    if (m_state.height <= target_height && usable(m_state.height))
+    if (m_state.height <= target_height && can_restore_to(m_state.height))
         return true;
     for (const auto& state : m_transient->state_history)
-        if (!state.only_loaded_quorums && state.height <= target_height && usable(state.height))
+        if (!state.only_loaded_quorums && state.height <= target_height &&
+            can_restore_to(state.height))
             return true;
-    return has_restorable_state(blockchain.db(), min_restore_height(true), target_height, usable);
+    return has_restorable_state(
+            blockchain.db(), min_restore_height(true), target_height, [this](uint64_t h) {
+                return can_restore_to(h);
+            });
 }
 
 service_nodes::payout service_node_list::state_t::get_next_block_leader() const {

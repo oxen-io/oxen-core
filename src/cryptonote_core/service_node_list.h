@@ -605,6 +605,14 @@ class service_node_list {
             bool hash_listed = false);
     void blockchain_detached(uint64_t height);
 
+    // Restores the SN list, and the rewards with it, from the newest state stored in the database
+    // at or below `height` that has the quorums before it stored too, bypassing the current state
+    // and the in-memory history.  For when replaying blocks from those turns out to need a quorum
+    // that the in-memory history doesn't reach back to (see missing_quorum): the stored state
+    // brings the quorums it needs with it.  Returns the height restored to, from which the blocks
+    // above it then need to be replayed, or nullopt (changing nothing) if there is no such state.
+    std::optional<uint64_t> restore_stored_state(uint64_t height);
+
     // Whether detaching the chain down to `height` blocks could be followed: the SN list and the
     // rewards both have a state at or below its new top block to restore and replay from, or can
     // be rebuilt from scratch (always, when the blockchain database keeps all of its history).
@@ -1483,6 +1491,16 @@ class service_node_list {
     // the history kept, or the heights after it whose quorums are all stored too (for a `stored`
     // state, which needs those).  0 when all of the history is kept.
     uint64_t min_restore_height(bool stored) const;
+
+    // Whether the SN list and the rewards could both be restored to a state at `height` that the
+    // SN list has (see min_restore_height and RewardsDB::can_restore).
+    bool can_restore_to(uint64_t height) const;
+
+    // Replaces m_state with the newest stored state at or below `height` that can be restored to
+    // (see find_restorable_state and can_restore_to), dropping the in-memory history from its
+    // height on.  Returns false, changing nothing, if there is none.  Leaves the rewards and the
+    // archived states above the new height to the caller.
+    bool load_restorable_state(uint64_t height);
 
     // Stores m_state, whose height is a multiple of STATE_SNAPSHOT_INTERVAL, along with the
     // quorums of the heights before it that a restart from it needs, and deletes the stored
