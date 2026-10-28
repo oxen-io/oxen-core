@@ -852,6 +852,10 @@ bool node_server<t_payload_net_handler>::do_handshake_with_peer(
                 } else {
                     log::debug(logcat, "{} COMMAND_HANDSHAKE(AND CLOSE) INVOKED OK", context);
                 }
+                // `context_` is the caller's copy of the connection's context; the anchor flag
+                // set on it has to reach the connection itself, or the connection isn't treated
+                // as an anchor.
+                context.m_anchor = context_.m_anchor;
                 context_ = context;
             },
             std::chrono::milliseconds{cryptonote::p2p::DEFAULT_HANDSHAKE_INVOKE_TIMEOUT});
