@@ -41,12 +41,6 @@ KV_SERIALIZE(id)
 KV_SERIALIZE(first_seen)
 KV_SERIALIZE_MAP_CODE_END()
 
-KV_SERIALIZE_MAP_CODE_BEGIN(connection_entry)
-KV_SERIALIZE(adr)
-KV_SERIALIZE(id)
-KV_SERIALIZE(is_income)
-KV_SERIALIZE_MAP_CODE_END()
-
 KV_SERIALIZE_MAP_CODE_BEGIN(network_config)
 KV_SERIALIZE(max_out_connection_count)
 KV_SERIALIZE(max_in_connection_count)
