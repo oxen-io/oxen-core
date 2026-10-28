@@ -83,7 +83,6 @@ namespace tests
     bool handle_uptime_proof(const cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request &proof, bool &my_uptime_proof_confirmation);
     void pause_mine(){}
     void resume_mine(){}
-    bool on_idle(){return true;}
     bool get_test_drop_download() {return true;}
     bool get_test_drop_download_height() {return true;}
     bool prepare_handle_incoming_blocks(const std::vector<cryptonote::block_complete_entry>  &blocks_entry, std::vector<cryptonote::block> &blocks) { return true; }

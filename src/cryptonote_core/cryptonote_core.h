@@ -124,15 +124,6 @@ class core final {
     core& operator=(const core&) = delete;
 
     /**
-     * @brief calls various idle routines
-     *
-     * @note see miner::on_idle and tx_memory_pool::on_idle
-     *
-     * @return true
-     */
-    bool on_idle();
-
-    /**
      * @brief handles an incoming uptime proof that is encoded using B-encoding
      *
      * Parses an incoming uptime proof
@@ -733,6 +724,11 @@ class core final {
     bool check_tx_semantic(const transaction& tx, bool kept_by_block) const;
     void check_service_node_ip_address();
     void check_service_node_time();
+
+    // Runs core's periodic housekeeping (relays, disk space checks, service node state, uptime
+    // proofs, miner and mempool upkeep); called each second from an OxenMQ timer.
+    void run_periodic_tasks();
+
     void set_semantics_failed(const crypto::hash& tx_hash);
 
     void parse_incoming_tx_pre(tx_verification_batch_info& tx_info);
