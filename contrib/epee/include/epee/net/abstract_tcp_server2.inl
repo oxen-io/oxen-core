@@ -37,7 +37,6 @@
 // Not epee headers: this server template is only ever instantiated by oxend's p2p code, which
 // provides them.
 #include "common/oxen.h"
-#include "common/string_util.h"
 #include "net/ipv4_address.h"
 
 #include <chrono>
@@ -899,23 +898,6 @@ namespace net_utils
     return true;
   } catch (const std::exception &e) {
     throw std::runtime_error(std::string("Error starting server: ") + e.what());
-  }
-  //-----------------------------------------------------------------------------
-  template<class t_protocol_handler>
-  bool boosted_tcp_server<t_protocol_handler>::init_server(const std::string port,  const std::string& address,
-      const std::string port_ipv6, const std::string address_ipv6, bool use_ipv6, bool require_ipv4)
-  {
-    uint32_t p = 0;
-    uint32_t p_ipv6 = 0;
-
-    if (port.size() && !tools::parse_int(port, p)) {
-      return false;
-    }
-
-    if (port_ipv6.size() && !tools::parse_int(port_ipv6, p_ipv6)) {
-      return false;
-    }
-    return this->init_server(p, address, p_ipv6, address_ipv6, use_ipv6, require_ipv4);
   }
   //---------------------------------------------------------------------------------
   template<class t_protocol_handler>

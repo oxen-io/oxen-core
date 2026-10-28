@@ -87,7 +87,7 @@ namespace
       if (m_open_request_target <= id)
         return false;
 
-      bool r = m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [=, this](const test_connection_context& context, const boost::system::error_code& ec) {
+      bool r = m_tcp_server.connect_async("127.0.0.1", std::to_string(srv_port), CONNECTION_TIMEOUT, [=, this](const test_connection_context& context, const boost::system::error_code& ec) {
         if (!ec)
         {
           m_connections[id] = context.m_connection_id;
@@ -147,7 +147,7 @@ namespace
       if (m_open_request_target <= req_count)
         return false;
 
-      bool r = m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [=, this](const test_connection_context& context, const boost::system::error_code& ec) {
+      bool r = m_tcp_server.connect_async("127.0.0.1", std::to_string(srv_port), CONNECTION_TIMEOUT, [=, this](const test_connection_context& context, const boost::system::error_code& ec) {
         if (!ec)
         {
           m_open_close_test_helper.handle_new_connection(context.m_connection_id);
@@ -203,7 +203,7 @@ namespace
       // Connect to server
       std::atomic<int> conn_status(0);
       m_cmd_conn_id = {};
-      ASSERT_TRUE(m_tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [&](const test_connection_context& context, const boost::system::error_code& ec) {
+      ASSERT_TRUE(m_tcp_server.connect_async("127.0.0.1", std::to_string(srv_port), CONNECTION_TIMEOUT, [&](const test_connection_context& context, const boost::system::error_code& ec) {
         if (!ec)
         {
           m_cmd_conn_id = context.m_connection_id;
@@ -251,7 +251,7 @@ namespace
       // Connect to server and invoke shutdown command
       std::atomic<int> conn_status(0);
       connection_id_t cmd_conn_id = {};
-      tcp_server.connect_async("127.0.0.1", srv_port, CONNECTION_TIMEOUT, [&](const test_connection_context& context, const boost::system::error_code& ec) {
+      tcp_server.connect_async("127.0.0.1", std::to_string(srv_port), CONNECTION_TIMEOUT, [&](const test_connection_context& context, const boost::system::error_code& ec) {
         cmd_conn_id = context.m_connection_id;
         conn_status.store(!ec ? 1 : -1, std::memory_order_seq_cst);
       });

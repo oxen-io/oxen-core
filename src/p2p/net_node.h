@@ -119,8 +119,6 @@ class node_server
                 m_net_server(epee::net_utils::e_connection_type_P2P),
                 m_bind_ip(),
                 m_bind_ipv6_address(),
-                m_port(),
-                m_port_ipv6(),
                 m_notifier(),
                 m_peerlist(),
                 m_config{},
@@ -132,8 +130,8 @@ class node_server
         net_server m_net_server;
         std::string m_bind_ip;
         std::string m_bind_ipv6_address;
-        std::string m_port;
-        std::string m_port_ipv6;
+        uint16_t m_port = 0;
+        uint16_t m_port_ipv6 = 0;
         cryptonote::levin::notify m_notifier;
         peerlist_manager m_peerlist;
         config m_config;
