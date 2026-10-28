@@ -1,3 +1,22 @@
+oxen (11.7.1-1~ubuntu2204) jammy; urgency=medium
+
+  * Fix missing git tag detection in release archive
+  * Name a release tag build's archive without a suffix on any branch
+  * Fix ipv4_network_subnet masking for non-octet prefixes
+  * Add a session router unreachable decommission reason
+  * Add --force-unreachable option for quorum testing
+  * Use session router reachability in quorum testing
+  * Print the quorum height in the missing state change quorum error
+  * Add a way to restore the SN list from a stored state on demand
+  * Restore the SN list from a stored state when a replay is missing a quorum
+  * Test state changes whose quorum is missing
+  * Keep the quorums that replays from in-window restores need
+  * Keep the SN list's recent states in full only where they may be needed
+  * bump version
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 28 Oct 2026 17:41:43 -0300
+
 oxen (11.7.0-3~ubuntu2204) jammy; urgency=medium
 
   * Rediff patches
