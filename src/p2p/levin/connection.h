@@ -12,6 +12,7 @@
 #include <oxen/quic/loop.hpp>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "frame.h"
@@ -30,6 +31,18 @@ inline constexpr int32_t ERROR_TIMEDOUT = -4;
 inline constexpr int32_t ERROR_HANDLER_NOT_DEFINED = -6;
 // A request or response whose body doesn't parse as the command's
 inline constexpr int32_t ERROR_FORMAT = -7;
+
+// Describes one of the above, for logging.
+constexpr std::string_view error_description(int32_t code) {
+    switch (code) {
+        case ERROR_CONNECTION_NOT_FOUND: return "connection not found";
+        case ERROR_CONNECTION_DESTROYED: return "connection closed";
+        case ERROR_TIMEDOUT: return "timed out";
+        case ERROR_HANDLER_NOT_DEFINED: return "command not handled";
+        case ERROR_FORMAT: return "malformed message";
+        default: return "unknown error";
+    }
+}
 
 class connection;
 

@@ -39,7 +39,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <boost/asio/ip/tcp.hpp>
 #include <chrono>
 #include <functional>
 #include <limits>
@@ -50,15 +49,23 @@
 #include <unordered_map>
 #include <vector>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <netdb.h>
+#include <sys/socket.h>
+#endif
+
 #include "common/command_line.h"
 #include "common/file.h"
+#include "common/oxen.h"
 #include "common/periodic_task.h"
 #include "common/string_util.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "epee/net/levin_base.h"
 #include "epee/net/net_utils_base.h"
 #include "levin/messages.h"
 #include "net/error.h"
@@ -418,8 +425,6 @@ static bool append_net_address(
         std::vector<oxen::quic::Address>& seed_nodes,
         std::string_view addr,
         uint16_t default_port) {
-    using namespace boost::asio;
-
     bool has_colon = addr.find_last_of(':') != std::string::npos;
     bool has_dot = addr.find_last_of('.') != std::string::npos;
     bool has_square_bracket = addr.find('[') != std::string::npos;
@@ -439,19 +444,20 @@ static bool append_net_address(
 
     log::info(logcat, "Resolving node address: host={}, port={}", host, port);
 
-    io_service io_srv;
-    ip::tcp::resolver resolver(io_srv);
-    boost::system::error_code ec;
-    ip::tcp::resolver::results_type result =
-            resolver.resolve(host, port, boost::asio::ip::tcp::resolver::canonical_name, ec);
-    if (ec) {
-        log::error(
-                logcat, "Failed to resolve host name '{}': {}:{}", host, ec.message(), ec.value());
+    addrinfo hints{};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    addrinfo* result = nullptr;
+    if (int rc = getaddrinfo(host.c_str(), port.c_str(), &hints, &result); rc != 0) {
+        log::error(logcat, "Failed to resolve host name '{}': {}", host, gai_strerror(rc));
         return false;
     }
+    OXEN_DEFER {
+        freeaddrinfo(result);
+    };
 
-    for (const ip::tcp::endpoint& endpoint : result) {
-        const auto& na = seed_nodes.emplace_back(endpoint.data());
+    for (auto* a = result; a; a = a->ai_next) {
+        const auto& na = seed_nodes.emplace_back(a->ai_addr, a->ai_addrlen);
         log::info(logcat, "Added node: {}", na.to_string());
     }
     return true;
@@ -776,7 +782,7 @@ void node_server::do_handshake_with_peer(
                                 "{}COMMAND_HANDSHAKE invoke failed. ({},{})",
                                 context,
                                 code,
-                                epee::levin::get_err_descr(code));
+                                levin::error_description(code));
                         timeout = code == levin::ERROR_TIMEDOUT ||
                                   code == levin::ERROR_CONNECTION_DESTROYED;
                         return false;
@@ -869,7 +875,7 @@ bool node_server::do_peer_timed_sync(
                             "{}COMMAND_TIMED_SYNC invoke failed. ({}, {})",
                             context,
                             code,
-                            epee::levin::get_err_descr(code));
+                            levin::error_description(code));
                     return;
                 }
 
@@ -1713,7 +1719,7 @@ bool node_server::try_ping(
                                         ping_context,
                                         address.to_string(),
                                         code,
-                                        epee::levin::get_err_descr(code));
+                                        levin::error_description(code));
                                 return;
                             }
                             m_transport.close(ping_conn);
