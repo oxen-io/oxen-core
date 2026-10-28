@@ -212,6 +212,12 @@ class protocol_handler : public i_cryptonote_protocol {
             const block& new_block,
             const std::vector<crypto::hash>& tx_hashes,
             const connection_id_t& id);
+    // Carries on from handle_response_chain_entry() once the chain thread has checked the hashes:
+    // takes the first `n_use_blocks` of them as the blocks to request from the peer.
+    void use_chain_entry(
+            NOTIFY_RESPONSE_CHAIN_ENTRY::request& arg,
+            uint64_t n_use_blocks,
+            cryptonote_connection_context& context);
     // For chain jobs: drops the connection from the thread that has its context.
     void drop_connection(const connection_id_t& id, bool add_fail, bool flush_all_spans);
     // Queues `f` on the chain thread, after the chain work already queued there.  A chain job has
