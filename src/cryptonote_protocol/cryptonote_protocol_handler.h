@@ -288,12 +288,15 @@ class protocol_handler : public i_cryptonote_protocol {
                 "[{}] post {} -->",
                 epee::net_utils::print_connection_context_short(context),
                 tools::type_name<t_parameter>());
+        return post_notify<t_parameter>(arg, context.m_connection_id);
+    }
+    // For chain jobs, which have only the connection's id
+    template <class t_parameter>
+    bool post_notify(typename t_parameter::request& arg, const connection_id_t& id) {
         std::string blob;
         epee::serialization::store_t_to_binary(arg, blob);
         return m_p2p->invoke_notify_to_peer(
-                t_parameter::ID,
-                oxen::quic::reinterpret_span<const uint8_t>(std::span{blob}),
-                context);
+                t_parameter::ID, oxen::quic::reinterpret_span<const uint8_t>(std::span{blob}), id);
     }
 };
 
