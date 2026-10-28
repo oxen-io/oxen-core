@@ -73,6 +73,11 @@ void connection::notify(uint32_t command, std::span<const unsigned char> body) {
     send(make_request(command, body, false));
 }
 
+void connection::respond(
+        uint32_t command, int32_t return_code, std::span<const unsigned char> body) {
+    send(make_response(command, return_code, body));
+}
+
 void connection::invoke(
         uint32_t command,
         std::span<const unsigned char> body,
@@ -196,10 +201,12 @@ void connection::handle_frame(frame&& f) {
     }
 
     if (h.expect_response) {
-        auto [code, body] = handlers_.on_invoke
-                                  ? handlers_.on_invoke(*this, h.command, std::move(f.body))
-                                  : std::pair{ERROR_HANDLER_NOT_DEFINED, std::string{}};
-        send(make_response(h.command, code, as_bytes(body)));
+        std::optional<std::pair<int32_t, std::string>> response{
+                std::in_place, ERROR_HANDLER_NOT_DEFINED, std::string{}};
+        if (handlers_.on_invoke)
+            response = handlers_.on_invoke(*this, h.command, std::move(f.body));
+        if (response)
+            respond(h.command, response->first, as_bytes(response->second));
     } else if (handlers_.on_notify) {
         handlers_.on_notify(*this, h.command, std::move(f.body));
     }
