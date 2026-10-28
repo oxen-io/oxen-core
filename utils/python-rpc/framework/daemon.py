@@ -362,11 +362,6 @@ class Daemon(object):
         }
         return self.rpc.send_request('/set_log_categories', set_log_categories)
 
-    def get_alt_blocks_hashes(self):
-        get_alt_blocks_hashes = {
-        }
-        return self.rpc.send_request('/get_alt_blocks_hashes', get_alt_blocks_hashes)
-
     def get_alternate_chains(self):
         get_alternate_chains = {
             'method': 'get_alternate_chains',

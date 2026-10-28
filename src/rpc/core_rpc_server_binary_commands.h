@@ -122,23 +122,6 @@ struct GET_BLOCKS_BY_HEIGHT_BIN : PUBLIC, BINARY {
 };
 
 OXEN_RPC_DOC_INTROSPECT
-// Get the known blocks hashes which are not on the main chain.
-struct GET_ALT_BLOCKS_HASHES_BIN : PUBLIC, BINARY {
-    static constexpr auto names() { return NAMES("get_alt_blocks_hashes.bin"); }
-
-    struct request : EMPTY {};
-    struct response {
-        std::vector<std::string> blks_hashes;  // List of alternative blocks hashes to main chain.
-        std::string status;  // General RPC error code. "OK" means everything looks good.
-        bool untrusted;      // States if the result is obtained using the bootstrap mode, and is
-                             // therefore not trusted (`true`), or when the daemon is fully synced
-                             // (`false`).
-
-        KV_MAP_SERIALIZABLE
-    };
-};
-
-OXEN_RPC_DOC_INTROSPECT
 // Get hashes. Binary request.
 struct GET_HASHES_BIN : PUBLIC, BINARY {
     static constexpr auto names() { return NAMES("get_hashes.bin", "gethashes.bin"); }
@@ -156,28 +139,6 @@ struct GET_HASHES_BIN : PUBLIC, BINARY {
         std::vector<crypto::hash> m_block_ids;  // Binary array of hashes, See block_ids above.
         uint64_t start_height;                  // The starting block's height.
         uint64_t current_height;                // The current block height.
-        std::string status;  // General RPC error code. "OK" means everything looks good.
-        bool untrusted;      // States if the result is obtained using the bootstrap mode, and is
-                             // therefore not trusted (`true`), or when the daemon is fully synced
-                             // (`false`).
-
-        KV_MAP_SERIALIZABLE
-    };
-};
-
-OXEN_RPC_DOC_INTROSPECT
-// Get global outputs of transactions. Binary request.
-struct GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN : PUBLIC, BINARY {
-    static constexpr auto names() { return NAMES("get_o_indexes.bin"); }
-
-    struct request {
-        crypto::hash txid;  // Binary txid.
-
-        KV_MAP_SERIALIZABLE
-    };
-
-    struct response {
-        std::vector<uint64_t> o_indexes;  // List of output indexes
         std::string status;  // General RPC error code. "OK" means everything looks good.
         bool untrusted;      // States if the result is obtained using the bootstrap mode, and is
                              // therefore not trusted (`true`), or when the daemon is fully synced
@@ -293,14 +254,12 @@ struct GET_OUTPUT_BLACKLIST_BIN : PUBLIC, BINARY {
 /// <TYPE>::response.  The <TYPE>::request has to be unique (for overload resolution);
 /// <TYPE>::response does not.
 using core_rpc_binary_types = tools::type_list<
-        GET_ALT_BLOCKS_HASHES_BIN,
         GET_BLOCKS_BIN,
         GET_BLOCKS_BY_HEIGHT_BIN,
         GET_HASHES_BIN,
         GET_OUTPUTS_BIN,
         GET_OUTPUT_BLACKLIST_BIN,
         GET_OUTPUT_DISTRIBUTION_BIN,
-        GET_TRANSACTION_POOL_HASHES_BIN,
-        GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN>;
+        GET_TRANSACTION_POOL_HASHES_BIN>;
 
 }  // namespace cryptonote::rpc

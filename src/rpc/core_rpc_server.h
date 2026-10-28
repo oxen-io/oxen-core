@@ -225,8 +225,6 @@ class core_rpc_server {
     void invoke(ONS_INFO& info, rpc_context context);
 
     // Deprecated Monero NIH binary endpoints:
-    GET_ALT_BLOCKS_HASHES_BIN::response invoke(
-            GET_ALT_BLOCKS_HASHES_BIN::request&& req, rpc_context context);
     GET_BLOCKS_BIN::response invoke(GET_BLOCKS_BIN::request&& req, rpc_context context);
     GET_BLOCKS_BY_HEIGHT_BIN::response invoke(
             GET_BLOCKS_BY_HEIGHT_BIN::request&& req, rpc_context context);
@@ -238,8 +236,6 @@ class core_rpc_server {
     GET_OUTPUTS_BIN::response invoke(GET_OUTPUTS_BIN::request&& req, rpc_context context);
     GET_TRANSACTION_POOL_HASHES_BIN::response invoke(
             GET_TRANSACTION_POOL_HASHES_BIN::request&& req, rpc_context context);
-    GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::response invoke(
-            GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::request&& req, rpc_context context);
     GET_OUTPUT_DISTRIBUTION::response invoke(
             GET_OUTPUT_DISTRIBUTION::request&& req, rpc_context context, bool binary = false);
 
