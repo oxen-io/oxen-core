@@ -28,6 +28,7 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 oxen_add_library(p2p
+  levin/connection.cpp
   levin/frame.cpp
   p2p_protocol_defs.cpp
   net_node.cpp
@@ -37,6 +38,7 @@ oxen_add_library(p2p
 target_link_libraries(p2p
   PUBLIC
     cryptonote_protocol
+    oxen::quic-event
   PRIVATE
     version
     net
