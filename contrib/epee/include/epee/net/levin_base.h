@@ -33,6 +33,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <oxen/log.hpp>
 
 #include "net_utils_base.h"
 
@@ -42,6 +43,8 @@ namespace epee
 {
 namespace levin
 {
+inline auto logcat = oxen::log::Cat("net.levin");
+
 #pragma pack(push)
 #pragma pack(1)
 	struct bucket_head

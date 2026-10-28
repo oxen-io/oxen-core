@@ -35,7 +35,6 @@
 #include "epee/net/connection_basic.hpp"
 
 #include "epee/net/net_utils_base.h"
-#include "epee/misc_log_ex.h"
 #include <thread>
 #include <chrono>
 #include <iomanip>
@@ -50,9 +49,6 @@
 #else
 #define GET_IO_SERVICE(s) ((s).get_io_service())
 #endif
-
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "net.conn"
 
 // ################################################################################################
 // local (TU local) headers

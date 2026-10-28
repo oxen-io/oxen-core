@@ -31,10 +31,9 @@
 #include <limits>
 #include <cstdint>
 #include <vector>
-#include "epee/misc_log_ex.h"
+#include <oxen/log.hpp>
 
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "net.buffer"
+static auto logcat = oxen::log::Cat("net.buffer");
 
 namespace epee
 {

@@ -46,12 +46,10 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp>
+#include <oxen/log.hpp>
 #include "net_utils_base.h"
 #include "connection_basic.hpp"
 #include "network_throttle-detail.hpp"
-
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "net"
 
 #define ABSTRACT_SERVER_SEND_QUE_MAX_COUNT 1000
 
@@ -59,6 +57,7 @@ namespace epee
 {
 namespace net_utils
 {
+  inline auto logcat = oxen::log::Cat("net");
 
   struct i_connection_filter
   {

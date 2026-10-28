@@ -200,7 +200,6 @@ namespace epee
     bool portable_storage::set_value(const std::string& value_name, const T& v, section* parent_section)        
     {
       static_assert(variant_contains<T, storage_entry> || std::is_same_v<T, storage_entry>);
-      TRY_ENTRY();
       if(!parent_section)
         parent_section = &m_root;
       storage_entry* pentry = find_storage_entry(value_name, parent_section);
@@ -213,24 +212,20 @@ namespace epee
       }
       *pentry = std::move(v);
       return true;
-      CATCH_ENTRY("portable_storage::template<>set_value", false);
     }
     //---------------------------------------------------------------------------------------------------------------
     template<class entry_type>
     storage_entry* portable_storage::insert_new_entry_get_storage_entry(const std::string& pentry_name, section* psection, const entry_type& entry)
     {
-      TRY_ENTRY();
       if (!psection)
         return nullptr;
       auto ins_res = psection->m_entries.emplace(pentry_name, entry);
       return &ins_res.first->second;
-      CATCH_ENTRY("portable_storage::insert_new_entry_get_storage_entry", nullptr);
     }
     //---------------------------------------------------------------------------------------------------------------
     template <typename T>
     array_entry* portable_storage::make_array(const std::string& value_name, section* parent_section)
     {
-      TRY_ENTRY();
       if(!parent_section) parent_section = &m_root;
       storage_entry* pentry = find_storage_entry(value_name, parent_section);
       if(!pentry)
@@ -249,8 +244,6 @@ namespace epee
         arr = array_t<T>{};
 
       return &arr;
-
-      CATCH_ENTRY("portable_storage::make_array", nullptr);
     }
     template <typename T>
     array_t<T>* portable_storage::make_array_t(const std::string& value_name, section* parent_section)

@@ -35,9 +35,11 @@
 #include <vector>
 #include <cstring>
 #include <sodium/utils.h>
-#include "epee/misc_log_ex.h"
+#include <oxen/log.hpp>
 #include "epee/wipeable_string.h"
 #include <limits>
+
+static auto logcat = oxen::log::Cat("wipeable_string");
 
 static constexpr const char hex[] = "0123456789abcdef";
 
