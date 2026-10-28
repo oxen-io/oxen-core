@@ -64,14 +64,6 @@ struct anchor_peerlist_entry {
     KV_MAP_SERIALIZABLE
 };
 
-struct connection_entry {
-    oxen::quic::Address adr{};
-    peerid_type id;
-    bool is_income;
-
-    KV_MAP_SERIALIZABLE
-};
-
 std::string print_peerlist_to_string(const std::vector<peerlist_entry>& pl);
 
 struct network_config {
