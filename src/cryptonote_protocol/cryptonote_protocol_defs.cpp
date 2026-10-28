@@ -1,5 +1,8 @@
 #include "cryptonote_protocol_defs.h"
 
+#include "common/varint.h"
+#include "epee/storages/portable_storage_template_helper.h"
+
 namespace cryptonote {
 
 KV_SERIALIZE_MAP_CODE_BEGIN(serializable_blink_metadata)
@@ -23,6 +26,43 @@ KV_SERIALIZE(blinks)
 KV_SERIALIZE_OPT(requested, false)
 KV_SERIALIZE(_)
 KV_SERIALIZE_MAP_CODE_END()
+
+std::string serialize_tx_notify(std::vector<std::string> txs, const bool pad) {
+    NOTIFY_NEW_TRANSACTIONS::request request{};
+    request.txs = std::move(txs);
+
+    if (pad) {
+        size_t bytes = 9 /* header */ + 4 /* 1 + 'txs' */ +
+                       tools::get_varint_data(request.txs.size()).size();
+        for (const auto& tx : request.txs)
+            bytes += tools::get_varint_data(tx.size()).size() + tx.size();
+
+        static constexpr size_t granularity = 1024;
+        size_t padding = granularity - bytes % granularity;
+        const size_t overhead = 2 /* 1 + '_' */ + tools::get_varint_data(padding).size();
+        if (overhead > padding)
+            padding = 0;
+        else
+            padding -= overhead;
+        request._ = std::string(padding, ' ');
+
+        // The estimate above can come in a little low, padding a little too much; trim the
+        // excess.  If that shrinks the varint encoding the padding's length, the result is a byte
+        // or so short of the boundary, which is fine.
+        std::string arg_buff;
+        epee::serialization::store_t_to_binary(request, arg_buff);
+        size_t remove = arg_buff.size() % granularity;
+        if (remove > request._.size())
+            request._.clear();
+        else
+            request._.resize(request._.size() - remove);
+    }
+
+    std::string blob;
+    if (!epee::serialization::store_t_to_binary(request, blob))
+        throw std::runtime_error{"Failed to serialize to epee binary format"};
+    return blob;
+}
 
 KV_SERIALIZE_MAP_CODE_BEGIN(NOTIFY_REQUEST_GET_BLOCKS::request)
 KV_SERIALIZE_CONTAINER_POD_AS_BLOB(blocks)

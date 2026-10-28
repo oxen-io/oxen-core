@@ -27,7 +27,6 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 oxen_add_library(cryptonote_protocol
-  levin_notify.cpp
   block_queue.cpp
   peer_history.cpp
   cryptonote_protocol_handler.inl

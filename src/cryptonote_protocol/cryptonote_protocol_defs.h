@@ -125,6 +125,10 @@ struct NOTIFY_NEW_TRANSACTIONS {
         KV_MAP_SERIALIZABLE
     };
 };
+
+// Serializes a NOTIFY_NEW_TRANSACTIONS request carrying `txs`.  With `pad`, the request is padded
+// to a multiple of 1 KiB so that its size reveals less to traffic volume analysis.
+std::string serialize_tx_notify(std::vector<std::string> txs, bool pad);
 /************************************************************************/
 /*                                                                      */
 /************************************************************************/

@@ -300,8 +300,6 @@ bool node_server<t_payload_net_handler>::handle_command_line(
     m_offline = command_line::get_arg(vm, cryptonote::arg_offline);
     m_use_ipv6 = command_line::get_arg(vm, arg_p2p_use_ipv6);
     m_require_ipv4 = !command_line::get_arg(vm, arg_p2p_ignore_ipv4);
-    m_network.m_notifier = cryptonote::levin::notify{
-            m_network.m_net_server.get_io_service(), m_network.m_net_server.get_config_shared()};
 
     if (command_line::has_arg(vm, arg_p2p_add_peer)) {
         std::vector<std::string> perrs = command_line::get_arg(vm, arg_p2p_add_peer);
@@ -1760,12 +1758,6 @@ bool node_server<t_payload_net_handler>::relay_notify_to_list(
     for (const auto& c_id : connections)
         net_config.notify(command, data_buff, c_id);
     return true;
-}
-//-----------------------------------------------------------------------------------
-template <class t_payload_net_handler>
-bool node_server<t_payload_net_handler>::send_txs(
-        std::vector<std::string> txs, const connection_id_t& source, bool pad_txs) {
-    return m_network.m_notifier.send_txs(std::move(txs), source, pad_txs);
 }
 //-----------------------------------------------------------------------------------
 template <class t_payload_net_handler>

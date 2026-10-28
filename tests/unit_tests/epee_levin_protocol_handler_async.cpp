@@ -437,7 +437,10 @@ TEST_F(positive_test_connection_to_levin_protocol_handler_calls, handler_skips_n
   const epee::levin::bucket_head2 head =
       epee::levin::make_header(0, skipped.size() - sizeof(epee::levin::bucket_head2), 0x04 | 0x08, false);
   std::memcpy(skipped.data(), &head, sizeof(head));
-  const epee::shared_sv notify{epee::levin::make_notify(expected_command, oxen::quic::reinterpret_span<const std::uint8_t>(std::span{in_data}))};
+  const epee::levin::bucket_head2 notify_head =
+      epee::levin::make_header(expected_command, in_data.size(), LEVIN_PACKET_REQUEST, false);
+  std::string notify(reinterpret_cast<const char*>(&notify_head), sizeof(notify_head));
+  notify += in_data;
 
   test_connection_ptr conn = create_connection();
 

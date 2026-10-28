@@ -48,8 +48,6 @@ struct i_p2p_endpoint {
             int command,
             const std::span<const uint8_t> data_buff,
             std::span<const connection_id_t> connections) = 0;
-    virtual bool send_txs(
-            std::vector<std::string> txs, const connection_id_t& source, bool pad_txs) = 0;
     virtual bool invoke_notify_to_peer(
             int command,
             const std::span<const uint8_t> req_buff,
@@ -73,10 +71,6 @@ struct p2p_endpoint_stub : public i_p2p_endpoint<t_connection_context> {
             int command,
             const std::span<const uint8_t> data_buff,
             std::span<const connection_id_t> connections) {
-        return false;
-    }
-    virtual bool send_txs(
-            std::vector<std::string> txs, const connection_id_t& source, bool pad_txs) {
         return false;
     }
     virtual bool invoke_notify_to_peer(

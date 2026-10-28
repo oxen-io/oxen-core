@@ -127,9 +127,6 @@ inline auto logcat = oxen::log::Cat("net.levin");
 
   //! \return Intialized levin header.
   bucket_head2 make_header(uint32_t command, uint64_t msg_size, uint32_t flags, bool expect_response) noexcept;
-
-  //! \return A levin notification message.
-  std::string make_notify(int command, std::span<const std::uint8_t> payload);
 }
 }
 
