@@ -210,7 +210,30 @@ class protocol_handler : public i_cryptonote_protocol {
     bool kick_idle_peers();
     bool check_standby_peers();
     bool update_sync_search();
-    int try_add_next_blocks(cryptonote_connection_context& context);
+
+    // Has the peer carry on syncing: gets the chain thread adding spans, if the span the chain
+    // needs next is ready, and requests what more the peer can give us.  `after_adding` is for
+    // when it was the peer's blocks that got spans added: it may then download the next span even
+    // if it would otherwise wait.
+    void continue_sync(cryptonote_connection_context& context, bool after_adding);
+    // Queues add_spans() on the chain thread, unless it is already queued (or running), if the
+    // span the chain needs next is ready.
+    void start_adding_spans(const connection_id_t& peer);
+    // The chain job adding spans from the block queue: adds one, then queues itself again while
+    // it added one, so that other chain work runs between spans.  `peer`, whose blocks got it
+    // going, carries on syncing after each.
+    void add_spans(const connection_id_t& peer);
+    enum class span_result {
+        added,
+        none,             // nothing in the queue
+        waiting,          // for the span's parent, which has been requested
+        unknown_parent,   // that wasn't requested, and the peer doesn't have
+        rerequest_chain,  // the span's parent is unknown: ask the peer for its chain again
+        failed,           // and the span's peer dropped, if it was at fault
+    };
+    span_result add_next_span();
+    void log_sync_progress(uint64_t previous_height, std::chrono::steady_clock::time_point start);
+
     void skip_unneeded_hashes(cryptonote_connection_context& context, bool check_block_queue) const;
 
     core& m_core;
@@ -221,7 +244,8 @@ class protocol_handler : public i_cryptonote_protocol {
     std::atomic<bool> m_synchronized;
     std::atomic<bool> m_stopping;
     std::atomic<bool> m_no_sync;
-    std::mutex m_sync_lock;
+    // Whether add_spans() is queued or running on the chain thread
+    std::atomic<bool> m_adding_spans{false};
     block_queue m_block_queue;
     tools::periodic_task m_idle_peer_kicker{"idle peer cleanup", 30s};
     tools::periodic_task m_standby_checker{"standby checker", 100ms};

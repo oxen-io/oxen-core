@@ -197,7 +197,7 @@ bool protocol_handler::on_callback(cryptonote_connection_context& context) {
                 cryptonote::get_protocol_state_string(context.m_state));
     } else if (context.m_state == cryptonote_connection_context::state_standby) {
         context.m_state = cryptonote_connection_context::state_synchronizing;
-        try_add_next_blocks(context);
+        continue_sync(context, false);
     }
 
     if (context.m_need_blink_sync) {
@@ -1370,7 +1370,7 @@ int protocol_handler::handle_response_get_blocks(
         }
     }
 
-    try_add_next_blocks(context);
+    continue_sync(context, false);
     return 1;
 }
 
@@ -1454,396 +1454,352 @@ static std::string format_sync_rate(double blocks_per_second) {
                                     : "{:.1f}"_format(blocks_per_second);
 }
 
-int protocol_handler::try_add_next_blocks(cryptonote_connection_context& context) {
-    bool force_next_span = false;
-    std::string_view caller = "try_add_next_blocks, m_sync_lock busy";
+void protocol_handler::start_adding_spans(const connection_id_t& peer) {
+    bool filled = false;
+    std::chrono::steady_clock::time_point time;
+    connection_id_t span_connection_id;
+    if (!m_block_queue.has_next_span(chain_height(), filled, time, span_connection_id) || !filled)
+        return;
+    if (!m_adding_spans.exchange(true))
+        chain_job([this, peer] { add_spans(peer); });
+}
+//------------------------------------------------------------------------------------------------------------------------
+void protocol_handler::add_spans(const connection_id_t& peer) {
+    const auto result = add_next_span();
+    if (result == span_result::added && !m_stopping)
+        chain_job([this, peer] { add_spans(peer); });
+    else
+        m_adding_spans = false;
 
-    {
-        // We try to lock the sync lock. If we can, it means no other thread is currently adding
-        // blocks, so we add the next span from the block queue, and queue ourself to add the one
-        // after, so that what else the connections deliver is handled between spans rather than
-        // after all of them.  Then, we go back to download.
-        const std::unique_lock sync{m_sync_lock, std::try_to_lock};
-        if (!sync) {
-            log::debug(logcat, "{}Failed to lock m_sync_lock, going back to download", context);
-            goto skip;
+    if (m_stopping || result == span_result::failed)
+        return;
+    m_p2p->call_on_connection(peer, [this, result](cryptonote_connection_context& context) {
+        if (result == span_result::rerequest_chain) {
+            context.m_needed_objects.clear();
+            context.m_last_response_height = 0;
         }
-        caller = "try_add_next_blocks, after adding";
-        log::debug(logcat, "{} lock m_sync_lock, adding blocks to chain...", context);
-        log::debug(
-                logcat,
-                "{}state: {} in state {}",
+        continue_sync(
                 context,
-                "adding blocks",
-                cryptonote::get_protocol_state_string(context.m_state));
-
-        {
-            m_core.miner.pause();
-            bool starting = true;
-            OXEN_DEFER {
-                m_core.miner.resume();
-                if (!starting)
-                    m_last_add_end_time = std::chrono::steady_clock::now();
-            };
-
-            while (1) {
-                const uint64_t previous_height = m_core.blockchain.get_current_blockchain_height();
-                uint64_t start_height;
-                std::vector<cryptonote::block_complete_entry> blocks;
-                connection_id_t span_connection_id;
-                if (!m_block_queue.get_next_span(start_height, blocks, span_connection_id)) {
-                    log::debug(logcat, "{} no next span found, going back to download", context);
-                    break;
-                }
-
-                if (blocks.empty()) {
-                    log::error(logcat, "{}Next span has no blocks", context);
-                    m_block_queue.remove_spans(span_connection_id, start_height);
-                    continue;
-                }
-
-                log::debug(
-                        logcat,
-                        "{} next span in the queue has blocks {}-{}, we need {}",
-                        context,
-                        start_height,
-                        (start_height + blocks.size() - 1),
-                        previous_height);
-
-                block new_block;
-                crypto::hash last_block_hash;
-                if (!parse_and_validate_block_from_blob(
-                            blocks.back().block, new_block, last_block_hash)) {
-                    log::error(
-                            logcat,
-                            "{}Failed to parse block, but it should already have been parsed",
-                            context);
-                    m_block_queue.remove_spans(span_connection_id, start_height);
-                    continue;
-                }
-                if (m_core.blockchain.have_block(last_block_hash)) {
-                    const uint64_t subchain_height = start_height + blocks.size();
-                    log::debug(
-                            logcat,
-                            "{}{} - {}, blockchain height {}",
-                            context,
-                            "These are old blocks, ignoring: blocks ",
-                            start_height,
-                            (subchain_height - 1),
-                            m_core.blockchain.get_current_blockchain_height());
-                    m_block_queue.remove_spans(span_connection_id, start_height);
-                    ++m_sync_old_spans_downloaded;
-                    continue;
-                }
-                if (!parse_and_validate_block_from_blob(blocks.front().block, new_block)) {
-                    log::error(
-                            logcat,
-                            "{}Failed to parse block, but it should already have been parsed",
-                            context);
-                    m_block_queue.remove_spans(span_connection_id, start_height);
-                    continue;
-                }
-
-                bool parent_known = m_core.blockchain.have_block(new_block.prev_id);
-                if (!parent_known) {
-                    // it could be:
-                    //  - later in the current chain
-                    //  - later in an alt chain
-                    //  - orphan
-                    // if it was requested, then it'll be resolved later, otherwise it's an orphan
-                    bool parent_requested = m_block_queue.requested(new_block.prev_id);
-                    if (!parent_requested) {
-                        // we might be able to ask for that block directly, as we now can request
-                        // out of order, otherwise we continue out of order, unless this block is
-                        // the one we need, in which case we request block hashes, though it might
-                        // be safer to disconnect ?
-                        if (start_height > previous_height) {
-                            log::debug(
-                                    logcat,
-                                    "{}Got block with unknown parent which was not requested, but "
-                                    "peer does not have that block - back to download",
-                                    context);
-
-                            goto skip;
-                        }
-
-                        // this can happen if a connection was sicced onto a late span, if it did
-                        // not have those blocks, since we don't know that at the sic time
-                        log::error(
-                                logcat,
-                                "Got block with unknown parent which was not requested - querying "
-                                "block hashes");
-                        m_block_queue.remove_spans(span_connection_id, start_height);
-                        context.m_needed_objects.clear();
-                        context.m_last_response_height = 0;
-                        goto skip;
-                    }
-
-                    // parent was requested, so we wait for it to be retrieved
-                    log::debug(logcat, "{} parent was requested, we'll get back to it", context);
-                    break;
-                }
-
-                const auto start = std::chrono::steady_clock::now();
-
-                if (starting) {
-                    starting = false;
-                    auto elapsed = std::chrono::steady_clock::now() - m_last_add_end_time;
-                    log::debug(
-                            logcat,
-                            "Restarting adding block after idle for {} seconds",
-                            tools::friendly_duration(elapsed));
-                }
-
-                std::vector<block> pblocks;
-                if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks)) {
-                    log::error(logcat, "Failure in prepare_handle_incoming_blocks");
-                    return 1;
-                }
-                m_defer_chain_refresh = true;
-
-                {
-                    bool remove_spans = false;
-                    OXEN_DEFER {
-                        if (!m_core.cleanup_handle_incoming_blocks())
-                            log::warning(logcat, "Failure in cleanup_handle_incoming_blocks");
-                        // Only once the chain lock is released, so that a change made by another
-                        // thread between the two is caught by this refresh if not by its own.
-                        m_defer_chain_refresh = false;
-                        refresh_chain_state();
-
-                        // in case the peer had dropped beforehand, remove the span anyway so other
-                        // threads can wake up and get it
-                        if (remove_spans)
-                            m_block_queue.remove_spans(span_connection_id, start_height);
-                    };
-
-                    if (!pblocks.empty() && pblocks.size() != blocks.size()) {
-                        log::error(
-                                logcat, "Internal error: blocks.size() != block_entry.txs.size()");
-                        return 1;
-                    }
-
-                    auto block_process_time_full = 0ns;
-                    auto transactions_process_time_full = 0ns;
-                    size_t num_txs = 0, blockidx = 0;
-                    for (const block_complete_entry& block_entry : blocks) {
-                        if (m_stopping)
-                            return 1;
-
-                        // process transactions
-                        auto transactions_process_start = std::chrono::steady_clock::now();
-                        num_txs += block_entry.txs.size();
-                        auto parsed_txs = m_core.handle_incoming_txs(
-                                block_entry.txs, tx_pool_options::from_block());
-
-                        for (size_t i = 0; i < parsed_txs.size(); ++i) {
-                            if (parsed_txs[i].tvc.m_verifivation_failed) {
-                                if (!m_p2p->for_connection(
-                                            span_connection_id,
-                                            [&](cryptonote_connection_context& context,
-                                                nodetool::peerid_type peer_id) -> bool {
-                                                cryptonote::transaction tx;
-                                                parse_and_validate_tx_from_blob(
-                                                        block_entry.txs[i],
-                                                        tx);  // must succeed if we got here
-                                                log::error(
-                                                        logcat,
-                                                        "transaction verification failed on "
-                                                        "NOTIFY_RESPONSE_GET_BLOCKS, tx_id = {}, "
-                                                        "dropping connection",
-                                                        cryptonote::get_transaction_hash(tx));
-                                                drop_connection(context, false, true);
-                                                return 1;
-                                            }))
-                                    log::error(logcat, "span connection id not found");
-
-                                remove_spans = true;
-                                return 1;
-                            }
-                        }
-                        transactions_process_time_full +=
-                                std::chrono::steady_clock::now() - transactions_process_start;
-
-                        //
-                        // NOTE: Checkpoint parsing
-                        //
-                        checkpoint_t checkpoint_allocated_on_stack_;
-                        checkpoint_t* checkpoint = nullptr;
-                        if (block_entry.checkpoint.size()) {
-                            // TODO(doyle): It's wasteful to have to parse the checkpoint to
-                            // figure out the height when at some point during the syncing
-                            // step we know exactly what height the block entries are for
-
-                            if (!t_serializable_object_from_blob(
-                                        checkpoint_allocated_on_stack_, block_entry.checkpoint)) {
-                                log::error(logcat, "Checkpoint blob available but failed to parse");
-                                return false;
-                            }
-
-                            checkpoint = &checkpoint_allocated_on_stack_;
-                        }
-
-                        // process block
-
-                        auto block_process_start = std::chrono::steady_clock::now();
-                        block_verification_context bvc{};
-
-                        if (mocknet_has_forked(
-                                    m_core.blockchain.get_current_blockchain_height() - 1)) {
-                            bvc.m_marked_as_orphaned = true;
-                        } else {
-                            m_core.handle_incoming_block(
-                                    block_entry.block,
-                                    pblocks.empty() ? NULL : &pblocks[blockidx],
-                                    bvc,
-                                    checkpoint,
-                                    false);  // <--- process block
-                        }
-
-                        if (bvc.m_verifivation_failed || bvc.m_marked_as_orphaned) {
-                            if (!m_p2p->for_connection(
-                                        span_connection_id,
-                                        [&](cryptonote_connection_context& context,
-                                            nodetool::peerid_type peer_id) -> bool {
-                                            if (bvc.m_verifivation_failed)
-                                                log::info(
-                                                        logcat,
-                                                        "Block verification failed, dropping "
-                                                        "connection");
-                                            else
-                                                log::info(
-                                                        logcat,
-                                                        "Block received at sync phase was marked "
-                                                        "as orphaned, dropping connection");
-
-                                            drop_connection(context, true, true);
-                                            return 1;
-                                        }))
-                                log::error(logcat, "span connection id not found");
-
-                            remove_spans = true;
-                            return 1;
-                        }
-
-                        block_process_time_full +=
-                                std::chrono::steady_clock::now() - block_process_start;
-                        ++blockidx;
-
-                    }  // each download block
-
-                    remove_spans = true;
-                    log::debug(
-                            logcat,
-                            "{}Block process time ({} blocks, {} txs): {} ({}/{})",
-                            context,
-                            blocks.size(),
-                            num_txs,
-                            tools::friendly_duration(
-                                    block_process_time_full + transactions_process_time_full),
-                            tools::friendly_duration(transactions_process_time_full),
-                            tools::friendly_duration(block_process_time_full));
-                }
-
-                const uint64_t current_blockchain_height =
-                        m_core.blockchain.get_current_blockchain_height();
-                if (current_blockchain_height > previous_height) {
-                    const uint64_t target_blockchain_height = m_core.get_target_blockchain_height();
-                    seconds_f dt = std::chrono::steady_clock::now() - start;
-                    std::string progress_message = "";
-                    if (current_blockchain_height < target_blockchain_height) {
-                        uint64_t completion_percent =
-                                (current_blockchain_height * 100 / target_blockchain_height);
-                        if (completion_percent ==
-                            100)  // never show 100% if not actually up to date
-                            completion_percent = 99;
-                        progress_message =
-                                " (" + std::to_string(completion_percent) + "%, " +
-                                std::to_string(
-                                        target_blockchain_height - current_blockchain_height) +
-                                " left";
-                        std::string time_message = get_periodic_sync_estimate(
-                                current_blockchain_height, target_blockchain_height);
-                        if (!time_message.empty()) {
-                            uint64_t total_blocks_to_sync =
-                                    target_blockchain_height - m_sync_start_height;
-                            uint64_t total_blocks_synced =
-                                    current_blockchain_height - m_sync_start_height;
-                            progress_message +=
-                                    ", " +
-                                    std::to_string(
-                                            total_blocks_synced * 100 / total_blocks_to_sync) +
-                                    "% of total synced";
-                            progress_message += ", estimated " + time_message + " left";
-                        }
-                        progress_message += ")";
-                    }
-                    std::string timing_message;
-                    // Once synchronized, blocks only arrive a few at a time, which rates mean
-                    // nothing for.
-                    if (!m_synchronized) {
-                        const auto rate = format_sync_rate(sync_rate(current_blockchain_height));
-                        // The span figures only cover adding this span's blocks (not downloading or
-                        // waiting for them), so they measure block processing speed, not sync
-                        // progress.
-                        if (logcat->should_log(log::Level::info))
-                            timing_message =
-                                    " ({} blocks/sec; span: {:.3f} s, {} blocks/s processed), {:.3f} MB queued in {} spans{}"_format(
-                                            rate,
-                                            dt.count(),
-                                            format_sync_rate(
-                                                    (current_blockchain_height - previous_height) /
-                                                    dt.count()),
-                                            m_block_queue.get_data_size() / 1000000.f,
-                                            m_block_queue.get_num_filled_spans(),
-                                            logcat->should_log(log::Level::debug)
-                                                    ? ": {}"_format(m_block_queue.get_overview(
-                                                              current_blockchain_height))
-                                                    : "");
-                        else
-                            timing_message = " ({} blocks/sec)"_format(rate);
-                    }
-                    log::info(
-                            globallogcat,
-                            fg(fmt::terminal_color::yellow),
-                            "Synced {}/{} {} {}",
-                            current_blockchain_height,
-                            target_blockchain_height,
-                            progress_message,
-                            timing_message);
-                    // As soon as the target is reached, rather than when the peers next have
-                    // nothing more to give us (which can be a block time later).
-                    if (current_blockchain_height >= target_blockchain_height)
-                        on_connection_synchronized();
-                }
-
-                if (!m_stopping)
-                    m_p2p->call_on_connection(
-                            context.m_connection_id,
-                            [this](cryptonote_connection_context& c) { try_add_next_blocks(c); });
-                break;
-            }
-        }
-
-        log::debug(
-                logcat,
-                "{}state: {} in state {}",
+                result != span_result::unknown_parent && result != span_result::rerequest_chain);
+    });
+}
+//------------------------------------------------------------------------------------------------------------------------
+void protocol_handler::continue_sync(cryptonote_connection_context& context, bool after_adding) {
+    start_adding_spans(context.m_connection_id);
+    const bool force_next_span = after_adding && should_download_next_span(context, false);
+    if (!request_missing_objects(
                 context,
-                "stopping adding blocks",
-                cryptonote::get_protocol_state_string(context.m_state));
-
-        if (should_download_next_span(context, false)) {
-            force_next_span = true;
-        }
-    }
-
-skip:
-    if (!request_missing_objects(context, true, force_next_span, caller)) {
+                true,
+                force_next_span,
+                after_adding ? "continue_sync, after adding" : "continue_sync")) {
         log::error(logcat, "Failed to request missing objects, dropping connection");
         drop_connection(context, false, false);
-        return 1;
     }
-    return 1;
+}
+//------------------------------------------------------------------------------------------------------------------------
+protocol_handler::span_result protocol_handler::add_next_span() {
+    m_core.miner.pause();
+    bool starting = true;
+    OXEN_DEFER {
+        m_core.miner.resume();
+        if (!starting)
+            m_last_add_end_time = std::chrono::steady_clock::now();
+    };
+
+    while (true) {
+        const uint64_t previous_height = m_core.blockchain.get_current_blockchain_height();
+        uint64_t start_height;
+        std::vector<cryptonote::block_complete_entry> blocks;
+        connection_id_t span_connection_id;
+        if (!m_block_queue.get_next_span(start_height, blocks, span_connection_id)) {
+            log::debug(logcat, "no next span found, going back to download");
+            return span_result::none;
+        }
+
+        if (blocks.empty()) {
+            log::error(logcat, "[{}] Next span has no blocks", span_connection_id);
+            m_block_queue.remove_spans(span_connection_id, start_height);
+            continue;
+        }
+
+        log::debug(
+                logcat,
+                "[{}] next span in the queue has blocks {}-{}, we need {}",
+                span_connection_id,
+                start_height,
+                (start_height + blocks.size() - 1),
+                previous_height);
+
+        block new_block;
+        crypto::hash last_block_hash;
+        if (!parse_and_validate_block_from_blob(blocks.back().block, new_block, last_block_hash)) {
+            log::error(
+                    logcat,
+                    "[{}] Failed to parse block, but it should already have been parsed",
+                    span_connection_id);
+            m_block_queue.remove_spans(span_connection_id, start_height);
+            continue;
+        }
+        if (m_core.blockchain.have_block(last_block_hash)) {
+            log::debug(
+                    logcat,
+                    "[{}] These are old blocks, ignoring: blocks {} - {}, blockchain height {}",
+                    span_connection_id,
+                    start_height,
+                    (start_height + blocks.size() - 1),
+                    previous_height);
+            m_block_queue.remove_spans(span_connection_id, start_height);
+            ++m_sync_old_spans_downloaded;
+            continue;
+        }
+        if (!parse_and_validate_block_from_blob(blocks.front().block, new_block)) {
+            log::error(
+                    logcat,
+                    "[{}] Failed to parse block, but it should already have been parsed",
+                    span_connection_id);
+            m_block_queue.remove_spans(span_connection_id, start_height);
+            continue;
+        }
+
+        if (!m_core.blockchain.have_block(new_block.prev_id)) {
+            // it could be:
+            //  - later in the current chain
+            //  - later in an alt chain
+            //  - orphan
+            // if it was requested, then it'll be resolved later, otherwise it's an orphan
+            if (m_block_queue.requested(new_block.prev_id)) {
+                log::debug(
+                        logcat,
+                        "[{}] parent was requested, we'll get back to it",
+                        span_connection_id);
+                return span_result::waiting;
+            }
+            // we might be able to ask for that block directly, as we now can request out of
+            // order, otherwise we continue out of order, unless this block is the one we need, in
+            // which case we request block hashes, though it might be safer to disconnect ?
+            if (start_height > previous_height) {
+                log::debug(
+                        logcat,
+                        "[{}] Got block with unknown parent which was not requested, but peer "
+                        "does not have that block - back to download",
+                        span_connection_id);
+                return span_result::unknown_parent;
+            }
+            // this can happen if a connection was sicced onto a late span, if it did not have
+            // those blocks, since we don't know that at the sic time
+            log::error(
+                    logcat,
+                    "Got block with unknown parent which was not requested - querying block "
+                    "hashes");
+            m_block_queue.remove_spans(span_connection_id, start_height);
+            return span_result::rerequest_chain;
+        }
+
+        const auto start = std::chrono::steady_clock::now();
+        if (starting) {
+            starting = false;
+            log::debug(
+                    logcat,
+                    "Restarting adding block after idle for {} seconds",
+                    tools::friendly_duration(start - m_last_add_end_time));
+        }
+
+        std::vector<block> pblocks;
+        if (!m_core.prepare_handle_incoming_blocks(blocks, pblocks)) {
+            log::error(logcat, "Failure in prepare_handle_incoming_blocks");
+            return span_result::failed;
+        }
+        m_defer_chain_refresh = true;
+
+        {
+            bool remove_spans = false;
+            OXEN_DEFER {
+                if (!m_core.cleanup_handle_incoming_blocks())
+                    log::warning(logcat, "Failure in cleanup_handle_incoming_blocks");
+                // Only once the chain lock is released, so that a change made by another thread
+                // between the two is caught by this refresh if not by its own.
+                m_defer_chain_refresh = false;
+                refresh_chain_state();
+
+                // in case the peer had dropped beforehand, remove the span anyway so other threads
+                // can wake up and get it
+                if (remove_spans)
+                    m_block_queue.remove_spans(span_connection_id, start_height);
+            };
+
+            if (!pblocks.empty() && pblocks.size() != blocks.size()) {
+                log::error(logcat, "Internal error: blocks.size() != block_entry.txs.size()");
+                return span_result::failed;
+            }
+
+            auto block_process_time_full = 0ns;
+            auto transactions_process_time_full = 0ns;
+            size_t num_txs = 0, blockidx = 0;
+            for (const block_complete_entry& block_entry : blocks) {
+                if (m_stopping)
+                    return span_result::failed;
+
+                // process transactions
+                auto transactions_process_start = std::chrono::steady_clock::now();
+                num_txs += block_entry.txs.size();
+                auto parsed_txs =
+                        m_core.handle_incoming_txs(block_entry.txs, tx_pool_options::from_block());
+
+                for (size_t i = 0; i < parsed_txs.size(); ++i) {
+                    if (parsed_txs[i].tvc.m_verifivation_failed) {
+                        cryptonote::transaction tx;
+                        parse_and_validate_tx_from_blob(
+                                block_entry.txs[i], tx);  // must succeed if we got here
+                        log::error(
+                                logcat,
+                                "[{}] transaction verification failed on "
+                                "NOTIFY_RESPONSE_GET_BLOCKS, tx_id = {}, dropping connection",
+                                span_connection_id,
+                                cryptonote::get_transaction_hash(tx));
+                        drop_connection(span_connection_id, false, true);
+                        remove_spans = true;
+                        return span_result::failed;
+                    }
+                }
+                transactions_process_time_full +=
+                        std::chrono::steady_clock::now() - transactions_process_start;
+
+                //
+                // NOTE: Checkpoint parsing
+                //
+                checkpoint_t checkpoint_allocated_on_stack_;
+                checkpoint_t* checkpoint = nullptr;
+                if (block_entry.checkpoint.size()) {
+                    // TODO(doyle): It's wasteful to have to parse the checkpoint to figure out the
+                    // height when at some point during the syncing step we know exactly what
+                    // height the block entries are for
+
+                    if (!t_serializable_object_from_blob(
+                                checkpoint_allocated_on_stack_, block_entry.checkpoint)) {
+                        log::error(logcat, "Checkpoint blob available but failed to parse");
+                        return span_result::failed;
+                    }
+
+                    checkpoint = &checkpoint_allocated_on_stack_;
+                }
+
+                // process block
+
+                auto block_process_start = std::chrono::steady_clock::now();
+                block_verification_context bvc{};
+
+                if (mocknet_has_forked(m_core.blockchain.get_current_blockchain_height() - 1)) {
+                    bvc.m_marked_as_orphaned = true;
+                } else {
+                    m_core.handle_incoming_block(
+                            block_entry.block,
+                            pblocks.empty() ? NULL : &pblocks[blockidx],
+                            bvc,
+                            checkpoint,
+                            false);  // <--- process block
+                }
+
+                if (bvc.m_verifivation_failed || bvc.m_marked_as_orphaned) {
+                    if (bvc.m_verifivation_failed)
+                        log::info(
+                                logcat,
+                                "[{}] Block verification failed, dropping connection",
+                                span_connection_id);
+                    else
+                        log::info(
+                                logcat,
+                                "[{}] Block received at sync phase was marked as orphaned, "
+                                "dropping connection",
+                                span_connection_id);
+                    drop_connection(span_connection_id, true, true);
+                    remove_spans = true;
+                    return span_result::failed;
+                }
+
+                block_process_time_full += std::chrono::steady_clock::now() - block_process_start;
+                ++blockidx;
+
+            }  // each download block
+
+            remove_spans = true;
+            log::debug(
+                    logcat,
+                    "[{}] Block process time ({} blocks, {} txs): {} ({}/{})",
+                    span_connection_id,
+                    blocks.size(),
+                    num_txs,
+                    tools::friendly_duration(
+                            block_process_time_full + transactions_process_time_full),
+                    tools::friendly_duration(transactions_process_time_full),
+                    tools::friendly_duration(block_process_time_full));
+        }
+
+        log_sync_progress(previous_height, start);
+        return span_result::added;
+    }
+}
+//------------------------------------------------------------------------------------------------------------------------
+void protocol_handler::log_sync_progress(
+        uint64_t previous_height, std::chrono::steady_clock::time_point start) {
+    const uint64_t current_blockchain_height = m_core.blockchain.get_current_blockchain_height();
+    if (current_blockchain_height <= previous_height)
+        return;
+    const uint64_t target_blockchain_height = m_core.get_target_blockchain_height();
+    seconds_f dt = std::chrono::steady_clock::now() - start;
+    std::string progress_message = "";
+    if (current_blockchain_height < target_blockchain_height) {
+        uint64_t completion_percent = (current_blockchain_height * 100 / target_blockchain_height);
+        if (completion_percent == 100)  // never show 100% if not actually up to date
+            completion_percent = 99;
+        progress_message = " (" + std::to_string(completion_percent) + "%, " +
+                           std::to_string(target_blockchain_height - current_blockchain_height) +
+                           " left";
+        std::string time_message =
+                get_periodic_sync_estimate(current_blockchain_height, target_blockchain_height);
+        if (!time_message.empty()) {
+            uint64_t total_blocks_to_sync = target_blockchain_height - m_sync_start_height;
+            uint64_t total_blocks_synced = current_blockchain_height - m_sync_start_height;
+            progress_message += ", " +
+                                std::to_string(total_blocks_synced * 100 / total_blocks_to_sync) +
+                                "% of total synced";
+            progress_message += ", estimated " + time_message + " left";
+        }
+        progress_message += ")";
+    }
+    std::string timing_message;
+    // Once synchronized, blocks only arrive a few at a time, which rates mean nothing for.
+    if (!m_synchronized) {
+        const auto rate = format_sync_rate(sync_rate(current_blockchain_height));
+        // The span figures only cover adding this span's blocks (not downloading or waiting for
+        // them), so they measure block processing speed, not sync progress.
+        if (logcat->should_log(log::Level::info))
+            timing_message =
+                    " ({} blocks/sec; span: {:.3f} s, {} blocks/s processed), {:.3f} MB queued in {} spans{}"_format(
+                            rate,
+                            dt.count(),
+                            format_sync_rate(
+                                    (current_blockchain_height - previous_height) / dt.count()),
+                            m_block_queue.get_data_size() / 1000000.f,
+                            m_block_queue.get_num_filled_spans(),
+                            logcat->should_log(log::Level::debug)
+                                    ? ": {}"_format(
+                                              m_block_queue.get_overview(current_blockchain_height))
+                                    : "");
+        else
+            timing_message = " ({} blocks/sec)"_format(rate);
+    }
+    log::info(
+            globallogcat,
+            fg(fmt::terminal_color::yellow),
+            "Synced {}/{} {} {}",
+            current_blockchain_height,
+            target_blockchain_height,
+            progress_message,
+            timing_message);
+    // As soon as the target is reached, rather than when the peers next have nothing more to give
+    // us (which can be a block time later).
+    if (current_blockchain_height >= target_blockchain_height)
+        on_connection_synchronized();
 }
 //------------------------------------------------------------------------------------------------------------------------
 // Tells the other end to send us the given txes (typically with attached blink data) as if they
@@ -2235,8 +2191,7 @@ bool protocol_handler::request_missing_objects(
 
             // this one triggers if all threads are in standby, which should not happen,
             // but happened at least once, so we unblock at least one thread if so
-            std::unique_lock sync{m_sync_lock, std::try_to_lock};
-            if (sync) {
+            if (!m_adding_spans) {
                 bool filled = false;
                 std::chrono::steady_clock::time_point time;
                 connection_id_t connection_id;
@@ -2257,8 +2212,6 @@ bool protocol_handler::request_missing_objects(
                     m_p2p->request_callback(context);
                     return true;
                 } else {
-                    sync.unlock();
-
                     // if this has gone on for too long, drop incoming connection to guard against
                     // some wedge state
                     if (!context.m_is_income) {
@@ -2483,8 +2436,7 @@ skip:
     // here because we can't use any of those blocks (maybe because all of them are
     // actually already requested). In this case, if we can add blocks instead, do so
     if (chain_height() < m_core.get_target_blockchain_height()) {
-        const std::unique_lock sync{m_sync_lock, std::try_to_lock};
-        if (sync) {
+        if (!m_adding_spans) {
             uint64_t start_height;
             std::vector<cryptonote::block_complete_entry> blocks;
             connection_id_t span_connection_id;
