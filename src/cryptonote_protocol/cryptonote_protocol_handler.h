@@ -176,18 +176,14 @@ class protocol_handler : public i_cryptonote_protocol {
     //----------------- i_bc_protocol_layout ---------------------------------------
     template <class T>
     bool relay_to_synchronized_peers(
-            typename T::request& arg, cryptonote_connection_context& exclude_context) {
-        log::debug(
-                globallogcat,
-                "[{}] post relay {} -->",
-                epee::net_utils::print_connection_context_short(exclude_context),
-                tools::type_name<T>());
+            typename T::request& arg, const std::optional<connection_id_t>& exclude) {
+        log::debug(globallogcat, "post relay {} -->", tools::type_name<T>());
         std::vector<connection_id_t> connections;
         m_p2p->for_each_connection(
-                [&exclude_context, &connections](
+                [&exclude, &connections](
                         connection_context& context, nodetool::peerid_type peer_id) {
                     if (context.m_state > cryptonote_connection_context::state_synchronizing &&
-                        peer_id && exclude_context.m_connection_id != context.m_connection_id)
+                        peer_id && context.m_connection_id != exclude)
                         connections.push_back(context.m_connection_id);
                     return true;
                 });
@@ -204,16 +200,16 @@ class protocol_handler : public i_cryptonote_protocol {
         return true;
     }
 
-    virtual bool relay_block(
-            NOTIFY_NEW_FLUFFY_BLOCK::request& arg, cryptonote_connection_context& exclude_context);
-    virtual bool relay_transactions(
-            NOTIFY_NEW_TRANSACTIONS::request& arg, cryptonote_connection_context& exclude_context);
-    virtual bool relay_uptime_proof(
+    bool relay_block(
+            NOTIFY_NEW_FLUFFY_BLOCK::request& arg, std::optional<connection_id_t> exclude) override;
+    bool relay_transactions(
+            NOTIFY_NEW_TRANSACTIONS::request& arg, std::optional<connection_id_t> exclude) override;
+    bool relay_uptime_proof(
             NOTIFY_BTENCODED_UPTIME_PROOF::request& arg,
-            cryptonote_connection_context& exclude_context);
-    virtual bool relay_service_node_votes(
+            std::optional<connection_id_t> exclude) override;
+    bool relay_service_node_votes(
             NOTIFY_NEW_SERVICE_NODE_VOTE::request& arg,
-            cryptonote_connection_context& exclude_context);
+            std::optional<connection_id_t> exclude) override;
     //----------------------------------------------------------------------------------
     // `caller` says where the request comes from, for logging.
     bool request_missing_objects(
