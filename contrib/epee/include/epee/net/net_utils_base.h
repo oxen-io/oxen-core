@@ -29,24 +29,12 @@
 #ifndef _NET_UTILS_BASE_H_
 #define _NET_UTILS_BASE_H_
 
-#include <boost/asio/io_context.hpp>
 #include <oxen/quic/address.hpp>
 #include <typeinfo>
 #include <type_traits>
-#include "../shared_sv.h"
 #include "../serialization/keyvalue_serialization.h"
 #include <fmt/core.h>
 #include <fmt/ranges.h>
-
-namespace boost::asio {
-  using io_service = io_context;
-}
-
-#if BOOST_VERSION >= 107000
-#define GET_IO_SERVICE(s) ((boost::asio::io_context&)(s).get_executor().context())
-#else
-#define GET_IO_SERVICE(s) ((s).get_io_service())
-#endif
 
 namespace epee
 {
@@ -131,31 +119,12 @@ namespace net_utils
     }
     
   private:
-    template<class t_protocol_handler>
-    friend class connection;
     void set_details(connection_id_t connection_id, const oxen::quic::Address &remote_address, bool is_income)
     {
       this->~connection_context_base();
       new(this) connection_context_base(connection_id, remote_address, is_income);
     }
 
-	};
-
-	/************************************************************************/
-	/*                                                                      */
-	/************************************************************************/
-	struct i_service_endpoint
-	{
-    virtual bool do_send(shared_sv message)=0;
-    virtual bool close()=0;
-    virtual bool send_done()=0;
-    virtual bool request_callback()=0;
-    virtual boost::asio::io_service& get_io_service()=0;
-    //protect from deletion connection object(with protocol instance) during external call "invoke"
-    virtual bool add_ref()=0;
-    virtual bool release()=0;
-  protected:
-    virtual ~i_service_endpoint() noexcept(false) {}
 	};
 
 

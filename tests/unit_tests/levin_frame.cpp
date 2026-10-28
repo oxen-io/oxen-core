@@ -1,9 +1,9 @@
 #include <gtest/gtest.h>
+#include <oxenc/endian.h>
 #include <oxenc/hex.h>
 
 #include <cstring>
 
-#include "epee/net/levin_base.h"
 #include "p2p/levin/frame.h"
 
 using namespace nodetool;
@@ -35,19 +35,15 @@ TEST(levin_frame, header_bytes) {
             "01000000");
 }
 
-// The epee header is a packed struct written to the wire with memcpy; ours must produce exactly
-// the same bytes, so that the two can talk to each other.
-TEST(levin_frame, matches_epee_header) {
+// The header is what epee wrote to the wire with memcpy from a packed struct: little-endian fields
+// in order, with nothing between them.
+TEST(levin_frame, header_round_trip) {
     for (auto [command, size, flags, expect] : {
-                 std::tuple<uint32_t, uint64_t, uint32_t, bool>{
-                         1001, 0, LEVIN_PACKET_REQUEST, true},
-                 {2002, 123456789012, LEVIN_PACKET_REQUEST, false},
-                 {3, 33, LEVIN_PACKET_RESPONSE, false},
-                 {0xffffffff, 1, LEVIN_PACKET_RESPONSE, false},
+                 std::tuple<uint32_t, uint64_t, uint32_t, bool>{1001, 0, levin::FLAG_REQUEST, true},
+                 {2002, 123456789012, levin::FLAG_REQUEST, false},
+                 {3, 33, levin::FLAG_RESPONSE, false},
+                 {0xffffffff, 1, levin::FLAG_RESPONSE, false},
          }) {
-        auto epee_head = epee::levin::make_header(command, size, flags, expect);
-        epee_head.m_return_code = -7;
-
         levin::header head;
         head.body_size = size;
         head.expect_response = expect;
@@ -55,9 +51,14 @@ TEST(levin_frame, matches_epee_header) {
         head.return_code = -7;
         head.flags = flags;
 
-        static_assert(sizeof(epee_head) == levin::header::SIZE);
         auto encoded = head.encode();
-        EXPECT_EQ(0, std::memcmp(encoded.data(), &epee_head, sizeof(epee_head)));
+        uint64_t encoded_size;
+        std::memcpy(&encoded_size, encoded.data() + 8, 8);
+        EXPECT_EQ(oxenc::little_to_host(encoded_size), size);
+        EXPECT_EQ(encoded[16], expect ? 1 : 0);
+        uint32_t encoded_command;
+        std::memcpy(&encoded_command, encoded.data() + 17, 4);
+        EXPECT_EQ(oxenc::little_to_host(encoded_command), command);
 
         auto decoded = levin::header::decode(encoded);
         ASSERT_TRUE(decoded);

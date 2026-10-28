@@ -56,7 +56,6 @@ add_subdirectory(crypto)
 add_subdirectory(unit_tests)
 add_subdirectory(difficulty)
 add_subdirectory(hash)
-add_subdirectory(net_load_tests)
 add_subdirectory(network_tests)
 
 add_executable(hash-target-tests
