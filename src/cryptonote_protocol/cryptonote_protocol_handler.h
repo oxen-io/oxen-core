@@ -310,19 +310,19 @@ class protocol_handler : public i_cryptonote_protocol {
     boost::circular_buffer<size_t> m_avg_buffer = boost::circular_buffer<size_t>(10);
 
     template <class t_parameter>
-    bool post_notify(typename t_parameter::request& arg, cryptonote_connection_context& context) {
+    void post_notify(typename t_parameter::request& arg, cryptonote_connection_context& context) {
         log::debug(
                 globallogcat,
                 "[{}] post {} -->",
                 epee::net_utils::print_connection_context_short(context),
                 tools::type_name<t_parameter>());
-        return post_notify<t_parameter>(arg, context.m_connection_id);
+        post_notify<t_parameter>(arg, context.m_connection_id);
     }
     // For chain jobs, which have only the connection's id
     template <class t_parameter>
-    bool post_notify(typename t_parameter::request& arg, const connection_id_t& id) {
+    void post_notify(typename t_parameter::request& arg, const connection_id_t& id) {
         const auto body = nodetool::levin::encode(arg);
-        return m_p2p->invoke_notify_to_peer(
+        m_p2p->invoke_notify_to_peer(
                 t_parameter::ID, oxen::quic::reinterpret_span<const uint8_t>(std::span{body}), id);
     }
 };

@@ -50,7 +50,7 @@ struct i_p2p_endpoint {
             const std::span<const uint8_t> data_buff,
             std::span<const connection_id_t> connections) = 0;
     // Safe to call from any thread.
-    virtual bool invoke_notify_to_peer(
+    virtual void invoke_notify_to_peer(
             int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) = 0;
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context) = 0;
     virtual void request_callback(const epee::net_utils::connection_context_base& context) = 0;
@@ -79,10 +79,8 @@ struct p2p_endpoint_stub : public i_p2p_endpoint {
             std::span<const connection_id_t> connections) {
         return false;
     }
-    virtual bool invoke_notify_to_peer(
-            int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) {
-        return true;
-    }
+    virtual void invoke_notify_to_peer(
+            int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) {}
     virtual bool drop_connection(const epee::net_utils::connection_context_base& context) {
         return false;
     }
