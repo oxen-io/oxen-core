@@ -112,8 +112,6 @@ public:
 template<class t_connection_context = net_utils::connection_context_base>
 class async_protocol_handler
 {
-  std::string m_fragment_buffer;
-
   bool send_message(uint32_t command, std::span<const uint8_t> in_buff, uint32_t flags, bool expect_response)
   {
     const bucket_head2 head = make_header(command, in_buff.size(), flags, expect_response);
@@ -380,13 +378,8 @@ public:
       oxen::log::error(logcat, "Bad m_cache_in_buffer.size()");
       return false;
     }
-    if (m_config.m_max_packet_size - m_cache_in_buffer.size() < m_fragment_buffer.size()) {
-      oxen::log::error(logcat, "Bad m_cache_in_buffer.size() + m_fragment_buffer.size()");
-      return false;
-    }
-
     // flipped to subtraction; prevent overflow since m_max_packet_size is variable and public
-    if(cb > m_config.m_max_packet_size - m_cache_in_buffer.size() - m_fragment_buffer.size())
+    if(cb > m_config.m_max_packet_size - m_cache_in_buffer.size())
     {
       return false;
     }
@@ -416,35 +409,13 @@ public:
         }
 
         {
-          std::string temp{};
           std::span<const uint8_t> buff_to_invoke = m_cache_in_buffer.carve((std::string::size_type)m_current_head.m_cb);
           m_state = stream_state_head;
 
-          // abstract_tcp_server2.h manages max bandwidth for a p2p link
+          // Every message is a request or a response; anything else (such as Monero's
+          // noise/fragment messages, which no Oxen node sends) is skipped.
           if (!(m_current_head.m_flags & (LEVIN_PACKET_REQUEST | LEVIN_PACKET_RESPONSE)))
-          {
-            // special noise/fragment command
-            static constexpr const uint32_t both_flags = (LEVIN_PACKET_BEGIN | LEVIN_PACKET_END);
-            if ((m_current_head.m_flags & both_flags) == both_flags)
-              break; // noise message, skip to next message
-
-            if (m_current_head.m_flags & LEVIN_PACKET_BEGIN)
-              m_fragment_buffer.clear();
-
-            m_fragment_buffer.append(reinterpret_cast<const char*>(buff_to_invoke.data()), buff_to_invoke.size());
-            if (!(m_current_head.m_flags & LEVIN_PACKET_END))
-              break; // skip to next message
-
-            if (m_fragment_buffer.size() < sizeof(bucket_head2))
-            {
-              return false;
-            }
-
-            temp = std::move(m_fragment_buffer);
-            m_fragment_buffer.clear();
-            std::memcpy(std::addressof(m_current_head), std::addressof(temp[0]), sizeof(bucket_head2));
-            buff_to_invoke = {reinterpret_cast<const uint8_t*>(temp.data()) + sizeof(bucket_head2), temp.size() - sizeof(bucket_head2)};
-          }
+            break;
 
           bool is_response = (m_oponent_protocol_ver == LEVIN_PROTOCOL_VER_1 && m_current_head.m_flags&LEVIN_PACKET_RESPONSE);
 
@@ -498,12 +469,6 @@ public:
             }
             else
               m_config.m_pcommands_handler->notify(m_current_head.m_command, buff_to_invoke, m_connection_context);
-          }
-          // reuse small buffer
-          if (!temp.empty() && temp.capacity() <= 64 * 1024)
-          {
-            temp.clear();
-            m_fragment_buffer = std::move(temp);
           }
         }
         break;
@@ -676,9 +641,7 @@ public:
   }
 
   /*! Sends `message` without adding a levin header. The message must have
-      been created with `make_notify`, `make_noise_notify` or
-      `make_fragmented_notify`. See additional instructions for
-      `make_fragmented_notify`.
+      been created with `make_notify`.
 
       \return 1 on success */
   int send(shared_sv message)

@@ -79,9 +79,7 @@ inline auto logcat = oxen::log::Cat("net.levin");
 
 #define LEVIN_PACKET_REQUEST			0x00000001
 #define LEVIN_PACKET_RESPONSE		0x00000002
-#define LEVIN_PACKET_BEGIN		0x00000004
-#define LEVIN_PACKET_END		0x00000008
-  
+
 
 #define LEVIN_PROTOCOL_VER_0         0
 #define LEVIN_PROTOCOL_VER_1         1
@@ -132,22 +130,6 @@ inline auto logcat = oxen::log::Cat("net.levin");
 
   //! \return A levin notification message.
   std::string make_notify(int command, std::span<const std::uint8_t> payload);
-
-  /*! Generate a dummy levin message.
-
-      \param noise_bytes Total size of the returned string.
-      \return `nullptr` if `noise_size` is smaller than the levin header.
-        Otherwise, a dummy levin message. */
-  std::string make_noise_notify(std::size_t noise_bytes);
-
-  /*! Generate 1+ levin messages that are identical to the noise message size.
-
-   \param noise Each levin message will be identical to the size of this
-      message. The bytes from this message will be used for padding.
-   \return `nullptr` if `noise.size()` is less than the levin header size.
-      Otherwise, a levin notification message OR 2+ levin fragment messages.
-      Each message is `noise.size()` in length. */
-  std::string make_fragmented_notify(const std::string_view noise, int command, std::span<const std::uint8_t> payload);
 }
 }
 
