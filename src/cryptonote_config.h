@@ -131,6 +131,10 @@ inline constexpr uint64_t FEE_QUANTIZATION_DECIMALS = 8;
 
 // by default, blocks ids count in synchronizing
 inline constexpr size_t BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT = 10000;
+// The most block ids a chain request (a short chain history) may hold: 11, then ~log2(height),
+// then the genesis block, plus a hash of where we got to on the peer.  77 would do for a chain of
+// 2^64 blocks.
+inline constexpr size_t SHORT_CHAIN_HISTORY_MAX_COUNT = 100;
 // by default, blocks count in blocks downloading
 inline constexpr size_t BLOCKS_SYNCHRONIZING_DEFAULT_COUNT = 100;
 // must be a power of 2, greater than 128, equal to SEEDHASH_EPOCH_BLOCKS in
