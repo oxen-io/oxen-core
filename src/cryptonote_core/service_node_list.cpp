@@ -4726,21 +4726,37 @@ block_add_result service_node_list::process_block(
         }
     }
 
-    // NOTE: Cull recent history: below the window, keep just the state that a detach may restore
-    // to and the quorums before it (see oldest_recent_restore_height).
+    // NOTE: Cull recent history.  Most uses of the historical states (verifying state changes,
+    // get_quorum for the quorum cop, blink and checkpoints) only need their quorums; the full
+    // states are only needed:
+    // - as the states a detach may restore to, which are only ever those the rewards can restore
+    //   to as well: the snapshot heights (see oldest_recent_restore_height), and their few most
+    //   recent heights (kept as far as the alt block parents are, or else a detach to them
+    //   restores the snapshot height below instead);
+    // - as the parent states of alt blocks, which can't fork off below the immutable checkpoint;
+    // - for the state just added (get_block_producer, for the rewards of the next block).
+    // The other states are each a copy of the service node info map and of the recently removed
+    // nodes (some 0.66 MB, serialized, on mainnet), so they are kept as just their quorums.  With
+    // no immutable checkpoint yet (early in the chain, or before checkpointing) the full states
+    // are those of the HISTORY_RECENT_KEEP_WINDOW window, which also bounds them if checkpointing
+    // stalls; while replaying blocks below it, the immutable checkpoint (of the top of the chain)
+    // is above the state just added, which is kept regardless.
     const uint64_t cull_recent_height = min_recent_height(blockchain.nettype(), m_state.height);
     {
         ZoneScopedN("Cull recent history");
         state_set& set = m_transient->state_history;
         const uint64_t restore_from =
                 oldest_recent_restore_height(blockchain.nettype(), m_state.height);
+        const uint64_t keep_full_from = std::max(
+                cull_recent_height, std::min(blockchain.get_immutable_height(), m_state.height));
         const uint64_t quorums_window = netconf.HISTORY_QUORUMS_KEEP_WINDOW;
         const uint64_t keep_quorums_from =
                 m_state.height > quorums_window ? m_state.height - quorums_window : 0;
         while (set.size() && set.begin()->height < keep_quorums_from)
             set.erase(set.begin());
-        for (auto it = set.begin(); it != set.end() && it->height < cull_recent_height;) {
-            if (it->only_loaded_quorums || it->height == restore_from) {
+        for (auto it = set.begin(); it != set.end() && it->height < keep_full_from;) {
+            if (it->only_loaded_quorums ||
+                (it->height >= restore_from && it->height % STATE_SNAPSHOT_INTERVAL == 0)) {
                 ++it;
                 continue;
             }
