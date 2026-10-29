@@ -76,6 +76,12 @@ constexpr auto span_guts(const T& val) {
     return std::span<const S, sizeof(T) / sizeof(S)>{reinterpret_cast<const S*>(&val), sizeof(val)};
 }
 
+/// span_guts as std::bytes
+template <safe_to_memcpy T>
+constexpr auto byte_span(T& val) {
+    return span_guts<std::byte>(val);
+}
+
 /// Function to reverse the above functions (not including hex_guts); takes anything byte spannable
 /// (spans, strings, views, vectors of char, unsigned char, or std::byte).
 template <safe_to_memcpy T, byte_spannable Spannable>
