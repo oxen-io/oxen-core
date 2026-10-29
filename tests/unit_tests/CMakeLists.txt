@@ -43,6 +43,7 @@ add_executable(unit_tests
   device.cpp
   epee_utils.cpp
   expect.cpp
+  guts.cpp
   hashchain.cpp
   hmac_keccak.cpp
   ipv4.cpp
