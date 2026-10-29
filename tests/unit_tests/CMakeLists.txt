@@ -51,6 +51,7 @@ add_executable(unit_tests
   levin.cpp
   levin_connection.cpp
   levin_frame.cpp
+  levin_kv.cpp
   logging.cpp
   oxen_name_system.cpp
   main.cpp
@@ -100,6 +101,7 @@ target_link_libraries(unit_tests
     net
     wallet
     p2p
+    levin_kv
     version
     sqlitedb
     Boost::thread
