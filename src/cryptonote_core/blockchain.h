@@ -494,7 +494,7 @@ class Blockchain {
      * smallest, height 1)
      *   - the genesis block (height 0)
      */
-    void get_short_chain_history(std::list<crypto::hash>& ids) const;
+    std::vector<crypto::hash> get_short_chain_history() const;
 
     /**
      * @brief get recent block hashes for a foreign chain
@@ -511,7 +511,7 @@ class Blockchain {
      * @return true if a block found in common, else false
      */
     bool find_blockchain_supplement(
-            const std::list<crypto::hash>& qblock_ids,
+            std::span<const crypto::hash> qblock_ids,
             std::vector<crypto::hash>& hashes,
             uint64_t& start_height,
             uint64_t& current_height) const;
@@ -529,7 +529,7 @@ class Blockchain {
      * @return true if a block found in common, else false
      */
     bool find_blockchain_supplement(
-            const std::list<crypto::hash>& qblock_ids,
+            std::span<const crypto::hash> qblock_ids,
             NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp) const;
 
     /**
@@ -545,7 +545,7 @@ class Blockchain {
      * @return true if a block found in common, else false
      */
     bool find_blockchain_supplement(
-            const std::list<crypto::hash>& qblock_ids, uint64_t& starter_offset) const;
+            std::span<const crypto::hash> qblock_ids, uint64_t& starter_offset) const;
 
     struct BlockData {
         std::string block_blob;
@@ -573,7 +573,7 @@ class Blockchain {
      */
     bool find_blockchain_supplement(
             const uint64_t req_start_block,
-            const std::list<crypto::hash>& qblock_ids,
+            std::span<const crypto::hash> qblock_ids,
             std::vector<BlockData>& blocks,
             uint64_t& total_height,
             uint64_t& start_height,

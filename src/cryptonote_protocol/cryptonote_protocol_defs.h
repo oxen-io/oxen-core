@@ -30,7 +30,7 @@
 
 #pragma once
 
-#include <list>
+#include <vector>
 
 #include "common/oxen.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -172,7 +172,7 @@ struct NOTIFY_REQUEST_CHAIN {
     const static int ID = BC_COMMANDS_POOL_BASE + 6;
 
     struct request {
-        std::list<crypto::hash>
+        std::vector<crypto::hash>
                 block_ids;  // IDs of blocks at linear then exponential drop off, ending in genesis
                             // block; see blockchain.cpp for details
 

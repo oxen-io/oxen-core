@@ -3224,7 +3224,7 @@ void wallet2::pull_blocks(
         uint64_t& current_height) {
     cryptonote::rpc::GET_BLOCKS_BIN::request req{};
     cryptonote::rpc::GET_BLOCKS_BIN::response res{};
-    req.block_ids = short_chain_history;
+    req.block_ids.assign(short_chain_history.begin(), short_chain_history.end());
 
     log::debug(logcat, "Pulling blocks: start_height {}", start_height);
 
@@ -3263,7 +3263,7 @@ void wallet2::pull_hashes(
         std::vector<crypto::hash>& hashes) {
     cryptonote::rpc::GET_HASHES_BIN::request req{};
     cryptonote::rpc::GET_HASHES_BIN::response res{};
-    req.block_ids = short_chain_history;
+    req.block_ids.assign(short_chain_history.begin(), short_chain_history.end());
 
     req.start_height = start_height;
     bool r = invoke_http<rpc::GET_HASHES_BIN>(req, res);

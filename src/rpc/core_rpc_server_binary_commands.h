@@ -55,7 +55,7 @@ struct GET_BLOCKS_BIN : PUBLIC, BINARY {
     static constexpr size_t MAX_COUNT = 1000;
 
     struct request {
-        std::list<crypto::hash>
+        std::vector<crypto::hash>
                 block_ids;  // Descending list of block IDs used to detect reorganizations and
                             // network: the first 10 blocks id are sequential, then height drops by
                             // a power of 2 (2, 4, 8, 16, etc.) down to height 1, and then finally
@@ -127,10 +127,10 @@ struct GET_HASHES_BIN : PUBLIC, BINARY {
     static constexpr auto names() { return NAMES("get_hashes.bin", "gethashes.bin"); }
 
     struct request {
-        std::list<crypto::hash> block_ids;  // First 10 blocks id goes sequential, next goes in
-                                            // pow(2,n) offset, like 2, 4, 8, 16, 32, 64 and so on,
-                                            // and the last one is always genesis block */
-        uint64_t start_height;              // The starting block's height.
+        std::vector<crypto::hash> block_ids;  // First 10 blocks id goes sequential, next goes in
+                                              // pow(2,n) offset, like 2, 4, 8, 16, 32, 64 and so
+                                              // on, and the last one is always genesis block */
+        uint64_t start_height;                // The starting block's height.
 
         KV_MAP_SERIALIZABLE
     };
