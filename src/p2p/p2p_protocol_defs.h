@@ -60,8 +60,6 @@ struct anchor_peerlist_entry {
     oxen::quic::Address adr{};
     peerid_type id;
     int64_t first_seen;
-
-    KV_MAP_SERIALIZABLE
 };
 
 std::string print_peerlist_to_string(const std::vector<peerlist_entry>& pl);
@@ -75,8 +73,6 @@ struct network_config {
     uint32_t packet_max_size;
     uint32_t config_id;
     uint32_t send_peerlist_sz;
-
-    KV_MAP_SERIALIZABLE
 };
 
 struct basic_node_data {
