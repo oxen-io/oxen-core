@@ -70,8 +70,6 @@ struct address_parse_info {
     crypto::hash8 payment_id;
 
     std::string as_str(network_type nettype) const;
-
-    KV_MAP_SERIALIZABLE
 };
 
 // Strongly-typed money amount used to calculate rewards at a higher precision by a factor of
