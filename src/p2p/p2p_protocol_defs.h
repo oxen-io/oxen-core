@@ -34,8 +34,8 @@
 #include "cryptonote_basic/connection_id.h"
 #include "cryptonote_config.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
-#include "epee/serialization/keyvalue_serialization.h"
-#include "net/address.h"  // needed for serialization
+#include "net/address.h"
+#include "serialization/levin_kv/fwd.h"
 
 namespace nodetool {
 using peerid_type = uint64_t;
@@ -53,7 +53,7 @@ struct peerlist_entry {
     // grows, so a stale entry still says what the peer can serve.
     std::optional<uint64_t> history;
 
-    KV_MAP_SERIALIZABLE
+    void serialize(levin_kv::archive& ar);
 };
 
 struct anchor_peerlist_entry {
@@ -80,7 +80,7 @@ struct basic_node_data {
     uint32_t my_port;
     peerid_type peer_id;
 
-    KV_MAP_SERIALIZABLE
+    void serialize(levin_kv::archive& ar);
 };
 
 inline constexpr int P2P_COMMANDS_POOL_BASE = 1000;
@@ -95,7 +95,7 @@ struct COMMAND_HANDSHAKE {
         basic_node_data node_data;
         cryptonote::CORE_SYNC_DATA payload_data;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -103,7 +103,7 @@ struct COMMAND_HANDSHAKE {
         cryptonote::CORE_SYNC_DATA payload_data;
         std::vector<peerlist_entry> local_peerlist_new;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -116,7 +116,7 @@ struct COMMAND_TIMED_SYNC {
     struct request {
         cryptonote::CORE_SYNC_DATA payload_data;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -124,7 +124,7 @@ struct COMMAND_TIMED_SYNC {
         cryptonote::CORE_SYNC_DATA payload_data;
         std::vector<peerlist_entry> local_peerlist_new;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -144,14 +144,14 @@ struct COMMAND_PING {
 
     struct request {
         /*actually we don't need to send any real data*/
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string status;
         peerid_type peer_id;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -163,13 +163,13 @@ struct COMMAND_REQUEST_SUPPORT_FLAGS {
     const static int ID = P2P_COMMANDS_POOL_BASE + 7;
 
     struct request {
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         uint32_t support_flags;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 }  // namespace nodetool

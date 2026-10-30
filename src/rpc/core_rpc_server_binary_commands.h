@@ -36,7 +36,7 @@
 namespace cryptonote::rpc {
 
 struct EMPTY {
-    KV_MAP_SERIALIZABLE
+    void serialize(levin_kv::archive& ar);
 };
 
 /// Specifies that the RPC call is legacy, deprecated Monero custom binary input/ouput.  If not
@@ -65,19 +65,19 @@ struct GET_BLOCKS_BIN : PUBLIC, BINARY {
         bool no_miner_tx;  // If specified and true, don't include miner transactions in transaction
                            // results.
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct tx_output_indices {
         std::vector<uint64_t> indices;  // Array of unsigned int.
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct block_output_indices {
         std::vector<tx_output_indices> indices;  // Array of TX output indices:
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -90,7 +90,7 @@ struct GET_BLOCKS_BIN : PUBLIC, BINARY {
                          // therefore not trusted (`true`), or when the daemon is fully synced
                          // (`false`).
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -107,7 +107,7 @@ struct GET_BLOCKS_BY_HEIGHT_BIN : PUBLIC, BINARY {
     struct request {
         std::vector<uint64_t> heights;  // List of block heights
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -117,7 +117,7 @@ struct GET_BLOCKS_BY_HEIGHT_BIN : PUBLIC, BINARY {
                              // therefore not trusted (`true`), or when the daemon is fully synced
                              // (`false`).
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -132,7 +132,7 @@ struct GET_HASHES_BIN : PUBLIC, BINARY {
                                               // on, and the last one is always genesis block */
         uint64_t start_height;                // The starting block's height.
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -144,7 +144,7 @@ struct GET_HASHES_BIN : PUBLIC, BINARY {
                              // therefore not trusted (`true`), or when the daemon is fully synced
                              // (`false`).
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -153,7 +153,7 @@ struct get_outputs_out {
     uint64_t amount;  // Amount of Loki in TXID.
     uint64_t index;
 
-    KV_MAP_SERIALIZABLE
+    void serialize(levin_kv::archive& ar);
 };
 
 OXEN_RPC_DOC_INTROSPECT
@@ -168,7 +168,7 @@ struct GET_OUTPUTS_BIN : PUBLIC, BINARY {
         std::vector<get_outputs_out> outputs;  // Array of structure `get_outputs_out`.
         bool get_txid;                         // TXID
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct outkey {
@@ -178,7 +178,7 @@ struct GET_OUTPUTS_BIN : PUBLIC, BINARY {
         uint64_t height;    // Block height of the output.
         crypto::hash txid;  // Transaction id.
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -188,7 +188,7 @@ struct GET_OUTPUTS_BIN : PUBLIC, BINARY {
                          // therefore not trusted (`true`), or when the daemon is fully synced
                          // (`false`).
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -208,7 +208,7 @@ struct GET_TRANSACTION_POOL_HASHES_BIN : PUBLIC, BINARY {
         crypto::hash tx_pool_checksum;  // Optional: If `long_poll` is true the caller must pass the
                                         // hashes of all their known tx pool hashes, XOR'ed
                                         // together.  Ignored when using OMQ RPC.
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -218,7 +218,7 @@ struct GET_TRANSACTION_POOL_HASHES_BIN : PUBLIC, BINARY {
                          // therefore not trusted (`true`), or when the daemon is fully synced
                          // (`false`).
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -244,7 +244,7 @@ struct GET_OUTPUT_BLACKLIST_BIN : PUBLIC, BINARY {
         bool untrusted;  // If the result is obtained using bootstrap mode, and therefore not
                          // trusted `true`, or otherwise `false`.
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 

@@ -68,6 +68,7 @@
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "rpc/common/command_decorators.h"
 #include "rpc/common/rpc_version.h"
+#include "serialization/levin_kv/fwd.h"
 
 namespace cryptonote {
 void to_json(nlohmann::json& j, const checkpoint_t& c);
@@ -1647,7 +1648,7 @@ struct GET_OUTPUT_DISTRIBUTION : PUBLIC {
         bool binary;
         bool compress;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct distribution {
@@ -1657,14 +1658,14 @@ struct GET_OUTPUT_DISTRIBUTION : PUBLIC {
         bool binary;
         bool compress;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string status;  // General RPC error code. "OK" means everything looks good.
         std::vector<distribution> distributions;  //
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 

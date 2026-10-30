@@ -73,6 +73,7 @@
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/tx_sanity_check.h"
 #include "device/device_cold.hpp"
+#include "epee/storages/portable_storage_template_helper.h"
 #include "logging/oxen_logger.h"
 #include "mnemonics/electrum-words.h"
 #include "multisig/multisig.h"

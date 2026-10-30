@@ -3,10 +3,7 @@
 #include <cstdint>
 #include <oxen/quic/address.hpp>
 
-namespace epee::serialization {
-class portable_storage;
-struct section;
-}  // namespace epee::serialization
+#include "serialization/levin_kv/fwd.h"
 
 namespace net {
 
@@ -29,12 +26,12 @@ bool same_host(const oxen::quic::Address& a, const oxen::quic::Address& b);
 
 }  // namespace net
 
-// KV (portable storage) serialization of peer addresses, which epee's KV serialization finds by
-// ADL.  The format is the one existing nodes use for a peer address:
+// levin_kv serialization of peer addresses, in levin_kv's namespace (which the archive finds it in)
+// rather than libquic's.  The format is the one existing nodes use for a peer address:
 //     {"type": 1, "addr": {"m_ip": u32, "m_port": u16}}
 //     {"type": 2, "addr": {"addr": 16-byte string, "m_port": u16}}
-// where m_ip is the legacy, byte-reversed integer (see tools::ipv4_to_legacy_int).
-namespace epee::serialization {
-bool kv_store(const oxen::quic::Address& addr, portable_storage& stg, section* parent);
-bool kv_load(oxen::quic::Address& addr, portable_storage& stg, section* parent);
-}  // namespace epee::serialization
+// where m_ip is the legacy, byte-reversed integer (see tools::ipv4_to_legacy_int).  An invalid
+// address is written as an empty map; one of an unknown type is left as it was when read.
+namespace levin_kv {
+void serialize(archive& ar, oxen::quic::Address& addr);
+}  // namespace levin_kv

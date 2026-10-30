@@ -53,6 +53,7 @@ add_executable(unit_tests
   levin_connection.cpp
   levin_frame.cpp
   levin_kv.cpp
+  levin_kv_compat.cpp
   logging.cpp
   oxen_name_system.cpp
   main.cpp

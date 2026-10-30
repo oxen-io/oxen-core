@@ -40,6 +40,7 @@
 #include "cryptonote_basic/verification_context.h"
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
+#include "serialization/levin_kv/archive.h"
 #include "service_node_list.h"
 
 using cryptonote::hf;
@@ -802,24 +803,26 @@ bool voting_pool::received_checkpoint_vote(uint64_t height, size_t index_in_quor
     return false;
 }
 
-KV_SERIALIZE_MAP_CODE_BEGIN(quorum_vote_t)
-KV_SERIALIZE(version)
-KV_SERIALIZE_ENUM(type)
-KV_SERIALIZE(block_height)
-KV_SERIALIZE_ENUM(group)
-KV_SERIALIZE(index_in_group)
-KV_SERIALIZE_VAL_POD_AS_BLOB(signature)
-if (this_ref.type == quorum_type::checkpointing) {
-    KV_SERIALIZE_VAL_POD_AS_BLOB_N(checkpoint.block_hash, "checkpoint")
-} else {
-    KV_SERIALIZE(state_change.worker_index)
-    KV_SERIALIZE_ENUM(state_change.state)
+void quorum_vote_t::serialize(levin_kv::archive& ar) {
+    ar.value("version", version);
+    ar.value("type", type);
+    ar.value("block_height", block_height);
+    ar.value("group", group);
+    ar.value("index_in_group", index_in_group);
+    ar.value("signature", tools::byte_span(signature));
+    // `type` is read before this (so when reading, this picks what was sent).  The state change
+    // names are epee's stringifications of the member expressions, which the wire keeps.
+    if (type == quorum_type::checkpointing)
+        ar.value("checkpoint", tools::byte_span(checkpoint.block_hash));
+    else {
+        ar.value("state_change.worker_index", state_change.worker_index);
+        ar.value("state_change.state", state_change.state);
+    }
 }
-KV_SERIALIZE_MAP_CODE_END()
 }  // namespace service_nodes
 
 namespace cryptonote {
-KV_SERIALIZE_MAP_CODE_BEGIN(NOTIFY_NEW_SERVICE_NODE_VOTE::request)
-KV_SERIALIZE(votes)
-KV_SERIALIZE_MAP_CODE_END()
+void NOTIFY_NEW_SERVICE_NODE_VOTE::request::serialize(levin_kv::archive& ar) {
+    ar.value("votes", votes);
+}
 }  // namespace cryptonote

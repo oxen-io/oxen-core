@@ -7,7 +7,6 @@
 #include <unordered_set>
 
 #include "common/password.h"
-#include "epee/storages/portable_storage.h"
 #include "version.h"
 
 namespace cryptonote::rpc {
