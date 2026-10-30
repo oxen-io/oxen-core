@@ -112,6 +112,7 @@ struct transfer_view {
     std::string lock_msg;       // @NoLokiRPCDocGen Internal use only, not serialized
 
     KV_MAP_SERIALIZABLE
+    void serialize(levin_kv::archive& ar);
 };
 
 }  // namespace wallet

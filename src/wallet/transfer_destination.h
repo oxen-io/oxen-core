@@ -33,6 +33,7 @@
 
 #include "common/oxen.h"
 #include "epee/serialization/keyvalue_serialization.h"
+#include "serialization/levin_kv/fwd.h"
 
 namespace wallet {
 
@@ -45,6 +46,8 @@ struct transfer_destination {
     KV_SERIALIZE(amount)
     KV_SERIALIZE(address)
     END_KV_SERIALIZE_MAP()
+
+    void serialize(levin_kv::archive& ar);
 };
 
 }  // namespace wallet
