@@ -73,7 +73,6 @@
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/tx_sanity_check.h"
 #include "device/device_cold.hpp"
-#include "epee/storages/portable_storage_template_helper.h"
 #include "logging/oxen_logger.h"
 #include "mnemonics/electrum-words.h"
 #include "multisig/multisig.h"
@@ -86,6 +85,7 @@
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "serialization/binary_utils.h"
 #include "serialization/boost_std_variant.h"
+#include "serialization/levin_kv/levin_kv.h"
 #include "serialization/string.h"
 #include "wallet/wallet_errors.h"
 
@@ -4527,11 +4527,7 @@ std::optional<wallet2::keys_file_data> wallet2::get_keys_file_data(
 
     account.encrypt_keys(key);
 
-    bool r = epee::serialization::store_t_to_binary(account, account_data);
-    if (!r) {
-        log::error(logcat, "failed to serialize wallet keys");
-        return std::nullopt;
-    }
+    account_data = levin_kv::encode(account);
     std::optional<wallet2::keys_file_data> keys_file_data = (wallet2::keys_file_data){};
 
     // Create a JSON object with "key_data" and "seed_language" as keys.
@@ -5041,7 +5037,7 @@ bool wallet2::load_keys_buf(
         return false;
     }
 
-    bool r = epee::serialization::load_t_from_binary(m_account, account_data);
+    bool r = levin_kv::decode(account_data, m_account);
     THROW_WALLET_EXCEPTION_IF(!r, error::invalid_password);
     if (m_key_device_type == hw::device::type::LEDGER) {
         log::warning(logcat, "Account on device. Initing device...");
@@ -5195,7 +5191,7 @@ bool wallet2::verify_password(
 
     cryptonote::account_base account_data_check;
 
-    r = epee::serialization::load_t_from_binary(account_data_check, account_data);
+    r = levin_kv::decode(account_data, account_data_check);
 
     if (encrypted_secret_keys)
         account_data_check.decrypt_keys(key);
@@ -5330,7 +5326,7 @@ bool wallet2::query_device(
 
     cryptonote::account_base account_data_check;
 
-    r = epee::serialization::load_t_from_binary(account_data_check, account_data);
+    r = levin_kv::decode(account_data, account_data_check);
     if (!r)
         return false;
     return true;

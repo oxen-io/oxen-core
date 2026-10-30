@@ -41,11 +41,11 @@
 #include "crypto/hash.h"
 #include "cryptonote_config.h"
 #include "device/device.hpp"
-#include "epee/serialization/keyvalue_serialization.h"  // eepe named serialization
 #include "logging/oxen_logger.h"
 #include "ringct/rctTypes.h"
 #include "serialization/binary_archive.h"
 #include "serialization/crypto.h"
+#include "serialization/levin_kv/fwd.h"
 #include "serialization/variant.h"
 #include "serialization/vector.h"
 #include "serialization/vector_bool.h"
@@ -661,10 +661,7 @@ struct account_public_address {
         field(ar, "m_view_public_key", m_view_public_key);
     }
 
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(m_spend_public_key)
-    KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(m_view_public_key)
-    END_KV_SERIALIZE_MAP()
+    void serialize(levin_kv::archive& ar);
 
     bool operator==(const account_public_address& rhs) const {
         return m_spend_public_key == rhs.m_spend_public_key &&
