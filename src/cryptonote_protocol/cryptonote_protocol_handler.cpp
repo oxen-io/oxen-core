@@ -597,7 +597,7 @@ void protocol_handler::refresh_chain_state() {
         hshd.blink_hash.push_back(checksum);
     }
     state->immutable_height = m_core.blockchain.get_immutable_height();
-    m_core.blockchain.get_short_chain_history(state->short_history);
+    state->short_history = m_core.blockchain.get_short_chain_history();
 
     std::lock_guard lock{m_chain_state_mutex};
     m_chain_state = std::move(state);
@@ -2437,18 +2437,20 @@ skip:
         context.m_remote_blockchain_height -
                 1) {  // we have to fetch more objects ids, request blockchain entry
 
-        NOTIFY_REQUEST_CHAIN::request r{};
-        r.block_ids = get_chain_state()->short_history;
-        if (r.block_ids.empty()) {
+        auto state = get_chain_state();
+        const auto& history = state->short_history;
+        if (history.empty()) {
             log::error(logcat, "Short chain history is empty");
             return false;
         }
 
-        if (!start_from_current_chain) {
-            // we'll want to start off from where we are on that peer, which may not be added yet
-            if (context.m_last_known_hash && r.block_ids.front() != context.m_last_known_hash)
-                r.block_ids.push_front(context.m_last_known_hash);
-        }
+        NOTIFY_REQUEST_CHAIN::request r{};
+        r.block_ids.reserve(history.size() + 1);
+        // we'll want to start off from where we are on that peer, which may not be added yet
+        if (!start_from_current_chain && context.m_last_known_hash &&
+            history.front() != context.m_last_known_hash)
+            r.block_ids.push_back(context.m_last_known_hash);
+        r.block_ids.insert(r.block_ids.end(), history.begin(), history.end());
 
         context.m_last_request_time = std::chrono::steady_clock::now();
         log::info(

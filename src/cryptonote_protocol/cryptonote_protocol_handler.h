@@ -38,6 +38,7 @@
 #include <boost/program_options/variables_map.hpp>
 #include <chrono>
 #include <deque>
+#include <list>
 #include <map>
 #include <mutex>
 #include <oxen/quic/utils.hpp>
@@ -86,7 +87,7 @@ class protocol_handler : public i_cryptonote_protocol {
         uint64_t immutable_height = 0;
         std::map<uint64_t, crypto::hash> blink_checksums;
         // For NOTIFY_REQUEST_CHAIN (see Blockchain::get_short_chain_history)
-        std::list<crypto::hash> short_history;
+        std::vector<crypto::hash> short_history;
     };
     std::shared_ptr<const chain_state> get_chain_state() const;
     CORE_SYNC_DATA get_payload_sync_data() const { return get_chain_state()->sync_data; }

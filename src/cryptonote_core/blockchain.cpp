@@ -1314,12 +1314,13 @@ std::pair<uint64_t, crypto::hash> Blockchain::get_tail_id() const {
  * smallest, height 1)
  *   - the genesis block (height 0)
  */
-void Blockchain::get_short_chain_history(std::list<crypto::hash>& ids) const {
+std::vector<crypto::hash> Blockchain::get_short_chain_history() const {
     log::trace(logcat, "Blockchain::{}", __func__);
+    std::vector<crypto::hash> ids;
     std::unique_lock lock{*this};
     uint64_t sz = m_db->height();
     if (!sz)
-        return;
+        return ids;
 
     db_rtxn_guard rtxn_guard{*m_db};
     for (uint64_t i = 0, decr = 1, offset = 1; offset < sz; ++i) {
@@ -1329,6 +1330,7 @@ void Blockchain::get_short_chain_history(std::list<crypto::hash>& ids) const {
         offset += decr;
     }
     ids.push_back(m_db->get_block_hash_from_height(0));
+    return ids;
 }
 //------------------------------------------------------------------
 crypto::hash Blockchain::get_block_id_by_height(uint64_t height) const {
@@ -3371,7 +3373,7 @@ void Blockchain::get_output_blacklist(std::vector<uint64_t>& blacklist) const {
 // on the network to find where the split point is between us and them.
 // This is used to see what to send another node that needs to sync.
 bool Blockchain::find_blockchain_supplement(
-        const std::list<crypto::hash>& qblock_ids, uint64_t& starter_offset) const {
+        std::span<const crypto::hash> qblock_ids, uint64_t& starter_offset) const {
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};
 
@@ -3608,7 +3610,7 @@ bool Blockchain::get_transactions(
 // (by reference) the most recent common block hash along with up to
 // BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT additional (more recent) hashes.
 bool Blockchain::find_blockchain_supplement(
-        const std::list<crypto::hash>& qblock_ids,
+        std::span<const crypto::hash> qblock_ids,
         std::vector<crypto::hash>& hashes,
         uint64_t& start_height,
         uint64_t& current_height) const {
@@ -3635,7 +3637,7 @@ bool Blockchain::find_blockchain_supplement(
 }
 
 bool Blockchain::find_blockchain_supplement(
-        const std::list<crypto::hash>& qblock_ids,
+        std::span<const crypto::hash> qblock_ids,
         NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp) const {
     log::trace(logcat, "Blockchain::{}", __func__);
     std::unique_lock lock{*this};
@@ -3648,13 +3650,12 @@ bool Blockchain::find_blockchain_supplement(
     return result;
 }
 //------------------------------------------------------------------
-// FIXME: change argument to std::vector, low priority
 // find split point between ours and foreign blockchain (or start at
 // blockchain height <req_start_block>), and return up to max_count FULL
 // blocks by reference.
 bool Blockchain::find_blockchain_supplement(
         const uint64_t req_start_block,
-        const std::list<crypto::hash>& qblock_ids,
+        std::span<const crypto::hash> qblock_ids,
         std::vector<BlockData>& blocks,
         uint64_t& total_height,
         uint64_t& start_height,
