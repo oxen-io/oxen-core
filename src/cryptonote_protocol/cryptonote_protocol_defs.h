@@ -34,7 +34,7 @@
 
 #include "common/oxen.h"
 #include "cryptonote_basic/cryptonote_basic.h"
-#include "epee/serialization/keyvalue_serialization.h"
+#include "serialization/levin_kv/fwd.h"
 
 namespace service_nodes {
 struct quorum_vote_t;
@@ -94,7 +94,7 @@ struct serializable_blink_metadata {
     std::vector<uint8_t> quorum;
     std::vector<uint8_t> position;
     std::vector<crypto::signature> signature;
-    KV_MAP_SERIALIZABLE
+    void serialize(levin_kv::archive& ar);
 };
 
 /************************************************************************/
@@ -106,7 +106,7 @@ struct block_complete_entry {
     std::vector<std::string> txs;
     std::string checkpoint;
     std::vector<serializable_blink_metadata> blinks;
-    KV_MAP_SERIALIZABLE
+    void serialize(levin_kv::archive& ar);
 };
 
 /************************************************************************/
@@ -121,7 +121,7 @@ struct NOTIFY_NEW_TRANSACTIONS {
         bool requested = false;
         std::string _;  // padding
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -137,7 +137,7 @@ struct NOTIFY_REQUEST_GET_BLOCKS {
     struct request {
         std::vector<crypto::hash> blocks;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -149,7 +149,7 @@ struct NOTIFY_RESPONSE_GET_BLOCKS {
         std::vector<crypto::hash> missed_ids;
         uint64_t current_blockchain_height;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -165,7 +165,7 @@ struct CORE_SYNC_DATA {
     // chain).
     std::optional<uint64_t> history;
 
-    KV_MAP_SERIALIZABLE
+    void serialize(levin_kv::archive& ar);
 };
 
 struct NOTIFY_REQUEST_CHAIN {
@@ -176,7 +176,7 @@ struct NOTIFY_REQUEST_CHAIN {
                 block_ids;  // IDs of blocks at linear then exponential drop off, ending in genesis
                             // block; see blockchain.cpp for details
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -189,7 +189,7 @@ struct NOTIFY_RESPONSE_CHAIN_ENTRY {
         uint64_t cumulative_difficulty;
         std::vector<crypto::hash> m_block_ids;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -203,7 +203,7 @@ struct NOTIFY_NEW_FLUFFY_BLOCK {
         block_complete_entry b;
         uint64_t current_blockchain_height;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -218,7 +218,7 @@ struct NOTIFY_REQUEST_FLUFFY_MISSING_TX {
         uint64_t current_blockchain_height;
         std::vector<uint64_t> missing_tx_indices;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -235,7 +235,7 @@ struct NOTIFY_BTENCODED_UPTIME_PROOF {
         std::optional<std::string> sig;  // Not sent in HF21+
         std::string ed_sig;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -246,7 +246,7 @@ struct NOTIFY_REQUEST_BLOCK_BLINKS {
     constexpr static int ID = BC_COMMANDS_POOL_BASE + 13;
     struct request {
         std::vector<uint64_t> heights;
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -254,7 +254,7 @@ struct NOTIFY_RESPONSE_BLOCK_BLINKS {
     constexpr static int ID = BC_COMMANDS_POOL_BASE + 14;
     struct request {
         std::vector<crypto::hash> txs;
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -266,7 +266,7 @@ struct NOTIFY_REQUEST_GET_TXS {
 
     struct request {
         std::vector<crypto::hash> txs;
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -275,7 +275,7 @@ struct NOTIFY_NEW_SERVICE_NODE_VOTE {
     struct request {
         std::vector<service_nodes::quorum_vote_t> votes;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 }  // namespace cryptonote

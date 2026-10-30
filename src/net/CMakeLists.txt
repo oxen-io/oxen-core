@@ -36,7 +36,7 @@ target_link_libraries(net
   oxen::quic-utils
   PRIVATE
   common
-  epee
   extra
+  levin_kv
   logging
   )

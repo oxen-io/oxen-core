@@ -29,7 +29,7 @@
 #include <gtest/gtest.h>
 
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
-#include "epee/storages/portable_storage_template_helper.h"
+#include "serialization/levin_kv/levin_kv.h"
 
 TEST(serialize_tx_notify, unpadded)
 {
@@ -37,7 +37,7 @@ TEST(serialize_tx_notify, unpadded)
     const std::string payload = cryptonote::serialize_tx_notify(txs, false);
 
     cryptonote::NOTIFY_NEW_TRANSACTIONS::request request;
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(request, payload));
+    ASSERT_TRUE(levin_kv::decode(payload, request));
     EXPECT_EQ(txs, request.txs);
     EXPECT_TRUE(request.blinks.empty());
     EXPECT_FALSE(request.requested);
@@ -51,7 +51,7 @@ TEST(serialize_tx_notify, padded)
     EXPECT_EQ(0u, payload.size() % 1024);
 
     cryptonote::NOTIFY_NEW_TRANSACTIONS::request request;
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(request, payload));
+    ASSERT_TRUE(levin_kv::decode(payload, request));
     EXPECT_EQ(txs, request.txs);
     EXPECT_TRUE(request.blinks.empty());
     EXPECT_FALSE(request.requested);

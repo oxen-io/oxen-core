@@ -1,6 +1,6 @@
-// Pins the exact bytes that peer addresses serialize to, both on the p2p wire (KV portable storage)
-// and in the p2pstate file (boost portable binary archive): existing nodes and existing files
-// depend on them, so they must not change.
+// Pins the exact bytes that peer addresses serialize to, both on the p2p wire (levin_kv) and in the
+// p2pstate file (boost portable binary archive): existing nodes and existing files depend on them,
+// so they must not change.
 
 #include <gtest/gtest.h>
 #include <oxenc/hex.h>
@@ -10,9 +10,9 @@
 #include "boost/archive/portable_binary_iarchive.hpp"
 #include "boost/archive/portable_binary_oarchive.hpp"
 #include "common/format.h"
-#include "epee/storages/portable_storage_template_helper.h"
 #include "p2p/net_peerlist_boost_serialization.h"
 #include "p2p/p2p_protocol_defs.h"
+#include "serialization/levin_kv/levin_kv.h"
 
 using namespace std::literals;
 
@@ -33,29 +33,54 @@ nodetool::peerlist_entry ipv6_entry() {
 
 // clang-format off
 constexpr auto kv_header = "011101010101020101"sv;
-// adr: {addr: {m_ip: u32 (the legacy, byte-reversed int), m_port: u16}, type: u8 1}
+
+// As we write them: fields in serialize() order, each integer as the narrowest type holding it.
+// adr: {type: u8 1, addr: {m_ip: u32 (the legacy, byte-reversed int), m_port: u16}}
 constexpr auto kv_ipv4_adr =
+        "08"
+            "0474797065" "08" "01"
+            "0461646472" "0c" "08"
+                "046d5f6970" "06" "330012ff"
+                "066d5f706f7274" "07" "ffff"sv;
+// adr: {type: u8 2, addr: {addr: 16-byte string, m_port: u16}}
+constexpr auto kv_ipv6_adr =
+        "08"
+            "0474797065" "08" "02"
+            "0461646472" "0c" "08"
+                "0461646472" "0a" "40" "20010db8000000000000000000000001"
+                "066d5f706f7274" "07" "0656"sv;
+constexpr auto kv_id = "026964" "05" "0807060504030201"sv;
+constexpr auto kv_last_seen = "096c6173745f7365656e" "06" "00f15365"sv;
+constexpr auto kv_rpc_port = "087270635f706f7274" "08" "00"sv;
+constexpr auto kv_history = "07686973746f7279" "07" "e803"sv;
+
+// As epee (and so every node before levin_kv) writes them: fields sorted by name, each integer as
+// its declared type.
+constexpr auto epee_ipv4_adr =
         "08"
             "0461646472" "0c" "08"
                 "046d5f6970" "06" "330012ff"
                 "066d5f706f7274" "07" "ffff"
             "0474797065" "08" "01"sv;
-// adr: {addr: {addr: 16-byte string, m_port: u16}, type: u8 2}
-constexpr auto kv_ipv6_adr =
+constexpr auto epee_ipv6_adr =
         "08"
             "0461646472" "0c" "08"
                 "0461646472" "0a" "40" "20010db8000000000000000000000001"
                 "066d5f706f7274" "07" "0656"
             "0474797065" "08" "02"sv;
-constexpr auto kv_id = "026964" "05" "0807060504030201"sv;
-constexpr auto kv_last_seen = "096c6173745f7365656e" "01" "00f1536500000000"sv;
-constexpr auto kv_rpc_port = "087270635f706f7274" "07" "0000"sv;
+constexpr auto epee_last_seen = "096c6173745f7365656e" "01" "00f1536500000000"sv;
+constexpr auto epee_rpc_port = "087270635f706f7274" "07" "0000"sv;
+constexpr auto epee_history = "07686973746f7279" "05" "e803000000000000"sv;
 // clang-format on
 
 std::string kv_hex(const nodetool::peerlist_entry& e) {
-    std::string bin;
-    EXPECT_TRUE(epee::serialization::store_t_to_binary(e, bin));
-    return oxenc::to_hex(bin);
+    return oxenc::to_hex(levin_kv::encode(e));
+}
+
+nodetool::peerlist_entry kv_load(std::string_view hex) {
+    nodetool::peerlist_entry e{};
+    EXPECT_TRUE(levin_kv::decode(oxenc::from_hex(hex), e));
+    return e;
 }
 
 std::string boost_hex(const nodetool::peerlist_entry& e) {
@@ -78,17 +103,20 @@ nodetool::peerlist_entry boost_load(std::string_view hex) {
 }  // namespace
 
 TEST(p2p_formats, kv_ipv4_peer) {
-    auto expected = "{}14" "03616472" "0c" "{}" "07686973746f7279" "05" "e803000000000000" "{}{}{}"_format(
-            kv_header, kv_ipv4_adr, kv_id, kv_last_seen, kv_rpc_port);
+    auto expected = "{}14" "03616472" "0c" "{}{}{}{}{}"_format(
+            kv_header, kv_ipv4_adr, kv_id, kv_last_seen, kv_rpc_port, kv_history);
     EXPECT_EQ(kv_hex(ipv4_entry()), expected);
 
-    nodetool::peerlist_entry loaded{};
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(loaded, oxenc::from_hex(expected)));
-    EXPECT_EQ(loaded.adr, ipv4_entry().adr);
-    EXPECT_EQ(loaded.adr.to_string(), "51.0.18.255:65535");
-    EXPECT_EQ(loaded.id, ipv4_entry().id);
-    EXPECT_EQ(loaded.last_seen, ipv4_entry().last_seen);
-    EXPECT_EQ(loaded.history, ipv4_entry().history);
+    auto epee = "{}14" "03616472" "0c" "{}{}{}{}{}"_format(
+            kv_header, epee_ipv4_adr, epee_history, kv_id, epee_last_seen, epee_rpc_port);
+    for (auto& hex : {expected, epee}) {
+        auto loaded = kv_load(hex);
+        EXPECT_EQ(loaded.adr, ipv4_entry().adr);
+        EXPECT_EQ(loaded.adr.to_string(), "51.0.18.255:65535");
+        EXPECT_EQ(loaded.id, ipv4_entry().id);
+        EXPECT_EQ(loaded.last_seen, ipv4_entry().last_seen);
+        EXPECT_EQ(loaded.history, ipv4_entry().history);
+    }
 }
 
 TEST(p2p_formats, kv_ipv6_peer) {
@@ -96,11 +124,14 @@ TEST(p2p_formats, kv_ipv6_peer) {
             kv_header, kv_ipv6_adr, kv_id, kv_last_seen, kv_rpc_port);
     EXPECT_EQ(kv_hex(ipv6_entry()), expected);
 
-    nodetool::peerlist_entry loaded{};
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(loaded, oxenc::from_hex(expected)));
-    EXPECT_EQ(loaded.adr, ipv6_entry().adr);
-    EXPECT_EQ(loaded.adr.to_string(), "[2001:db8::1]:22022");
-    EXPECT_FALSE(loaded.history);
+    auto epee = "{}10" "03616472" "0c" "{}{}{}{}"_format(
+            kv_header, epee_ipv6_adr, kv_id, epee_last_seen, epee_rpc_port);
+    for (auto& hex : {expected, epee}) {
+        auto loaded = kv_load(hex);
+        EXPECT_EQ(loaded.adr, ipv6_entry().adr);
+        EXPECT_EQ(loaded.adr.to_string(), "[2001:db8::1]:22022");
+        EXPECT_FALSE(loaded.history);
+    }
 }
 
 // clang-format off

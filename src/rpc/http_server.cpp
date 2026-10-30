@@ -9,9 +9,9 @@
 #include "common/string_util.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "epee/storages/portable_storage_template_helper.h"
 #include "rpc/common/rpc_args.h"
 #include "rpc/core_rpc_server_commands_defs.h"
+#include "serialization/levin_kv/levin_kv.h"
 #include "version.h"
 
 namespace cryptonote::rpc {
@@ -431,10 +431,7 @@ namespace {
         GET_TRANSACTION_POOL_HASHES_BIN::response res{};
         res.tx_hashes = std::move(pool_hashes);
         res.status = STATUS_OK;
-
-        std::string response;
-        epee::serialization::store_t_to_binary(res, response);
-        return response;
+        return levin_kv::encode(res);
     }
 
     std::list<std::pair<std::shared_ptr<call_data>, std::chrono::steady_clock::time_point>>
@@ -450,7 +447,7 @@ namespace {
         else
             throw parse_error{"Internal error: got unexpected request body type"};
 
-        if (!epee::serialization::load_t_from_binary(req, body))
+        if (!levin_kv::decode(body, req))
             throw parse_error{"Failed to parse binary data parameters"};
 
         std::vector<crypto::hash> pool_hashes;
@@ -539,7 +536,7 @@ namespace {
         if (long_poll_timeout_body.empty()) {
             GET_TRANSACTION_POOL_HASHES_BIN::response res{};
             res.status = STATUS_TX_LONG_POLL_TIMED_OUT;
-            epee::serialization::store_t_to_binary(res, long_poll_timeout_body);
+            long_poll_timeout_body = levin_kv::encode(res);
         }
 
         int count = 0;

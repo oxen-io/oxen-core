@@ -2739,7 +2739,7 @@ bool protocol_handler::relay_block(
 
     std::string fluffyBlob;
     if (arg.b.txs.size()) {
-        epee::serialization::store_t_to_binary(arg, fluffyBlob);
+        fluffyBlob = levin_kv::encode(arg);
     } else {
         // NOTE: We should never ideally hit this case. If we do, some developer
         // at the calling site passed in the full block information
@@ -2753,7 +2753,7 @@ bool protocol_handler::relay_block(
         NOTIFY_NEW_FLUFFY_BLOCK::request arg_without_tx_blobs = {};
         arg_without_tx_blobs.current_blockchain_height = arg.current_blockchain_height;
         arg_without_tx_blobs.b.block = arg.b.block;
-        epee::serialization::store_t_to_binary(arg_without_tx_blobs, fluffyBlob);
+        fluffyBlob = levin_kv::encode(arg_without_tx_blobs);
     }
 
     m_p2p->relay_notify_to_list(

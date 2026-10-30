@@ -13,7 +13,7 @@
 #include <string_view>
 
 #include "common/meta.h"
-#include "epee/storages/portable_storage_template_helper.h"
+#include "serialization/levin_kv/levin_kv.h"
 #include "version.h"
 
 namespace cryptonote::rpc {
@@ -174,17 +174,11 @@ class http_client {
     template <typename RPC>
     typename RPC::response binary(std::string_view target_, const typename RPC::request& req) {
         std::string target{target_};
-        std::string req_serialized;
-        if (!epee::serialization::store_t_to_binary(req, req_serialized))
-            throw http_client_serialization_error{
-                    "Failed to serialize " + tools::type_name(typeid(typename RPC::request)) +
-                    " for binary request /" + target};
-
-        cpr::Response res = post(
-                target, std::move(req_serialized), {{"Content-Type", "application/octet-stream"}});
+        cpr::Response res =
+                post(target, levin_kv::encode(req), {{"Content-Type", "application/octet-stream"}});
 
         typename RPC::response result;
-        if (!epee::serialization::load_t_from_binary(result, res.text))
+        if (!levin_kv::decode(res.text, result))
             throw http_client_serialization_error{
                     "Failed to deserialize response for binary request for /" + target};
 

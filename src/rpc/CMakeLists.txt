@@ -86,6 +86,7 @@ target_link_libraries(rpc_http_client
   PUBLIC
     common
     cpr::cpr
+    levin_kv
   PRIVATE
     logging
     extra)

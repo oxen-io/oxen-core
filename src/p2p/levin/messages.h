@@ -9,21 +9,20 @@
 #include <utility>
 
 #include "connection.h"
-#include "epee/storages/portable_storage_template_helper.h"
+#include "serialization/levin_kv/levin_kv.h"
 
-// Levin bodies are epee portable storage, of a command's (or notify's) request or response struct.
+// Levin bodies are levin_kv messages, of a command's (or notify's) request or response struct.
 namespace nodetool::levin {
 
 template <typename T>
 std::string encode(const T& msg) {
-    // epee's store() isn't const-qualified, though it doesn't modify
-    return epee::serialization::store_t_to_binary(const_cast<T&>(msg));
+    return levin_kv::encode(msg);
 }
 
 template <typename T>
 std::optional<T> decode(std::span<const uint8_t> body) {
     std::optional<T> msg{std::in_place};
-    if (!epee::serialization::load_t_from_binary(*msg, body))
+    if (!levin_kv::decode(body, *msg))
         msg.reset();
     return msg;
 }

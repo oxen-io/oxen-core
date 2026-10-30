@@ -84,6 +84,7 @@
 #include "rpc/common/rpc_args.h"
 #include "rpc/common/rpc_command.h"
 #include "serialization/json_archive.h"
+#include "serialization/levin_kv/levin_kv.h"
 #include "version.h"
 
 namespace cryptonote::rpc {
@@ -120,7 +121,7 @@ namespace {
         cmd->is_public = std::is_base_of_v<PUBLIC, RPC>;
         cmd->is_binary = true;
 
-        // Legacy binary request; these still use epee serialization, and should be considered
+        // Legacy binary request; these use levin_kv serialization, and should be considered
         // deprecated (tentatively to be removed in Oxen 11).
         cmd->invoke = [](rpc_request&& request,
                          core_rpc_server& server,
@@ -133,14 +134,12 @@ namespace {
             else
                 throw std::runtime_error{
                         "Internal error: can't load binary a RPC command with non-string body"};
-            if (!epee::serialization::load_t_from_binary(req, data))
+            if (!levin_kv::decode(data, req))
                 throw parse_error{"Failed to parse binary data parameters"};
 
             auto res = server.invoke(std::move(req), std::move(request.context));
 
-            std::string response;
-            epee::serialization::store_t_to_binary(res, response);
-            respond(std::move(response));
+            respond(levin_kv::encode(res));
         };
 
         for (const auto& name : RPC::names())

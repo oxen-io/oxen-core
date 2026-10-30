@@ -3,6 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include "common/guts.h"
+#include "serialization/levin_kv/archive.h"
 
 static auto logcat = oxen::log::Cat("rpc");
 
@@ -105,14 +106,14 @@ void from_json(const nlohmann::json& j, GET_OUTPUT_HISTOGRAM::entry& e) {
     j.at("recent_instances").get_to(e.recent_instances);
 };
 
-KV_SERIALIZE_MAP_CODE_BEGIN(GET_OUTPUT_DISTRIBUTION::request)
-KV_SERIALIZE(amounts)
-KV_SERIALIZE_OPT(from_height, (uint64_t)0)
-KV_SERIALIZE_OPT(to_height, (uint64_t)0)
-KV_SERIALIZE_OPT(cumulative, false)
-KV_SERIALIZE_OPT(binary, true)
-KV_SERIALIZE_OPT(compress, false)
-KV_SERIALIZE_MAP_CODE_END()
+void GET_OUTPUT_DISTRIBUTION::request::serialize(levin_kv::archive& ar) {
+    ar.value("amounts", amounts);
+    ar.value_or("from_height", from_height, uint64_t{0});
+    ar.value_or("to_height", to_height, uint64_t{0});
+    ar.value_or("cumulative", cumulative, false);
+    ar.value_or("binary", binary, true);
+    ar.value_or("compress", compress, false);
+}
 
 namespace {
     template <typename T>
@@ -139,33 +140,28 @@ namespace {
     }
 }  // namespace
 
-KV_SERIALIZE_MAP_CODE_BEGIN(GET_OUTPUT_DISTRIBUTION::distribution)
-KV_SERIALIZE(amount)
-KV_SERIALIZE_N(data.start_height, "start_height")
-KV_SERIALIZE(binary)
-KV_SERIALIZE(compress)
-if (binary) {
-    if (is_store) {
-        if (compress) {
-            const_cast<std::string&>(compressed_data) = compress_integer_array(data.distribution);
-            KV_SERIALIZE(compressed_data)
-        } else
-            KV_SERIALIZE_CONTAINER_POD_AS_BLOB_N(data.distribution, "distribution")
-    } else {
-        if (compress) {
-            KV_SERIALIZE(compressed_data)
-            const_cast<std::vector<uint64_t>&>(data.distribution) =
-                    decompress_integer_array<uint64_t>(compressed_data);
-        } else
-            KV_SERIALIZE_CONTAINER_POD_AS_BLOB_N(data.distribution, "distribution")
+void GET_OUTPUT_DISTRIBUTION::distribution::serialize(levin_kv::archive& ar) {
+    ar.value("amount", amount);
+    ar.value("start_height", data.start_height);
+    // Read before the distribution, so that when reading these pick how it was sent
+    ar.value("binary", binary);
+    ar.value("compress", compress);
+    if (!binary)
+        ar.value("distribution", data.distribution);
+    else if (!compress)
+        ar.packed("distribution", data.distribution);
+    else {
+        if (!ar.loading())
+            compressed_data = compress_integer_array(data.distribution);
+        ar.value("compressed_data", compressed_data);
+        if (ar.loading())
+            data.distribution = decompress_integer_array<uint64_t>(compressed_data);
     }
-} else
-    KV_SERIALIZE_N(data.distribution, "distribution")
-KV_SERIALIZE_N(data.base, "base")
-KV_SERIALIZE_MAP_CODE_END()
+    ar.value("base", data.base);
+}
 
-KV_SERIALIZE_MAP_CODE_BEGIN(GET_OUTPUT_DISTRIBUTION::response)
-KV_SERIALIZE(status)
-KV_SERIALIZE(distributions)
-KV_SERIALIZE_MAP_CODE_END()
+void GET_OUTPUT_DISTRIBUTION::response::serialize(levin_kv::archive& ar) {
+    ar.value("status", status);
+    ar.value("distributions", distributions);
+}
 }  // namespace cryptonote::rpc
