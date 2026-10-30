@@ -37,13 +37,36 @@
 extern "C" {
 #include "crypto/keccak.h"
 }
+#include "common/guts.h"
 #include "common/meta.h"
 #include "cryptonote_basic_impl.h"
 #include "cryptonote_config.h"
 #include "cryptonote_format_utils.h"
+#include "serialization/levin_kv/archive.h"
 
 namespace cryptonote {
 static auto logcat = log::Cat("account");
+
+void account_public_address::serialize(levin_kv::archive& ar) {
+    ar.value("m_spend_public_key", tools::byte_span(m_spend_public_key));
+    ar.value("m_view_public_key", tools::byte_span(m_view_public_key));
+}
+
+void account_keys::serialize(levin_kv::archive& ar) {
+    ar.value("m_account_address", m_account_address);
+    ar.value("m_spend_secret_key", tools::byte_span(m_spend_secret_key));
+    ar.value("m_view_secret_key", tools::byte_span(m_view_secret_key));
+    ar.value("m_multisig_keys", m_multisig_keys);
+    ar.value_or(
+            "m_encryption_iv",
+            tools::byte_span(m_encryption_iv),
+            tools::byte_span(crypto::null<crypto::chacha_iv>));
+}
+
+void account_base::serialize(levin_kv::archive& ar) {
+    ar.value("m_keys", m_keys);
+    ar.value("m_creation_timestamp", m_creation_timestamp);
+}
 
 //-----------------------------------------------------------------
 hw::device& account_keys::get_device() const {

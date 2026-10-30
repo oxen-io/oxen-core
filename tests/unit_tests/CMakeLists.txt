@@ -29,6 +29,7 @@
 add_executable(unit_tests
   accrued_history.cpp
   account.cpp
+  account_kv.cpp
   apply_permutation.cpp
   base58.cpp
   blockchain_db.cpp

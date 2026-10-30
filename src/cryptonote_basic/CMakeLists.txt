@@ -43,5 +43,6 @@ target_link_libraries(cryptonote_basic
     common
     device
     Boost::serialization
+    levin_kv
     logging
     extra)
