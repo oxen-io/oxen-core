@@ -52,7 +52,6 @@ target_link_libraries(core_tests
     cryptonote_core
     p2p
     version
-    epee
     device
     wallet
     Boost::program_options

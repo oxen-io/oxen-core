@@ -52,26 +52,15 @@ target_link_libraries(wallet
   PRIVATE
     extra)
 
-oxen_add_library(wallet_rpc_commands
-  wallet_rpc_server_commands_defs.cpp
-  wallet_rpc_server_commands_serialize.cpp
-  )
-
-target_link_libraries(wallet_rpc_commands
-  PUBLIC
-    wallet
-  PRIVATE
-    extra)
-
 oxen_add_executable(wallet_rpc_server "oxen-wallet-rpc"
   wallet_rpc_server.cpp
+  wallet_rpc_server_commands_defs.cpp
   )
 
 target_link_libraries(wallet_rpc_server
   PRIVATE
     rpc_common
     wallet
-    wallet_rpc_commands
     daemonizer
     Boost::program_options
     logging

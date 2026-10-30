@@ -35,7 +35,6 @@
 #include "common/format.h"
 #include "common/formattable.h"
 #include "common/oxen.h"
-#include "epee/serialization/keyvalue_serialization.h"
 #include "serialization/levin_kv/fwd.h"
 
 namespace cryptonote {
@@ -50,11 +49,6 @@ struct subaddress_index {
     bool is_zero() const { return major == 0 && minor == 0; }
 
     std::string to_string() const { return "{}/{}"_format(major, minor); }
-
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(major)
-    KV_SERIALIZE(minor)
-    END_KV_SERIALIZE_MAP()
 
     void serialize(levin_kv::archive& ar);
 };

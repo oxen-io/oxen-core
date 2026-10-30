@@ -33,6 +33,5 @@ oxen_add_library(mnemonics
 target_link_libraries(mnemonics
   PRIVATE
     cncrypto
-    epee
     logging
     extra)

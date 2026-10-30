@@ -30,10 +30,14 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
+#include <list>
+#include <set>
+
 #include "common/meta.h"
 #include "common/oxen.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/subaddress_index.h"
+#include "serialization/levin_kv/fwd.h"
 #include "wallet/transfer_destination.h"
 #include "wallet/transfer_view.h"
 #include "wallet_rpc_server_error_codes.h"
@@ -63,7 +67,6 @@ struct RESTRICTED : RPC_COMMAND {};
 /// Generic, serializable, no-argument request or response type, use as
 /// `struct request : EMPTY {};` or `using response = EMPTY;`
 struct EMPTY {
-    KV_MAP_SERIALIZABLE
     void serialize(levin_kv::archive& ar);
 };
 
@@ -92,7 +95,6 @@ struct GET_BALANCE : RPC_COMMAND {
         bool strict;  // If true, only return the balance for transactions that have been spent and
                       // are not pending (i.e. excluding any transactions sitting in the TX pool)
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -108,7 +110,6 @@ struct GET_BALANCE : RPC_COMMAND {
         uint64_t blocks_to_unlock;     // The number of blocks remaining for the balance to unlock
         uint64_t time_to_unlock;       // Timestamp of expected unlock
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -127,7 +128,6 @@ struct GET_BALANCE : RPC_COMMAND {
         uint64_t blocks_to_unlock;  // The number of blocks remaining for the balance to unlock
         uint64_t time_to_unlock;    // Timestamp of expected unlock
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -142,7 +142,6 @@ struct GET_ADDRESS : RPC_COMMAND {
         std::vector<uint32_t> address_index;  // (Optional) List of subaddresses to return from the
                                               // aforementioned account.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -152,7 +151,6 @@ struct GET_ADDRESS : RPC_COMMAND {
         uint32_t address_index;  // Index of the subaddress
         bool used;               // True if the (sub)address has received funds before.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -160,7 +158,6 @@ struct GET_ADDRESS : RPC_COMMAND {
         std::string address;  // (Deprecated) Remains to be compatible with older RPC format
         std::vector<address_info> addresses;  // Addresses informations.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -173,14 +170,12 @@ struct GET_ADDRESS_INDEX : RPC_COMMAND {
     struct request {
         std::string address;  // (Sub)address to look for.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         cryptonote::subaddress_index index;  // Account index followed by the subaddress index.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -195,7 +190,6 @@ struct CREATE_ADDRESS : RPC_COMMAND {
         std::string label;       // (Optional) Label for the new subaddress.
         uint32_t count;          // Number of addresses to create, defaults to 1.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -206,7 +200,6 @@ struct CREATE_ADDRESS : RPC_COMMAND {
         std::vector<uint32_t>
                 address_indices;  // The new addresses indicies if more than 1 is requested
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -220,7 +213,6 @@ struct LABEL_ADDRESS : RPC_COMMAND {
         cryptonote::subaddress_index index;  // Major & minor address index
         std::string label;                   // Label for the address.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -239,7 +231,6 @@ struct GET_ACCOUNTS : RPC_COMMAND {
                                // spent and are not pending (i.e. excluding any transactions sitting
                                // in the TX pool)
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -251,7 +242,6 @@ struct GET_ACCOUNTS : RPC_COMMAND {
         std::string label;          // (Optional) Label of the account.
         std::string tag;            // (Optional) Tag for filtering accounts.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -260,7 +250,6 @@ struct GET_ACCOUNTS : RPC_COMMAND {
         uint64_t total_unlocked_balance;  // Total unlocked balance of the selected accounts.
         std::vector<subaddress_account_info> subaddress_accounts;  // Account information.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -273,7 +262,6 @@ struct CREATE_ACCOUNT : RPC_COMMAND {
     struct request {
         std::string label;  // (Optional) Label for the account.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -281,7 +269,6 @@ struct CREATE_ACCOUNT : RPC_COMMAND {
         uint32_t account_index;  // Index of the new account.
         std::string address;     // The primary address of the new account.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -295,7 +282,6 @@ struct LABEL_ACCOUNT : RPC_COMMAND {
         uint32_t account_index;  // Account index to set the label for.
         std::string label;       // Label for the account.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -314,14 +300,12 @@ struct GET_ACCOUNT_TAGS : RPC_COMMAND {
         std::string label;               // Label for the tag.
         std::vector<uint32_t> accounts;  // List of tagged account indices.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::vector<account_tag_info> account_tags;  // Account tag information:
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -335,7 +319,6 @@ struct TAG_ACCOUNTS : RPC_COMMAND {
         std::string tag;              // Tag for the accounts.
         std::set<uint32_t> accounts;  // Tag this list of accounts.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -350,7 +333,6 @@ struct UNTAG_ACCOUNTS : RPC_COMMAND {
     struct request {
         std::set<uint32_t> accounts;  // Remove tag from this list of accounts.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -366,7 +348,6 @@ struct SET_ACCOUNT_TAG_DESCRIPTION : RPC_COMMAND {
         std::string tag;          // Set a description for this tag.
         std::string description;  // Description for the tag.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -387,7 +368,6 @@ struct GET_HEIGHT : RPC_COMMAND {
                                     // reorganized from (backed by atleast 2 Service Node, or 1
                                     // hardcoded checkpoint, 0 if N/A).
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -419,7 +399,6 @@ struct TRANSFER : RESTRICTED {
         bool get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to
                                // false)
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -435,7 +414,6 @@ struct TRANSFER : RESTRICTED {
                                      // (empty for non-multisig).
         std::string unsigned_txset;  // Set of unsigned tx for cold-signing purposes.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -465,14 +443,12 @@ struct TRANSFER_SPLIT : RESTRICTED {
         bool get_tx_metadata;  // Return list of transaction metadata needed to relay the transfer
                                // later.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct key_list {
         std::list<std::string> keys;  //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -488,7 +464,6 @@ struct TRANSFER_SPLIT : RESTRICTED {
                                      // (empty for non-multisig).
         std::string unsigned_txset;  // Set of unsigned tx for cold-signing purposes.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -501,7 +476,6 @@ struct DESCRIBE_TRANSFER : RESTRICTED {
         std::string address;  // Destination public address.
         uint64_t amount;      // Amount in atomic units.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -519,7 +493,6 @@ struct DESCRIBE_TRANSFER : RESTRICTED {
         uint32_t dummy_outputs;           //
         std::string extra;                // Data stored in the tx extra represented in hex.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -529,14 +502,12 @@ struct DESCRIBE_TRANSFER : RESTRICTED {
         std::string multisig_txset;  // Set of unsigned multisig txes returned by "transfer" or
                                      // "transfer_split" methods
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::list<transfer_description> desc;  // List of information of transfers.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -553,7 +524,6 @@ struct SIGN_TRANSFER : RESTRICTED {
                            // false)
         bool get_tx_keys;  // (Optional) Return the transaction keys after sending.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -563,7 +533,6 @@ struct SIGN_TRANSFER : RESTRICTED {
         std::list<std::string> tx_raw_list;   // The tx raw data of every transaction.
         std::list<std::string> tx_key_list;   // The tx key data of every transaction.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -576,14 +545,12 @@ struct SUBMIT_TRANSFER : RESTRICTED {
     struct request {
         std::string tx_data_hex;  // Set of signed tx returned by "sign_transfer".
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::list<std::string> tx_hash_list;  // The tx hashes of every transaction.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -602,14 +569,12 @@ struct SWEEP_DUST : RESTRICTED {
         bool get_tx_metadata;  // (Optional) Return list of transaction metadata needed to relay the
                                // transfer later. (Defaults to false)
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct key_list {
         std::list<std::string> keys;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -625,7 +590,6 @@ struct SWEEP_DUST : RESTRICTED {
                                      // (empty for non-multisig).
         std::string unsigned_txset;  // Set of unsigned tx for cold-signing purposes.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -657,14 +621,12 @@ struct SWEEP_ALL : RESTRICTED {
         bool get_tx_metadata;  // (Optional) return the transaction metadata as a string. (Defaults
                                // to false)
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct key_list {
         std::list<std::string> keys;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -680,7 +642,6 @@ struct SWEEP_ALL : RESTRICTED {
                                      // (empty for non-multisig).
         std::string unsigned_txset;  // Set of unsigned tx for cold-signing purposes.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -708,7 +669,6 @@ struct SWEEP_SINGLE : RESTRICTED {
         bool get_tx_metadata;  // (Optional) return the transaction metadata as a string. (Defaults
                                // to false)
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -723,7 +683,6 @@ struct SWEEP_SINGLE : RESTRICTED {
                                      // (empty for non-multisig).
         std::string unsigned_txset;  // Set of unsigned tx for cold-signing purposes.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -739,14 +698,12 @@ struct RELAY_TX : RPC_COMMAND {
         bool blink;  // (Optional): Set to true if this tx was constructed with a blink priority and
                      // should be submitted to the blink quorum.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string tx_hash;  // String for the publically searchable transaction hash.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -774,7 +731,6 @@ struct payment_details {
             subaddr_index;  // Major & minor index, account and subaddress index respectively.
     std::string address;    // Address receiving the payment.
 
-    KV_MAP_SERIALIZABLE
     void serialize(levin_kv::archive& ar);
 };
 
@@ -786,14 +742,12 @@ struct GET_PAYMENTS : RPC_COMMAND {
     struct request {
         std::string payment_id;  // Payment ID used to find the payments (16 characters hex).
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::list<payment_details> payments;  // List of payment details:
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -813,14 +767,12 @@ struct GET_BULK_PAYMENTS : RPC_COMMAND {
                 payment_ids;        // Payment IDs used to find the payments (16 characters hex).
         uint64_t min_block_height;  // The block height at which to start looking for payments.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::list<payment_details> payments;  // List of payment details:
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -842,7 +794,6 @@ struct transfer_details {
     bool frozen;    // If the output has been intentionally frozen by the user, i.e. unspendable.
     bool unlocked;  // If the TX is spendable yet
 
-    KV_MAP_SERIALIZABLE
     void serialize(levin_kv::archive& ar);
 };
 
@@ -859,14 +810,12 @@ struct INCOMING_TRANSFERS : RPC_COMMAND {
         std::set<uint32_t>
                 subaddr_indices;  // (Optional) Return transfers sent to these subaddresses.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::list<transfer_details> transfers;  // List of information of the transfers details.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -880,7 +829,6 @@ struct QUERY_KEY : RESTRICTED {
         std::string key_type;  // Which key to retrieve: "mnemonic" - the mnemonic seed (older
                                // wallets do not have one) OR "view_key" - the view key
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -888,7 +836,6 @@ struct QUERY_KEY : RESTRICTED {
         std::string key;  //  The view key will be hex encoded, while the mnemonic will be a string
                           //  of words.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -903,7 +850,6 @@ struct MAKE_INTEGRATED_ADDRESS : RPC_COMMAND {
                                        // address.
         std::string payment_id;  // (Optional, defaults to a random ID) 16 characters hex encoded.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -911,7 +857,6 @@ struct MAKE_INTEGRATED_ADDRESS : RPC_COMMAND {
         std::string integrated_address;  //
         std::string payment_id;          // Hex encoded.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -924,7 +869,6 @@ struct SPLIT_INTEGRATED_ADDRESS : RPC_COMMAND {
     struct request {
         std::string integrated_address;  //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -933,7 +877,6 @@ struct SPLIT_INTEGRATED_ADDRESS : RPC_COMMAND {
         std::string payment_id;        //
         bool is_subaddress;            //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -960,7 +903,6 @@ struct RESCAN_BLOCKCHAIN : RESTRICTED {
     struct request {
         bool hard;  //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -976,7 +918,6 @@ struct SET_TX_NOTES : RESTRICTED {
         std::list<std::string> txids;  // Transaction ids.
         std::list<std::string> notes;  // Notes for the transactions.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -991,14 +932,12 @@ struct GET_TX_NOTES : RPC_COMMAND {
     struct request {
         std::list<std::string> txids;  // Transaction ids.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::list<std::string> notes;  // Notes for the transactions.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1012,7 +951,6 @@ struct SET_ATTRIBUTE : RESTRICTED {
         std::string key;    // Attribute name.
         std::string value;  // Attribute value.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1028,14 +966,12 @@ struct GET_ATTRIBUTE : RESTRICTED {
 
         std::string key;  // Attribute name.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string value;  // Attribute value.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1048,14 +984,12 @@ struct GET_TX_KEY : RPC_COMMAND {
     struct request {
         std::string txid;  // Transaction id.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string tx_key;  // Transaction secret key.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1070,7 +1004,6 @@ struct CHECK_TX_KEY : RPC_COMMAND {
         std::string tx_key;   // Transaction secret key.
         std::string address;  // Destination public address of the transaction.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1079,7 +1012,6 @@ struct CHECK_TX_KEY : RPC_COMMAND {
         bool in_pool;  // States if the transaction is still in pool or has been added to a block.
         uint64_t confirmations;  // Number of block mined after the one with the transaction.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1095,14 +1027,12 @@ struct GET_TX_PROOF : RPC_COMMAND {
         std::string message;  // (Optional) add a message to the signature to further authenticate
                               // the prooving process.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string signature;  // Transaction signature.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1118,7 +1048,6 @@ struct CHECK_TX_PROOF : RPC_COMMAND {
         std::string message;    // (Optional) Should be the same message used in `get_tx_proof`.
         std::string signature;  // Transaction signature to confirm.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1128,7 +1057,6 @@ struct CHECK_TX_PROOF : RPC_COMMAND {
         bool in_pool;  // States if the transaction is still in pool or has been added to a block.
         uint64_t confirmations;  // Number of block mined after the one with the transaction.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1144,14 +1072,12 @@ struct GET_SPEND_PROOF : RPC_COMMAND {
         std::string message;  // (Optional) add a message to the signature to further authenticate
                               // the prooving process.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string signature;  // Spend signature.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1167,14 +1093,12 @@ struct CHECK_SPEND_PROOF : RPC_COMMAND {
         std::string message;    // (Optional) Should be the same message used in `get_spend_proof`.
         std::string signature;  // Spend signature to confirm.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         bool good;  // States if the inputs proves the spend.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1193,14 +1117,12 @@ struct GET_RESERVE_PROOF : RPC_COMMAND {
         std::string message;  // (Optional) add a message to the signature to further authenticate
                               // the prooving process.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string signature;  // Reserve signature.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1215,7 +1137,6 @@ struct CHECK_RESERVE_PROOF : RPC_COMMAND {
         std::string message;    // (Optional) Should be the same message used in get_reserve_proof.
         std::string signature;  // Reserve signature to confirm.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1224,7 +1145,6 @@ struct CHECK_RESERVE_PROOF : RPC_COMMAND {
         uint64_t total;  //
         uint64_t spent;  //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1256,7 +1176,6 @@ struct GET_TRANSFERS : RESTRICTED {
         bool all_accounts;  // If true, return transfers for all accounts, subaddr_indices and
                             // account_index are ignored
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1267,7 +1186,6 @@ struct GET_TRANSFERS : RESTRICTED {
         std::list<wallet::transfer_view> failed;   //
         std::list<wallet::transfer_view> pool;     //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1282,7 +1200,6 @@ struct GET_TRANSFERS_CSV : RESTRICTED {
     struct response {
         std::string csv;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1296,7 +1213,6 @@ struct GET_TRANSFER_BY_TXID : RESTRICTED {
         std::string txid;        // Transaction ID used to find the transfer.
         uint32_t account_index;  // (Optional) Index of the account to query for the transfer.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1304,7 +1220,6 @@ struct GET_TRANSFER_BY_TXID : RESTRICTED {
         wallet::transfer_view transfer;              //
         std::list<wallet::transfer_view> transfers;  //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1319,7 +1234,6 @@ struct SIGN : RESTRICTED {
         uint32_t account_index;  // The account to use for signing
         uint32_t address_index;  // The subaddress in the account to sign with
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1327,7 +1241,6 @@ struct SIGN : RESTRICTED {
         std::string signature;  // Signature generated against the "data" and the account public
                                 // address.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1342,14 +1255,12 @@ struct VERIFY : RESTRICTED {
         std::string address;    // Public address of the wallet used to sign the data.
         std::string signature;  // Signature generated by `sign` method.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         bool good;  //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1362,14 +1273,12 @@ struct EXPORT_OUTPUTS : RESTRICTED {
     struct request {
         bool all;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string outputs_data_hex;  // Wallet outputs in hex format.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1394,14 +1303,12 @@ struct EXPORT_TRANSFERS : RPC_COMMAND {
         uint32_t account_index;
         bool all_accounts;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string data;  // CSV data to be written to file by wallet
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1414,14 +1321,12 @@ struct IMPORT_OUTPUTS : RESTRICTED {
     struct request {
         std::string outputs_data_hex;  // Wallet outputs in hex format.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         uint64_t num_imported;  // Number of outputs imported.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1434,7 +1339,6 @@ struct EXPORT_KEY_IMAGES : RPC_COMMAND {
     struct request {
         bool requested_only;  // Default `false`.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1442,7 +1346,6 @@ struct EXPORT_KEY_IMAGES : RPC_COMMAND {
         std::string key_image;  //
         std::string signature;  //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1450,7 +1353,6 @@ struct EXPORT_KEY_IMAGES : RPC_COMMAND {
         uint32_t offset;                                  //
         std::vector<signed_key_image> signed_key_images;  //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1464,7 +1366,6 @@ struct IMPORT_KEY_IMAGES : RESTRICTED {
         std::string key_image;  // Key image of specific output
         std::string signature;  // Transaction signature.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1472,7 +1373,6 @@ struct IMPORT_KEY_IMAGES : RESTRICTED {
         uint32_t offset;
         std::vector<signed_key_image> signed_key_images;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1481,7 +1381,6 @@ struct IMPORT_KEY_IMAGES : RESTRICTED {
         uint64_t spent;    // Amount (in atomic units) spent from those key images.
         uint64_t unspent;  // Amount (in atomic units) still available from those key images.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1494,7 +1393,6 @@ struct uri_spec {
     std::string tx_description;  // (Optional) Description of the reason for the tx.
     std::string recipient_name;  // (Optional) name of the payment recipient.
 
-    KV_MAP_SERIALIZABLE
     void serialize(levin_kv::archive& ar);
 };
 
@@ -1509,7 +1407,6 @@ struct MAKE_URI : RPC_COMMAND {
         std::string uri;  // This contains all the payment input information as a properly formatted
                           // payment URI.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1523,7 +1420,6 @@ struct PARSE_URI : RPC_COMMAND {
         std::string uri;  // This contains all the payment input information as a properly formatted
                           // payment URI.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1531,7 +1427,6 @@ struct PARSE_URI : RPC_COMMAND {
         uri_spec uri;                                 // JSON object containing payment information:
         std::vector<std::string> unknown_parameters;  //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1545,14 +1440,12 @@ struct ADD_ADDRESS_BOOK_ENTRY : RESTRICTED {
         std::string address;      // Public address of the entry.
         std::string description;  // (Optional), defaults to "".
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         uint64_t index;  // The index of the address book entry.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1569,7 +1462,6 @@ struct EDIT_ADDRESS_BOOK_ENTRY : RESTRICTED {
         bool set_description;
         std::string description;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1584,7 +1476,6 @@ struct GET_ADDRESS_BOOK_ENTRY : RESTRICTED {
     struct request {
         std::list<uint64_t> entries;  // Indices of the requested address book entries.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1593,14 +1484,12 @@ struct GET_ADDRESS_BOOK_ENTRY : RESTRICTED {
         std::string address;      // Public address of the entry
         std::string description;  // Description of this address entry.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::vector<entry> entries;  // List of address book entries information.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1613,7 +1502,6 @@ struct DELETE_ADDRESS_BOOK_ENTRY : RESTRICTED {
     struct request {
         uint64_t index;  // The index of the address book entry.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1638,7 +1526,6 @@ struct REFRESH : RESTRICTED {
     struct request {
         uint64_t start_height;  // (Optional) The block height from which to start refreshing.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1646,7 +1533,6 @@ struct REFRESH : RESTRICTED {
         uint64_t blocks_fetched;  // Number of new blocks scanned.
         bool received_money;  // States if transactions to the wallet have been found in the blocks.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1659,7 +1545,6 @@ struct AUTO_REFRESH : RESTRICTED {
         bool enable;
         uint32_t period;  // seconds
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1674,7 +1559,6 @@ struct START_MINING : RPC_COMMAND {
     struct request {
         uint64_t threads_count;  // Number of threads created for mining.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1703,7 +1587,6 @@ struct GET_LANGUAGES : RPC_COMMAND {
         std::vector<std::string>
                 languages_local;  // List of available languages in the native language
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1727,7 +1610,6 @@ struct CREATE_WALLET : RPC_COMMAND {
                 device_label;  // Custom label to write to a `wallet.hwdev.txt`. Can be empty; omit
                                // the parameter entirely to not write a .hwdev.txt file at all.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1748,7 +1630,6 @@ struct OPEN_WALLET : RPC_COMMAND {
         bool autosave_current;  // (Optional: Default true): If a pre-existing wallet is open, save
                                 // to disk before opening the new wallet.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1763,7 +1644,6 @@ struct CLOSE_WALLET : RPC_COMMAND {
     struct request {
         bool autosave_current;  // Save the wallet state on close
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1779,7 +1659,6 @@ struct CHANGE_WALLET_PASSWORD : RESTRICTED {
         std::string old_password;  // (Optional) Current wallet password, if defined.
         std::string new_password;  // (Optional) New wallet password, if not blank.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1802,7 +1681,6 @@ struct GENERATE_FROM_KEYS : RPC_COMMAND {
         bool autosave_current;  // (Optional: Default true): If a pre-existing wallet is open, save
                                 // to disk before opening the new wallet.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1810,7 +1688,6 @@ struct GENERATE_FROM_KEYS : RPC_COMMAND {
         std::string address;
         std::string info;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1831,7 +1708,6 @@ struct RESTORE_DETERMINISTIC_WALLET : RPC_COMMAND {
         bool autosave_current;  // (Optional: Default true): If a pre-existing wallet is open, save
                                 // to disk before opening the new wallet.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1841,7 +1717,6 @@ struct RESTORE_DETERMINISTIC_WALLET : RPC_COMMAND {
         std::string info;     // Wallet information.
         bool was_deprecated;  //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1859,7 +1734,6 @@ struct IS_MULTISIG : RPC_COMMAND {
         uint32_t threshold;  // Amount of signature needed to sign a transfer.
         uint32_t total;      // Total amount of signature in the multisig wallet.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1875,7 +1749,6 @@ struct PREPARE_MULTISIG : RESTRICTED {
         std::string multisig_info;  // Multisig string to share with peers to create the multisig
                                     // wallet.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1891,7 +1764,6 @@ struct MAKE_MULTISIG : RESTRICTED {
                                // equal than the amount of signature in `multisig_info`.
         std::string password;  // Wallet password.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1900,7 +1772,6 @@ struct MAKE_MULTISIG : RESTRICTED {
         std::string multisig_info;  // Multisig string to share with peers to create the multisig
                                     // wallet (extra step for N-1/N wallets).
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1915,7 +1786,6 @@ struct EXPORT_MULTISIG : RESTRICTED {
     struct response {
         std::string info;  // Multisig info in hex format for other participants.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1929,14 +1799,12 @@ struct IMPORT_MULTISIG : RESTRICTED {
         std::vector<std::string>
                 info;  // List of multisig info in hex format from other participants.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         uint64_t n_outputs;  // Number of outputs signed with those multisig info.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1950,14 +1818,12 @@ struct FINALIZE_MULTISIG : RESTRICTED {
         std::string password;                    // Wallet password.
         std::vector<std::string> multisig_info;  // List of multisig string from peers.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string address;  // Multisig wallet address.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1971,7 +1837,6 @@ struct EXCHANGE_MULTISIG_KEYS : RESTRICTED {
         std::string password;                    // Wallet password.
         std::vector<std::string> multisig_info;  // List of multisig string from peers.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -1980,7 +1845,6 @@ struct EXCHANGE_MULTISIG_KEYS : RESTRICTED {
         std::string multisig_info;  // Multisig string to share with peers to create the multisig
                                     // wallet.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -1994,7 +1858,6 @@ struct SIGN_MULTISIG : RESTRICTED {
         std::string tx_data_hex;  // Multisig transaction in hex format, as returned by transfer
                                   // under `multisig_txset`.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2002,7 +1865,6 @@ struct SIGN_MULTISIG : RESTRICTED {
         std::string tx_data_hex;              // Multisig transaction in hex format.
         std::list<std::string> tx_hash_list;  // List of transaction Hash.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2016,14 +1878,12 @@ struct SUBMIT_MULTISIG : RESTRICTED {
         std::string tx_data_hex;  // Multisig transaction in hex format, as returned by
                                   // sign_multisig under tx_data_hex.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::list<std::string> tx_hash_list;  // List of transaction hash.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2040,7 +1900,6 @@ struct GET_VERSION : RPC_COMMAND {
         uint32_t version;  // RPC version, formatted with Major * 2^16 + Minor(Major encoded over
                            // the first 16 bits, and Minor over the last 16 bits).
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2065,7 +1924,6 @@ struct STAKE : RESTRICTED {
         bool get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to
                                // false)
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2081,7 +1939,6 @@ struct STAKE : RESTRICTED {
                                      // (empty for non-multisig).
         std::string unsigned_txset;  // Set of unsigned tx for cold-signing purposes.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2101,7 +1958,6 @@ struct REGISTER_SERVICE_NODE : RESTRICTED {
         bool get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to
                                // false)
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2117,7 +1973,6 @@ struct REGISTER_SERVICE_NODE : RESTRICTED {
                                      // (empty for non-multisig).
         std::string unsigned_txset;  // Set of unsigned tx for cold-signing purposes.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2130,7 +1985,6 @@ struct REQUEST_STAKE_UNLOCK : RESTRICTED {
     struct request {
         std::string service_node_key;  // Service Node Public Key.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2138,7 +1992,6 @@ struct REQUEST_STAKE_UNLOCK : RESTRICTED {
         bool unlocked;    // States if stake has been unlocked.
         std::string msg;  // Information on the unlocking process.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2151,7 +2004,6 @@ struct CAN_REQUEST_STAKE_UNLOCK : RESTRICTED {
     struct request {
         std::string service_node_key;  // Service node public address.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2159,7 +2011,6 @@ struct CAN_REQUEST_STAKE_UNLOCK : RESTRICTED {
         bool can_unlock;  // States if the stake can be locked.
         std::string msg;  // Information on the unlocking process.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2174,7 +2025,6 @@ struct VALIDATE_ADDRESS : RPC_COMMAND {
         bool any_net_type;     //
         bool allow_openalias;  //
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2185,7 +2035,6 @@ struct VALIDATE_ADDRESS : RPC_COMMAND {
         std::string nettype;  // States if the nettype is mainet, testnet, devnet.
         std::string openalias_address;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2209,7 +2058,6 @@ struct SET_DAEMON : RESTRICTED {
         bool ssl_allow_any_cert;  // Make HTTPS insecure: disable HTTPS certificate verification
                                   // when using an https:// address.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2223,7 +2071,6 @@ struct SET_LOG_LEVEL : RESTRICTED {
     struct request {
         int8_t level;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2237,14 +2084,12 @@ struct SET_LOG_CATEGORIES : RESTRICTED {
     struct request {
         std::string categories;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string categories;
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2290,7 +2135,6 @@ For more information on updating and signing see the ONS_UPDATE_MAPPING document
         bool get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to
                                // false)
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2306,7 +2150,6 @@ For more information on updating and signing see the ONS_UPDATE_MAPPING document
                                      // (empty for non-multisig).
         std::string unsigned_txset;  // Set of unsigned tx for cold-signing purposes.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2338,7 +2181,6 @@ The renewal can be for 1, 2, 5, or 10 years by specifying a `type` value of "lok
         bool get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to
                                // false)
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2388,7 +2230,6 @@ If signing is performed externally then you must first encrypt the `value` (if b
         bool get_tx_metadata;  // Return the metadata needed to relay the transaction. (Defaults to
                                // false)
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2404,7 +2245,6 @@ If signing is performed externally then you must first encrypt the `value` (if b
                                      // (empty for non-multisig).
         std::string unsigned_txset;  // Set of unsigned tx for cold-signing purposes.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2433,7 +2273,6 @@ This command is only required if the open wallet is one of the owners of a ONS r
         uint32_t account_index;    // (Optional) Use this wallet's subaddress account for generating
                                    // the signature
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2441,7 +2280,6 @@ This command is only required if the open wallet is one of the owners of a ONS r
         std::string
                 signature;  // A signature valid for using in ONS to update an underlying mapping.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2456,14 +2294,12 @@ struct ONS_HASH_NAME : RPC_COMMAND {
         std::string type;  // The mapping type, "session", "lokinet" or "wallet".
         std::string name;  // The desired name to hash
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string name;  // The name hashed and represented in base64
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2495,21 +2331,18 @@ struct ONS_KNOWN_NAMES : RPC_COMMAND {
                           // if "include_expired" is specified in the request.
         std::string txid;  // The txid of the mapping's most recent update or purchase.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
     struct request {
         bool decrypt;  // If true (default false) then also decrypt and include the `value` field
         bool include_expired;  // If true (default false) then also include expired records
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::vector<known_record> known_names;  // List of records known to this wallet
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2525,14 +2358,12 @@ struct ONS_ADD_KNOWN_NAMES : RPC_COMMAND {
                            // "lokinet"
         std::string name;  // The (unhashed) name of the record
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct request {
         std::vector<record> names;  // List of names to add to the cache
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
@@ -2549,14 +2380,12 @@ struct ONS_ENCRYPT_VALUE : RPC_COMMAND {
         std::string type;   // The mapping type: "session" or "lokinet".
         std::string value;  // The value to be encrypted.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string encrypted_value;  // The encrypted value, in hex
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
@@ -2571,14 +2400,12 @@ struct ONS_DECRYPT_VALUE : RPC_COMMAND {
         std::string type;             // The mapping type: "session" or "lokinet".
         std::string encrypted_value;  // The encrypted value represented in hex.
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string value;  // The value decrypted
 
-        KV_MAP_SERIALIZABLE
         void serialize(levin_kv::archive& ar);
     };
 };
