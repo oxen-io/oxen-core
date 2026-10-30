@@ -252,10 +252,3 @@ bool operator==(const cryptonote::block& a, const cryptonote::block& b) {
     return cryptonote::get_block_hash(a) == cryptonote::get_block_hash(b);
 }
 }  // namespace cryptonote
-
-KV_SERIALIZE_MAP_CODE_BEGIN(cryptonote::address_parse_info)
-KV_SERIALIZE(address)
-KV_SERIALIZE(is_subaddress)
-KV_SERIALIZE(has_payment_id)
-KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(payment_id)
-KV_SERIALIZE_MAP_CODE_END()
