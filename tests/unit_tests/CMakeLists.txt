@@ -90,6 +90,7 @@ add_executable(unit_tests
   ringct.cpp
   output_selection.cpp
   vercmp.cpp
+  wallet_rpc_json_compat.cpp
   ringdb.cpp
   cleared_string.cpp
   aligned.cpp)
@@ -103,6 +104,7 @@ target_link_libraries(unit_tests
     rpc
     net
     wallet
+    wallet_rpc_commands
     p2p
     levin_kv
     version

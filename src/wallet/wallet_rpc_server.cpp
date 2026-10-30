@@ -123,19 +123,17 @@ namespace {
                         if (!params->is_object())
                             throw std::runtime_error{
                                     "only top-level JSON object values are currently supported"};
-                        epee::serialization::portable_storage ps;
+                        bool parsed;
                         try {
-                            ps.root() = tools::kv_json::to_section(*params);
+                            parsed = tools::kv_json::from_json(*params, req);
                         } catch (const std::invalid_argument& e) {
                             throw tools::wallet_rpc_server::parse_error{e.what()};
                         }
-                        if (!req.load(ps))
+                        if (!parsed)
                             throw tools::wallet_rpc_server::parse_error{
                                     "Failed to parse JSON parameters"};
                     }
-                    epee::serialization::portable_storage ps;
-                    server.invoke(std::move(req)).store(ps);
-                    return tools::kv_json::to_json(ps.root());
+                    return tools::kv_json::to_json(server.invoke(std::move(req)));
                 }};
 
         for (const auto& name : RPC::names())

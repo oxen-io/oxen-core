@@ -43,10 +43,17 @@
 #include "networks.h"
 #include "serialization/binary_utils.h"
 #include "serialization/container.h"
+#include "serialization/levin_kv/archive.h"
+#include "subaddress_index.h"
 
 namespace cryptonote {
 
 static auto logcat = log::Cat("cn");
+
+void subaddress_index::serialize(levin_kv::archive& ar) {
+    ar.value("major", major);
+    ar.value("minor", minor);
+}
 
 struct integrated_address {
     account_public_address adr;
