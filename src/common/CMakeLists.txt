@@ -84,3 +84,7 @@ if (TRACY_ENABLE)
   target_link_libraries(common PUBLIC Tracy::TracyClient)
 endif()
 
+# Force boost 1.76-ish to use std::invoke_result instead of the removed-from-C++20 std::result_of
+# (for boost.asio, wherever it's included)
+target_compile_definitions(common PUBLIC BOOST_ASIO_HAS_STD_INVOKE_RESULT)
+

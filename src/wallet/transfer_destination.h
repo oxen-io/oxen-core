@@ -32,7 +32,6 @@
 #include <string>
 
 #include "common/oxen.h"
-#include "epee/serialization/keyvalue_serialization.h"
 #include "serialization/levin_kv/fwd.h"
 
 namespace wallet {
@@ -41,11 +40,6 @@ OXEN_RPC_DOC_INTROSPECT
 struct transfer_destination {
     std::string address;  // Destination public address.
     uint64_t amount;      // Amount to send to each destination, in atomic units.
-
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(amount)
-    KV_SERIALIZE(address)
-    END_KV_SERIALIZE_MAP()
 
     void serialize(levin_kv::archive& ar);
 };

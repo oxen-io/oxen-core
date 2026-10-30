@@ -1,5 +1,5 @@
 // The wallet keys file holds the account keys as a levin_kv message: these check that we read the
-// ones epee wrote (recorded before the conversion), and that what we write reads the same to it.
+// ones epee wrote (recorded before the conversion), and that what we write says the same.
 
 #include <gtest/gtest.h>
 #include <oxenc/hex.h>
@@ -8,10 +8,9 @@
 
 #include "common/guts.h"
 #include "cryptonote_basic/account.h"
-#include "epee/storages/portable_storage.h"
+#include "levin_kv_dump.h"
 #include "serialization/levin_kv/levin_kv.h"
 #include "unit_tests_utils.h"
-#include "wallet/kv_json.h"
 #include "wallet/wallet2.h"
 
 namespace {
@@ -51,13 +50,6 @@ constexpr auto epee_keys = "01110101010102010114116d5f6163636f756e745f6164647265
 constexpr auto epee_account = "01110101010102010108146d5f6372656174696f6e5f74696d657374616d700500f1536500000000066d5f6b6579730c10116d5f6163636f756e745f616464726573730c08126d5f7370656e645f7075626c69635f6b65790a800102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20116d5f766965775f7075626c69635f6b65790a8002030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20210f6d5f656e6372797074696f6e5f69760a200000000000000000126d5f7370656e645f7365637265745f6b65790a80030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122116d5f766965775f7365637265745f6b65790a800405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20212223";
 // clang-format on
 
-// What epee makes of a message, as JSON (so independent of field order and integer types)
-nlohmann::json epee_json(std::string_view msg) {
-    epee::serialization::portable_storage ps;
-    EXPECT_TRUE(ps.load_from_binary(msg));
-    return tools::kv_json::to_json(ps.root());
-}
-
 void expect_keys_eq(const cryptonote::account_keys& a, const cryptonote::account_keys& b) {
     EXPECT_EQ(a.m_account_address, b.m_account_address);
     EXPECT_EQ(tools::view_guts(a.m_spend_secret_key), tools::view_guts(b.m_spend_secret_key));
@@ -90,13 +82,14 @@ TEST(account_kv, reads_a_real_keys_file) {
     EXPECT_FALSE(tools::wallet2::verify_password(keys_file, "wrong", false, device, 1));
 }
 
-TEST(account_kv, epee_reads_ours) {
-    EXPECT_EQ(epee_json(levin_kv::encode(keys())), epee_json(oxenc::from_hex(epee_keys)));
+TEST(account_kv, ours_says_what_epees_did) {
+    using levin_kv_test::dump;
+    EXPECT_EQ(dump(levin_kv::encode(keys())), dump(oxenc::from_hex(epee_keys)));
 
-    // We leave out a null IV, which epee wrote, and reads as null when it's missing
-    auto expected = epee_json(oxenc::from_hex(epee_account));
+    // We leave out a null IV, which epee wrote, and read as null when it was missing
+    auto expected = dump(oxenc::from_hex(epee_account));
     expected["m_keys"].erase("m_encryption_iv");
-    EXPECT_EQ(epee_json(levin_kv::encode(account())), expected);
+    EXPECT_EQ(dump(levin_kv::encode(account())), expected);
 }
 
 TEST(account_kv, round_trip) {

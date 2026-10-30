@@ -1,6 +1,6 @@
 // Checks that the p2p and core RPC binary messages, now serialized by levin_kv, are compatible with
-// what epee (so every node and wallet before levin_kv) wrote and reads: the golden messages below
-// are epee's encodings of the samples, recorded before the conversion.
+// what epee (so every node and wallet before levin_kv) wrote and read: the golden messages below
+// are epee's encodings of the samples, recorded before the conversion (and before epee went).
 
 #include <gtest/gtest.h>
 #include <oxenc/hex.h>
@@ -12,12 +12,11 @@
 #include "common/guts.h"
 #include "cryptonote_core/service_node_voting.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
-#include "epee/storages/portable_storage.h"
+#include "levin_kv_dump.h"
 #include "p2p/p2p_protocol_defs.h"
 #include "rpc/core_rpc_server_binary_commands.h"
 #include "rpc/core_rpc_server_commands_defs.h"
 #include "serialization/levin_kv/levin_kv.h"
-#include "wallet/kv_json.h"
 
 namespace {
 
@@ -295,37 +294,30 @@ GET_OUTPUT_DISTRIBUTION::response output_distribution_response() {
     return r;
 }
 
-// What epee makes of a message, as JSON: so the same whatever order the fields come in and whatever
-// integer types they're sent as.
-nlohmann::json epee_json(std::string_view msg) {
-    epee::serialization::portable_storage ps;
-    EXPECT_TRUE(ps.load_from_binary(msg));
-    return tools::kv_json::to_json(ps.root());
-}
-
 std::string printable(const nlohmann::json& j) {
     return j.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 }
 
-// Checks that epee reads what we write of `sample` as it reads the `golden_hex` it wrote itself,
-// and that we read all of what it wrote.  `omitted_defaults` are fields epee wrote that we leave
-// out because they're at their defaults (which a reader then takes).
+// Checks that what we write of `sample` says what the `golden_hex` epee wrote does (whatever the
+// field order or integer types), and that we read all of what it wrote.  `omitted_defaults` are
+// fields epee wrote that we leave out because they're at their defaults (which a reader then
+// takes).
 template <typename T>
 void check(
         const T& sample,
         std::string_view golden_hex,
         std::initializer_list<std::string> omitted_defaults = {}) {
     auto golden = oxenc::from_hex(golden_hex);
-    auto expected = epee_json(golden);
+    auto expected = levin_kv_test::dump(golden);
     for (const auto& field : omitted_defaults)
         expected.erase(field);
 
-    auto ours = epee_json(levin_kv::encode(sample));
+    auto ours = levin_kv_test::dump(levin_kv::encode(sample));
     EXPECT_TRUE(ours == expected) << printable(ours) << "\n  vs epee's:\n" << printable(expected);
 
     T decoded{};
     ASSERT_TRUE(levin_kv::decode(golden, decoded));
-    auto reencoded = epee_json(levin_kv::encode(decoded));
+    auto reencoded = levin_kv_test::dump(levin_kv::encode(decoded));
     EXPECT_TRUE(reencoded == expected) << printable(reencoded) << "\n  vs epee's:\n"
                                        << printable(expected);
 }

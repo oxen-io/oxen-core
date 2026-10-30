@@ -111,7 +111,6 @@ struct transfer_view {
     crypto::hash hash;          // @NoLokiRPCDocGen Internal use only, not serialized
     std::string lock_msg;       // @NoLokiRPCDocGen Internal use only, not serialized
 
-    KV_MAP_SERIALIZABLE
     void serialize(levin_kv::archive& ar);
 };
 

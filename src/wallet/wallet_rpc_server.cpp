@@ -53,7 +53,6 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/oxen_name_system.h"
 #include "daemonizer/daemonizer.h"
-#include "epee/storages/portable_storage.h"
 #include "kv_json.h"
 #include "mnemonics/electrum-words.h"
 #include "multisig/multisig.h"

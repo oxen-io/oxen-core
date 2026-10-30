@@ -67,7 +67,6 @@ endif()
 
 target_link_libraries(cncrypto
   PUBLIC
-    epee
     randomx
     Boost::thread
     sessiondep::libsodium

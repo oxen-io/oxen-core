@@ -13,8 +13,7 @@
 #include <vector>
 
 #include "common/guts.h"
-#include "epee/serialization/keyvalue_serialization.h"
-#include "epee/storages/portable_storage_template_helper.h"
+#include "levin_kv_dump.h"
 
 using namespace std::literals;
 
@@ -31,16 +30,10 @@ struct inner {
         ar.value("s", s);
     }
 
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(a)
-    KV_SERIALIZE(s)
-    END_KV_SERIALIZE_MAP()
-
     bool operator==(const inner&) const = default;
 };
 
-// Everything the archive can do, serialized both by levin_kv and by epee, to check each against
-// the other.
+// Everything the archive can do, checked (as sample()) against epee's encoding of it.
 struct everything {
     int64_t i64 = 0;
     int32_t i32 = 0;
@@ -85,29 +78,6 @@ struct everything {
         ar.value("col", col);
         ar.value_or("opt", opt, uint64_t{7});
     }
-
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(i64)
-    KV_SERIALIZE(i32)
-    KV_SERIALIZE(i16)
-    KV_SERIALIZE(i8)
-    KV_SERIALIZE(u64)
-    KV_SERIALIZE(u32)
-    KV_SERIALIZE(u16)
-    KV_SERIALIZE(u8)
-    KV_SERIALIZE(b)
-    KV_SERIALIZE(str)
-    KV_SERIALIZE(u64s)
-    KV_SERIALIZE(i16s)
-    KV_SERIALIZE(strs)
-    KV_SERIALIZE(in)
-    KV_SERIALIZE(ins)
-    KV_SERIALIZE_VAL_POD_AS_BLOB(hash)
-    KV_SERIALIZE_CONTAINER_POD_AS_BLOB(blobs)
-    KV_SERIALIZE_CONTAINER_POD_AS_BLOB(packed)
-    KV_SERIALIZE_ENUM(col)
-    KV_SERIALIZE_OPT(opt, uint64_t{7})
-    END_KV_SERIALIZE_MAP()
 
     bool operator==(const everything&) const = default;
 };
@@ -601,20 +571,24 @@ TEST(levin_kv, nesting_limit) {
     EXPECT_FALSE(levin_kv::decode(nested(51), v));
 }
 
-TEST(levin_kv, epee_reads_ours) {
-    auto e = sample();
-    everything got;
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(got, levin_kv::encode(e)));
-    EXPECT_EQ(got, e);
+namespace {
+// clang-format off
+// epee's encodings of sample() and sorted{}, recorded before epee went
+constexpr auto epee_everything = "0111010101010201015001620b0105626c6f62730a20010203040506070803636f6c080204686173680a80000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f03693136032efb0469313673830cffff0200fdff0369333202c01dfeff036936340135fb048ee0feffff02693804f402696e0c080161062a00000001730a14696e6e657203696e738c08080161060100000001730a0c6f6e65080161060200000001730a0c74776f036f7074056300000000000000067061636b65640a60010000000000000000000000000000800807060504030201037374720a2c68656c6c6f00776f726c6404737472738a0c000461b104787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878037531360760ea037533320600286bee0375363405d20a1feb8ca954ab0475363473851001000000000000002c010000000000007011010000000000000000000001000002753808fa";
+constexpr auto epee_sorted = "0111010101010201012001610a047801620805016304fb01648a080479047a01650c0401730a046501660a0c01020301670a20010000000200000001680b01";
+// clang-format on
+}  // namespace
+
+TEST(levin_kv, ours_says_what_epees_did) {
+    EXPECT_EQ(
+            levin_kv_test::dump(levin_kv::encode(sample())),
+            levin_kv_test::dump(oxenc::from_hex(epee_everything)));
 }
 
 TEST(levin_kv, we_read_epees) {
-    auto e = sample();
-    std::string enc;
-    ASSERT_TRUE(epee::serialization::store_t_to_binary(e, enc));
     everything got;
-    ASSERT_TRUE(levin_kv::decode(enc, got));
-    EXPECT_EQ(got, e);
+    ASSERT_TRUE(levin_kv::decode(oxenc::from_hex(epee_everything), got));
+    EXPECT_EQ(got, sample());
 }
 
 namespace {
@@ -624,9 +598,6 @@ namespace {
 struct label {
     std::string s = "e";
     void serialize(levin_kv::archive& ar) { ar.value("s", s); }
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(s)
-    END_KV_SERIALIZE_MAP()
 };
 struct sorted {
     std::string a = "x";
@@ -647,22 +618,9 @@ struct sorted {
         ar.packed("g", g);
         ar.value("h", h);
     }
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(a)
-    KV_SERIALIZE(b)
-    KV_SERIALIZE(c)
-    KV_SERIALIZE(d)
-    KV_SERIALIZE(e)
-    KV_SERIALIZE_VAL_POD_AS_BLOB(f)
-    KV_SERIALIZE_CONTAINER_POD_AS_BLOB(g)
-    KV_SERIALIZE(h)
-    END_KV_SERIALIZE_MAP()
 };
 }  // namespace
 
 TEST(levin_kv, same_bytes_as_epee) {
-    sorted s;
-    std::string epee_enc;
-    ASSERT_TRUE(epee::serialization::store_t_to_binary(s, epee_enc));
-    EXPECT_EQ(oxenc::to_hex(levin_kv::encode(s)), oxenc::to_hex(epee_enc));
+    EXPECT_EQ(oxenc::to_hex(levin_kv::encode(sorted{})), epee_sorted);
 }
