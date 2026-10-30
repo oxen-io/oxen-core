@@ -35,20 +35,6 @@ KV_SERIALIZE_VALUE(rpc_port);
 KV_SERIALIZE(history)
 KV_SERIALIZE_MAP_CODE_END()
 
-KV_SERIALIZE_MAP_CODE_BEGIN(anchor_peerlist_entry)
-KV_SERIALIZE(adr)
-KV_SERIALIZE(id)
-KV_SERIALIZE(first_seen)
-KV_SERIALIZE_MAP_CODE_END()
-
-KV_SERIALIZE_MAP_CODE_BEGIN(network_config)
-KV_SERIALIZE(max_out_connection_count)
-KV_SERIALIZE(max_in_connection_count)
-KV_SERIALIZE(handshake_interval)
-KV_SERIALIZE(packet_max_size)
-KV_SERIALIZE(config_id)
-KV_SERIALIZE_MAP_CODE_END()
-
 KV_SERIALIZE_MAP_CODE_BEGIN(basic_node_data)
 KV_SERIALIZE_VAL_POD_AS_BLOB(network_id)
 KV_SERIALIZE(peer_id)

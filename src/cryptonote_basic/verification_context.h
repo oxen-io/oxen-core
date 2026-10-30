@@ -29,7 +29,8 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
-#include "epee/serialization/keyvalue_serialization.h"
+
+#include <string>
 
 namespace cryptonote {
 /************************************************************************/
@@ -47,20 +48,6 @@ struct vote_verification_context {
     bool m_incorrect_voting_group;
     bool m_invalid_vote_type;
     bool m_votes_not_sorted;
-
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(m_verification_failed)
-    KV_SERIALIZE(m_invalid_block_height)
-    KV_SERIALIZE(m_duplicate_voters)
-    KV_SERIALIZE(m_validator_index_out_of_bounds)
-    KV_SERIALIZE(m_worker_index_out_of_bounds)
-    KV_SERIALIZE(m_signature_not_valid)
-    KV_SERIALIZE(m_added_to_pool)
-    KV_SERIALIZE(m_not_enough_votes)
-    KV_SERIALIZE(m_incorrect_voting_group)
-    KV_SERIALIZE(m_invalid_vote_type)
-    KV_SERIALIZE(m_votes_not_sorted)
-    END_KV_SERIALIZE_MAP()
 };
 
 struct tx_verification_context {
@@ -83,29 +70,6 @@ struct tx_verification_context {
     bool m_duplicate_nonstandard;
     std::string m_verbose_error;
     vote_verification_context m_vote_ctx;
-
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(m_should_be_relayed)
-    KV_SERIALIZE(m_verifivation_failed)
-    KV_SERIALIZE(m_verifivation_impossible)
-    KV_SERIALIZE(m_added_to_pool)
-    KV_SERIALIZE(m_low_mixin)
-    KV_SERIALIZE(m_double_spend)
-    KV_SERIALIZE(m_invalid_input)
-    KV_SERIALIZE(m_invalid_output)
-    KV_SERIALIZE(m_too_few_outputs)
-    KV_SERIALIZE(m_too_big)
-    KV_SERIALIZE(m_overspend)
-    KV_SERIALIZE(m_fee_too_low)
-    KV_SERIALIZE(m_invalid_version)
-    KV_SERIALIZE(m_invalid_type);
-    KV_SERIALIZE(m_key_image_locked_by_snode);
-    KV_SERIALIZE(m_key_image_blacklisted);
-    KV_SERIALIZE(m_verbose_error);
-    KV_SERIALIZE(m_duplicate_nonstandard);
-    KV_SERIALIZE(m_vote_ctx)
-
-    END_KV_SERIALIZE_MAP()
 };
 
 struct block_verification_context {
