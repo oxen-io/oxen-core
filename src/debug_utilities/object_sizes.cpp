@@ -68,7 +68,6 @@ int main(int argc, char* argv[]) {
 
     SL(boost::thread);
     SL(boost::asio::io_service);
-    SL(boost::asio::steady_timer);
 
     SL(cryptonote::DB_ERROR);
     SL(cryptonote::mdb_txn_safe);
