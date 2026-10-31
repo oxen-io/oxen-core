@@ -8,7 +8,6 @@
 #include <type_traits>
 #include <utility>
 
-#include "common/exception.h"
 #include "crypto/eth.h"
 #include "rpc/common/param_parser.hpp"
 
@@ -240,10 +239,6 @@ void parse_request(GET_BLOCK_HASH& bh, rpc_input in) {
         throw std::domain_error{"Error: too many block heights requested at once"};
 }
 
-void parse_request(GET_PEER_LIST& pl, rpc_input in) {
-    get_values(in, "public_only", pl.request.public_only);
-}
-
 void parse_request(SET_LOG_LEVEL& set_log_level, rpc_input in) {
     auto& cats = set_log_level.request.categories;
     std::optional<int8_t> level;
@@ -269,10 +264,6 @@ void parse_request(GET_COINBASE_TX_SUM& get_coinbase_tx_sum, rpc_input in) {
             get_coinbase_tx_sum.request.count,
             "height",
             get_coinbase_tx_sum.request.height);
-}
-
-void parse_request(GET_FEE_ESTIMATE& get_fee_estimate, rpc_input in) {
-    get_values(in, "grace_blocks", get_fee_estimate.request.grace_blocks);
 }
 
 void parse_request(OUT_PEERS& out_peers, rpc_input in) {

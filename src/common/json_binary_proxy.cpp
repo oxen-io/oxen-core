@@ -1,6 +1,5 @@
 #include "json_binary_proxy.h"
 
-#include <common/exception.h>
 #include <oxenc/base64.h>
 #include <oxenc/hex.h>
 
@@ -36,7 +35,7 @@ void load_binary_parameter_impl(
         }
     }
 
-    throw oxen::traced<std::runtime_error>{"Invalid binary value: unexpected size and/or encoding"};
+    throw std::runtime_error{"Invalid binary value: unexpected size and/or encoding"};
 }
 
 nlohmann::json& json_binary_proxy::operator=(std::string_view binary_data) {
@@ -45,7 +44,7 @@ nlohmann::json& json_binary_proxy::operator=(std::string_view binary_data) {
         case fmt::hex: return e = oxenc::to_hex(binary_data);
         case fmt::base64: return e = oxenc::to_base64(binary_data);
     }
-    throw oxen::traced<std::runtime_error>{"Internal error: invalid binary encoding"};
+    throw std::runtime_error{"Internal error: invalid binary encoding"};
 }
 
 }  // namespace tools

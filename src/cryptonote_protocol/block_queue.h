@@ -39,13 +39,11 @@
 #include <vector>
 
 #include "crypto/hash.h"
+#include "cryptonote_basic/connection_id.h"
 #include "cryptonote_protocol_defs.h"
-#include "epee/net/net_utils_base.h"
 
 namespace cryptonote {
 struct block_complete_entry;
-
-using epee::connection_id_t;
 
 class block_queue {
   public:

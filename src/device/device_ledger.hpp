@@ -211,7 +211,7 @@ class device_ledger : public device {
     HMACmap hmac_map;
 
     // To speed up blockchain parsing the view key maybe handle here.
-    crypto::secret_key viewkey;
+    crypto::secret_key viewkey{};
     bool has_view_key;
 
 // extra debug

@@ -36,7 +36,6 @@
 #include <optional>
 
 #include "common/common_fwd.h"
-#include "common/exception.h"
 #include "common/scoped_message_writer.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "rpc/common/command_decorators.h"
@@ -57,41 +56,6 @@ class rpc_command_executor final {
 
     /// Executor for OMQ RPC, either local (inproc) or remote.
     rpc_command_executor(oxenmq::OxenMQ& omq, oxenmq::ConnectionID conn);
-
-    /// FIXME: remove this!
-    ///
-    /// Runs some RPC command either via json_rpc or a direct core rpc call.
-    ///
-    /// @param req the request object (rvalue reference)
-    /// @param error print this (and, on exception, the exception message) on failure.  If empty
-    /// then nothing is printed on failure.
-    /// @param check_status_ok whether we require res.status == STATUS_OK to consider the request
-    /// successful
-    template <std::derived_from<cryptonote::rpc::RPC_COMMAND> RPC>
-        requires cryptonote::rpc::FIXME_has_nested_response_v<RPC>
-    bool invoke(
-            typename RPC::request&& req,
-            typename RPC::response& res,
-            const std::string& error,
-            bool check_status_ok = true) {
-        try {
-            if (auto* rpc_client = std::get_if<cryptonote::rpc::http_client>(&m_rpc)) {
-                res = rpc_client->json_rpc<RPC>(RPC::names()[0], req);
-            } else {
-                throw oxen::traced<std::runtime_error>{"fixme"};
-            }
-            if (!check_status_ok || res.status == cryptonote::rpc::STATUS_OK)
-                return true;
-        } catch (const std::exception& e) {
-            if (!error.empty())
-                tools::fail_msg_writer("{}: {}", error, e.what());
-            return false;
-        } catch (...) {
-        }
-        if (!error.empty())
-            tools::fail_msg_writer("{}", error);
-        return false;
-    }
 
     /// Runs some RPC command either via json_rpc or an internal rpc call.  Returns nlohmann::json
     /// results on success, throws on failure.

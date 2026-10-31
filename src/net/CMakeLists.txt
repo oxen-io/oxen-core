@@ -27,17 +27,16 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 oxen_add_library(net
-  dandelionpp.cpp
+  address.cpp
   error.cpp
-  i2p_address.cpp
   parse.cpp
-  socks.cpp
-  tor_address.cpp
-  epee_network_address_hack.cpp
   )
-target_link_libraries(net PRIVATE
+target_link_libraries(net
+  PUBLIC
+  oxen::quic-utils
+  PRIVATE
   common
-  epee
   extra
+  levin_kv
   logging
   )

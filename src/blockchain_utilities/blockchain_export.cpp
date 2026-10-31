@@ -28,7 +28,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <common/command_line.h>
-#include <common/exception.h>
 #include <fmt/std.h>
 
 #include "blockchain_objects.h"
@@ -40,14 +39,11 @@
 namespace po = boost::program_options;
 using namespace blockchain_utils;
 
-int main(int argc, char* argv[]) {
-    oxen::set_terminate_handler();
+static auto logcat = log::Cat("bcutil");
+
+int main(int argc, char* argv[]) try {
     using namespace oxen;
-    auto logcat = log::Cat("bcutil");
 
-    TRY_ENTRY();
-
-    epee::string_tools::set_module_name_and_folder(argv[0]);
     uint64_t block_stop = 0;
     tools::on_startup();
     auto opt_size = command_line::boost_option_sizes();
@@ -127,7 +123,10 @@ int main(int argc, char* argv[]) {
     }
     r = core_storage->init(std::move(db), nettype);
 
-    CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
+    if (!r) {
+        log::error(logcat, "Failed to initialize source blockchain storage");
+        return 1;
+    }
     log::warning(logcat, "Source blockchain storage initialized OK");
     log::warning(logcat, "Exporting blockchain raw data...");
 
@@ -138,9 +137,13 @@ int main(int argc, char* argv[]) {
         BootstrapFile bootstrap;
         r = bootstrap.store_blockchain_raw(core_storage, NULL, output_file_path, block_stop);
     }
-    CHECK_AND_ASSERT_MES(r, 1, "Failed to export blockchain raw data");
+    if (!r) {
+        log::error(logcat, "Failed to export blockchain raw data");
+        return 1;
+    }
     log::warning(logcat, "Blockchain raw data exported OK");
     return 0;
-
-    CATCH_ENTRY("Export error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Export error: {}", e.what());
+    return 1;
 }

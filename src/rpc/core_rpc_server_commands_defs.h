@@ -66,9 +66,9 @@
 #include "cryptonote_core/service_node_quorum_cop.h"
 #include "cryptonote_core/service_node_voting.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
-#include "epee/string_tools.h"
 #include "rpc/common/command_decorators.h"
 #include "rpc/common/rpc_version.h"
+#include "serialization/levin_kv/fwd.h"
 
 namespace cryptonote {
 void to_json(nlohmann::json& j, const checkpoint_t& c);
@@ -541,8 +541,9 @@ struct MINING_STATUS : LEGACY, NO_ARGS {
 /// - `immutable_block_hash` -- Hash of the highest block in the chain that can not be reorganized.
 ///   Hex string for json, bytes for bt.
 /// - `cumulative_difficulty` -- Cumulative difficulty of all blocks in the blockchain.
-/// - `block_size_limit` -- Maximum allowed block size.
-/// - `block_size_median` -- Median block size of latest 100 blocks.
+/// - `block_size_limit` -- Maximum allowed block weight (always 600000).
+/// - `block_size_median` -- Block weight above which (pre-HF21) block rewards are penalized (always
+///   300000).
 /// - `ons_counts` -- ONS registration counts, as a three-element list: [session, wallet, lokinet]
 /// - `offline` -- Indicates that the node is offline, if true.  Omitted for online nodes.
 /// - `database_size` -- Current size of Blockchain data.  Over public RPC this is rounded up to the
@@ -586,11 +587,11 @@ struct GET_INFO : PUBLIC, LEGACY, NO_ARGS {
 /// Outputs:
 ///
 /// - `status` -- General RPC status string. `"OK"` means everything looks good.
-/// - `start_time` -- something.
-/// - `total_packets_in` -- something.
-/// - `total_bytes_in` -- something.
-/// - `total_packets_out` -- something.
-/// - `total_bytes_out` -- something.
+/// - `start_time` -- The unix timestamp at which the daemon started.
+/// - `total_packets_in` -- The number of p2p messages (levin frames) received since then.
+/// - `total_bytes_in` -- The bytes of those messages, headers included.
+/// - `total_packets_out` -- The number of p2p messages sent since then.
+/// - `total_bytes_out` -- The bytes of those messages, headers included.
 struct GET_NET_STATS : LEGACY, NO_ARGS {
     static constexpr auto names() { return NAMES("get_net_stats"); }
 };
@@ -707,7 +708,6 @@ struct GET_BLOCK_HASH : PUBLIC {
 ///   - `block_size` -- The total block size in bytes (block data size + block_weight)
 ///   - `num_txes` -- Number of transactions in the block, not counting the coinbase tx.
 ///   - `pow_hash` -- The hash of the block's proof of work (requires `fill_pow_hash`)
-///   - `long_term_weight` -- Long term weight of the block.
 ///   - `miner_tx_hash` -- The TX hash of the miner transaction
 ///   - `tx_hashes` -- The TX hashes of all non-coinbase transactions (requires `get_tx_hashes`)
 ///   - `service_node_winner` -- Service node that received a reward for this block
@@ -850,15 +850,8 @@ struct GET_BLOCK : PUBLIC {
 /// - `history` -- how many of the most recent blocks the peer last said it keeps, 0 if it keeps
 ///   every block; omitted if it has never said (a peer from before this was sent, or an entry
 ///   relayed by one).
-struct GET_PEER_LIST : LEGACY {
+struct GET_PEER_LIST : LEGACY, NO_ARGS {
     static constexpr auto names() { return NAMES("get_peer_list"); }
-
-    struct request_parameters {
-        bool public_only =
-                false;  // Hidden option: can be set to false to also include non-public-zone peers
-                        // (Tor, I2P), but since Oxen currently only really exists in public zones,
-                        // we don't put this in the RPC docs.
-    } request;
 };
 
 /// RPC: daemon/set_log_level
@@ -978,7 +971,7 @@ struct GET_TRANSACTION_POOL_STATS : PUBLIC, LEGACY {
 ///     by us to the remove (false).
 ///   - `ip` -- address of the remote peer
 ///   - `port` -- the remote port of the peer connection
-///   - `address_type` -- 1/2/3/4 for ipv4/ipv6/i2p/tor, respectively.
+///   - `address_type` -- 1/2 for ipv4/ipv6, respectively.
 ///   - `peer_id` -- a string that uniquely identifies a peer node
 ///   - `recv_count` -- number of bytes of data received from this peer
 ///   - `recv_idle_ms` -- number of milliseconds since we last received data from this peer
@@ -1485,10 +1478,7 @@ struct GET_COINBASE_TX_SUM : RPC_COMMAND {
 ///
 /// Gives an estimation of per-output + per-byte fees
 ///
-/// Inputs:
-///
-/// - `grace_blocks` -- If specified, make sure that the fee is high enough to cover any fee
-///   increases in the next `grace_blocks` blocks.
+/// Inputs: none.
 ///
 /// Outputs:
 ///
@@ -1514,12 +1504,8 @@ struct GET_COINBASE_TX_SUM : RPC_COMMAND {
 /// ```
 ///
 /// Example-JSON-Fetch
-struct GET_FEE_ESTIMATE : PUBLIC {
+struct GET_FEE_ESTIMATE : PUBLIC, NO_ARGS {
     static constexpr auto names() { return NAMES("get_fee_estimate"); }
-
-    struct request_parameters {
-        uint64_t grace_blocks;
-    } request;
 };
 
 /// RPC: blockchain/get_alternative_chains
@@ -1662,7 +1648,7 @@ struct GET_OUTPUT_DISTRIBUTION : PUBLIC {
         bool binary;
         bool compress;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct distribution {
@@ -1672,14 +1658,14 @@ struct GET_OUTPUT_DISTRIBUTION : PUBLIC {
         bool binary;
         bool compress;
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
         std::string status;  // General RPC error code. "OK" means everything looks good.
         std::vector<distribution> distributions;  //
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 

@@ -34,8 +34,8 @@
 #pragma GCC diagnostic ignored "-Wold-style-cast"
 #pragma GCC diagnostic ignored "-Wshadow"
 
-#include <common/exception.h>
 #include <sodium/crypto_verify_32.h>
+#include <sodium/utils.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -99,7 +99,7 @@ struct multisig_kLRki {
     key R;
     key ki;
 
-    ~multisig_kLRki() { memwipe(&k, sizeof(k)); }
+    ~multisig_kLRki() { sodium_memzero(&k, sizeof(k)); }
 };
 
 struct multisig_out {
@@ -112,7 +112,7 @@ struct multisig_out {
         field(ar, "c", c);
         field(ar, "mu_p", mu_p);
         if (!mu_p.empty() && mu_p.size() != c.size())
-            throw oxen::traced<std::runtime_error>{"Invalid multisig output serialization"};
+            throw std::runtime_error{"Invalid multisig output serialization"};
     }
 };
 
@@ -257,7 +257,7 @@ struct Bulletproof {
         field(ar, "t", t);
 
         if (L.empty() || L.size() != R.size())
-            throw oxen::traced<std::runtime_error>("Bad bulletproof serialization");
+            throw std::runtime_error("Bad bulletproof serialization");
     }
 };
 
@@ -272,7 +272,7 @@ auto start_array(Archive& ar, std::string_view tag, std::vector<T>& v, size_t si
     if (Archive::is_deserializer)
         v.resize(size);
     else if (v.size() != size)
-        throw oxen::traced<std::invalid_argument>{
+        throw std::invalid_argument{
                 "invalid " + std::string{tag} + " size: " + std::to_string(size) +
                 " (given size) != " + std::to_string(v.size()) + " (# elements)"};
     return ar.begin_array();
@@ -337,7 +337,7 @@ struct rctSigBase {
                     RCTType::Bulletproof,
                     RCTType::Bulletproof2,
                     RCTType::CLSAG))
-            throw oxen::traced<std::invalid_argument>{"invalid ringct type"};
+            throw std::invalid_argument{"invalid ringct type"};
 
         field_varint(ar, "txnFee", txnFee);
 
@@ -393,7 +393,7 @@ struct rctSigPrunable {
                     RCTType::Bulletproof,
                     RCTType::Bulletproof2,
                     RCTType::CLSAG))
-            throw oxen::traced<std::invalid_argument>{"invalid ringct type"};
+            throw std::invalid_argument{"invalid ringct type"};
         if (rct::is_rct_bulletproof(type)) {
             uint32_t nbp = bulletproofs.size();
             if (tools::equals_any(type, RCTType::Bulletproof2, RCTType::CLSAG))
@@ -401,14 +401,14 @@ struct rctSigPrunable {
             else
                 field(ar, "nbp", nbp);
             if (nbp > outputs)
-                throw oxen::traced<std::invalid_argument>{"too many bulletproofs"};
+                throw std::invalid_argument{"too many bulletproofs"};
 
             auto arr = start_array(ar, "bp", bulletproofs, nbp);
             for (auto& b : bulletproofs)
                 value(ar, b);
 
             if (auto n_max = n_bulletproof_max_amounts(bulletproofs); n_max < outputs)
-                throw oxen::traced<std::invalid_argument>{
+                throw std::invalid_argument{
                         "invalid bulletproofs: n_max (" + std::to_string(n_max) + ") < outputs (" +
                         std::to_string(outputs) + ")"};
         } else {
@@ -459,7 +459,7 @@ struct rctSigPrunable {
                             if constexpr (Archive::is_deserializer)
                                 ss.resize(mg_ss2_elements);
                             else if (ss.size() != mg_ss2_elements)
-                                throw oxen::traced<std::invalid_argument>{
+                                throw std::invalid_argument{
                                         "invalid mg_ss2 size: have " + std::to_string(ss.size()) +
                                         ", expected " + std::to_string(mg_ss2_elements)};
 

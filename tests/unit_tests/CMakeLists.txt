@@ -29,6 +29,7 @@
 add_executable(unit_tests
   accrued_history.cpp
   account.cpp
+  account_kv.cpp
   apply_permutation.cpp
   base58.cpp
   blockchain_db.cpp
@@ -41,22 +42,23 @@ add_executable(unit_tests
   command_line.cpp
   crypto.cpp
   device.cpp
-  epee_boosted_tcp_server.cpp
-  epee_levin_protocol_handler_async.cpp
   epee_utils.cpp
   expect.cpp
-  get_xtype_from_string.cpp
+  guts.cpp
   hashchain.cpp
   hmac_keccak.cpp
+  ipv4.cpp
   keccak.cpp
+  kv_json.cpp
   levin.cpp
+  levin_connection.cpp
+  levin_frame.cpp
+  levin_kv.cpp
+  levin_kv_compat.cpp
   logging.cpp
   oxen_name_system.cpp
-  long_term_block_weight.cpp
   main.cpp
   median.cpp
-  memwipe.cpp
-  mlocker.cpp
   mnemonics.cpp
   mul_div.cpp
   multiexp.cpp
@@ -65,11 +67,11 @@ add_executable(unit_tests
   node_server.cpp
   notify.cpp
   output_distribution.cpp
+  p2p_formats.cpp
   parse_amount.cpp
   parse_address.cpp
   peer_history.cpp
   random.cpp
-  rolling_median.cpp
   rpc_history.cpp
   serialization.cpp
   service_nodes.cpp
@@ -89,7 +91,7 @@ add_executable(unit_tests
   output_selection.cpp
   vercmp.cpp
   ringdb.cpp
-  wipeable_string.cpp
+  cleared_string.cpp
   aligned.cpp)
 
 target_link_libraries(unit_tests
@@ -102,6 +104,7 @@ target_link_libraries(unit_tests
     net
     wallet
     p2p
+    levin_kv
     version
     sqlitedb
     Boost::thread
@@ -121,8 +124,6 @@ endif ()
 
 SET_PROPERTY(SOURCE main.cpp PROPERTY COMPILE_FLAGS -DDEFAULT_DATA_DIR="\\"${CMAKE_SOURCE_DIR}/tests/data\\"")
 
-SET_PROPERTY(SOURCE memwipe.cpp PROPERTY COMPILE_FLAGS -Ofast)
-
 add_test(
   NAME    unit_tests
   COMMAND unit_tests --data-dir "${TEST_DATA_DIR}")
@@ -130,3 +131,5 @@ add_test(
 add_executable(test_notifier test_notifier.cpp)
 target_link_libraries(test_notifier extra)
 set_property(TARGET test_notifier PROPERTY FOLDER "tests")
+add_dependencies(unit_tests test_notifier)
+set_property(SOURCE notify.cpp APPEND PROPERTY COMPILE_DEFINITIONS TEST_NOTIFIER="$<TARGET_FILE:test_notifier>")

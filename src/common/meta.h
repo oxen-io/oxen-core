@@ -5,7 +5,6 @@
 #include <typeinfo>
 #include <variant>
 
-#include "common/exception.h"
 #ifdef __GNUG__
 #include <cxxabi.h>
 
@@ -67,7 +66,7 @@ const std::type_info& variant_type(const std::variant<T...>& v) {
 #ifndef BROKEN_APPLE_VARIANT
     throw std::bad_variant_access{};
 #else
-    throw oxen::traced<std::runtime_error>{"Bad variant access"};
+    throw std::runtime_error{"Bad variant access"};
 #endif
 }
 

@@ -27,7 +27,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <common/command_line.h>
-#include <common/exception.h>
 #include <common/guts.h>
 #include <common/median.h>
 #include <fmt/std.h>
@@ -42,11 +41,7 @@ using namespace cryptonote;
 
 static auto logcat = log::Cat("bcutil");
 
-int main(int argc, char* argv[]) {
-    oxen::set_terminate_handler();
-    TRY_ENTRY();
-
-    epee::string_tools::set_module_name_and_folder(argv[0]);
+int main(int argc, char* argv[]) try {
     tools::on_startup();
 
     auto opt_size = command_line::boost_option_sizes();
@@ -131,7 +126,10 @@ int main(int argc, char* argv[]) {
     }
     r = core_storage->init(std::move(bdb), net_type);
 
-    CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
+    if (!r) {
+        log::error(logcat, "Failed to initialize source blockchain storage");
+        return 1;
+    }
     log::warning(logcat, "Source blockchain storage initialized OK");
 
     auto& db = core_storage->db();
@@ -286,6 +284,7 @@ int main(int argc, char* argv[]) {
 
     core_storage->deinit();
     return 0;
-
-    CATCH_ENTRY("Depth query error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Depth query error: {}", e.what());
+    return 1;
 }

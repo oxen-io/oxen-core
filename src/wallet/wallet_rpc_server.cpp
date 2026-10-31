@@ -39,12 +39,13 @@
 #include <concepts>
 #include <cstdint>
 #include <exception>
+#include <nlohmann/json.hpp>
 
 #include "common/command_line.h"
-#include "common/exception.h"
 #include "common/guts.h"
 #include "common/i18n.h"
 #include "common/signal_handler.h"
+#include "crypto/cleared_string.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
@@ -52,8 +53,7 @@
 #include "cryptonote_config.h"
 #include "cryptonote_core/oxen_name_system.h"
 #include "daemonizer/daemonizer.h"
-#include "epee/string_tools.h"
-#include "epee/wipeable_string.h"
+#include "kv_json.h"
 #include "mnemonics/electrum-words.h"
 #include "multisig/multisig.h"
 #include "rpc/common/rpc_args.h"
@@ -96,11 +96,9 @@ namespace {
     }
 
     using rpc_func_data = std::pair<
-            bool,             // restricted
-            std::string (*)(  // function to invoke
-                    epee::serialization::portable_storage& ps,
-                    epee::serialization::storage_entry id,
-                    std::optional<epee::serialization::storage_entry> params,
+            bool,                // restricted
+            nlohmann::json (*)(  // function to invoke; returns the json_rpc "result" value
+                    const nlohmann::json* params,
                     tools::wallet_rpc_server& server)>;
 
     template <std::derived_from<RPC_COMMAND> RPC>
@@ -118,27 +116,23 @@ namespace {
                 "or does not return a Response");
         rpc_func_data invoke = {
                 std::is_base_of_v<RESTRICTED, RPC>,
-                [](epee::serialization::portable_storage& ps,
-                   epee::serialization::storage_entry id,
-                   std::optional<epee::serialization::storage_entry> params,
-                   tools::wallet_rpc_server& server) {
+                [](const nlohmann::json* params, tools::wallet_rpc_server& server) {
                     Request req{};
                     if (params) {
-                        if (auto* section = std::get_if<epee::serialization::section>(&*params)) {
-                            if (!req.load(ps, section))
-                                throw tools::wallet_rpc_server::parse_error{
-                                        "Failed to parse JSON parameters"};
-                        } else
-                            throw oxen::traced<std::runtime_error>{
+                        if (!params->is_object())
+                            throw std::runtime_error{
                                     "only top-level JSON object values are currently supported"};
+                        bool parsed;
+                        try {
+                            parsed = tools::kv_json::from_json(*params, req);
+                        } catch (const std::invalid_argument& e) {
+                            throw tools::wallet_rpc_server::parse_error{e.what()};
+                        }
+                        if (!parsed)
+                            throw tools::wallet_rpc_server::parse_error{
+                                    "Failed to parse JSON parameters"};
                     }
-                    epee::json_rpc::response<Response> r{
-                            "2.0", server.invoke(std::move(req)), std::move(id)};
-                    std::string response;
-                    epee::serialization::store_t_to_json(r, response);
-                    if (response.capacity() > response.size())
-                        response += '\n';
-                    return response;
+                    return tools::kv_json::to_json(server.invoke(std::move(req)));
                 }};
 
         for (const auto& name : RPC::names())
@@ -221,34 +215,34 @@ void wallet_rpc_server::handle_json_rpc_request(HttpResponse& res, HttpRequest& 
         else
             body = (buffer += d);
 
-        epee::serialization::portable_storage ps;
-        if (!ps.load_from_json(body))
+        nlohmann::json request;
+        try {
+            request = nlohmann::json::parse(body);
+        } catch (const nlohmann::json::parse_error&) {
+        }
+        if (!request.is_object())
             return jsonrpc_error_response(res, -32700, "Parse error", {});
 
         nlohmann::json id;
-        epee::serialization::storage_entry epee_id;
-        if (std::string str_val; ps.get_value("id", str_val, nullptr)) {
-            epee_id = str_val;
-            id = std::move(str_val);
-        } else if (int64_t i64_val; ps.get_value("id", i64_val, nullptr)) {
-            epee_id = i64_val;
-            id = i64_val;
-        } else {
+        if (auto it = request.find("id");
+            it != request.end() && (it->is_string() || it->is_number_integer()))
+            id = *it;
+        else
             return jsonrpc_error_response(
                     res,
                     -32700,
                     "Parse error, missing a valid (string or integer) JSON RPC 'id'",
                     {});
-        }
 
-        std::string method;
-        if (!ps.get_value("method", method, nullptr)) {
+        auto method_it = request.find("method");
+        if (method_it == request.end() || !method_it->is_string()) {
             log::info(
                     logcat,
                     "Invalid JSON RPC request from {}: no 'method' in request",
                     get_remote_address(res));
             return jsonrpc_error_response(res, -32600, "Invalid Request", id);
         }
+        const auto& method = method_it->get_ref<const std::string&>();
 
         auto it = rpc_commands.find(method);
         if (it == rpc_commands.end()) {
@@ -278,17 +272,18 @@ void wallet_rpc_server::handle_json_rpc_request(HttpResponse& res, HttpRequest& 
                     res, error_code::DENIED, method + " is not available in restricted mode.", {});
         }
 
-        // Try to load "params" into a generic epee value; if it fails (because there is no
-        // "params") then clear it and pass a null optionsl.
-        auto params = std::make_optional<epee::serialization::storage_entry>();
-        if (!ps.get_value("params", *params, nullptr))
-            params.reset();
+        const nlohmann::json* params = nullptr;
+        if (auto it = request.find("params"); it != request.end() && !it->is_null())
+            params = &*it;
 
         std::string result;
         wallet_rpc_error json_error{-32603, "Internal error"};
 
         try {
-            result = invoke_ptr(ps, std::move(epee_id), std::move(params), *this);
+            nlohmann::json response{
+                    {"jsonrpc", "2.0"}, {"id", id}, {"result", invoke_ptr(params, *this)}};
+            result = response.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+            result += '\n';
             json_error.code = 0;
         } catch (const parse_error& e) {
             json_error = {-32602, "Invalid params"};  // Reserved json code/message value for
@@ -400,7 +395,7 @@ void wallet_rpc_server::run_loop() {
                     for (const auto& [addr, port, required] : m_bind)
                         error << ' ' << addr << ':' << port;
                 }
-                throw oxen::traced<std::runtime_error>{error.str()};
+                throw std::runtime_error{error.str()};
             }
         } catch (...) {
             loop_promise.set_exception(std::current_exception());
@@ -1817,7 +1812,7 @@ QUERY_KEY::response wallet_rpc_server::invoke(QUERY_KEY::request&& req) {
     QUERY_KEY::response res{};
 
     if (req.key_type == "mnemonic") {
-        epee::wipeable_string seed;
+        crypto::cleared_string seed;
         bool ready;
         if (m_wallet->multisig(&ready)) {
             if (!ready)
@@ -2690,19 +2685,19 @@ GENERATE_FROM_KEYS::response wallet_rpc_server::invoke(GENERATE_FROM_KEYS::reque
     if (!get_account_address_from_str(info, wal->nettype(), req.address))
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to parse public address"};
 
-    epee::wipeable_string password = rc.second.password();
-    epee::wipeable_string viewkey_string = req.viewkey;
+    crypto::cleared_string password = rc.second.password();
+    crypto::cleared_string viewkey_string = req.viewkey;
     crypto::secret_key viewkey;
-    if (!viewkey_string.hex_to_pod(unwrap(unwrap(viewkey))))
+    if (!tools::try_load_from_hex_guts(viewkey_string.view(), viewkey))
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to parse view key secret key"};
 
     close_wallet(req.autosave_current);
 
     {
         if (!req.spendkey.empty()) {
-            epee::wipeable_string spendkey_string = req.spendkey;
+            crypto::cleared_string spendkey_string = req.spendkey;
             crypto::secret_key spendkey;
-            if (!spendkey_string.hex_to_pod(unwrap(unwrap(spendkey))))
+            if (!tools::try_load_from_hex_guts(spendkey_string.view(), spendkey))
                 throw wallet_rpc_error{
                         error_code::UNKNOWN_ERROR, "Failed to parse spend key secret key"};
             wal->generate(
@@ -2773,7 +2768,7 @@ RESTORE_DETERMINISTIC_WALLET::response wallet_rpc_server::invoke(
     if (!wal)
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to create wallet"};
 
-    epee::wipeable_string password = rc.second.password();
+    crypto::cleared_string password = rc.second.password();
 
     bool was_deprecated_wallet =
             ((old_language == crypto::ElectrumWords::old_language_name) ||
@@ -2813,7 +2808,7 @@ RESTORE_DETERMINISTIC_WALLET::response wallet_rpc_server::invoke(
     log::info(logcat, "Wallet has been restored.\n");
 
     // // Convert the secret key back to seed
-    epee::wipeable_string electrum_words;
+    crypto::cleared_string electrum_words;
     if (!crypto::ElectrumWords::bytes_to_words(recovery_val, electrum_words, mnemonic_language))
         throw wallet_rpc_error{error_code::UNKNOWN_ERROR, "Failed to encode seed"};
     res.seed = std::string(electrum_words.data(), electrum_words.size());
@@ -3653,14 +3648,14 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
         const auto password_prompt = prompt_for_password ? password_prompter : nullptr;
 
         if (!wallet_file.empty() && !from_json.empty())
-            throw oxen::traced<std::logic_error>{
+            throw std::logic_error{
                     tr("Can't specify more than one of --wallet-file and --generate-from-json")};
 
         if (!wallet_dir.empty())
             return nullptr;
 
         if (wallet_file.empty() && from_json.empty())
-            throw oxen::traced<std::logic_error>{
+            throw std::logic_error{
                     tr("Must specify --wallet-file or --generate-from-json or --wallet-dir")};
 
         log::warning(logcat, "{}", tools::wallet_rpc_server::tr("Loading wallet..."));
@@ -3670,7 +3665,7 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
             wal = tools::wallet2::make_from_json(m_vm, true, from_json, password_prompt).first;
 
         if (!wal)  // safety check (the above should throw on error)
-            throw oxen::traced<std::runtime_error>{"Failed to create wallet: (unknown reason)"};
+            throw std::runtime_error{"Failed to create wallet: (unknown reason)"};
 
         bool quit = false;
         tools::signal_handler::install([&wal, &quit](int) {
@@ -3685,7 +3680,7 @@ std::unique_ptr<tools::wallet2> wallet_rpc_server::load_wallet() {
             log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Saving wallet..."));
             wal->store();
             log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Successfully saved"));
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     tr("Wallet loading cancelled before initial refresh completed")};
         }
         log::info(globallogcat, "{}", tools::wallet_rpc_server::tr("Successfully loaded"));
@@ -3706,8 +3701,13 @@ bool wallet_rpc_server::run(bool) {
     if (wal)
         m_wallet = std::move(wal);
     bool r = init();
-    CHECK_AND_ASSERT_MES(
-            r, false, "{}", tools::wallet_rpc_server::tr("Failed to initialize wallet RPC server"));
+    if (!r) {
+        log::error(
+                logcat,
+                "{}",
+                tools::wallet_rpc_server::tr("Failed to initialize wallet RPC server"));
+        return false;
+    }
     tools::signal_handler::install([this](int) {
         log::warning(logcat, "Shutting down...");
         m_stop = true;
@@ -3738,10 +3738,7 @@ void wallet_rpc_server::stop() {
 
 }  // namespace tools
 
-int main(int argc, char** argv) {
-    oxen::set_terminate_handler();
-    TRY_ENTRY();
-
+int main(int argc, char** argv) try {
     namespace po = boost::program_options;
 
     const auto arg_wallet_file = wallet_args::arg_wallet_file();
@@ -3787,6 +3784,7 @@ int main(int argc, char** argv) {
                    "Wallet RPC Daemon", argc, const_cast<const char**>(argv), std::move(*vm))
                  ? 0
                  : 1;
-
-    CATCH_ENTRY("main", 1);
+} catch (const std::exception& e) {
+    oxen::log::error(logcat, "Exception in main: {}", e.what());
+    return 1;
 }

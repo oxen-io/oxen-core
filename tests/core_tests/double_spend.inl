@@ -66,7 +66,10 @@ bool gen_double_spend_base<concrete_test>::mark_last_valid_block(cryptonote::cor
 {
   std::vector<cryptonote::block> block_list;
   bool r = c.get_blocks(c.get_current_blockchain_height() - 1, 1, block_list);
-  CHECK_AND_ASSERT_MES(r, false, "core::get_blocks failed");
+  if (!r) {
+    oxen::log::error(logcat, "core::get_blocks failed");
+    return false;
+  }
   m_last_valid_block = block_list.back();
   return true;
 }

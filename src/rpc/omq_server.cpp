@@ -1,7 +1,6 @@
 
 #include "omq_server.h"
 
-#include <common/exception.h>
 #include <fmt/core.h>
 #include <fmt/std.h>
 #include <oxenc/bt.h>
@@ -15,7 +14,6 @@
 #include "common/string_util.h"
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
-#include "epee/string_tools.h"
 #include "rpc/common/param_parser.hpp"
 
 namespace cryptonote::rpc {
@@ -83,7 +81,7 @@ namespace {
         // Crude check for basic validity; you can specify all sorts of invalid things, but at
         // least we can check the prefix for something that looks zmq-y.
         if (addr.size() < 7 || (addr.substr(0, 6) != "tcp://" && addr.substr(0, 6) != "ipc://"))
-            throw oxen::traced<std::runtime_error>(
+            throw std::runtime_error(
                     "Error: omq listen address '" + std::string(addr) +
                     "' is invalid: expected tcp://IP:PORT, tcp://[IPv6]:PORT or "
                     "ipc:///path/to/socket");
@@ -94,7 +92,7 @@ namespace {
         pks.reserve(pk_strings.size());
         for (const auto& pkstr : pk_strings) {
             if (pkstr.size() != 64 || !oxenc::is_hex(pkstr))
-                throw oxen::traced<std::runtime_error>(
+                throw std::runtime_error(
                         "Invalid OMQ login pubkey: '" + pkstr + "'; expected 64-char hex pubkey");
             pks.emplace_back();
             oxenc::to_hex(pkstr.begin(), pkstr.end(), reinterpret_cast<char*>(&pks.back()));
@@ -190,12 +188,12 @@ omq_rpc::omq_rpc(
         size_t len = 0;
         umask = std::stoi(umask_str, &len, 8);
         if (len != umask_str.size())
-            throw oxen::traced<std::invalid_argument>("not an octal value");
+            throw std::invalid_argument("not an octal value");
         if (umask < 0 || umask > 0777)
-            throw oxen::traced<std::invalid_argument>("invalid umask value");
+            throw std::invalid_argument("invalid umask value");
         omq.STARTUP_UMASK = umask;
     } catch (const std::exception& e) {
-        throw oxen::traced<std::invalid_argument>(
+        throw std::invalid_argument(
                 "Invalid --lmq-umask value '" + umask_str +
                 "': value must be an octal value between 0 and 0777");
     }
@@ -450,7 +448,7 @@ void omq_rpc::send_snode_addr_notifications(
     // - vs -- storage server version triplet
     addr.append("K", tools::view_guts(proof.pubkey_ed25519));
     addr.append("Kx", tools::view_guts(x_pk));
-    addr.append("ip", epee::string_tools::get_ip_string_from_int32(proof.public_ip));
+    addr.append("ip", proof.public_ip.to_string());
     addr.append("qn", proof.qnet_port);
     addr.append("sh", proof.storage_https_port);
     addr.append("sq", proof.storage_omq_port);

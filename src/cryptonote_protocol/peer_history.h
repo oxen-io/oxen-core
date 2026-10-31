@@ -3,10 +3,10 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <oxen/quic/address.hpp>
 #include <utility>
 
 #include "common/format.h"
-#include "epee/net/net_utils_base.h"
 
 // What peers can serve a syncing node, going by the history they advertise (see
 // CORE_SYNC_DATA::history: 0 if a peer keeps every block, otherwise how many of its most recent
@@ -60,18 +60,31 @@ struct sync_need {
     uint64_t target;
 };
 
+// What a sync still needs given our chain height, the lowest block not yet downloaded or queued
+// for download, and the network's height; nullopt if there is nothing the peer policy should act
+// on.
+//
+// Downloading runs ahead of adding blocks, often all the way to the target, and then what is
+// "needed" next is whatever block the target just moved on to: the newest block, which only the
+// peers that have announced it yet appear able to serve.  Within the margin of the target no peer's
+// history can be what stops it serving, only its height lagging the tip by a block or two, so that
+// is no sync need.
+constexpr std::optional<sync_need> sync_need_for(
+        uint64_t height, uint64_t next_needed, uint64_t target) {
+    if (target <= height || next_needed + PEER_HISTORY_MARGIN >= target)
+        return std::nullopt;
+    return sync_need{next_needed, target};
+}
+
 // The peers connected to while syncing that turned out unable to serve what the sync needed, so
 // that picking peers to connect to passes them over even though their peerlist entries say they
 // could (the entries don't say how far a peer's own chain has got).
 class unhelpful_peers {
   public:
     // Records a peer, with the chain height and history it had, as unable to serve the sync.
-    void add(
-            const epee::net_utils::network_address& addr,
-            uint64_t height,
-            std::optional<uint64_t> history);
+    void add(const oxen::quic::Address& addr, uint64_t height, std::optional<uint64_t> history);
 
-    bool contains(const epee::net_utils::network_address& addr) const;
+    bool contains(const oxen::quic::Address& addr) const;
 
     // Forgets the peers that, as they were when recorded, could serve block `need`: as the sync
     // gets on, its needs move up into what they keep.  (A peer recorded as not yet having the
@@ -86,8 +99,7 @@ class unhelpful_peers {
 
   private:
     // address -> {chain height, history}
-    std::map<epee::net_utils::network_address, std::pair<uint64_t, std::optional<uint64_t>>>
-            m_peers;
+    std::map<oxen::quic::Address, std::pair<uint64_t, std::optional<uint64_t>>> m_peers;
 };
 
 }  // namespace cryptonote

@@ -261,8 +261,6 @@ enable_testing()
 option(BUILD_DOCUMENTATION "Build the Doxygen documentation." ON)
 option(BUILD_TESTS "Build tests." OFF)
 
-OPTION(USE_DEVICE_TREZOR "Build Trezor support (currently non-functional)" OFF)
-
 # session-deps has its own LTO switch for static dependency builds that defaults ON regardless of
 # ours; leaving the two to disagree breaks the link, because an LTO'd static archive can't be
 # consumed by a non-LTO link (clang emits pure bitcode archives, which either fail to load or get
@@ -274,16 +272,15 @@ include(cmake/session-deps/Deps.cmake)
 message(STATUS "Checking submodules")
 check_submodule(cmake/session-deps)
 check_submodule(external/rapidjson)
-check_submodule(external/trezor-common)
 check_submodule(external/randomx)
 check_submodule(external/oxen-encoding)
 check_submodule(external/oxen-logging fmt spdlog)
 check_submodule(external/oxen-mq cppzmq)
+check_submodule(external/libquic external/oxen-encoding external/oxen-logging cmake/session-deps)
 check_submodule(external/session-sqlite SQLiteCpp cmake/session-deps)
 check_submodule(external/ethyl external/cpr external/json)
 check_submodule(external/bn256)
 check_submodule(external/date)
-check_submodule(external/cpptrace)
 if(BUILD_TESTS)
   check_submodule(external/googletest)
   check_submodule(external/Catch2)
@@ -439,10 +436,6 @@ set(OXEN_INSTALL_LIBDIR_SUFFIX "/oxen" CACHE STRING "subdirectory name for libra
 option(OXEN_VERSION_SO "Add the project version into shared library filenames (e.g. libcryptonote_core11.2.3.so instead of libcryptonote_core.so)" OFF)
 
 add_subdirectory(external)
-
-if(USE_DEVICE_TREZOR)
-  include(CheckTrezor)
-endif()
 
 if(MSVC)
   add_definitions("/bigobj /MP /W3 /GS- /D_CRT_SECURE_NO_WARNINGS /wd4996 /wd4345 /D_WIN32_WINNT=0x0600 /DWIN32_LEAN_AND_MEAN /DGTEST_HAS_TR1_TUPLE=0 /FIinline_c.h /D__SSE4_1__")
@@ -809,7 +802,6 @@ endif()
 
 
 add_subdirectory(src)
-add_subdirectory(contrib)
 
 if(BUILD_TESTS)
   message(STATUS "Building tests")

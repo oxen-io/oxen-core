@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <nlohmann/json.hpp>
 #include <vector>
 
 #include "blockchain_db/blockchain_db.h"
@@ -43,9 +44,6 @@
 #include "common/oxen.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/service_node_rules.h"
-#include "epee/serialization/keyvalue_serialization.h"
-#include "epee/storages/portable_storage_template_helper.h"  // epee json include
-#include "epee/string_tools.h"
 
 namespace cryptonote {
 
@@ -102,14 +100,21 @@ bool load_checkpoints_from_json(
         return true;
     }
 
-    height_to_hash_json hashes;
-    if (std::string contents; !tools::slurp_file(json_hashfile_fullpath, contents) ||
-                              !epee::serialization::load_t_from_json(hashes, contents)) {
-        log::error(logcat, "Error loading checkpoints from {}", json_hashfile_fullpath);
+    std::vector<height_to_hash> hashes;
+    try {
+        std::string contents;
+        if (!tools::slurp_file(json_hashfile_fullpath, contents))
+            throw std::runtime_error{"unable to read file"};
+        for (const auto& line : nlohmann::json::parse(contents).at("hashlines"))
+            hashes.push_back(
+                    {line.at("height").get<uint64_t>(), line.at("hash").get<std::string>()});
+    } catch (const std::exception& e) {
+        log::error(
+                logcat, "Error loading checkpoints from {}: {}", json_hashfile_fullpath, e.what());
         return false;
     }
 
-    checkpoint_hashes = std::move(hashes.hashlines);
+    checkpoint_hashes = std::move(hashes);
     return true;
 }
 
@@ -130,17 +135,21 @@ bool checkpoints::get_checkpoint(uint64_t height, checkpoint_t& checkpoint) cons
 bool checkpoints::add_checkpoint(uint64_t height, const std::string& hash_str) {
     crypto::hash h{};
     bool r = tools::try_load_from_hex_guts(hash_str, h);
-    CHECK_AND_ASSERT_MES(
-            r, false, "Failed to parse checkpoint hash string into binary representation!");
+    if (!r) {
+        log::error(logcat, "Failed to parse checkpoint hash string into binary representation!");
+        return false;
+    }
 
     checkpoint_t checkpoint = {};
     if (get_checkpoint(height, checkpoint)) {
         crypto::hash const& curr_hash = checkpoint.block_hash;
-        CHECK_AND_ASSERT_MES(
-                h == curr_hash,
-                false,
-                "Checkpoint at given height already exists, and hash for new checkpoint was "
-                "different!");
+        if (h != curr_hash) {
+            log::error(
+                    logcat,
+                    "Checkpoint at given height already exists, and hash for new checkpoint was "
+                    "different!");
+            return false;
+        }
     } else {
         checkpoint.type = checkpoint_type::hardcoded;
         checkpoint.height = height;
@@ -374,7 +383,8 @@ bool checkpoints::init(network_type nettype, BlockchainDB* db) {
         for (size_t i = 0; i < oxen::array_count(HARDCODED_MAINNET_CHECKPOINTS); ++i) {
             height_to_hash const& checkpoint = HARDCODED_MAINNET_CHECKPOINTS[i];
             bool added = add_checkpoint(checkpoint.height, checkpoint.hash);
-            CHECK_AND_ASSERT(added, false);
+            if (!added)
+                return false;
         }
     }
 

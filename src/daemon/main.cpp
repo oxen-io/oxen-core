@@ -33,7 +33,6 @@
 
 #include "command_server.h"
 #include "common/command_line.h"
-#include "common/exception.h"
 #include "common/fs.h"
 #include "common/password.h"
 #include "common/scoped_message_writer.h"
@@ -43,7 +42,6 @@
 #include "daemon.h"
 #include "daemon/command_line_args.h"
 #include "daemonizer/daemonizer.h"
-#include "epee/misc_log_ex.h"
 #include "fmt/color.h"
 #include "logging/oxen_logger.h"
 #include "p2p/net_node.h"
@@ -72,14 +70,11 @@ const std::string coloured_oxen_release =
 }  // namespace
 
 int main(int argc, char const* argv[]) {
-    oxen::set_terminate_handler();
     bool logs_initialized = false;
     try {
         // TODO parse the debug options like set log level right here at start
 
         tools::on_startup();
-
-        epee::string_tools::set_module_name_and_folder(argv[0]);
 
         auto opt_size = command_line::boost_option_sizes();
 
@@ -231,7 +226,7 @@ int main(int argc, char const* argv[]) {
             try {
                 std::ifstream cfg{*load_config};
                 if (!cfg.is_open())
-                    throw oxen::traced<std::runtime_error>{"Unable to open file"};
+                    throw std::runtime_error{"Unable to open file"};
                 po::store(
                         po::parse_config_file<char>(
                                 cfg,
@@ -352,7 +347,7 @@ int main(int argc, char const* argv[]) {
                 rpc_addr =
                         command_line::get_arg(vm, cryptonote::rpc::http_server::arg_rpc_admin)[0];
                 if (rpc_addr == "none")
-                    throw oxen::traced<std::runtime_error>{
+                    throw std::runtime_error{
                             "Cannot invoke oxend command: --rpc-admin is disabled"};
             }
 

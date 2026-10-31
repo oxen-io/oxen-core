@@ -35,8 +35,6 @@
 #include <stdexcept>
 #include <vector>
 
-#include "exception.h"
-
 namespace tools {
 
 uint64_t combinations_count(uint32_t k, uint32_t n);
@@ -59,11 +57,11 @@ class Combinator {
 template <typename T>
 std::vector<std::vector<T>> Combinator<T>::combine(size_t k) {
     if (k > origin.size()) {
-        throw oxen::traced<std::runtime_error>("k must be smaller than elements number");
+        throw std::runtime_error("k must be smaller than elements number");
     }
 
     if (k == 0) {
-        throw oxen::traced<std::runtime_error>("k must be greater than zero");
+        throw std::runtime_error("k must be greater than zero");
     }
 
     combinations.clear();

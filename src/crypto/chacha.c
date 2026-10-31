@@ -12,8 +12,7 @@ Public domain.
 #endif
 
 #include "chacha.h"
-#include "epee/int-util.h"
-#include "epee/warnings.h"
+#include "int-util.h"
 
 /*
  * The following macros are used to obtain exact-width results.
@@ -45,9 +44,7 @@ Public domain.
 
 static const char sigma[] = "expand 32-byte k";
 
-// clang-format off
-DISABLE_GCC_AND_CLANG_WARNING(strict-aliasing)
-// clang-format on
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
 
 static void chacha(
         unsigned rounds,

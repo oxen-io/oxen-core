@@ -216,7 +216,6 @@ bool gen_block_no_miner_tx::generate(std::vector<test_event_entry>& events) cons
 #define MAKE_MINER_TX_MANUALLY(TX, BLK)                                                                                \
   transaction TX;                                                                                                      \
   auto [r, block_rewards] = construct_miner_tx(BLK.get_height() + 1,                                                   \
-                          0,                                                                                           \
                           generator.get_already_generated_coins(BLK),                                                  \
                           0,                                                                                           \
                           0,                                                                                           \
@@ -457,7 +456,7 @@ static bool construct_miner_tx_with_extra_output(cryptonote::transaction& tx,
     // This will work, until size of constructed block is less then BLOCK_GRANTED_FULL_REWARD_ZONE
     const auto hard_fork_version = hf::hf7; // NOTE(oxen): We know this test doesn't need the new block reward formula
     uint64_t block_reward, block_reward_unpenalized;
-    if (!get_base_block_reward(0, 0, already_generated_coins, block_reward, block_reward_unpenalized, hf::hf7, 0)) {
+    if (!get_base_block_reward(0, already_generated_coins, block_reward, block_reward_unpenalized, hf::hf7, 0)) {
         oxen::log::warning(globallogcat, "Block is too big");
         return false;
     }

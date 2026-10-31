@@ -39,8 +39,6 @@
 
 #include "common/guts.h"
 #include "common/string_util.h"
-#include "epee/warnings.h"
-#include "epee/misc_log_ex.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
 #include "crypto-tests.h"
@@ -48,8 +46,6 @@
 using namespace std::literals;
 using namespace crypto;
 typedef crypto::hash chash;
-
-DISABLE_GCC_WARNING(maybe-uninitialized)
 
 size_t lineno;
 

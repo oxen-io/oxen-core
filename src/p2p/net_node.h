@@ -33,12 +33,12 @@
 
 #include <array>
 #include <atomic>
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/ip/tcp.hpp>
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <functional>
+#include <set>
 #include <shared_mutex>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -49,71 +49,16 @@
 #include "common/util.h"
 #include "cryptonote_basic/connection_context.h"
 #include "cryptonote_config.h"
-#include "cryptonote_protocol/levin_notify.h"
+#include "cryptonote_protocol/cryptonote_protocol_handler.h"
 #include "cryptonote_protocol/peer_history.h"
-#include "epee/net/abstract_tcp_server2.h"
-#include "epee/net/enums.h"
-#include "epee/net/levin_protocol_handler.h"
-#include "epee/net/levin_protocol_handler_async.h"
-#include "epee/storages/levin_abstract_invoke2.h"
-#include "epee/warnings.h"
+#include "net/address.h"
 #include "net/fwd.h"
 #include "net_node_common.h"
 #include "net_peerlist.h"
 #include "p2p_protocol_defs.h"
-
-PUSH_WARNINGS
-DISABLE_VS_WARNINGS(4355)
-
-namespace boost::asio {
-using io_service = io_context;
-}
+#include "transport.h"
 
 namespace nodetool {
-struct proxy {
-    proxy() : max_connections(-1), address(), zone(epee::net_utils::zone::invalid), noise(true) {}
-
-    std::int64_t max_connections;
-    boost::asio::ip::tcp::endpoint address;
-    epee::net_utils::zone zone;
-    bool noise;
-};
-
-struct anonymous_inbound {
-    anonymous_inbound() :
-            max_connections(-1), local_ip(), local_port(), our_address(), default_remote() {}
-
-    std::int64_t max_connections;
-    std::string local_ip;
-    std::string local_port;
-    epee::net_utils::network_address our_address;
-    epee::net_utils::network_address default_remote;
-};
-
-std::optional<std::vector<proxy>> get_proxies(const boost::program_options::variables_map& vm);
-std::optional<std::vector<anonymous_inbound>> get_anonymous_inbounds(
-        const boost::program_options::variables_map& vm);
-
-//! \return True if `commnd` is filtered (ignored/dropped) for `address`
-bool is_filtered_command(epee::net_utils::network_address const& address, int command);
-
-// hides boost::future and chrono stuff from mondo template file
-std::optional<boost::asio::ip::tcp::socket> socks_connect_internal(
-        const std::atomic<bool>& stop_signal,
-        boost::asio::io_service& service,
-        const boost::asio::ip::tcp::endpoint& proxy,
-        const epee::net_utils::network_address& remote);
-
-template <class base_type>
-struct p2p_connection_context_t : base_type  // t_payload_net_handler::connection_context //public
-                                             // net_utils::connection_context_base
-{
-    p2p_connection_context_t() : peer_id(0), m_in_timedsync(false) {}
-
-    peerid_type peer_id;
-    bool m_in_timedsync;
-    std::set<epee::net_utils::network_address> sent_addresses;
-};
 
 enum class PeerType { anchor = 0, white, gray };
 inline constexpr std::string_view to_string(PeerType pt) {
@@ -130,82 +75,29 @@ struct peer_stats {
     uint64_t total_connection_time = 0;
 };
 
-template <class t_payload_net_handler>
-class node_server
-        : public epee::levin::levin_commands_handler<
-                  p2p_connection_context_t<typename t_payload_net_handler::connection_context>>,
-          public i_p2p_endpoint<typename t_payload_net_handler::connection_context>,
-          public epee::net_utils::i_connection_filter {
+class node_server : public i_p2p_endpoint {
+    // For what the connections deliver: invoke(), notify(), on_connection_new(),
+    // on_connection_close() and is_remote_host_allowed()
+    friend class transport;
+
     struct by_conn_id {};
     struct by_peer_id {};
     struct by_addr {};
-
-    using p2p_connection_context =
-            p2p_connection_context_t<typename t_payload_net_handler::connection_context>;
-
-    using net_server = epee::net_utils::boosted_tcp_server<
-            epee::levin::async_protocol_handler<p2p_connection_context>>;
-
-    struct network_zone;
-    using connect_func = std::optional<p2p_connection_context>(
-            network_zone&, epee::net_utils::network_address const&);
 
     struct config {
         network_config m_net_config{};
         uint64_t m_peer_id{crypto::rand<uint64_t>()};
     };
 
-    struct network_zone {
-        network_zone() :
-                m_connect(nullptr),
-                m_net_server(epee::net_utils::e_connection_type_P2P),
-                m_bind_ip(),
-                m_bind_ipv6_address(),
-                m_port(),
-                m_port_ipv6(),
-                m_notifier(),
-                m_our_address(),
-                m_peerlist(),
-                m_config{},
-                m_proxy_address(),
-                m_current_number_of_out_peers(0),
-                m_current_number_of_in_peers(0),
-                m_can_pingback(false) {
-            set_config_defaults();
-        }
+    struct network {
+        network() { set_config_defaults(); }
 
-        network_zone(boost::asio::io_service& public_service) :
-                m_connect(nullptr),
-                m_net_server(public_service, epee::net_utils::e_connection_type_P2P),
-                m_bind_ip(),
-                m_bind_ipv6_address(),
-                m_port(),
-                m_port_ipv6(),
-                m_notifier(),
-                m_our_address(),
-                m_peerlist(),
-                m_config{},
-                m_proxy_address(),
-                m_current_number_of_out_peers(0),
-                m_current_number_of_in_peers(0),
-                m_can_pingback(false) {
-            set_config_defaults();
-        }
-
-        connect_func* m_connect;
-        net_server m_net_server;
         std::string m_bind_ip;
         std::string m_bind_ipv6_address;
-        std::string m_port;
-        std::string m_port_ipv6;
-        cryptonote::levin::notify m_notifier;
-        epee::net_utils::network_address m_our_address;  // in anonymity networks
+        uint16_t m_port = 0;
+        uint16_t m_port_ipv6 = 0;
         peerlist_manager m_peerlist;
-        config m_config;
-        boost::asio::ip::tcp::endpoint m_proxy_address;
-        std::atomic<unsigned int> m_current_number_of_out_peers;
-        std::atomic<unsigned int> m_current_number_of_in_peers;
-        bool m_can_pingback;
+        config m_config{};
 
       private:
         void set_config_defaults() noexcept {
@@ -222,108 +114,94 @@ class node_server
     };
 
   public:
-    typedef t_payload_net_handler payload_net_handler;
-
-    node_server(t_payload_net_handler& payload_handler) :
+    node_server(cryptonote::protocol_handler& payload_handler) :
             m_payload_handler(payload_handler),
             m_external_port(0),
             m_allow_local_ip(false),
             m_hide_my_port(false),
-            m_offline(false),
-            is_closing(false) {}
-    virtual ~node_server();
+            m_offline(false) {}
 
     static void init_options(
             boost::program_options::options_description& desc,
             boost::program_options::options_description& hidden);
 
     bool run();
-    network_zone& add_zone(epee::net_utils::zone zone);
     bool init(const boost::program_options::variables_map& vm);
     bool deinit();
     bool send_stop_signal();
     uint32_t get_this_peer_port() { return m_listening_port; }
-    t_payload_net_handler& get_payload_object();
+    cryptonote::protocol_handler& get_payload_object();
 
     // debug functions
     bool log_peerlist();
     bool log_connections();
 
-    // These functions only return information for the "public" zone
-    virtual uint64_t get_public_connections_count();
+    uint64_t get_public_connections_count() override;
     size_t get_public_outgoing_connections_count();
     size_t get_public_white_peers_count();
     size_t get_public_gray_peers_count();
-    void get_public_peerlist(std::vector<peerlist_entry>& gray, std::vector<peerlist_entry>& white);
     void get_peerlist(std::vector<peerlist_entry>& gray, std::vector<peerlist_entry>& white);
 
     void change_max_out_public_peers(size_t count);
     uint32_t get_max_out_public_peers() const;
     void change_max_in_public_peers(size_t count);
     uint32_t get_max_in_public_peers() const;
-    virtual bool block_host(
-            const epee::net_utils::network_address& adress,
+    bool block_host(
+            const oxen::quic::Address& adress,
+            time_t seconds = tools::to_seconds(cryptonote::p2p::IP_BLOCK_TIME)) override;
+    bool unblock_host(const oxen::quic::Address& address) override;
+    bool block_subnet(
+            const oxen::quic::ipv4_range& subnet,
             time_t seconds = tools::to_seconds(cryptonote::p2p::IP_BLOCK_TIME));
-    virtual bool unblock_host(const epee::net_utils::network_address& address);
-    virtual bool block_subnet(
-            const epee::net_utils::ipv4_network_subnet& subnet,
-            time_t seconds = tools::to_seconds(cryptonote::p2p::IP_BLOCK_TIME));
-    virtual bool unblock_subnet(const epee::net_utils::ipv4_network_subnet& subnet);
-    virtual bool is_host_blocked(const epee::net_utils::network_address& address, time_t* seconds) {
+    bool unblock_subnet(const oxen::quic::ipv4_range& subnet);
+    bool is_host_blocked(const oxen::quic::Address& address, time_t* seconds) {
         return !is_remote_host_allowed(address, seconds);
     }
-    virtual std::map<std::string, time_t> get_blocked_hosts() {
+    std::map<std::string, time_t> get_blocked_hosts() override {
         std::shared_lock lock{m_blocked_hosts_lock};
         return m_blocked_hosts;
     }
-    virtual std::map<epee::net_utils::ipv4_network_subnet, time_t> get_blocked_subnets() {
+    std::map<oxen::quic::ipv4_range, time_t> get_blocked_subnets() override {
         std::shared_lock lock{m_blocked_hosts_lock};
         return m_blocked_subnets;
     }
 
-  private:
-    bool islimitup = false;
-    bool islimitdown = false;
+    // The rate limits all connections share, in kB/s
+    uint64_t get_rate_up_limit() const { return m_transport.rate_up_limit(); }
+    uint64_t get_rate_down_limit() const { return m_transport.rate_down_limit(); }
+    void set_rate_limits(uint64_t up_kbps, uint64_t down_kbps);
 
+    transport::traffic get_traffic() const { return m_transport.totals(); }
+
+  private:
     fs::path get_peerlist_file() const;
 
-    CHAIN_LEVIN_INVOKE_MAP2(p2p_connection_context);  // move levin_commands_handler interface
-                                                      // invoke(...) callbacks into invoke map
-    CHAIN_LEVIN_NOTIFY_MAP2(p2p_connection_context);  // move levin_commands_handler interface
-                                                      // notify(...) callbacks into nothing
-
-    BEGIN_INVOKE_MAP2(node_server)
-    if (is_filtered_command(context.m_remote_address, command))
-        return LEVIN_ERROR_CONNECTION_HANDLER_NOT_DEFINED;
-
-    HANDLE_INVOKE_T2(COMMAND_HANDSHAKE, handle_handshake)
-    HANDLE_INVOKE_T2(COMMAND_TIMED_SYNC, handle_timed_sync)
-    HANDLE_INVOKE_T2(COMMAND_PING, handle_ping)
-    // TODO: remove after HF19
-    HANDLE_INVOKE_T2(COMMAND_REQUEST_SUPPORT_FLAGS, handle_get_support_flags)
-    CHAIN_INVOKE_MAP_TO_OBJ_FORCE_CONTEXT(
-            m_payload_handler, typename t_payload_net_handler::connection_context&)
-    END_INVOKE_MAP2()
+    // For the transport.  invoke() handles the commands invoked on us (which are all the p2p
+    // layer's), returning the response's return code with its body in `out`; notifies are all the
+    // cryptonote protocol's.
+    int invoke(
+            int command,
+            std::span<const uint8_t> in,
+            std::string& out,
+            p2p_connection_context& context);
+    int notify(int command, std::span<const uint8_t> in, p2p_connection_context& context);
+    static const levin::invoke_table<node_server, p2p_connection_context> invoke_handlers;
 
     //----------------- commands handlers ----------------------------------------------
     int handle_handshake(
-            int command,
-            typename COMMAND_HANDSHAKE::request& arg,
-            typename COMMAND_HANDSHAKE::response& rsp,
+            COMMAND_HANDSHAKE::request& arg,
+            COMMAND_HANDSHAKE::response& rsp,
             p2p_connection_context& context);
     int handle_timed_sync(
-            int command,
-            typename COMMAND_TIMED_SYNC::request& arg,
-            typename COMMAND_TIMED_SYNC::response& rsp,
+            COMMAND_TIMED_SYNC::request& arg,
+            COMMAND_TIMED_SYNC::response& rsp,
             p2p_connection_context& context);
     int handle_ping(
-            int command,
             COMMAND_PING::request& arg,
             COMMAND_PING::response& rsp,
             p2p_connection_context& context);
     // TODO: remove after HF19
     int handle_get_support_flags(
-            int command,
             COMMAND_REQUEST_SUPPORT_FLAGS::request& arg,
             COMMAND_REQUEST_SUPPORT_FLAGS::response& rsp,
             p2p_connection_context& context);
@@ -332,81 +210,65 @@ class node_server
     bool make_default_config();
     bool store_config();
 
-    //----------------- levin_commands_handler
-    //-------------------------------------------------------------
-    virtual void on_connection_new(p2p_connection_context& context);
-    virtual void on_connection_close(p2p_connection_context& context);
-    virtual void callback(p2p_connection_context& context);
+    void on_connection_new(p2p_connection_context& context);
+    void on_connection_close(p2p_connection_context& context);
     //----------------- i_p2p_endpoint -------------------------------------------------------------
-    virtual bool relay_notify_to_list(
+    bool relay_notify_to_list(
             int command,
             const std::span<const uint8_t> data_buff,
-            std::vector<std::pair<epee::net_utils::zone, connection_id_t>> connections);
-    virtual epee::net_utils::zone send_txs(
-            std::vector<std::string> txs,
-            const epee::net_utils::zone origin,
-            const connection_id_t& source,
-            const bool pad_txs);
-    virtual bool invoke_command_to_peer(
+            std::span<const connection_id_t> connections) override;
+    void invoke_notify_to_peer(
             int command,
             const std::span<const uint8_t> req_buff,
-            std::string& resp_buff,
-            const epee::net_utils::connection_context_base& context);
-    virtual bool invoke_notify_to_peer(
-            int command,
-            const std::span<const uint8_t> req_buff,
-            const epee::net_utils::connection_context_base& context);
-    virtual bool drop_connection(const epee::net_utils::connection_context_base& context);
-    virtual void request_callback(const epee::net_utils::connection_context_base& context);
-    virtual void for_each_connection(
-            std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type)>
-                    f);
-    virtual bool for_connection(
+            const connection_id_t& id) override;
+    bool drop_connection(const cryptonote_connection_context& context) override;
+    void request_callback(const cryptonote_connection_context& context) override;
+    void call_on_connection(
+            const connection_id_t& id,
+            std::function<void(cryptonote_connection_context&)> f) override;
+    void for_each_connection(
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) override;
+    bool for_connection(
             const connection_id_t&,
-            std::function<bool(typename t_payload_net_handler::connection_context&, peerid_type)>
-                    f);
-    virtual bool add_host_fail(const epee::net_utils::network_address& address);
-    //----------------- i_connection_filter --------------------------------------------------------
-    virtual bool is_remote_host_allowed(
-            const epee::net_utils::network_address& address, time_t* t = NULL);
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) override;
+    bool add_host_fail(const oxen::quic::Address& address) override;
     //-----------------------------------------------------------------------------------------------
-    bool parse_peer_from_string(
-            epee::net_utils::network_address& pe,
-            const std::string& node_addr,
-            uint16_t default_port = 0);
+    bool is_remote_host_allowed(const oxen::quic::Address& address, time_t* t = nullptr);
+    //-----------------------------------------------------------------------------------------------
     bool handle_command_line(const boost::program_options::variables_map& vm);
     bool idle_worker();
     bool handle_remote_peerlist(
             const std::vector<peerlist_entry>& peerlist,
-            const epee::net_utils::connection_context_base& context);
-    bool get_local_node_data(basic_node_data& node_data, const network_zone& zone);
+            const cryptonote_connection_context& context);
+    bool get_local_node_data(basic_node_data& node_data);
     // bool get_local_handshake_data(handshake_data& hshd);
 
     bool sanitize_peerlist(std::vector<peerlist_entry>& local_peerlist);
 
     bool connections_maker();
     bool peer_sync_idle_maker();
-    bool do_handshake_with_peer(
-            peerid_type& pi, p2p_connection_context& context, bool just_take_peerlist = false);
-    bool do_peer_timed_sync(
-            const epee::net_utils::connection_context_base& context, peerid_type peer_id);
+    // Handshakes over a connection we made, without blocking.  `done` is called once, with the
+    // connection's context (valid only during the call) if the handshake succeeded, or nullptr
+    // (after closing the connection) if it failed.
+    void do_handshake_with_peer(
+            const connection_id_t& connection_id,
+            bool anchor,
+            bool just_take_peerlist,
+            std::function<void(p2p_connection_context*)> done);
+    bool do_peer_timed_sync(const connection_id_t& id);
 
     bool make_new_connection_from_anchor_peerlist(
             const std::vector<anchor_peerlist_entry>& anchor_peerlist);
     // The indices, in the white or gray list, of the peers we could connect to: not connected
-    // already, nor recently failed, and, given what a sync needs, only those whose peerlist entry
-    // says they can serve it and that haven't already turned out not to.
+    // already, nor being connected to, nor recently failed, and, given what a sync needs, only
+    // those whose peerlist entry says they can serve it and that haven't already turned out not to.
     std::vector<size_t> connectable_peers(
-            network_zone& zone,
-            bool use_white_list,
-            const std::optional<cryptonote::sync_need>& need = std::nullopt);
+            bool use_white_list, const std::optional<cryptonote::sync_need>& need = std::nullopt);
     bool make_new_connection_from_peerlist(
-            network_zone& zone,
-            bool use_white_list,
-            const std::optional<cryptonote::sync_need>& need = std::nullopt);
+            bool use_white_list, const std::optional<cryptonote::sync_need>& need = std::nullopt);
     struct droppable_peer {
-        epee::connection_id_t connection_id;
-        epee::net_utils::network_address address;
+        connection_id_t connection_id;
+        oxen::quic::Address address;
         uint64_t height;
         std::optional<uint64_t> history;
     };
@@ -420,39 +282,43 @@ class node_server
     };
     // While syncing, counts the connected peers that can serve what the sync needs, recording the
     // outgoing ones that can't as unhelpful.
-    sync_peers check_sync_peers(network_zone& zone, const cryptonote::sync_need& need);
-    bool try_to_connect_and_handshake_with_new_peer(
-            const epee::net_utils::network_address& na,
-            bool just_take_peerlist = false,
+    sync_peers check_sync_peers(const cryptonote::sync_need& need);
+    // Starts connecting to `na` and handshaking with it, returning false (and starting nothing) if
+    // an attempt on `na` is already pending.  A successful handshake adds the peer to the white and
+    // anchor lists, unless `just_take_peerlist`, in which case the connection is closed once the
+    // peer's peerlist is in.  `done`, if given, is called with whether the handshake succeeded.
+    bool connect_and_handshake(
+            const oxen::quic::Address& na,
+            PeerType peer_type,
+            bool just_take_peerlist,
             uint64_t last_seen_stamp = 0,
-            PeerType peer_type = PeerType::white,
-            uint64_t first_seen_stamp = 0);
-    // Draw from a truncated exponential with the given rate, truncated to produce values in [0,
-    // N), and then take the integer floor to get a [0, N-1] value.  This distribution prefers
-    // earlier values: with the default rate and the *untruncated* distribution, [0] is selected
-    // around 13% of the time, indices in 0-9 are selected with probability 0.75 (this is where the
-    // default comes from), and indices < 20 are selected with probability 0.9375, and indices < 50
-    // with probability ~0.999.
-    //
-    // The *truncated* distribution scales these probabilities up slightly depending on the amount
-    // of truncation.  (For example, with max_index of 19, those probabilities increase by a factor
-    // of 1.06667, and with max_index of 9, they increase by 4/3).
-    size_t get_random_exp_index(size_t size, double rate = 0.13862943611198906);
-    bool is_peer_used(const peerlist_entry& peer);
-    bool is_peer_used(const anchor_peerlist_entry& peer);
-    bool is_addr_connected(const epee::net_utils::network_address& peer);
+            uint64_t first_seen_stamp = 0,
+            std::function<void(bool success)> done = nullptr);
+    bool is_connect_pending(const oxen::quic::Address& na);
+    // The local address to make an outgoing connection to `remote` from, if not the default
+    std::optional<oxen::quic::Address> outgoing_bind_address(
+            const oxen::quic::Address& remote) const;
+    // The outgoing connections plus the pending attempts not yet connected, which is what counts
+    // against the outgoing connection limit.
+    size_t get_outgoing_and_pending_count();
+    // Whether we are connected, or connecting, to an address
+    bool is_peer_used(const oxen::quic::Address& addr);
+    // Whether a peerlist_entry or anchor_peerlist_entry is in use: its address (as above), or its
+    // peer, which may be ourself or already connected from another address.
+    template <typename Entry>
+    bool is_peer_used(const Entry& peer);
+    bool is_addr_connected(const oxen::quic::Address& peer);
     template <class t_callback>
     bool try_ping(
             basic_node_data& node_data, p2p_connection_context& context, const t_callback& cb);
-    bool make_expected_connections_count(
-            network_zone& zone, PeerType peer_type, size_t expected_connections);
-    void record_addr_failed(const epee::net_utils::network_address& addr);
-    bool is_addr_recently_failed(const epee::net_utils::network_address& addr);
-    bool is_priority_node(const epee::net_utils::network_address& na);
-    bool connect_to_seed();
+    bool make_expected_connections_count(PeerType peer_type, size_t expected_connections);
+    void record_addr_failed(const oxen::quic::Address& addr);
+    bool is_addr_recently_failed(const oxen::quic::Address& addr);
+    bool is_priority_node(const oxen::quic::Address& na);
+    void connect_to_seed();
 
     template <class Container>
-    bool connect_to_peerlist(const Container& peers);
+    void connect_to_peerlist(const Container& peers);
 
     template <class Container>
     bool parse_peers_and_add_to_container(
@@ -460,32 +326,15 @@ class node_server
             const command_line::arg_descriptor<std::vector<std::string>>& arg,
             Container& container);
 
-    bool set_max_out_peers(network_zone& zone, int64_t max);
-    bool set_max_in_peers(network_zone& zone, int64_t max);
-    bool set_tos_flag(const boost::program_options::variables_map& vm, int limit);
+    bool set_max_out_peers(int64_t max);
+    bool set_max_in_peers(int64_t max);
 
-    bool set_rate_up_limit(const boost::program_options::variables_map& vm, int64_t limit);
-    bool set_rate_down_limit(const boost::program_options::variables_map& vm, int64_t limit);
-    bool set_rate_limit(const boost::program_options::variables_map& vm, int64_t limit);
-
-    bool has_too_many_connections(const epee::net_utils::network_address& address);
+    bool has_too_many_connections(const oxen::quic::Address& address);
     size_t get_incoming_connections_count();
-    size_t get_incoming_connections_count(network_zone&);
     size_t get_outgoing_connections_count();
-    size_t get_outgoing_connections_count(network_zone&);
 
-    bool check_connection_and_handshake_with_peer(
-            const epee::net_utils::network_address& na, uint64_t last_seen_stamp);
     bool gray_peerlist_housekeeping();
     bool check_incoming_connections();
-
-    void kill() {  ///< will be called e.g. from deinit()
-        log::info(globallogcat, "Killing the net_node");
-        is_closing = true;
-        if (mPeersLoggerThread)
-            mPeersLoggerThread->join();  // make sure the thread finishes
-        log::info(globallogcat, "Joined extra background net_node threads");
-    }
 
     // debug functions
     std::string print_connections_container();
@@ -506,12 +355,10 @@ class node_server
     bool m_offline;
     bool m_use_ipv6;
     bool m_require_ipv4;
-    std::atomic<bool> is_closing;
-    std::optional<std::thread> mPeersLoggerThread;
     std::unordered_map<peerid_type, peer_stats> peer_stats_map;
     std::mutex peer_stats_map_mutex;
 
-    t_payload_net_handler& m_payload_handler;
+    cryptonote::protocol_handler& m_payload_handler;
     peerlist_storage m_peerlist_storage;
     // Only used by connections_maker (so needs no lock).
     cryptonote::unhelpful_peers m_unhelpful_peers;
@@ -526,39 +373,39 @@ class node_server
     tools::periodic_task m_gray_peerlist_housekeeping_interval{"p2p graylist", 1min};
     tools::periodic_task m_incoming_connections_interval{"incoming connection warning", 1h};
 
-    std::list<epee::net_utils::network_address> m_priority_peers;
-    std::vector<epee::net_utils::network_address> m_exclusive_peers;
-    std::vector<epee::net_utils::network_address> m_seed_nodes;
+    std::list<oxen::quic::Address> m_priority_peers;
+    std::vector<oxen::quic::Address> m_exclusive_peers;
+    std::vector<oxen::quic::Address> m_seed_nodes;
     std::atomic<bool> m_seed_nodes_initialized{false};
     std::shared_mutex m_seed_nodes_mutex;
-    std::atomic_flag m_fallback_seed_nodes_added;
+    // The seed to try next, and how many seeds in a row have failed (so that a full round of
+    // failures is reported once).
+    std::atomic<size_t> m_next_seed{0};
+    std::atomic<size_t> m_seed_failures{0};
     std::vector<nodetool::peerlist_entry> m_command_line_peers;
     uint64_t m_peer_livetime;
-    // keep connections to initiate some interactions
 
-    static std::optional<p2p_connection_context> public_connect(
-            network_zone&, epee::net_utils::network_address const&);
-    static std::optional<p2p_connection_context> socks_connect(
-            network_zone&, epee::net_utils::network_address const&);
+    // Addresses we have an outgoing connection attempt in flight to, from the start of its connect
+    // until its handshake finishes.
+    std::set<oxen::quic::Address> m_pending_connects;
+    std::mutex m_pending_connects_mutex;
 
-    /* A `std::map` provides constant iterators and key/value pointers even with
-    inserts/erases to _other_ elements. This makes the configuration step easier
-    since references can safely be stored on the stack. Do not insert/erase
-    after configuration and before destruction, lock safety would need to be
-    added. `std::map::operator[]` WILL insert! */
-    std::map<epee::net_utils::zone, network_zone> m_network_zones;
+    network m_network;
+    transport m_transport{*this};
+    // The event loop timers running idle_worker and the protocol handler's on_idle while we run
+    std::vector<oxen::quic::TimerID> m_idle_timers;
 
     std::map<std::string, time_t> m_conn_fails_cache;
     std::shared_mutex m_conn_fails_cache_lock;
 
     std::shared_mutex m_blocked_hosts_lock;  // for both hosts and subnets
     std::map<std::string, time_t> m_blocked_hosts;
-    std::map<epee::net_utils::ipv4_network_subnet, time_t> m_blocked_subnets;
+    std::map<oxen::quic::ipv4_range, time_t> m_blocked_subnets;
 
     std::mutex m_host_fails_score_lock;
     std::map<std::string, uint64_t> m_host_fails_score;
 
-    epee::connection_id_t m_network_id{};
+    connection_id_t m_network_id{};
     cryptonote::network_type m_nettype;
 };
 
@@ -574,8 +421,6 @@ extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_add_
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_add_priority_node;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_add_exclusive_node;
 extern const command_line::arg_descriptor<std::vector<std::string>> arg_p2p_seed_node;
-extern const command_line::arg_descriptor<std::vector<std::string>> arg_tx_proxy;
-extern const command_line::arg_descriptor<std::vector<std::string>> arg_anonymous_inbound;
 extern const command_line::arg_flag arg_p2p_hide_my_port;
 extern const command_line::arg_flag arg_no_sync;
 
@@ -593,5 +438,3 @@ extern const command_line::arg_descriptor<int64_t> arg_limit_rate;
 
 template <>
 inline constexpr bool formattable::via_to_string<nodetool::PeerType> = true;
-
-POP_WARNINGS

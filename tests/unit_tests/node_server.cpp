@@ -31,119 +31,22 @@
 #include "gtest/gtest.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "p2p/net_node.h"
-#include "p2p/net_node.inl"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
-#include "cryptonote_protocol/cryptonote_protocol_handler.inl"
-#include "cryptonote_core/blockchain.h"
-#include "cryptonote_core/cryptonote_tx_utils.h"
 
-#define MAKE_IPV4_ADDRESS(a,b,c,d) epee::net_utils::ipv4_network_address{MAKE_IP(a,b,c,d),0}
-#define MAKE_IPV4_ADDRESS_PORT(a,b,c,d,e) epee::net_utils::ipv4_network_address{MAKE_IP(a,b,c,d),e}
-#define MAKE_IPV4_SUBNET(a,b,c,d,e) epee::net_utils::ipv4_network_subnet{MAKE_IP(a,b,c,d),e}
+#define MAKE_IPV4_ADDRESS(a,b,c,d) oxen::quic::Address{oxen::quic::ipv4(a,b,c,d),0}
+#define MAKE_IPV4_ADDRESS_PORT(a,b,c,d,e) oxen::quic::Address{oxen::quic::ipv4(a,b,c,d),e}
+#define MAKE_IPV4_SUBNET(a,b,c,d,e) (oxen::quic::ipv4(a,b,c,d) / e)
 
-namespace cryptonote {
-  class blockchain_storage;
-}
+// These only use the p2p server's own state, so the core under its protocol handler is never
+// initialized.
+using Server = nodetool::node_server;
 
-struct fake_lockable {
-  void lock() {}
-  void unlock() {}
-  bool try_lock() { return true; }
-  void lock_shared() {}
-  void unlock_shared() {}
-  bool try_lock_shared() { return true; }
-};
-
-class test_core
-{
-public:
-  void on_synchronized(){}
-  void safesyncmode(const bool){}
-  void set_target_blockchain_height(uint64_t) {}
-  bool init(const boost::program_options::variables_map& vm) {return true ;}
-  bool deinit(){return true;}
-  std::vector<cryptonote::tx_verification_batch_info> parse_incoming_txs(const std::vector<std::string>& tx_blobs, const cryptonote::tx_pool_options &opts) { return {}; }
-  bool handle_parsed_txs(std::vector<cryptonote::tx_verification_batch_info> &parsed_txs, const cryptonote::tx_pool_options &opts, uint64_t *blink_rollback_height = nullptr) { if (blink_rollback_height) *blink_rollback_height = 0; return true; }
-  std::vector<cryptonote::tx_verification_batch_info> handle_incoming_txs(const std::vector<std::string>& tx_blobs, const cryptonote::tx_pool_options &opts) { return {}; }
-  bool handle_incoming_tx(const std::string& tx_blob, cryptonote::tx_verification_context& tvc, const cryptonote::tx_pool_options &opts) { return true; }
-  std::pair<std::vector<std::shared_ptr<cryptonote::blink_tx>>, std::unordered_set<crypto::hash>> parse_incoming_blinks(const std::vector<cryptonote::serializable_blink_metadata> &blinks) { return {}; }
-  int add_blinks(const std::vector<std::shared_ptr<cryptonote::blink_tx>> &blinks) { return 0; }
-  bool handle_incoming_block(const std::string& block_blob, const cryptonote::block *block, cryptonote::block_verification_context& bvc, cryptonote::checkpoint_t const *checkpoint, bool update_miner_blocktemplate = true) { return true; }
-  bool handle_uptime_proof(const cryptonote::NOTIFY_BTENCODED_UPTIME_PROOF::request &proof, bool &my_uptime_proof_confirmation) { return false; }
-  struct faker_miner {
-      void pause() {}
-      void resume() {}
-  } miner;
-  bool on_idle(){return true;}
-  struct fake_blockchain : fake_lockable {
-    bool find_blockchain_supplement(const std::list<crypto::hash>& qblock_ids, cryptonote::NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp){return true;}
-    uint64_t get_current_blockchain_height() const {return 1;}
-    uint64_t get_immutable_height() const {return 1;}
-    std::pair<uint64_t, crypto::hash> get_tail_id() const { return {0, crypto::null<crypto::hash>};}
-    bool have_block(const crypto::hash& id) const {return true;}
-    bool get_blocks(uint64_t start_offset, size_t count, std::vector<std::pair<std::string, cryptonote::block>>& blocks, std::vector<std::string>& txs) const { return false; }
-    bool get_transactions(const std::vector<crypto::hash>& txs_ids, std::vector<cryptonote::transaction>& txs, std::unordered_set<crypto::hash>* missed_txs) const { return false; }
-    bool get_block_by_hash(const crypto::hash &h, cryptonote::block &blk, bool *orphan = NULL) const { return false; }
-    bool handle_get_blocks(cryptonote::NOTIFY_REQUEST_GET_BLOCKS::request& arg, cryptonote::NOTIFY_RESPONSE_GET_BLOCKS::request& rsp){return true;}
-    bool handle_get_txs(cryptonote::NOTIFY_REQUEST_GET_TXS::request&, cryptonote::NOTIFY_NEW_TRANSACTIONS::request&) { return true; }
-    cryptonote::difficulty_type get_block_cumulative_difficulty(uint64_t height) const { return 0; }
-    uint64_t prevalidate_block_hashes(uint64_t height, const std::vector<crypto::hash> &hashes) { return 0; }
-    bool blink_rollback(uint64_t rollback_height) { return false; }
-    bool get_short_chain_history(std::list<crypto::hash>& ids) const { return true; }
-    bool is_within_compiled_block_hash_area(uint64_t height) const { return false; }
-
-    struct fake_db {
-        cryptonote::difficulty_type get_block_cumulative_difficulty(uint64_t height) const { return 0; }
-        uint64_t served_history() const { return 0; }
-    } db_;
-    fake_db& db() { return db_; }
-  } blockchain;
-  bool get_test_drop_download() const {return true;}
-  bool get_test_drop_download_height() const {return true;}
-  bool prepare_handle_incoming_blocks(const std::vector<cryptonote::block_complete_entry>  &blocks_entry, std::vector<cryptonote::block> &blocks) { return true; }
-  bool cleanup_handle_incoming_blocks(bool force_sync = false) { return true; }
-  uint64_t target_height = 1;
-  uint64_t get_target_blockchain_height() const { return target_height; }
-  size_t get_block_sync_size(uint64_t height) const { return cryptonote::BLOCKS_SYNCHRONIZING_DEFAULT_COUNT; }
-  virtual crypto::hash on_transaction_relayed(const std::string& tx) { return crypto::null<crypto::hash>; }
-  cryptonote::network_type get_nettype() const { return cryptonote::network_type::MAINNET; }
-  const cryptonote::network_config& get_net_config() const { return get_config(get_nettype()); }
-  bool pad_transactions() { return false; }
-  void stop() {}
-
-  // TODO(oxen): Write tests
-  bool add_service_node_vote(const service_nodes::quorum_vote_t& vote, cryptonote::vote_verification_context &vvc) { return false; }
-  void set_service_node_votes_relayed(const std::vector<service_nodes::quorum_vote_t> &votes) {}
-
-  bool handle_incoming_blinks(const std::vector<cryptonote::serializable_blink_metadata> &blinks, std::vector<crypto::hash> *bad_blinks = nullptr, std::vector<crypto::hash> *missing_txs = nullptr) { return true; }
-
-  struct fake_lock { ~fake_lock() { /* avoid unused variable warning by having a destructor */ } };
-  fake_lock incoming_tx_lock() { return {}; }
-
-  struct fake_pool : fake_lockable {
-      void add_missing_blink_hashes(const std::map<uint64_t, std::vector<crypto::hash>> &potential) {}
-      template <typename... Args>
-      int blink_shared_lock(Args &&...args) { return 42; }
-      std::shared_ptr<cryptonote::blink_tx> get_blink(crypto::hash &) { return nullptr; }
-      bool get_transaction(const crypto::hash& id, std::string& tx_blob) const { return false; }
-      bool have_tx(const crypto::hash &txid) const { return false; }
-      std::map<uint64_t, crypto::hash> get_blink_checksums() const { return {}; }
-      std::vector<crypto::hash> get_mined_blinks(const std::set<uint64_t> &) const { return {}; }
-      void keep_missing_blinks(std::vector<crypto::hash> &tx_hashes) const {}
-  } mempool;
-
-private:
-  fake_pool m_pool;
-};
-
-typedef nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<test_core>> Server;
-
-static bool is_blocked(Server &server, const epee::net_utils::network_address &address, time_t *t = NULL)
+static bool is_blocked(Server &server, const oxen::quic::Address &address, time_t *t = NULL)
 {
   std::map<std::string, time_t> hosts = server.get_blocked_hosts();
   for (auto rec: hosts)
   {
-    if (rec.first == address.host_str())
+    if (rec.first == address.host())
     {
       if (t)
         *t = rec.second;
@@ -155,8 +58,8 @@ static bool is_blocked(Server &server, const epee::net_utils::network_address &a
 
 TEST(ban, add)
 {
-  test_core pr_core;
-  cryptonote::t_cryptonote_protocol_handler<test_core> cprotocol(pr_core);
+  cryptonote::core pr_core;
+  cryptonote::protocol_handler cprotocol(pr_core);
   Server server(cprotocol);
   cprotocol.set_p2p_endpoint(&server);
 
@@ -238,36 +141,98 @@ TEST(ban, add)
   ASSERT_TRUE(t >= 4);
 }
 
-TEST(sync_need, only_until_first_synchronized)
-{
-  test_core pr_core;
-  cryptonote::t_cryptonote_protocol_handler<test_core> cprotocol(pr_core);
-  // At the network's height (the test core's chain height is 1)
-  ASSERT_FALSE(cprotocol.get_sync_need());
+namespace {
+// Records the connections a protocol handler drops, in place of a p2p node dropping them
+struct drop_recorder : nodetool::p2p_endpoint_stub {
+  std::vector<cryptonote::connection_id_t> dropped;
+  bool drop_connection(const cryptonote::cryptonote_connection_context& context) override
+  {
+    dropped.push_back(context.m_connection_id);
+    return true;
+  }
+};
+}
 
-  pr_core.target_height = 1000;
-  auto need = cprotocol.get_sync_need();
+TEST(protocol_handler, oversized_chain_entry_drops_peer)
+{
+  cryptonote::core pr_core;
+  cryptonote::protocol_handler cprotocol(pr_core);
+  drop_recorder p2p;
+  cprotocol.set_p2p_endpoint(&p2p);
+
+  cryptonote::NOTIFY_RESPONSE_CHAIN_ENTRY::request entry{};
+  entry.m_block_ids.resize(cryptonote::BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT + 1);
+  entry.start_height = 0;
+  entry.total_height = entry.m_block_ids.size();
+  const auto body = nodetool::levin::encode(entry);
+
+  cryptonote::cryptonote_connection_context context{
+      cryptonote::connection_id_t::random(), MAKE_IPV4_ADDRESS(1,2,3,4), false};
+  cprotocol.notify(
+      cryptonote::NOTIFY_RESPONSE_CHAIN_ENTRY::ID,
+      oxen::quic::reinterpret_span<const uint8_t>(std::span{body}),
+      context);
+  ASSERT_EQ(p2p.dropped.size(), 1);
+  EXPECT_EQ(p2p.dropped[0], context.m_connection_id);
+}
+
+TEST(protocol_handler, oversized_chain_request_drops_peer)
+{
+  cryptonote::core pr_core;
+  cryptonote::protocol_handler cprotocol(pr_core);
+  drop_recorder p2p;
+  cprotocol.set_p2p_endpoint(&p2p);
+
+  cryptonote::NOTIFY_REQUEST_CHAIN::request request{};
+  request.block_ids.resize(cryptonote::SHORT_CHAIN_HISTORY_MAX_COUNT + 1);
+  const auto body = nodetool::levin::encode(request);
+
+  cryptonote::cryptonote_connection_context context{
+      cryptonote::connection_id_t::random(), MAKE_IPV4_ADDRESS(1,2,3,4), false};
+  cprotocol.notify(
+      cryptonote::NOTIFY_REQUEST_CHAIN::ID,
+      oxen::quic::reinterpret_span<const uint8_t>(std::span{body}),
+      context);
+  ASSERT_EQ(p2p.dropped.size(), 1);
+  EXPECT_EQ(p2p.dropped[0], context.m_connection_id);
+}
+
+TEST(sync_need, heights)
+{
+  using cryptonote::sync_need_for;
+  // At the network's height
+  EXPECT_FALSE(sync_need_for(1, 1, 1));
+
+  auto need = sync_need_for(1, 1, 1000);
   ASSERT_TRUE(need);
   EXPECT_EQ(need->height, 1);
   EXPECT_EQ(need->target, 1000);
 
+  // What is needed next is the lowest block not yet downloaded, which can be well past the chain
+  need = sync_need_for(1, 500, 1000);
+  ASSERT_TRUE(need);
+  EXPECT_EQ(need->height, 500);
+
   // Within the margin of the target only a peer's height, not its history, could keep it from
   // serving, so there is nothing for the peer policy to do
-  pr_core.target_height = 1 + cryptonote::PEER_HISTORY_MARGIN;
-  EXPECT_FALSE(cprotocol.get_sync_need());
-  pr_core.target_height = 2 + cryptonote::PEER_HISTORY_MARGIN;
-  EXPECT_TRUE(cprotocol.get_sync_need());
+  EXPECT_FALSE(sync_need_for(1, 1, 1 + cryptonote::PEER_HISTORY_MARGIN));
+  EXPECT_TRUE(sync_need_for(1, 1, 2 + cryptonote::PEER_HISTORY_MARGIN));
+  EXPECT_FALSE(sync_need_for(1, 900, 1000));
+}
 
+TEST(sync_need, only_until_first_synchronized)
+{
   // Once synchronized, a target ahead of us is just a new block arriving, not a sync
-  cryptonote::t_cryptonote_protocol_handler<test_core> synced(pr_core, /*offline=*/true);
+  cryptonote::core pr_core;
+  cryptonote::protocol_handler synced(pr_core, /*offline=*/true);
   ASSERT_TRUE(synced.is_synchronized());
   EXPECT_FALSE(synced.get_sync_need());
 }
 
 TEST(ban, limit)
 {
-  test_core pr_core;
-  cryptonote::t_cryptonote_protocol_handler<test_core> cprotocol(pr_core);
+  cryptonote::core pr_core;
+  cryptonote::protocol_handler cprotocol(pr_core);
   Server server(cprotocol);
   cprotocol.set_p2p_endpoint(&server);
 
@@ -283,8 +248,8 @@ TEST(ban, limit)
 TEST(ban, subnet)
 {
   time_t seconds;
-  test_core pr_core;
-  cryptonote::t_cryptonote_protocol_handler<test_core> cprotocol(pr_core);
+  cryptonote::core pr_core;
+  cryptonote::protocol_handler cprotocol(pr_core);
   Server server(cprotocol);
   cprotocol.set_p2p_endpoint(&server);
 
@@ -315,8 +280,8 @@ TEST(ban, subnet)
 TEST(ban, ignores_port)
 {
   time_t seconds;
-  test_core pr_core;
-  cryptonote::t_cryptonote_protocol_handler<test_core> cprotocol(pr_core);
+  cryptonote::core pr_core;
+  cryptonote::protocol_handler cprotocol(pr_core);
   Server server(cprotocol);
   cprotocol.set_p2p_endpoint(&server);
 
@@ -333,8 +298,8 @@ TEST(node_server, bind_same_p2p_port)
 {
   struct test_data_t
   {
-    test_core pr_core;
-    cryptonote::t_cryptonote_protocol_handler<test_core> cprotocol;
+    cryptonote::core pr_core;
+    cryptonote::protocol_handler cprotocol;
     std::unique_ptr<Server> server;
 
     test_data_t(): cprotocol(pr_core)
@@ -375,6 +340,3 @@ TEST(node_server, bind_same_p2p_port)
   EXPECT_FALSE(init(new_node(), port));
   EXPECT_TRUE(init(new_node(), port_another));
 }
-
-namespace nodetool { template class node_server<cryptonote::t_cryptonote_protocol_handler<test_core>>; }
-namespace cryptonote { template class t_cryptonote_protocol_handler<test_core>; }

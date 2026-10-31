@@ -26,11 +26,55 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include <iostream>
+#include <optional>
+
 #include "common/file.h"
-#include "epee/serialization/keyvalue_serialization.h"
-#include "epee/storages/portable_storage_template_helper.h"
-#include "epee/storages/portable_storage_base.h"
 #include "fuzzer.h"
+#include "serialization/levin_kv/levin_kv.h"
+
+namespace {
+
+// A field of each kind, so that decoding a fuzzed message tries every conversion.
+struct inner {
+    std::string s;
+    std::vector<uint32_t> nums;
+    void serialize(levin_kv::archive& ar) {
+        ar.value("s", s);
+        ar.value("n", nums);
+    }
+};
+
+struct fields {
+    uint64_t u64;
+    int8_t i8;
+    bool b;
+    std::string s;
+    std::vector<int16_t> i16s;
+    std::vector<std::string> strs;
+    std::array<unsigned char, 32> hash;
+    std::vector<std::array<unsigned char, 4>> blobs;
+    std::vector<uint64_t> packed;
+    inner in;
+    std::vector<inner> ins;
+    std::optional<uint32_t> opt;
+    void serialize(levin_kv::archive& ar) {
+        ar.value("u", u64);
+        ar.value("i", i8);
+        ar.value("b", b);
+        ar.value("s", s);
+        ar.value("i16s", i16s);
+        ar.value("strs", strs);
+        ar.value("hash", tools::byte_span(hash));
+        ar.value("blobs", blobs);
+        ar.packed("packed", packed);
+        ar.value("in", in);
+        ar.value("ins", ins);
+        ar.value("opt", opt);
+    }
+};
+
+}  // namespace
 
 class PortableStorageFuzzer: public Fuzzer
 {
@@ -54,14 +98,10 @@ int PortableStorageFuzzer::run(const std::string &filename)
     std::cout << "Error: failed to load file " << filename << std::endl;
     return 1;
   }
-  try
+  fields f{};
+  if (!levin_kv::decode(s, f))
   {
-    epee::serialization::portable_storage ps;
-    ps.load_from_binary(s);
-  }
-  catch (const std::exception &e)
-  {
-    std::cerr << "Failed to load from binary: " << e.what() << std::endl;
+    std::cerr << "Failed to load from binary" << std::endl;
     return 1;
   }
   return 0;
@@ -69,10 +109,7 @@ int PortableStorageFuzzer::run(const std::string &filename)
 
 int main(int argc, const char **argv)
 {
-  auto logcat = oxen::log::Cat("fuzz");
-  TRY_ENTRY();
   PortableStorageFuzzer fuzzer;
   return run_fuzzer(argc, argv, fuzzer);
-  CATCH_ENTRY("main", 1);
 }
 

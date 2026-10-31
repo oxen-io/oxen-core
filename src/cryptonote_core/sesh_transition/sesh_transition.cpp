@@ -7,10 +7,10 @@
 #include <ranges>
 
 #include "crypto/crypto.h"
+#include "crypto/int-util.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
 #include "detail.h"
-#include "epee/int-util.h"
 #include "logging/oxen_logger.h"
 #include "network_config/mocknet.h"
 

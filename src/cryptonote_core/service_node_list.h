@@ -35,12 +35,13 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <shared_mutex>
 #include <stdexcept>
 #include <string_view>
 #include <type_traits>
 
-#include "common/exception.h"
+#include "common/ipv4.h"
 #include "common/tracy_shim.h"
 #include "common/util.h"
 #include "crypto/crypto.h"
@@ -99,7 +100,7 @@ struct rescan_context {
 // the rest of the network's; restoring from a stored state instead (see
 // service_node_list::restore_stored_state), which comes with the quorums before it, and replaying
 // from there has the quorum.
-struct missing_quorum : oxen::traced<std::runtime_error> {
+struct missing_quorum : std::runtime_error {
     crypto::hash tx_hash;
     uint64_t block_height;
     uint64_t quorum_height;
@@ -169,7 +170,7 @@ struct proof_info {
     uint64_t effective_timestamp =
             0;  // Typically the same, but on recommissions it is set to the recommission block time
                 // to fend off instant obligation checks
-    std::array<std::pair<uint32_t, uint64_t>, 2> public_ips = {};  // (not serialized)
+    std::array<std::pair<oxen::quic::ipv4, uint64_t>, 2> public_ips = {};  // (not serialized)
 
     // See set_storage_server_peer_reachable(...) and set_lokinet_peer_reachable(...)
     struct reachable_stats {
@@ -473,7 +474,7 @@ struct service_node_address {
     crypto::public_key sn_pubkey;
     eth::bls_public_key bls_pubkey;
     crypto::x25519_public_key x_pubkey;
-    uint32_t ip;
+    oxen::quic::ipv4 ip;
     uint16_t port;
     std::array<uint16_t, 3> version{};
 };
@@ -556,23 +557,23 @@ struct service_node_keys {
     /// curve25519-based but with Monero-specific changes that make it useless for external tools
     /// supporting standard ed25519 or x25519 keys.
     /// TODO(oxen) - eventually drop this key and just do everything with the ed25519 key.
-    crypto::secret_key key;
+    crypto::secret_key key{};
     crypto::public_key pub;
 
     /// A secondary SN key pair used for ancillary operations by tools (e.g. libsodium) that rely
     /// on standard cryptography keypair signatures.
-    crypto::ed25519_secret_key key_ed25519;
+    crypto::ed25519_secret_key key_ed25519{};
     crypto::ed25519_public_key pub_ed25519;
 
     /// A x25519 key computed from the ed25519 key, above, that is used for SN-to-SN encryption.
     /// (Unlike this above two keys this is not stored to disk; it is generated on the fly from the
     /// ed25519 key).
-    crypto::x25519_secret_key key_x25519;
+    crypto::x25519_secret_key key_x25519{};
     crypto::x25519_public_key pub_x25519;
 
     /// BLS keypair of this service node, used for SESH registrations and interacting with the SESH
     /// staking contract.
-    eth::bls_secret_key key_bls;
+    eth::bls_secret_key key_bls{};
     eth::bls_public_key pub_bls;
 };
 
@@ -873,7 +874,7 @@ class service_node_list {
                 continue;
             // If we don't have a proof then we won't know the IP/port, and so this node isn't
             // considered reachable and shouldn't be returned.
-            if (!it->second.proof || !it->second.proof->public_ip)
+            if (!it->second.proof || it->second.proof->public_ip == oxen::quic::ipv4{})
                 continue;
             auto& proof = *it->second.proof;
 
@@ -900,7 +901,8 @@ class service_node_list {
 
                 // NOTE: Look for their latest IP/port from an uptime proof
                 auto it = proofs.find(recently_removed_it.service_node_pubkey);
-                if (it != proofs.end() && it->second.proof && it->second.proof->public_ip) {
+                if (it != proofs.end() && it->second.proof &&
+                    it->second.proof->public_ip != oxen::quic::ipv4{}) {
                     auto& proof = *it->second.proof;
                     cb(service_node_address{
                             recently_removed_it.service_node_pubkey,
@@ -913,7 +915,8 @@ class service_node_list {
                 }
 
                 // NOTE: We don't have a proof, we defer to what we last stored for the node.
-                if (recently_removed_it.public_ip == 0 || recently_removed_it.qnet_port == 0)
+                if (recently_removed_it.public_ip == oxen::quic::ipv4{} ||
+                    recently_removed_it.qnet_port == 0)
                     continue;
                 cb(service_node_address{
                         recently_removed_it.service_node_pubkey,
@@ -944,7 +947,7 @@ class service_node_list {
 
     uptime_proof::Proof generate_uptime_proof(
             cryptonote::hf hardfork,
-            uint32_t public_ip,
+            const oxen::quic::ipv4& public_ip,
             uint16_t storage_port,
             uint16_t storage_omq_port,
             std::array<uint16_t, 3> ss_version,
@@ -1022,7 +1025,7 @@ class service_node_list {
         uint64_t height;                  // Height at which the SN exited/deregistered
         uint64_t liquidation_height;      // Height at which the SN is eligible for liquidation
         type_t type;                      // Event that occurred to remove this SN
-        uint32_t public_ip;               // Last known public IP of this SN (may be outdated)
+        oxen::quic::ipv4 public_ip;       // Last known public IP of this SN (may be outdated)
         uint16_t qnet_port;               // Last known quorumnet port of this SN (may be outdated)
         std::array<uint16_t, 3> version;  // Last known version of this SN (may be outdated)
         crypto::public_key service_node_pubkey;  // SN primary ed25519 key
@@ -1045,7 +1048,10 @@ class service_node_list {
                 std::vector<service_node_info::contributor_t> contributors;
                 field(ar, "contributors", contributors);
             }
-            field_varint(ar, "public_ip", public_ip);
+            uint32_t legacy_ip = tools::ipv4_to_legacy_int(public_ip);
+            field_varint(ar, "public_ip", legacy_ip);
+            if constexpr (Archive::is_deserializer)
+                public_ip = tools::ipv4_from_legacy_int(legacy_ip);
             field_varint(ar, "qnet_port", qnet_port);
             if (version >= 1) {
                 field(ar, "service_node_pubkey", service_node_pubkey);
@@ -1562,7 +1568,7 @@ struct staking_components {
     crypto::public_key service_node_pubkey;
     cryptonote::account_public_address address;
     uint64_t transferred;
-    crypto::secret_key tx_key;
+    crypto::secret_key tx_key{};
     std::vector<service_node_info::contribution_t> locked_contributions;
 };
 bool tx_get_staking_components(

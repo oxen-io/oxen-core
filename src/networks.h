@@ -2,7 +2,6 @@
 
 #include <string_view>
 
-#include "common/exception.h"
 #include "common/fs.h"
 #include "cryptonote_config.h"
 #include "network_config/devnet.h"
@@ -59,7 +58,7 @@ inline constexpr const network_config& get_config(network_type nettype) {
         case network_type::FAKECHAIN: return config::fakechain::config;
         case network_type::UNDEFINED: break;
     }
-    throw oxen::traced<std::runtime_error>{"Invalid network type"};
+    throw std::runtime_error{"Invalid network type"};
 }
 
 inline std::filesystem::path network_config_subdir(network_type t) {

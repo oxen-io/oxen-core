@@ -30,101 +30,75 @@
 
 #pragma once
 
+#include <oxen/quic/ip.hpp>
 #include <span>
 #include <utility>
 #include <vector>
 
-#include "epee/net/enums.h"
-#include "epee/net/net_utils_base.h"
+#include "cryptonote_basic/connection_context.h"
 #include "p2p_protocol_defs.h"
 
 namespace nodetool {
 
-using epee::connection_id_t;
+using cryptonote::connection_id_t;
+using cryptonote::cryptonote_connection_context;
 
-template <class t_connection_context>
 struct i_p2p_endpoint {
     virtual bool relay_notify_to_list(
             int command,
             const std::span<const uint8_t> data_buff,
-            std::vector<std::pair<epee::net_utils::zone, connection_id_t>> connections) = 0;
-    virtual epee::net_utils::zone send_txs(
-            std::vector<std::string> txs,
-            const epee::net_utils::zone origin,
-            const connection_id_t& source,
-            const bool pad_txs) = 0;
-    virtual bool invoke_command_to_peer(
-            int command,
-            const std::span<const uint8_t> req_buff,
-            std::string& resp_buff,
-            const epee::net_utils::connection_context_base& context) = 0;
-    virtual bool invoke_notify_to_peer(
-            int command,
-            const std::span<const uint8_t> req_buff,
-            const epee::net_utils::connection_context_base& context) = 0;
-    virtual bool drop_connection(const epee::net_utils::connection_context_base& context) = 0;
-    virtual void request_callback(const epee::net_utils::connection_context_base& context) = 0;
+            std::span<const connection_id_t> connections) = 0;
+    // Safe to call from any thread.
+    virtual void invoke_notify_to_peer(
+            int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) = 0;
+    virtual bool drop_connection(const cryptonote_connection_context& context) = 0;
+    virtual void request_callback(const cryptonote_connection_context& context) = 0;
+    // Calls `f` with the connection's context on the event loop that handles the connection's
+    // messages, after what is running or already queued there, unless the connection has closed by
+    // then.  Safe to call from any thread.
+    virtual void call_on_connection(
+            const connection_id_t& id, std::function<void(cryptonote_connection_context&)> f) = 0;
     virtual uint64_t get_public_connections_count() = 0;
-    virtual void for_each_connection(std::function<bool(t_connection_context&, peerid_type)> f) = 0;
+    virtual void for_each_connection(
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) = 0;
     virtual bool for_connection(
-            const connection_id_t&, std::function<bool(t_connection_context&, peerid_type)> f) = 0;
-    virtual bool block_host(
-            const epee::net_utils::network_address& address, time_t seconds = 0) = 0;
-    virtual bool unblock_host(const epee::net_utils::network_address& address) = 0;
+            const connection_id_t&,
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) = 0;
+    virtual bool block_host(const oxen::quic::Address& address, time_t seconds = 0) = 0;
+    virtual bool unblock_host(const oxen::quic::Address& address) = 0;
     virtual std::map<std::string, time_t> get_blocked_hosts() = 0;
-    virtual std::map<epee::net_utils::ipv4_network_subnet, time_t> get_blocked_subnets() = 0;
-    virtual bool add_host_fail(const epee::net_utils::network_address& address) = 0;
+    virtual std::map<oxen::quic::ipv4_range, time_t> get_blocked_subnets() = 0;
+    virtual bool add_host_fail(const oxen::quic::Address& address) = 0;
 };
 
-template <class t_connection_context>
-struct p2p_endpoint_stub : public i_p2p_endpoint<t_connection_context> {
+struct p2p_endpoint_stub : public i_p2p_endpoint {
     virtual bool relay_notify_to_list(
             int command,
             const std::span<const uint8_t> data_buff,
-            std::vector<std::pair<epee::net_utils::zone, connection_id_t>> connections) {
+            std::span<const connection_id_t> connections) {
         return false;
     }
-    virtual epee::net_utils::zone send_txs(
-            std::vector<std::string> txs,
-            const epee::net_utils::zone origin,
-            const connection_id_t& source,
-            const bool pad_txs) {
-        return epee::net_utils::zone::invalid;
-    }
-    virtual bool invoke_command_to_peer(
-            int command,
-            const std::span<const uint8_t> req_buff,
-            std::string& resp_buff,
-            const epee::net_utils::connection_context_base& context) {
-        return false;
-    }
-    virtual bool invoke_notify_to_peer(
-            int command,
-            const std::span<const uint8_t> req_buff,
-            const epee::net_utils::connection_context_base& context) {
-        return true;
-    }
-    virtual bool drop_connection(const epee::net_utils::connection_context_base& context) {
-        return false;
-    }
-    virtual void request_callback(const epee::net_utils::connection_context_base& context) {}
-    virtual void for_each_connection(std::function<bool(t_connection_context&, peerid_type)> f) {}
+    virtual void invoke_notify_to_peer(
+            int command, const std::span<const uint8_t> req_buff, const connection_id_t& id) {}
+    virtual bool drop_connection(const cryptonote_connection_context& context) { return false; }
+    virtual void request_callback(const cryptonote_connection_context& context) {}
+    virtual void call_on_connection(
+            const connection_id_t& id, std::function<void(cryptonote_connection_context&)> f) {}
+    virtual void for_each_connection(
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) {}
     virtual bool for_connection(
-            const connection_id_t&, std::function<bool(t_connection_context&, peerid_type)> f) {
+            const connection_id_t&,
+            std::function<bool(cryptonote_connection_context&, peerid_type)> f) {
         return false;
     }
 
     virtual uint64_t get_public_connections_count() { return false; }
-    virtual bool block_host(const epee::net_utils::network_address& address, time_t seconds) {
-        return true;
-    }
-    virtual bool unblock_host(const epee::net_utils::network_address& address) { return true; }
+    virtual bool block_host(const oxen::quic::Address& address, time_t seconds) { return true; }
+    virtual bool unblock_host(const oxen::quic::Address& address) { return true; }
     virtual std::map<std::string, time_t> get_blocked_hosts() {
         return std::map<std::string, time_t>();
     }
-    virtual std::map<epee::net_utils::ipv4_network_subnet, time_t> get_blocked_subnets() {
-        return std::map<epee::net_utils::ipv4_network_subnet, time_t>();
-    }
-    virtual bool add_host_fail(const epee::net_utils::network_address& address) { return true; }
+    virtual std::map<oxen::quic::ipv4_range, time_t> get_blocked_subnets() { return {}; }
+    virtual bool add_host_fail(const oxen::quic::Address& address) { return true; }
 };
 }  // namespace nodetool

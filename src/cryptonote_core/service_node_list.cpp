@@ -37,11 +37,13 @@
 #include <zstd.h>
 
 #include <algorithm>
+#include <bitset>
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/seed_seq.hpp>
 #include <chrono>
 #include <limits>
 #include <mutex>
+#include <oxen/quic/format.hpp>
 #include <ranges>
 #include <stdexcept>
 #include <tuple>
@@ -51,7 +53,6 @@
 #include "blockchain_db/history.h"
 #include "blockchain_db/sqlite/rewards_db.h"
 #include "bls/bls_crypto.h"
-#include "common/exception.h"
 #include "common/i18n.h"
 #include "common/lock.h"
 #include "common/random.h"
@@ -61,6 +62,7 @@
 #include "common/util.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
+#include "crypto/int-util.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"
@@ -70,8 +72,6 @@
 #include "cryptonote_core/service_node_voting.h"
 #include "cryptonote_core/uptime_proof.h"
 #include "cryptonote_tx_utils.h"
-#include "epee/int-util.h"
-#include "epee/net/local_ip.h"
 #include "ethereum_transactions.h"
 #include "l2_tracker/events.h"
 #include "network_config/mocknet.h"
@@ -264,7 +264,7 @@ static bool has_restorable_state(
 static auto logcat = log::Cat("service_nodes");
 
 missing_quorum::missing_quorum(const crypto::hash& tx, uint64_t block, uint64_t quorum) :
-        oxen::traced<std::runtime_error>{
+        std::runtime_error{
                 "State change {} in block {} references the quorum at height {}, which is not "
                 "stored"_format(tx, block, quorum)},
         tx_hash{tx},
@@ -963,7 +963,7 @@ void validate_registration_signature(const registration_details& registration) {
 struct parsed_tx_contribution {
     cryptonote::account_public_address address;
     uint64_t transferred;
-    crypto::secret_key tx_key;
+    crypto::secret_key tx_key{};
     std::vector<service_node_info::contribution_t> locked_contributions;
 };
 
@@ -1885,7 +1885,7 @@ validate_ethereum_registration(
     for (auto it = reg.eth_contributions.begin(); it != reg.eth_contributions.end(); ++it) {
         for (auto it2 = std::next(it); it2 != reg.eth_contributions.end(); ++it2)
             if (it2->address == it->address)
-                throw oxen::traced<std::runtime_error>(
+                throw std::runtime_error(
                         "Invalid registration: Duplicate reserved address in registration for "
                         "SN {}:\n{}"_format(
                                 new_sn.sn_pubkey, log_registration_details(nettype, reg)));
@@ -2158,7 +2158,7 @@ void service_node_list::state_t::process_new_ethereum_tx(
     uint64_t const block_height = block.get_height();
     auto tx_hash = get_transaction_hash(tx);
     if (!sn_list->blockchain.db().tx_exists(tx_hash))
-        throw oxen::traced<std::logic_error>{
+        throw std::logic_error{
                 "Internal error: incoming eth tx {} not found in blockchain db"_format(tx_hash)};
 
     EmitTextDescription emit_text = oxen::log::get_level(logcat) <= oxen::log::Level::info
@@ -2198,8 +2198,7 @@ void service_node_list::state_t::process_new_ethereum_tx(
                 std::forward_as_tuple(tx_hash),
                 std::forward_as_tuple(block_height, block.pulse));
         !ins)
-        throw oxen::traced<std::logic_error>{
-                "Internal error: incoming eth tx was processed multiple times!"};
+        throw std::logic_error{"Internal error: incoming eth tx was processed multiple times!"};
 }
 
 service_node_list::state_t::confirm_result service_node_list::state_t::process_confirmed_event(
@@ -3155,7 +3154,7 @@ void service_node_list::verify_block(
                     min_archive,
                     max_archive);
 
-            throw oxen::traced<std::runtime_error>{fmt::to_string(buffer)};
+            throw std::runtime_error{fmt::to_string(buffer)};
         }
 
         bool failed_checkpoint_verify =
@@ -3171,9 +3170,8 @@ void service_node_list::verify_block(
         }
 
         if (failed_checkpoint_verify)
-            throw oxen::traced<std::runtime_error>{
-                    "Service node checkpoint failed verification for {} {}"_format(
-                            block_type, cryptonote::get_block_hash(block))};
+            throw std::runtime_error{"Service node checkpoint failed verification for {} {}"_format(
+                    block_type, cryptonote::get_block_hash(block))};
     }
 
     //
@@ -3187,7 +3185,7 @@ void service_node_list::verify_block(
         if (alt_block) {
             cryptonote::block prev_block;
             if (!find_block_in_db(blockchain.db(), block.prev_id, prev_block))
-                throw oxen::traced<std::runtime_error>{
+                throw std::runtime_error{
                         "Alt block {} references previous block {} not available in DB."_format(
                                 cryptonote::get_block_hash(block), block.prev_id)};
 
@@ -3200,7 +3198,7 @@ void service_node_list::verify_block(
         if (auto t = pulse::get_round_timings(blockchain, height, prev_timestamp))
             timings = std::move(*t);
         else
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Failed to query the block data for Pulse timings to validate incoming {} at height {}"_format(
                             block_type, height)};
     }
@@ -3278,7 +3276,7 @@ void service_node_list::verify_block(
     }
 
     if (!result)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Failed to verify block components for incoming {} at height {}"_format(
                         block_type, height)};
 }
@@ -3300,7 +3298,7 @@ void service_node_list::block_add(
     } else {
         // NOTE: Verify that the heights are currently consistent between the SNL and SQL DB
         if (m_state.height != blockchain.rewards_db().height) {
-            throw oxen::traced<std::runtime_error>(
+            throw std::runtime_error(
                     "SNL out of sync with SQL DB, block cannot be added to SQL (SNL height @ {}; "
                     "SQL @ "
                     "{})"_format(m_state.height, blockchain.rewards_db().height));
@@ -3328,11 +3326,9 @@ void service_node_list::block_add(
                 std::shared_ptr<const quorum> quorum =
                         get_quorum(quorum_type::pulse, block_height, false, nullptr);
                 if (!quorum)
-                    throw oxen::traced<std::runtime_error>{
-                            "Unexpected Pulse error: quorum was not generated"};
+                    throw std::runtime_error{"Unexpected Pulse error: quorum was not generated"};
                 if (quorum->validators.empty())
-                    throw oxen::traced<std::runtime_error>{
-                            "Unexpected Pulse error: quorum was empty"};
+                    throw std::runtime_error{"Unexpected Pulse error: quorum was empty"};
                 for (size_t validator_index = 0; validator_index < num_validators;
                      validator_index++) {
                     pulse::bitset_t bit = 1 << validator_index;
@@ -3798,7 +3794,7 @@ crypto::x25519_public_key snpk_to_xpk(const crypto::public_key& snpk, bool alrea
     auto& xpk = snpk_xpk_cache[snpk];
     if (!xpk) {
         if (0 != crypto_sign_ed25519_pk_to_curve25519(xpk.data(), snpk.data()))
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Unable to convert SN Ed25519 pubkey {} to X25519 pubkey"_format(snpk)};
     }
     return xpk;
@@ -4312,9 +4308,8 @@ block_add_result service_node_list::state_t::update_from_block(
         assert(block.tx_eth_count <= block.tx_hashes.size());
 
         if (block.l2_votes.size() != unconfirmed_l2_txes.size())
-            throw oxen::traced<std::runtime_error>{
-                    "Block L2 votes {} != pending L2 state change count {}"_format(
-                            block.l2_votes.size(), unconfirmed_l2_txes.size())};
+            throw std::runtime_error{"Block L2 votes {} != pending L2 state change count {}"_format(
+                    block.l2_votes.size(), unconfirmed_l2_txes.size())};
 
         const uint32_t vote_weight =
                 unconfirmed_l2_tx::FULL_SCORE / (block.has_pulse() ? 1 + block.pulse.round : 1);
@@ -4343,7 +4338,7 @@ block_add_result service_node_list::state_t::update_from_block(
             std::string fail;
             auto event = eth::extract_event(tx, &fail);
             if (std::holds_alternative<std::monostate>(event))
-                throw oxen::traced<std::runtime_error>{
+                throw std::runtime_error{
                         "Internal error: did not find state change tx data in blockchain database: {}"_format(
                                 fail)};
 
@@ -4360,7 +4355,7 @@ block_add_result service_node_list::state_t::update_from_block(
             }
 
             if (!found) {
-                throw oxen::traced<std::runtime_error>(
+                throw std::runtime_error(
                         "TX {} was confirmed from block {} but the TX hash does not exist "
                         "in the DB, block {} cannot be added due to missing data"_format(
                                 txhash, unconf.height_added, height));
@@ -4906,7 +4901,7 @@ void service_node_list::blockchain_detached(uint64_t height) {
                 "Unable to rewind the service node list to height {}: that is further back than "
                 "the history this node keeps.  Re-bootstrap the node from a snapshot.",
                 target_height);
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "service node list rewind to {} is beyond the kept history"_format(target_height)};
     } else {
         // NOTE: No height that both can restore to: start over.  (This also resets the rewards.)
@@ -5170,7 +5165,7 @@ static void verify_coinbase_tx_output(
         cryptonote::account_public_address const& receiver,
         uint64_t reward) {
     if (output_index >= miner_tx.vout.size())
-        throw oxen::traced<std::out_of_range>{
+        throw std::out_of_range{
                 "Output Index: {}, indexes out of bounds in vout array with size: {}"_format(
                         output_index, miner_tx.vout.size())};
 
@@ -5180,13 +5175,12 @@ static void verify_coinbase_tx_output(
     // expression contraction, and RandomX fiddling with the rounding modes) we can end up with a
     // 1 ULP difference in the reward calculations.
     if (!within_one(output.amount, reward))
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Service node reward amount incorrect. Should be {}, is: {}"_format(
                         cryptonote::print_money(reward), cryptonote::print_money(output.amount))};
 
     if (!std::holds_alternative<cryptonote::txout_to_key>(output.target))
-        throw oxen::traced<std::runtime_error>{
-                "Service node output target type should be txout_to_key"};
+        throw std::runtime_error{"Service node output target type should be txout_to_key"};
 
     // NOTE: Loki uses the governance key in the one-time ephemeral key
     // derivation for both Pulse Block Producer/Queued Service Node Winner rewards
@@ -5195,13 +5189,13 @@ static void verify_coinbase_tx_output(
     cryptonote::keypair gov_key = cryptonote::get_deterministic_keypair_from_height(height);
 
     if (!crypto::generate_key_derivation(receiver.m_view_public_key, gov_key.sec, derivation))
-        throw oxen::traced<std::runtime_error>{"Failed to generate key derivation"};
+        throw std::runtime_error{"Failed to generate key derivation"};
     if (!crypto::derive_public_key(
                 derivation, output_index, receiver.m_spend_public_key, out_eph_public_key))
-        throw oxen::traced<std::runtime_error>{"Failed derive public key"};
+        throw std::runtime_error{"Failed derive public key"};
 
     if (std::get<cryptonote::txout_to_key>(output.target).key != out_eph_public_key)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Invalid service node reward at output: {}, output key, specifies wrong key"_format(
                         output_index)};
 }
@@ -5229,7 +5223,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
         if (tools::view_guts(block.sn_winner_tail) !=
             tools::view_guts(block_leader.key)
                     .substr(block_leader.key.size() - block.sn_winner_tail.size()))
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Service node reward winner is incorrect!  Expected …{}, block {} has winner {}"_format(
                             block.sn_winner_tail, height, block_leader.key)};
     }
@@ -5243,7 +5237,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 cryptonote::get_service_node_winner_from_tx_extra(block.miner_tx->extra);
 
         if (block_leader.key != actual_winner)
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Service node reward winner is incorrect! Expected {}, block {} hf{} has {}"_format(
                             block_leader.key,
                             height,
@@ -5287,7 +5281,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 block.pulse.round,
                 block.get_height());
         if (!verify_pulse_quorum_sizes(pulse_quorum, hf_version, active_snodes.size()))
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Pulse block received but Pulse has insufficient nodes for quorum, block hash {}, height {}"_format(
                             cryptonote::get_block_hash(block), height)};
 
@@ -5298,7 +5292,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                      : verify_mode::pulse_different_block_producer;
 
         if (block.pulse.round == 0 && (mode == verify_mode::pulse_different_block_producer))
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "The block producer in pulse round 0 should be the same node as the block leader: {}, actual producer: {}"_format(
                             block_leader.key, block_producer_key)};
     }
@@ -5363,7 +5357,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                                             ? block_producer->contributors.size()
                                             : 0;
             } else {
-                throw oxen::traced<std::runtime_error>{
+                throw std::runtime_error{
                         "The pulse block producer for round {:d} is not current a Service Node: {}"_format(
                                 block.pulse.round, block_producer_key)};
             }
@@ -5388,13 +5382,11 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
     assert(expected_miner_tx || expected_vouts_size == 0);
 
     if (expected_miner_tx != block.miner_tx.has_value())
-        throw oxen::traced<std::runtime_error>{
-                "Expected block {} a miner tx, but the block {} one"_format(
-                        expected_miner_tx ? "with" : "without",
-                        block.miner_tx ? "has" : "doesn't have")};
+        throw std::runtime_error{"Expected block {} a miner tx, but the block {} one"_format(
+                expected_miner_tx ? "with" : "without", block.miner_tx ? "has" : "doesn't have")};
 
     if (block.miner_tx && block.miner_tx->vout.size() != expected_vouts_size)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Expected {} block, the miner TX specifies a different amount of outputs vs the expected: {}, miner tx outputs: {}"_format(
                         mode == verify_mode::miner                            ? "miner"sv
                         : mode == verify_mode::batched_sn_rewards             ? "batch reward"sv
@@ -5407,7 +5399,7 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                         block.miner_tx->vout.size())};
 
     if (hf_version >= hf::hf16_pulse && reward_parts.base_miner != 0)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Miner reward is incorrect expected 0 reward, block specified {}"_format(
                         cryptonote::print_money(reward_parts.base_miner))};
 
@@ -5503,19 +5495,19 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                 const auto& batch_payment = batched_sn_payments[vout_index];
 
                 if (!std::holds_alternative<cryptonote::txout_to_key>(vout.target))
-                    throw oxen::traced<std::runtime_error>{
+                    throw std::runtime_error{
                             "Service node output target type should be txout_to_key"};
 
                 constexpr uint64_t max_amount =
                         std::numeric_limits<uint64_t>::max() / cryptonote::BATCH_REWARD_FACTOR;
                 if (vout.amount > max_amount)
-                    throw oxen::traced<std::runtime_error>{
+                    throw std::runtime_error{
                             "Batched reward payout invalid: exceeds maximum possible payout size"};
 
                 auto paid_amount = cryptonote::reward_money::from_coin(vout.amount);
                 total_payout_in_vouts += paid_amount.to_coin();
                 if (paid_amount != batch_payment.amount)
-                    throw oxen::traced<std::runtime_error>{
+                    throw std::runtime_error{
                             "Batched reward payout incorrect: expected {}, not {}"_format(
                                     batch_payment.amount, paid_amount)};
 
@@ -5525,17 +5517,16 @@ void service_node_list::validate_miner_tx(const cryptonote::miner_tx_info& info)
                             deterministic_keypair,
                             vout_index,
                             out_eph_public_key))
-                    throw oxen::traced<std::runtime_error>{
-                            "Failed to generate output one-time public key"};
+                    throw std::runtime_error{"Failed to generate output one-time public key"};
 
                 const auto& out_to_key = std::get<cryptonote::txout_to_key>(vout.target);
                 if (tools::view_guts(out_to_key) != tools::view_guts(out_eph_public_key))
-                    throw oxen::traced<std::runtime_error>{
+                    throw std::runtime_error{
                             "Output Ephermeral Public Key does not match (payment to wrong "
                             "recipient)"};
             }
             if (total_payout_in_vouts != total_payout_in_our_db.to_coin())
-                throw oxen::traced<std::runtime_error>{
+                throw std::runtime_error{
                         "Total service node reward amount incorrect: expected {}, not {}"_format(
                                 total_payout_in_our_db.to_coin(), total_payout_in_vouts)};
         } break;
@@ -5585,11 +5576,11 @@ void service_node_list::alt_block_add(const cryptonote::block_add_info& info) {
     }
 
     if (!starting_state)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Received alt block but couldn't find parent state in historical state"};
 
     if (starting_state->block_hash != block.prev_id)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Unexpected state_t's hash: {}, does not match the block prev hash: {}"_format(
                         starting_state->block_hash, block.prev_id)};
 
@@ -6058,7 +6049,7 @@ bool service_node_list::store(uint64_t state_height) {
 
 uptime_proof::Proof service_node_list::generate_uptime_proof(
         hf hardfork,
-        uint32_t public_ip,
+        const oxen::quic::ipv4& public_ip,
         uint16_t storage_https_port,
         uint16_t storage_omq_port,
         std::array<uint16_t, 3> ss_version,
@@ -6119,9 +6110,9 @@ std::pair<bool, bool> proof_info::update(
     //
     // If we already know about the IP, update its timestamp:
     auto now = std::time(nullptr);
-    if (public_ips[0].first && public_ips[0].first == proof->public_ip)
+    if (public_ips[0].first != oxen::quic::ipv4{} && public_ips[0].first == proof->public_ip)
         public_ips[0].second = now;
-    else if (public_ips[1].first && public_ips[1].first == proof->public_ip)
+    else if (public_ips[1].first != oxen::quic::ipv4{} && public_ips[1].first == proof->public_ip)
         public_ips[1].second = now;
     // Otherwise replace whichever IP has the older timestamp
     else if (public_ips[0].second > public_ips[1].second)
@@ -6233,7 +6224,7 @@ bool service_node_list::handle_uptime_proof(
         }
     }
 
-    if (!debug_allow_local_ips && !epee::net_utils::is_ip_public(proof->public_ip)) {
+    if (!debug_allow_local_ips && !proof->public_ip.is_public()) {
         log::debug(
                 logcat,
                 "Rejecting uptime proof from {}: public_ip is not actually public",
@@ -6500,7 +6491,7 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
     }
 
     bool found = false;
-    uint32_t ip = 0;
+    oxen::quic::ipv4 ip{};
     uint16_t port = 0;
     for_each_service_node_info_and_proof(&pubkey, &pubkey + 1, [&](auto&, auto&, auto& proof) {
         found = true;
@@ -6512,7 +6503,7 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
         log::debug(logcat, "no connection available: primary pubkey {} is not registered", pubkey);
         return "";
     }
-    if (!(ip && port)) {
+    if (ip == oxen::quic::ipv4{} || !port) {
         log::debug(
                 logcat,
                 "no connection available: service node {} has no associated ip and/or port",
@@ -6520,7 +6511,7 @@ std::string service_node_list::remote_lookup(std::string_view xpk) {
         return "";
     }
 
-    return "tcp://" + epee::string_tools::get_ip_string_from_int32(ip) + ":" + std::to_string(port);
+    return "tcp://{}:{}"_format(ip, port);
 }
 
 void service_node_list::record_checkpoint_participation(
@@ -6559,7 +6550,7 @@ std::vector<bool> service_node_list::l2_pending_state_votes() const {
         votes.push_back(std::visit(
                 [&l2_tracker, &txid]<typename T>(const T& evt) -> bool {
                     if constexpr (std::is_same_v<T, std::monostate>)
-                        throw oxen::traced<std::runtime_error>{
+                        throw std::runtime_error{
                                 "Internal error: did not find required state data for pending unconfirmed tx {}"_format(
                                         txid)};
                     else
@@ -6797,7 +6788,7 @@ service_nodes_infos_t::iterator service_node_list::state_t::erase_info(
             // recently removed nodes.  Step 2 happens later once the corresponding ServiceNodeExit
             // comes in.
 
-            uint32_t public_ip = 0;
+            oxen::quic::ipv4 public_ip{};
             uint16_t qnet_port = 0;
             std::array<uint16_t, 3> version = {};
             if (sn_list) {

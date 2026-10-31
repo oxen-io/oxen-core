@@ -30,20 +30,20 @@
 
 #include "cryptonote_tx_utils.h"
 
+#include <sodium/utils.h>
+
 #include <random>
 #include <unordered_set>
 
 #include "blockchain.h"
 #include "common/apply_permutation.h"
-#include "common/exception.h"
 #include "crypto/crypto.h"
 #include "crypto/hash.h"
+#include "crypto/int-util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/miner.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_config.h"
-#include "epee/int-util.h"
-#include "epee/string_tools.h"
 #include "multisig/multisig.h"
 #include "ringct/rctSigs.h"
 
@@ -111,21 +111,25 @@ bool get_deterministic_output_key(
         crypto::public_key& output_key) {
     crypto::key_derivation derivation{};
     bool r = crypto::generate_key_derivation(address.m_view_public_key, tx_key.sec, derivation);
-    CHECK_AND_ASSERT_MES(
-            r,
-            false,
-            "failed to generate_key_derivation({}, {})",
-            address.m_view_public_key,
-            tools::hex_guts(tx_key.sec));
+    if (!r) {
+        log::error(
+                logcat,
+                "failed to generate_key_derivation({}, {})",
+                address.m_view_public_key,
+                tools::hex_guts(tx_key.sec));
+        return false;
+    }
 
     r = crypto::derive_public_key(derivation, output_index, address.m_spend_public_key, output_key);
-    CHECK_AND_ASSERT_MES(
-            r,
-            false,
-            "failed to derive_public_key({}, {}, {}",
-            derivation,
-            output_index,
-            address.m_spend_public_key);
+    if (!r) {
+        log::error(
+                logcat,
+                "failed to derive_public_key({}, {}, {}",
+                derivation,
+                output_index,
+                address.m_spend_public_key);
+        return false;
+    }
 
     return true;
 }
@@ -214,13 +218,15 @@ uint64_t derive_governance_from_block_reward(
     for (tx_out const& output : block.miner_tx->vout)
         actual_reward += output.amount;
 
-    CHECK_AND_ASSERT_MES(
-            block_reward <= actual_reward,
-            false,
-            "Rederiving the base block reward from the service node reward exceeded the actual "
-            "amount paid in the block, derived block reward: {}, actual reward: {}",
-            block_reward,
-            actual_reward);
+    if (block_reward > actual_reward) {
+        log::error(
+                logcat,
+                "Rederiving the base block reward from the service node reward exceeded the actual "
+                "amount paid in the block, derived block reward: {}, actual reward: {}",
+                block_reward,
+                actual_reward);
+        return false;
+    }
 
     result = governance;
     return result;
@@ -271,7 +277,6 @@ static uint64_t calculate_sum_of_portions(
 
 std::pair<bool, uint64_t> construct_miner_tx(
         size_t height,
-        size_t median_weight,
         uint64_t already_generated_coins,
         size_t current_block_weight,
         uint64_t fee,
@@ -282,8 +287,7 @@ std::pair<bool, uint64_t> construct_miner_tx(
         hf hard_fork_version) {
 
     if (hard_fork_version >= feature::ETH_BLS)
-        throw oxen::traced<std::logic_error>{
-                "Invalid usage: construct_miner_tx cannot be used in HF21+"};
+        throw std::logic_error{"Invalid usage: construct_miner_tx cannot be used in HF21+"};
 
     tx.vin.clear();
     tx.vout.clear();
@@ -319,7 +323,6 @@ std::pair<bool, uint64_t> construct_miner_tx(
 
     block_reward_parts reward_parts{};
     if (!get_oxen_block_reward(
-                median_weight,
                 current_block_weight,
                 already_generated_coins,
                 hard_fork_version,
@@ -369,31 +372,38 @@ std::pair<bool, uint64_t> construct_miner_tx(
     std::vector<batch_sn_payment> batched_rewards;
     const network_type nettype = miner_tx_context.nettype;
 
-    if (hard_fork_version >= hf::hf9_service_nodes)
-        CHECK_AND_ASSERT_MES(
-                miner_tx_context.block_leader.payouts.size(),
-                std::make_pair(false, block_rewards),
-                "Constructing a block leader reward for block but no payout entries specified");
+    if (hard_fork_version >= hf::hf9_service_nodes) {
+        if (!miner_tx_context.block_leader.payouts.size()) {
+            log::error(
+                    logcat,
+                    "Constructing a block leader reward for block but no payout entries specified");
+            return std::make_pair(false, block_rewards);
+        }
+    }
 
     // NOTE: Add Block Producer Reward
     service_nodes::payout const& leader = miner_tx_context.block_leader;
     if (miner_tx_context.pulse) {
         // PULSE BLOCKS
 
-        CHECK_AND_ASSERT_MES(
-                miner_tx_context.pulse_block_producer.payouts.size(),
-                std::make_pair(false, block_rewards),
-                "Constructing a reward for block produced by pulse but no payout entries "
-                "specified");
-        CHECK_AND_ASSERT_MES(
-                miner_tx_context.pulse_block_producer.key,
-                std::make_pair(false, block_rewards),
-                "Null Key given for Pulse Block Producer");
-        CHECK_AND_ASSERT_MES(
-                hard_fork_version >= hf::hf16_pulse,
-                std::make_pair(false, block_rewards),
-                "Pulse Block Producer is not valid until HF16, currently HF{}",
-                static_cast<int>(hard_fork_version));
+        if (!miner_tx_context.pulse_block_producer.payouts.size()) {
+            log::error(
+                    logcat,
+                    "Constructing a reward for block produced by pulse but no payout entries "
+                    "specified");
+            return std::make_pair(false, block_rewards);
+        }
+        if (!miner_tx_context.pulse_block_producer.key) {
+            log::error(logcat, "Null Key given for Pulse Block Producer");
+            return std::make_pair(false, block_rewards);
+        }
+        if (hard_fork_version < hf::hf16_pulse) {
+            log::error(
+                    logcat,
+                    "Pulse Block Producer is not valid until HF16, currently HF{}",
+                    static_cast<int>(hard_fork_version));
+            return std::make_pair(false, block_rewards);
+        }
 
         uint64_t leader_reward = reward_parts.service_node_total;
         if (miner_tx_context.block_leader.key == miner_tx_context.pulse_block_producer.key) {
@@ -429,10 +439,13 @@ std::pair<bool, uint64_t> construct_miner_tx(
     } else {
         // MINED BLOCKS
 
-        CHECK_AND_ASSERT_MES(
-                miner_tx_context.pulse_block_producer.payouts.empty(),
-                std::make_pair(false, block_rewards),
-                "Constructing a reward for block produced by miner but payout entries specified");
+        if (!miner_tx_context.pulse_block_producer.payouts.empty()) {
+            log::error(
+                    logcat,
+                    "Constructing a reward for block produced by miner but payout entries "
+                    "specified");
+            return std::make_pair(false, block_rewards);
+        }
 
         if (uint64_t miner_amount = reward_parts.base_miner + reward_parts.miner_fee;
             miner_amount) {
@@ -466,11 +479,13 @@ std::pair<bool, uint64_t> construct_miner_tx(
     // NOTE: Add Governance Payout
     if (already_generated_coins != 0) {
         if (reward_parts.governance_paid == 0) {
-            CHECK_AND_ASSERT_MES(
-                    hard_fork_version >= hf::hf10_bulletproofs,
-                    std::make_pair(false, block_rewards),
-                    "Governance reward can NOT be 0 before hardfork 10, hard_fork_version: {}",
-                    static_cast<int>(hard_fork_version));
+            if (hard_fork_version < hf::hf10_bulletproofs) {
+                log::error(
+                        logcat,
+                        "Governance reward can NOT be 0 before hardfork 10, hard_fork_version: {}",
+                        static_cast<int>(hard_fork_version));
+                return std::make_pair(false, block_rewards);
+            }
         }
         // Governance reward paid out through SN rewards batching from HF19
         else if (hard_fork_version < hf::hf19_reward_batching) {
@@ -500,16 +515,18 @@ std::pair<bool, uint64_t> construct_miner_tx(
     }
 
     if (hard_fork_version < hf::hf19_reward_batching) {
-        CHECK_AND_ASSERT_MES(
-                rewards.size() <= 9,
-                std::make_pair(false, block_rewards),
-                "More rewards specified than supported, number of rewards: {}, capacity: {}",
-                rewards.size(),
-                rewards.size());
-        CHECK_AND_ASSERT_MES(
-                rewards.size() > 0,
-                std::make_pair(false, block_rewards),
-                "Zero rewards are to be payed out, there should be at least 1");
+        if (rewards.size() > 9) {
+            log::error(
+                    logcat,
+                    "More rewards specified than supported, number of rewards: {}, capacity: {}",
+                    rewards.size(),
+                    rewards.size());
+            return std::make_pair(false, block_rewards);
+        }
+        if (rewards.size() <= 0) {
+            log::error(logcat, "Zero rewards are to be payed out, there should be at least 1");
+            return std::make_pair(false, block_rewards);
+        }
     }
 
     // NOTE: Make TX Outputs
@@ -559,18 +576,23 @@ std::pair<bool, uint64_t> construct_miner_tx(
     else
         expected_amount = total_sn_rewards;
 
-    CHECK_AND_ASSERT_MES(
-            summary_amounts == expected_amount,
-            std::make_pair(false, block_rewards),
-            "Failed to construct miner tx, summary_amounts = {} not equal total block_reward = {}",
-            summary_amounts,
-            expected_amount);
-    CHECK_AND_ASSERT_MES(
-            tx.vout.size() == rewards.size(),
-            std::make_pair(false, block_rewards),
-            "TX output mis-match with rewards expected: {}, tx outputs: {}",
-            rewards.size(),
-            tx.vout.size());
+    if (summary_amounts != expected_amount) {
+        log::error(
+                logcat,
+                "Failed to construct miner tx, summary_amounts = {} not equal total block_reward = "
+                "{}",
+                summary_amounts,
+                expected_amount);
+        return std::make_pair(false, block_rewards);
+    }
+    if (tx.vout.size() != rewards.size()) {
+        log::error(
+                logcat,
+                "TX output mis-match with rewards expected: {}, tx outputs: {}",
+                rewards.size(),
+                tx.vout.size());
+        return std::make_pair(false, block_rewards);
+    }
 
     block_rewards = std::accumulate(
             batched_rewards.begin(), batched_rewards.end(), uint64_t{0}, [](uint64_t x, auto&& y) {
@@ -586,7 +608,6 @@ std::pair<bool, uint64_t> construct_miner_tx(
 }
 
 bool get_oxen_block_reward(
-        size_t median_weight,
         size_t current_block_weight,
         uint64_t already_generated_coins,
         hf hard_fork_version,
@@ -594,13 +615,11 @@ bool get_oxen_block_reward(
         const oxen_block_reward_context& oxen_context) {
 
     if (hard_fork_version >= feature::ETH_BLS)
-        throw oxen::traced<std::logic_error>{
-                "Invalid usage: get_oxen_block_reward is not applicable in HF21+"};
+        throw std::logic_error{"Invalid usage: get_oxen_block_reward is not applicable in HF21+"};
 
     result = {};
     uint64_t base_reward, base_reward_unpenalized;
     if (!get_base_block_reward(
-                median_weight,
                 current_block_weight,
                 already_generated_coins,
                 base_reward,
@@ -738,13 +757,15 @@ bool construct_tx_with_tx_key(
     }
 
     tx.version = transaction::get_max_version_for_hf(tx_params.hf_version);
-    CHECK_AND_ASSERT_MES(
-            tx.version >= txversion::v4_tx_types, false, "Cannot construct pre-v4 transactions");
-    CHECK_AND_ASSERT_MES(
-            rct_config.range_proof_type == rct::RangeProofType::PaddedBulletproof &&
-                    (rct_config.bp_version == 0 || rct_config.bp_version >= 3),
-            false,
-            "Cannot construct pre-CLSAG transactions");
+    if (tx.version < txversion::v4_tx_types) {
+        log::error(logcat, "Cannot construct pre-v4 transactions");
+        return false;
+    }
+    if (!(rct_config.range_proof_type == rct::RangeProofType::PaddedBulletproof &&
+          (rct_config.bp_version == 0 || rct_config.bp_version >= 3))) {
+        log::error(logcat, "Cannot construct pre-CLSAG transactions");
+        return false;
+    }
 
     tx.type = tx_params.tx_type;
 
@@ -951,11 +972,12 @@ bool construct_tx_with_tx_key(
     //   - there's only one destination which is a subaddress
     bool need_additional_txkeys =
             num_subaddresses > 0 && (num_stdaddresses > 0 || num_subaddresses > 1);
-    if (need_additional_txkeys)
-        CHECK_AND_ASSERT_MES(
-                destinations.size() == additional_tx_keys.size(),
-                false,
-                "Wrong amount of additional tx keys");
+    if (need_additional_txkeys) {
+        if (destinations.size() != additional_tx_keys.size()) {
+            log::error(logcat, "Wrong amount of additional tx keys");
+            return false;
+        }
+    }
 
     uint64_t summary_outs_money = 0;
     // fill outputs
@@ -995,21 +1017,24 @@ bool construct_tx_with_tx_key(
         }
 
         if (tx.type == txtype::stake) {
-            CHECK_AND_ASSERT_MES(
-                    dst_entr.addr == sender_account_keys.m_account_address,
-                    false,
-                    "A staking contribution must return back to the original sendee otherwise the "
-                    "pre-calculated key image is incorrect");
-            CHECK_AND_ASSERT_MES(
-                    dst_entr.is_subaddress == false,
-                    false,
-                    "Staking back to a subaddress is not allowed");  // TODO(oxen): Maybe one day,
-                                                                     // revisit this
-            CHECK_AND_ASSERT_MES(
-                    need_additional_txkeys == false,
-                    false,
-                    "Staking TX's can not required additional TX Keys");  // TODO(oxen): Maybe one
-                                                                          // day, revisit this
+            if (dst_entr.addr != sender_account_keys.m_account_address) {
+                log::error(
+                        logcat,
+                        "A staking contribution must return back to the original sendee otherwise "
+                        "the "
+                        "pre-calculated key image is incorrect");
+                return false;
+            }
+            if (dst_entr.is_subaddress != false) {
+                log::error(logcat, "Staking back to a subaddress is not allowed");
+                return false;
+            }  // TODO(oxen): Maybe one day,
+               // revisit this
+            if (need_additional_txkeys != false) {
+                log::error(logcat, "Staking TX's can not required additional TX Keys");
+                return false;
+            }  // TODO(oxen): Maybe one
+               // day, revisit this
 
             if (!(change_addr && *change_addr == dst_entr)) {
                 auto& proof = key_image_proofs.proofs.emplace_back();
@@ -1042,16 +1067,16 @@ bool construct_tx_with_tx_key(
         output_index++;
         summary_outs_money += dst_entr.amount;
     }
-    CHECK_AND_ASSERT_MES(
-            additional_tx_public_keys.size() == additional_tx_keys.size(),
-            false,
-            "Internal error creating additional public keys");
+    if (additional_tx_public_keys.size() != additional_tx_keys.size()) {
+        log::error(logcat, "Internal error creating additional public keys");
+        return false;
+    }
 
     if (tx.type == txtype::stake) {
-        CHECK_AND_ASSERT_MES(
-                key_image_proofs.proofs.size() >= 1,
-                false,
-                "No key image proofs were generated for staking tx");
+        if (key_image_proofs.proofs.size() < 1) {
+            log::error(logcat, "No key image proofs were generated for staking tx");
+            return false;
+        }
         add_tx_key_image_proofs_to_tx_extra(tx.extra, key_image_proofs);
 
         if (tx_params.hf_version <= hf::hf13_enforce_checkpoints)
@@ -1104,7 +1129,7 @@ bool construct_tx_with_tx_key(
         ctkey.dest = rct::sk2rct(in_contexts[i].in_ephemeral.sec);
         ctkey.mask = sources[i].mask;
         inSk.push_back(ctkey);
-        memwipe(&ctkey, sizeof(rct::ctkey));
+        sodium_memzero(&ctkey, sizeof(rct::ctkey));
         // inPk: (public key, commitment)
         // will be done when filling in mixRing
         if (msout) {
@@ -1170,9 +1195,12 @@ bool construct_tx_with_tx_key(
             outSk,
             rct_config,
             hwdev);
-    memwipe(inSk.data(), inSk.size() * sizeof(rct::ctkey));
+    sodium_memzero(inSk.data(), inSk.size() * sizeof(rct::ctkey));
 
-    CHECK_AND_ASSERT_MES(tx.vout.size() == outSk.size(), false, "outSk size does not match vout");
+    if (tx.vout.size() != outSk.size()) {
+        log::error(logcat, "outSk size does not match vout");
+        return false;
+    }
 
     log::info(
             log::Cat("construct_tx"),
@@ -1285,13 +1313,16 @@ bool generate_genesis_block(block& bl, network_type nettype) {
     // genesis block
     bl = {};
 
-    CHECK_AND_ASSERT_MES(
-            oxenc::is_hex(conf.GENESIS_TX),
-            false,
-            "failed to parse coinbase tx from hard coded blob");
+    if (!oxenc::is_hex(conf.GENESIS_TX)) {
+        log::error(logcat, "failed to parse coinbase tx from hard coded blob");
+        return false;
+    }
     std::string tx_bl = oxenc::from_hex(conf.GENESIS_TX);
     bool r = parse_and_validate_tx_from_blob(tx_bl, bl.miner_tx.emplace());
-    CHECK_AND_ASSERT_MES(r, false, "failed to parse coinbase tx from hard coded blob");
+    if (!r) {
+        log::error(logcat, "failed to parse coinbase tx from hard coded blob");
+        return false;
+    }
     bl.major_version = hf::hf7;
     bl.minor_version = static_cast<uint8_t>(hf::hf7);
     bl.timestamp = 0;
@@ -1359,35 +1390,32 @@ crypto::hash get_block_longhash(
         const block& b,
         uint64_t height,
         int miners) {
-    crypto::hash result{};
     const auto bd = get_block_hashing_blob(b);
     const auto hf_version = b.major_version;
 
-    crypto::cn_slow_hash_type cn_type = cn_slow_hash_type::heavy_v1;
-    if (nettype == network_type::FAKECHAIN) {
-        cn_type = cn_slow_hash_type::turtle_lite_v2;
-    } else {
-        if (hf_version >= hf::hf12_checkpointing) {
-            rx_slow_hash(
-                    randomx_context.current_blockchain_height,
-                    randomx_context.seed_height,
-                    randomx_context.seed_block_hash.data(),
-                    bd.data(),
-                    bd.size(),
-                    result.data(),
-                    miners,
-                    0);
-            return result;
-        }
+    // A fake chain (core tests, --regtest) only needs a stand-in for proof of work: a slow hash
+    // there just makes every block cost a memory-hard hash to mine and again to verify.
+    if (nettype == network_type::FAKECHAIN)
+        return crypto::cn_fast_hash(bd.data(), bd.size());
 
-        if (hf_version >= hf::hf11_infinite_staking)
-            cn_type = cn_slow_hash_type::turtle_lite_v2;
-        else if (hf_version >= hf::hf7)
-            cn_type = crypto::cn_slow_hash_type::heavy_v2;
+    if (hf_version >= hf::hf12_checkpointing) {
+        crypto::hash result;
+        rx_slow_hash(
+                randomx_context.current_blockchain_height,
+                randomx_context.seed_height,
+                randomx_context.seed_block_hash.data(),
+                bd.data(),
+                bd.size(),
+                result.data(),
+                miners,
+                0);
+        return result;
     }
-
-    crypto::cn_slow_hash(bd.data(), bd.size(), result, cn_type);
-    return result;
+    if (hf_version >= hf::hf11_infinite_staking)
+        return crypto::cn_turtle_lite_v2(bd);
+    if (hf_version >= hf::hf7)
+        return crypto::cn_heavy_v2(bd);
+    return crypto::cn_heavy_v1(bd);
 }
 
 crypto::hash get_block_longhash_w_blockchain(

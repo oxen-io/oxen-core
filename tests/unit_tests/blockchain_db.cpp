@@ -36,7 +36,6 @@
 
 #include "gtest/gtest.h"
 
-#include "epee/string_tools.h"
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/history.h"
 #include "blockchain_db/lmdb/db_lmdb.h"
@@ -183,7 +182,10 @@ protected:
     {
       block bl;
       std::string bd = h2b(i);
-      CHECK_AND_ASSERT_THROW_MES(parse_and_validate_block_from_blob(bd, bl), "Invalid block");
+      if (!parse_and_validate_block_from_blob(bd, bl)) {
+        oxen::log::error(logcat, "Invalid block");
+        throw std::runtime_error{"Invalid block"};
+      }
       m_blocks.push_back(std::make_pair(bl, bd));
     }
     for (auto& i : t_transactions)
@@ -193,7 +195,10 @@ protected:
       {
         transaction tx;
         std::string bd = h2b(j);
-        CHECK_AND_ASSERT_THROW_MES(parse_and_validate_tx_from_blob(bd, tx), "Invalid transaction");
+        if (!parse_and_validate_tx_from_blob(bd, tx)) {
+          oxen::log::error(logcat, "Invalid transaction");
+          throw std::runtime_error{"Invalid transaction"};
+        }
         txs.push_back(std::make_pair(tx, bd));
       }
       m_txs.push_back(txs);
@@ -260,7 +265,7 @@ protected:
 
   void add_test_block(size_t i)
   {
-    m_db->add_block(m_blocks[i], t_sizes[i], t_sizes[i], t_diffs[i], t_coins[i], m_txs[i]);
+    m_db->add_block(m_blocks[i], t_sizes[i], t_diffs[i], t_coins[i], m_txs[i]);
   }
 
   // Opens the database and adds both test blocks to it.
@@ -288,7 +293,7 @@ protected:
       b.miner_tx->unprunable_size = 0;
       b.miner_tx->invalidate_hashes();
       b.invalidate_hashes();
-      m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1] + height, t_coins[1], {});
+      m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_diffs[1] + height, t_coins[1], {});
     }
   }
 };
@@ -336,10 +341,10 @@ TYPED_TEST(BlockchainDBTest, AddBlock)
   // TODO: need at least one more block to make this reasonable, as the
   // BlockchainDB implementation should not check for parent if
   // no blocks have been added yet (because genesis has no parent).
-  //ASSERT_THROW(this->m_db->add_block(this->m_blocks[1], t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], this->m_txs[1]), BLOCK_PARENT_DNE);
+  //ASSERT_THROW(this->m_db->add_block(this->m_blocks[1], t_sizes[1], t_diffs[1], t_coins[1], this->m_txs[1]), BLOCK_PARENT_DNE);
 
-  ASSERT_NO_THROW(this->m_db->add_block(this->m_blocks[0], t_sizes[0], t_sizes[0], t_diffs[0], t_coins[0], this->m_txs[0]));
-  ASSERT_NO_THROW(this->m_db->add_block(this->m_blocks[1], t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], this->m_txs[1]));
+  ASSERT_NO_THROW(this->m_db->add_block(this->m_blocks[0], t_sizes[0], t_diffs[0], t_coins[0], this->m_txs[0]));
+  ASSERT_NO_THROW(this->m_db->add_block(this->m_blocks[1], t_sizes[1], t_diffs[1], t_coins[1], this->m_txs[1]));
 
   block b;
   ASSERT_TRUE(this->m_db->block_exists(get_block_hash(this->m_blocks[0].first)));
@@ -352,7 +357,7 @@ TYPED_TEST(BlockchainDBTest, AddBlock)
   ASSERT_TRUE(compare_blocks(this->m_blocks[0].first, b));
 
   // assert that we can't add the same block twice
-  ASSERT_THROW(this->m_db->add_block(this->m_blocks[0], t_sizes[0], t_sizes[0], t_diffs[0], t_coins[0], this->m_txs[0]), TX_EXISTS);
+  ASSERT_THROW(this->m_db->add_block(this->m_blocks[0], t_sizes[0], t_diffs[0], t_coins[0], this->m_txs[0]), TX_EXISTS);
 
   for (auto& h : this->m_blocks[0].first.tx_hashes)
   {
@@ -377,14 +382,14 @@ TYPED_TEST(BlockchainDBTest, RetrieveBlockData)
 
   db_wtxn_guard guard{*this->m_db};
 
-  ASSERT_NO_THROW(this->m_db->add_block(this->m_blocks[0], t_sizes[0], t_sizes[0],  t_diffs[0], t_coins[0], this->m_txs[0]));
+  ASSERT_NO_THROW(this->m_db->add_block(this->m_blocks[0], t_sizes[0],  t_diffs[0], t_coins[0], this->m_txs[0]));
 
   ASSERT_EQ(t_sizes[0], this->m_db->get_block_weight(0));
   ASSERT_EQ(t_diffs[0], this->m_db->get_block_cumulative_difficulty(0));
   ASSERT_EQ(t_diffs[0], this->m_db->get_block_difficulty(0));
   ASSERT_EQ(t_coins[0], this->m_db->get_block_already_generated_coins(0));
 
-  ASSERT_NO_THROW(this->m_db->add_block(this->m_blocks[1], t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], this->m_txs[1]));
+  ASSERT_NO_THROW(this->m_db->add_block(this->m_blocks[1], t_sizes[1], t_diffs[1], t_coins[1], this->m_txs[1]));
   ASSERT_EQ(t_diffs[1] - t_diffs[0], this->m_db->get_block_difficulty(1));
 
   ASSERT_HASH_EQ(get_block_hash(this->m_blocks[0].first), this->m_db->get_block_hash_from_height(0));
@@ -587,11 +592,9 @@ TYPED_TEST(BlockchainDBTest, BlockWeights)
   this->open_with_blocks();
   auto& db = *this->m_db;
 
-  EXPECT_EQ(db.get_block_weights(0, 2), (std::vector<uint64_t>{t_sizes[0], t_sizes[1]}));
-  EXPECT_EQ(db.get_block_weights(1, 5), (std::vector<uint64_t>{t_sizes[1]}));
-  EXPECT_EQ(db.get_long_term_block_weights(0, 1), (std::vector<uint64_t>{t_sizes[0]}));
-  EXPECT_THROW(db.get_block_weights(2, 1), DB_ERROR);
-  EXPECT_THROW(db.get_long_term_block_weights(2, 1), DB_ERROR);
+  EXPECT_EQ(db.get_block_weight(0), t_sizes[0]);
+  EXPECT_EQ(db.get_block_weight(1), t_sizes[1]);
+  EXPECT_THROW(db.get_block_weight(2), BLOCK_DNE);
 
   EXPECT_EQ(db.get_block_cumulative_rct_outputs({0, 1}), (std::vector<uint64_t>{0, 0}));
   EXPECT_THROW(db.get_block_cumulative_rct_outputs({0, 2}), BLOCK_DNE);
@@ -646,8 +649,8 @@ TYPED_TEST(BlockchainDBTest, HashPrefixes)
   b.invalidate_hashes();
   {
     db_wtxn_guard guard{db};
-    db.add_block({a, block_to_blob(a)}, t_sizes[0], t_sizes[0], t_diffs[0], t_coins[0], {{tx0, tx0_blob}});
-    db.add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {{tx1, tx_to_blob(tx1)}});
+    db.add_block({a, block_to_blob(a)}, t_sizes[0], t_diffs[0], t_coins[0], {{tx0, tx0_blob}});
+    db.add_block({b, block_to_blob(b)}, t_sizes[1], t_diffs[1], t_coins[1], {{tx1, tx_to_blob(tx1)}});
   }
 
   EXPECT_TRUE(db.tx_exists(h1));
@@ -681,7 +684,7 @@ TYPED_TEST(BlockchainDBTest, HashPrefixes)
   {
     db_wtxn_guard guard{db};
     EXPECT_THROW(
-        db.add_block({c, block_to_blob(c)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {{tx2, tx_to_blob(tx2)}}),
+        db.add_block({c, block_to_blob(c)}, t_sizes[1], t_diffs[1], t_coins[1], {{tx2, tx_to_blob(tx2)}}),
         TX_EXISTS);
     guard.abort();
   }
@@ -695,12 +698,12 @@ TYPED_TEST(BlockchainDBTest, HashPrefixes)
   d.invalidate_hashes();
   {
     db_wtxn_guard guard{db};
-    db.add_block({d, block_to_blob(d)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {});
+    db.add_block({d, block_to_blob(d)}, t_sizes[1], t_diffs[1], t_coins[1], {});
   }
   {
     db_wtxn_guard guard{db};
     EXPECT_THROW(
-        db.add_block({d, block_to_blob(d)}, t_sizes[1], t_sizes[1], t_diffs[1], t_coins[1], {}),
+        db.add_block({d, block_to_blob(d)}, t_sizes[1], t_diffs[1], t_coins[1], {}),
         BLOCK_EXISTS);
     guard.abort();
   }
@@ -962,22 +965,6 @@ TYPED_TEST(BlockchainDBTest, Checkpoints)
   EXPECT_EQ(cp.signatures.size(), service_nodes::CHECKPOINT_QUORUM_SIZE);
 }
 
-TYPED_TEST(BlockchainDBTest, MaxBlockSize)
-{
-  this->open_db();
-  auto& db = *this->m_db;
-  EXPECT_EQ(db.get_max_block_size(), std::numeric_limits<uint64_t>::max());
-  {
-    db_wtxn_guard guard{db};
-    db.add_max_block_size(100);
-    EXPECT_EQ(db.get_max_block_size(), 100);
-    db.add_max_block_size(50);
-    EXPECT_EQ(db.get_max_block_size(), 100);
-    db.add_max_block_size(200);
-  }
-  EXPECT_EQ(db.get_max_block_size(), 200);
-}
-
 TYPED_TEST(BlockchainDBTest, Txpool)
 {
   this->open_db();
@@ -1147,7 +1134,7 @@ TYPED_TEST(BlockchainDBTest, ServiceNodeProofs)
 
   service_nodes::proof_info proof;
   proof.timestamp = 1700000000;
-  proof.proof->public_ip = 0x01020304;
+  proof.proof->public_ip = oxen::quic::ipv4{200, 1, 2, 3};
   proof.proof->storage_https_port = 22021;
   proof.proof->storage_omq_port = 22020;
   proof.proof->qnet_port = 22025;
@@ -1368,7 +1355,6 @@ TYPED_TEST(BlockchainDBTest, Reset)
     if constexpr (!std::is_same_v<TypeParam, BlockchainSQLite>)
       db.set_service_node_data("data", true);
     db.put_service_node_archive(1, "archive", true);
-    db.add_max_block_size(1000);
     db.add_txpool_tx(missing_hash(), "a tx", meta);
     db.add_alt_block(get_block_hash(blk0), alt_block_data_t{}, this->m_blocks[0].second, nullptr);
   }
@@ -1384,7 +1370,6 @@ TYPED_TEST(BlockchainDBTest, Reset)
   std::string data;
   EXPECT_FALSE(db.get_service_node_data(data, true));
   EXPECT_TRUE(db.get_service_node_archive_heights().empty());
-  EXPECT_EQ(db.get_max_block_size(), std::numeric_limits<uint64_t>::max());
   // The LMDB backend's reset leaves the txpool and alt blocks alone; the SQLite one empties every
   // table.
   if constexpr (std::is_same_v<TypeParam, BlockchainSQLite>)
@@ -1642,6 +1627,7 @@ INSERT INTO sn_states (height, blob) VALUES (10, x'28b52ffd00'), (11, x'0100');
 CREATE TABLE sn_data (long_term INTEGER PRIMARY KEY, blob BLOB NOT NULL) STRICT, WITHOUT ROWID;
 INSERT INTO sn_data VALUES (0, x'00');
 DROP TABLE trimmed_txes;
+ALTER TABLE blocks ADD COLUMN long_term_weight INTEGER NOT NULL DEFAULT 0;
 PRAGMA user_version = 1;
 )");
   }
@@ -1654,7 +1640,69 @@ PRAGMA user_version = 1;
   session::sqlite::Database raw{path};
   EXPECT_FALSE(raw.conn().table_exists("sn_data"));
   EXPECT_TRUE(raw.conn().table_exists("trimmed_txes"));
-  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 4);
+  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 6);
+}
+
+TEST(BlockchainSQLite, upgrade_from_v4)
+{
+  temp_data_dir dir;
+  const auto path = dir.path / SQLITE_DB_FILENAME;
+  {
+    BlockchainSQLite db;
+    db.open(path, network_type::FAKECHAIN);
+  }
+  {
+    // Version 4 stored sn_proofs.ip byte-reversed: 1.2.3.4 as 0x04030201, 200.1.2.3 as 0x030201c8.
+    session::sqlite::Database raw{path};
+    raw.conn().sql.exec(R"(
+INSERT INTO sn_proofs VALUES
+    (x'0000000000000000000000000000000000000000000000000000000000000001', 1700000000, 67305985, 22021, 22020, 22025, 0, 0, 0),
+    (x'0000000000000000000000000000000000000000000000000000000000000002', 1700000000, 50463176, 22021, 22020, 22025, 0, 0, 0);
+ALTER TABLE blocks ADD COLUMN long_term_weight INTEGER NOT NULL DEFAULT 0;
+PRAGMA user_version = 4;
+)");
+  }
+  {
+    BlockchainSQLite db;
+    ASSERT_NO_THROW(db.open(path, network_type::FAKECHAIN));
+  }
+  session::sqlite::Database raw{path};
+  EXPECT_EQ(
+      raw.conn().prepared_get<int64_t>("SELECT ip FROM sn_proofs WHERE substr(pubkey, 32) = x'01'"),
+      0x01020304);
+  EXPECT_EQ(
+      raw.conn().prepared_get<int64_t>("SELECT ip FROM sn_proofs WHERE substr(pubkey, 32) = x'02'"),
+      0xc8010203);
+  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 6);
+}
+
+TEST(BlockchainSQLite, upgrade_from_v5)
+{
+  temp_data_dir dir;
+  const auto path = dir.path / SQLITE_DB_FILENAME;
+  {
+    BlockchainSQLite db;
+    db.open(path, network_type::FAKECHAIN);
+  }
+  {
+    // Version 5 stored long-term block weights and the largest block size limit seen.
+    session::sqlite::Database raw{path};
+    raw.conn().sql.exec(R"(
+ALTER TABLE blocks ADD COLUMN long_term_weight INTEGER NOT NULL DEFAULT 0;
+INSERT INTO properties (key, value) VALUES ('max_block_size', 600000);
+PRAGMA user_version = 5;
+)");
+  }
+  {
+    BlockchainSQLite db;
+    ASSERT_NO_THROW(db.open(path, network_type::FAKECHAIN));
+  }
+  session::sqlite::Database raw{path};
+  EXPECT_FALSE(raw.conn().prepared_maybe_get<int64_t>(
+      "SELECT 1 FROM pragma_table_info('blocks') WHERE name = 'long_term_weight'"));
+  EXPECT_FALSE(raw.conn().prepared_maybe_get<int64_t>(
+      "SELECT value FROM properties WHERE key = 'max_block_size'"));
+  EXPECT_EQ(raw.conn().prepared_get<int>("PRAGMA user_version"), 6);
 }
 
 TEST(BlockchainSQLite, own_write_transaction)
@@ -1663,14 +1711,15 @@ TEST(BlockchainSQLite, own_write_transaction)
   BlockchainSQLite db;
   db.open(dir.path / SQLITE_DB_FILENAME, network_type::FAKECHAIN);
   BlockchainDB& base = db;
-  base.add_max_block_size(123);
-  EXPECT_EQ(base.get_max_block_size(), 123);
+  txpool_tx_meta_t meta{};
+  base.add_txpool_tx(missing_hash(), "a tx", meta);
+  EXPECT_EQ(base.get_txpool_tx_count(), 1);
 
   // ...including while this thread is in a read transaction, which it must not nest inside.
   ASSERT_TRUE(db.block_rtxn_start());
-  base.add_max_block_size(456);
+  base.remove_txpool_tx(missing_hash());
   db.block_rtxn_stop();
-  EXPECT_EQ(base.get_max_block_size(), 456);
+  EXPECT_EQ(base.get_txpool_tx_count(), 0);
 }
 
 TEST(BlockchainSQLite, write_needs_transaction)
@@ -1690,7 +1739,7 @@ TEST(BlockchainSQLite, write_needs_transaction)
     txs.emplace_back(std::move(tx), std::move(bd));
   }
   EXPECT_THROW(
-      db.add_block({b, blob}, t_sizes[0], t_sizes[0], t_diffs[0], t_coins[0], txs), DB_ERROR);
+      db.add_block({b, blob}, t_sizes[0], t_diffs[0], t_coins[0], txs), DB_ERROR);
   EXPECT_EQ(db.height(), 0);
   EXPECT_EQ(db.get_tx_count(), 0);
 }
@@ -1889,14 +1938,11 @@ TEST(BlockchainSQLite, reset_keeps_others_tables)
 {
   shared_sqlite s;
   test_rewards rewards{network_type::FAKECHAIN, s.sql()};
-  BlockchainDB& base = s.db;
-  base.add_max_block_size(123);
   while (rewards.height < service_nodes::STATE_SNAPSHOT_INTERVAL)
     rewards.publish_block();
 
   s.db.reset();
 
-  EXPECT_EQ(base.get_max_block_size(), std::numeric_limits<uint64_t>::max());
   EXPECT_EQ(s.committed("SELECT MAX(height) FROM rewards_snapshot_heights"), 60);
   EXPECT_EQ(s.committed("SELECT value FROM properties WHERE key = 'rewards_fixup_version'"), 2);
 }
@@ -2001,7 +2047,7 @@ protected:
       b.miner_tx->unprunable_size = 0;
       b.miner_tx->invalidate_hashes();
       b.invalidate_hashes();
-      m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1] + h, t_coins[1], {});
+      m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_diffs[1] + h, t_coins[1], {});
     }
   }
 
@@ -2035,7 +2081,7 @@ protected:
     for (const auto& [tx, blob] : txs)
       b.tx_hashes.push_back(get_transaction_hash(tx));
     b.invalidate_hashes();
-    m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_sizes[1], t_diffs[1] + h, t_coins[1], txs);
+    m_db->add_block({b, block_to_blob(b)}, t_sizes[1], t_diffs[1] + h, t_coins[1], txs);
   }
 };
 

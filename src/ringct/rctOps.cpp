@@ -30,22 +30,19 @@
 
 #include "rctOps.h"
 
-#include <common/exception.h>
-
 #include "cryptonote_basic/cryptonote_format_utils.h"
-#include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
 
 using namespace crypto;
 
 auto logcat = oxen::log::Cat("ringct");
 
-#define CHECK_AND_ASSERT_THROW_MES_L1(expr, frmt, ...)                              \
-    {                                                                               \
-        if (!(expr)) {                                                              \
-            oxen::log::warning(logcat, frmt, __VA_ARGS__);                          \
-            throw oxen::traced<std::runtime_error>(fmt::format(frmt, __VA_ARGS__)); \
-        }                                                                           \
+#define CHECK_AND_ASSERT_THROW_MES_L1(expr, frmt, ...)                \
+    {                                                                 \
+        if (!(expr)) {                                                \
+            oxen::log::warning(logcat, frmt, __VA_ARGS__);            \
+            throw std::runtime_error(fmt::format(frmt, __VA_ARGS__)); \
+        }                                                             \
     }
 
 struct zero_commitment {
@@ -708,7 +705,10 @@ key skGen() {
 // Generates a vector of secret key
 // Mainly used in testing
 keyV skvGen(size_t rows) {
-    CHECK_AND_ASSERT_THROW_MES(rows > 0, "0 keys requested");
+    if (rows <= 0) {
+        oxen::log::error(logcat, "0 keys requested");
+        throw std::runtime_error{"0 keys requested"};
+    }
     keyV rv(rows);
     size_t i = 0;
     for (i = 0; i < rows; i++) {

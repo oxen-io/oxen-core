@@ -44,14 +44,14 @@
 #include <string_view>
 #include <thread>
 
+#include "common/console_handler.h"
 #include "common/i18n.h"
 #include "common/password.h"
 #include "common/periodic_task.h"
+#include "crypto/cleared_string.h"
 #include "crypto/crypto.h"  // for definition of crypto::secret_key
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/cryptonote_basic_impl.h"
-#include "epee/console_handler.h"
-#include "epee/wipeable_string.h"
 #include "wallet/wallet2.h"
 
 /*!
@@ -100,24 +100,24 @@ class simple_wallet : public tools::i_wallet2_callback {
     //! `none`
     std::optional<tools::password_container> get_and_verify_password() const;
 
-    std::optional<epee::wipeable_string> new_wallet(
+    std::optional<crypto::cleared_string> new_wallet(
             const boost::program_options::variables_map& vm,
             const crypto::secret_key& recovery_key,
             bool recover,
             bool two_random,
             const std::string& old_language);
-    std::optional<epee::wipeable_string> new_wallet(
+    std::optional<crypto::cleared_string> new_wallet(
             const boost::program_options::variables_map& vm,
             const cryptonote::account_public_address& address,
             const std::optional<crypto::secret_key>& spendkey,
             const crypto::secret_key& viewkey);
-    std::optional<epee::wipeable_string> new_wallet(
+    std::optional<crypto::cleared_string> new_wallet(
             const boost::program_options::variables_map& vm,
-            const epee::wipeable_string& multisig_keys,
+            const crypto::cleared_string& multisig_keys,
             const std::string& old_language);
-    std::optional<epee::wipeable_string> new_device_wallet(
+    std::optional<crypto::cleared_string> new_device_wallet(
             const boost::program_options::variables_map& vm);
-    std::optional<epee::wipeable_string> open_wallet(
+    std::optional<crypto::cleared_string> open_wallet(
             const boost::program_options::variables_map& vm);
     bool close_wallet();
 
@@ -193,10 +193,8 @@ class simple_wallet : public tools::i_wallet2_callback {
             std::vector<tools::wallet2::pending_tx>& ptx_vector,
             bool blink,
             uint64_t lock_time_in_blocks = 0,
-            uint64_t unlock_block = 0 ENABLE_IF_MMS(, bool called_by_mms = false));
-    bool transfer_main(
-            Transfer transfer_type,
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
+            uint64_t unlock_block = 0);
+    bool transfer_main(Transfer transfer_type, const std::vector<std::string>& args);
 
     bool transfer(const std::vector<std::string>& args);
     bool locked_transfer(const std::vector<std::string>& args);
@@ -286,32 +284,15 @@ class simple_wallet : public tools::i_wallet2_callback {
     bool payment_id(const std::vector<std::string>& args);
     bool print_fee_info(const std::vector<std::string>& args);
     bool prepare_multisig(const std::vector<std::string>& args);
-    bool prepare_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool make_multisig(const std::vector<std::string>& args);
-    bool make_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool finalize_multisig(const std::vector<std::string>& args);
     bool exchange_multisig_keys(const std::vector<std::string>& args);
-    bool exchange_multisig_keys_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool export_multisig(const std::vector<std::string>& args);
-    bool export_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool import_multisig(const std::vector<std::string>& args);
-    bool import_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool accept_loaded_tx(const tools::wallet2::multisig_tx_set& txs);
     bool sign_multisig(const std::vector<std::string>& args);
-    bool sign_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool submit_multisig(const std::vector<std::string>& args);
-    bool submit_multisig_main(
-            const std::vector<std::string>& args ENABLE_IF_MMS(, bool called_by_mms));
     bool export_raw_multisig(const std::vector<std::string>& args);
-#ifdef WALLET_ENABLE_MMS
-    bool mms(const std::vector<std::string>& args);
-#endif
     bool print_ring(const std::vector<std::string>& args);
     bool set_ring(const std::vector<std::string>& args);
     bool unset_ring(const std::vector<std::string>& args);
@@ -376,7 +357,7 @@ class simple_wallet : public tools::i_wallet2_callback {
      * \brief Prints the seed with a nice message
      * \param seed seed to print
      */
-    void print_seed(const epee::wipeable_string& seed);
+    void print_seed(const crypto::cleared_string& seed);
 
     /*!
      * \brief Gets the word seed language from the user.
@@ -399,9 +380,6 @@ class simple_wallet : public tools::i_wallet2_callback {
     // idle thread workers
     bool check_inactivity();
     bool check_refresh(bool long_poll_trigger);
-#ifdef WALLET_ENABLE_MMS
-    bool check_mms();
-#endif
 
     //----------------- i_wallet2_callback ---------------------
     virtual void on_new_block(uint64_t height, const cryptonote::block& block);
@@ -428,10 +406,10 @@ class simple_wallet : public tools::i_wallet2_callback {
             const cryptonote::subaddress_index& subaddr_index);
     virtual void on_skip_transaction(
             uint64_t height, const crypto::hash& txid, const cryptonote::transaction& tx);
-    virtual std::optional<epee::wipeable_string> on_get_password(const char* reason);
+    virtual std::optional<crypto::cleared_string> on_get_password(const char* reason);
     virtual void on_device_button_request(uint64_t code);
-    virtual std::optional<epee::wipeable_string> on_device_pin_request();
-    virtual std::optional<epee::wipeable_string> on_device_passphrase_request(bool& on_device);
+    virtual std::optional<crypto::cleared_string> on_device_pin_request();
+    virtual std::optional<crypto::cleared_string> on_device_passphrase_request(bool& on_device);
     //----------------------------------------------------------
 
     friend class refresh_progress_reporter_t;
@@ -469,9 +447,9 @@ class simple_wallet : public tools::i_wallet2_callback {
     std::string m_subaddress_lookahead;
     std::string m_restore_date;  // optional - converted to m_restore_height
 
-    epee::wipeable_string m_electrum_seed;  // electrum-style seed parameter
+    crypto::cleared_string m_electrum_seed;  // electrum-style seed parameter
 
-    crypto::secret_key m_recovery_key;    // recovery key (used as random for wallet gen)
+    crypto::secret_key m_recovery_key{};  // recovery key (used as random for wallet gen)
     bool m_restore_deterministic_wallet;  // recover flag
     bool m_restore_multisig_wallet;       // recover flag
     bool m_non_deterministic;             // old 2-random generation
@@ -482,7 +460,7 @@ class simple_wallet : public tools::i_wallet2_callback {
     bool m_use_english_language_names;
     bool m_has_locked_key_images;
 
-    epee::console_handlers_binder m_cmd_binder;
+    tools::console_handlers_binder m_cmd_binder;
 
     std::unique_ptr<tools::wallet2> m_wallet;
     refresh_progress_reporter_t m_refresh_progress_reporter;
@@ -509,52 +487,5 @@ class simple_wallet : public tools::i_wallet2_callback {
             "inactivity check", 80s, true /*start_immediately*/, 20s /*up-to random delay*/};
     tools::periodic_task m_refresh_checker{
             "refresh check", 90s, true /*start_immediately*/, 20s /*up-to random delay*/};
-
-#ifdef WALLET_ENABLE_MMS
-    // MMS
-    tools::periodic_task m_mms_checker{
-            "mms checker", 90s, true /*start_immediately*/, 25s /*up-to random delay*/};
-
-    mms::message_store& get_message_store() const { return m_wallet->get_message_store(); };
-    mms::multisig_wallet_state get_multisig_wallet_state() const {
-        return m_wallet->get_multisig_wallet_state();
-    };
-    bool mms_active() const { return get_message_store().get_active(); };
-    bool choose_mms_processing(
-            const std::vector<mms::processing_data>& data_list, uint32_t& choice);
-    void list_mms_messages(const std::vector<mms::message>& messages);
-    void list_signers(const std::vector<mms::authorized_signer>& signers);
-    void add_signer_config_messages();
-    void show_message(const mms::message& m);
-    void ask_send_all_ready_messages();
-    void check_for_messages();
-    bool user_confirms(const std::string& question);
-    bool get_message_from_arg(const std::string& arg, mms::message& m);
-    bool get_number_from_arg(
-            const std::string& arg,
-            uint32_t& number,
-            const uint32_t lower_bound,
-            const uint32_t upper_bound);
-
-    void mms_init(const std::vector<std::string>& args);
-    void mms_info(const std::vector<std::string>& args);
-    void mms_signer(const std::vector<std::string>& args);
-    void mms_list(const std::vector<std::string>& args);
-    void mms_next(const std::vector<std::string>& args);
-    void mms_sync(const std::vector<std::string>& args);
-    void mms_transfer(const std::vector<std::string>& args);
-    void mms_delete(const std::vector<std::string>& args);
-    void mms_send(const std::vector<std::string>& args);
-    void mms_receive(const std::vector<std::string>& args);
-    void mms_export(const std::vector<std::string>& args);
-    void mms_note(const std::vector<std::string>& args);
-    void mms_show(const std::vector<std::string>& args);
-    void mms_set(const std::vector<std::string>& args);
-    void mms_help(const std::vector<std::string>& args);
-    void mms_send_signer_config(const std::vector<std::string>& args);
-    void mms_start_auto_config(const std::vector<std::string>& args);
-    void mms_stop_auto_config(const std::vector<std::string>& args);
-    void mms_auto_config(const std::vector<std::string>& args);
-#endif
 };
 }  // namespace cryptonote

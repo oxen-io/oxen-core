@@ -81,7 +81,7 @@ template<>
 struct get_test_options<gen_v2_tx_validation_base> {
   const std::vector<cryptonote::hard_fork> hard_forks = {{cryptonote::hf::hf7,0,0,0}, {cryptonote::hf::hf8,0,0,0}};
   const cryptonote::test_options test_options = {
-    hard_forks, 0
+    hard_forks
   };
 };
 

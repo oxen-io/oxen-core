@@ -29,6 +29,8 @@
 
 #include "multisig.h"
 
+#include <sodium/utils.h>
+
 #include <unordered_set>
 
 #include "crypto/crypto.h"
@@ -53,7 +55,7 @@ crypto::secret_key get_multisig_blinded_secret_key(const crypto::secret_key& key
     data.push_back(rct::sk2rct(key));
     data.push_back(multisig_salt);
     crypto::secret_key result = rct::rct2sk(rct::hash_to_scalar(data));
-    memwipe(&data[0], sizeof(rct::key));
+    sodium_memzero(&data[0], sizeof(rct::key));
     return result;
 }
 //-----------------------------------------------------------------
@@ -67,9 +69,10 @@ void generate_multisig_N_N(
     multisig_keys.clear();
     const crypto::secret_key spend_secret_key =
             get_multisig_blinded_secret_key(keys.m_spend_secret_key);
-    CHECK_AND_ASSERT_THROW_MES(
-            crypto::secret_key_to_public_key(spend_secret_key, (crypto::public_key&)spend_pkey),
-            "Failed to derive public key");
+    if (!crypto::secret_key_to_public_key(spend_secret_key, (crypto::public_key&)spend_pkey)) {
+        oxen::log::error(logcat, "Failed to derive public key");
+        throw std::runtime_error{"Failed to derive public key"};
+    }
     for (const auto& k : spend_keys)
         rct::addKeys(spend_pkey, spend_pkey, rct::pk2rct(k));
     multisig_keys.push_back(spend_secret_key);
@@ -91,7 +94,7 @@ void generate_multisig_N1_N(
     for (const auto& k : spend_keys) {
         rct::key sk = rct::scalarmultKey(rct::pk2rct(k), rct::sk2rct(blinded_skey));
         crypto::secret_key msk = get_multisig_blinded_secret_key(rct::rct2sk(sk));
-        memwipe(&sk, sizeof(sk));
+        sodium_memzero(&sk, sizeof(sk));
         multisig_keys.push_back(msk);
         sc_add(spend_skey.bytes, spend_skey.bytes, msk.data());
     }
@@ -207,8 +210,10 @@ bool generate_multisig_composite_key_image(
 }
 //-----------------------------------------------------------------
 uint32_t multisig_rounds_required(uint32_t participants, uint32_t threshold) {
-    CHECK_AND_ASSERT_THROW_MES(
-            participants >= threshold, "participants must be greater or equal than threshold");
+    if (participants < threshold) {
+        oxen::log::error(logcat, "participants must be greater or equal than threshold");
+        throw std::runtime_error{"participants must be greater or equal than threshold"};
+    }
     return participants - threshold + 1;
 }
 }  // namespace cryptonote

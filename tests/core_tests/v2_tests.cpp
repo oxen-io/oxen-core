@@ -52,11 +52,13 @@ bool gen_v2_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   cryptonote::block blocks[4];
   for (size_t n = 0; n < 4; ++n) {
     miner_accounts[n].generate();
-    CHECK_AND_ASSERT_MES(generator.construct_block_manually(blocks[n], *prev_block, miner_accounts[n],
+    if (!generator.construct_block_manually(blocks[n], *prev_block, miner_accounts[n],
         test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp,
         hf::hf7, 2, prev_block->timestamp + tools::to_seconds(get_config(cryptonote::network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
-          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
-        false, "Failed to generate block");
+          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0)) {
+      oxen::log::error(logcat, "Failed to generate block");
+      return false;
+    }
     events.push_back(blocks[n]);
     prev_block = blocks + n;
   }
@@ -68,11 +70,13 @@ bool gen_v2_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
     for (size_t i = 0; i < MINED_MONEY_UNLOCK_WINDOW; ++i)
     {
       cryptonote::block blk;
-      CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk, blk_last, miner_account,
+      if (!generator.construct_block_manually(blk, blk_last, miner_account,
           test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp,
           hf::hf7, 2, blk_last.timestamp + tools::to_seconds(get_config(cryptonote::network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
-          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0),
-          false, "Failed to generate block");
+          crypto::hash(), 0, transaction(), std::vector<crypto::hash>(), 0)) {
+        oxen::log::error(logcat, "Failed to generate block");
+        return false;
+      }
       events.push_back(blk);
       blk_last = blk;
     }
@@ -104,7 +108,10 @@ bool gen_v2_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
 
   transaction tx;
   bool r = construct_tx(miner_accounts[0].get_keys(), sources, destinations, std::nullopt, std::vector<uint8_t>(), tx, 0);
-  CHECK_AND_ASSERT_MES(r, false, "failed to construct transaction");
+  if (!r) {
+    oxen::log::error(logcat, "failed to construct transaction");
+    return false;
+  }
   if (!valid)
     DO_CALLBACK(events, "mark_invalid_tx");
   events.push_back(tx);

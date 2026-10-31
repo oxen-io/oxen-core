@@ -32,6 +32,8 @@ oxen_add_library(cncrypto
   blake256.c
   chacha.c
   chacha.cpp
+  cleared.cpp
+  cleared_string.cpp
   crypto-ops-data.c
   crypto-ops.c
   crypto.cpp
@@ -44,6 +46,7 @@ oxen_add_library(cncrypto
   hash.c
   hash.cpp
   hmac-keccak.c
+  int-util.c
   jh.c
   keccak.c
   oaes_lib_expand.c
@@ -64,10 +67,8 @@ endif()
 
 target_link_libraries(cncrypto
   PUBLIC
-    epee
     randomx
     Boost::thread
-    $<$<CONFIG:Debug>:cpptrace::cpptrace>
     sessiondep::libsodium
   PRIVATE
     logging

@@ -30,10 +30,10 @@
 #pragma once
 
 #include "crypto/chacha.h"
+#include "crypto/cleared_string.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/txtypes.h"
 #include "cryptonote_config.h"
-#include "epee/wipeable_string.h"
 #include "logging/oxen_logger.h"
 #include "ringct/rctTypes.h"
 
@@ -74,8 +74,8 @@ class i_device_callback {
   public:
     virtual void on_button_request(uint64_t code = 0) {}
     virtual void on_button_pressed() {}
-    virtual std::optional<epee::wipeable_string> on_pin_request() { return std::nullopt; }
-    virtual std::optional<epee::wipeable_string> on_passphrase_request(bool& on_device) {
+    virtual std::optional<crypto::cleared_string> on_pin_request() { return std::nullopt; }
+    virtual std::optional<crypto::cleared_string> on_passphrase_request(bool& on_device) {
         on_device = true;
         return std::nullopt;
     }
@@ -98,7 +98,7 @@ class device {
 
     virtual bool is_hardware_device() const = 0;
     enum class mode { NONE, TRANSACTION_CREATE_REAL, TRANSACTION_CREATE_FAKE, TRANSACTION_PARSE };
-    enum class type { SOFTWARE = 0, LEDGER = 1, TREZOR = 2 };
+    enum class type { SOFTWARE = 0, LEDGER = 1 };
 
     enum class protocol {
         DEFAULT,
@@ -134,8 +134,8 @@ class device {
     virtual void set_callback(i_device_callback* callback) {};
     virtual void set_derivation_path(const std::string& derivation_path) {};
 
-    virtual void set_pin(const epee::wipeable_string& pin) {}
-    virtual void set_passphrase(const epee::wipeable_string& passphrase) {}
+    virtual void set_pin(const crypto::cleared_string& pin) {}
+    virtual void set_passphrase(const crypto::cleared_string& passphrase) {}
 
     /* ======================================================================= */
     /*  LOCKER                                                                 */

@@ -35,7 +35,7 @@
 #include "common/format.h"
 #include "common/formattable.h"
 #include "common/oxen.h"
-#include "epee/serialization/keyvalue_serialization.h"
+#include "serialization/levin_kv/fwd.h"
 
 namespace cryptonote {
 OXEN_RPC_DOC_INTROSPECT
@@ -50,10 +50,7 @@ struct subaddress_index {
 
     std::string to_string() const { return "{}/{}"_format(major, minor); }
 
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(major)
-    KV_SERIALIZE(minor)
-    END_KV_SERIALIZE_MAP()
+    void serialize(levin_kv::archive& ar);
 };
 
 template <class Archive>

@@ -45,8 +45,6 @@
 #include "common/random.h"
 #include "crypto/crypto.h"
 #include "cryptonote_config.h"
-#include "epee/net/enums.h"
-#include "epee/net/local_ip.h"
 #include "p2p_protocol_defs.h"
 
 namespace nodetool {
@@ -81,8 +79,8 @@ class peerlist_storage {
     //! Save peers from `this` and `other` in one file at `path`.
     bool store(const fs::path& path, const peerlist_types& other) const;
 
-    //! \return Peers in `zone` and from remove from `this`.
-    peerlist_types take_zone(epee::net_utils::zone zone);
+    //! \return The loaded peers, removing them from `this`.
+    peerlist_types take();
 
   private:
     peerlist_types m_types;
@@ -119,14 +117,12 @@ class peerlist_manager {
     bool append_with_peer_gray(const peerlist_entry& pr);
     bool append_with_peer_anchor(const anchor_peerlist_entry& ple);
     bool set_peer_just_seen(
-            peerid_type peer,
-            const epee::net_utils::network_address& addr,
-            std::optional<uint64_t> history);
-    bool is_host_allowed(const epee::net_utils::network_address& address);
+            peerid_type peer, const oxen::quic::Address& addr, std::optional<uint64_t> history);
+    bool is_host_allowed(const oxen::quic::Address& address);
     bool get_random_gray_peer(peerlist_entry& pe);
     bool remove_from_peer_gray(const peerlist_entry& pe);
     bool get_and_empty_anchor_peerlist(std::vector<anchor_peerlist_entry>& apl);
-    bool remove_from_peer_anchor(const epee::net_utils::network_address& addr);
+    bool remove_from_peer_anchor(const oxen::quic::Address& addr);
     bool remove_from_peer_white(const peerlist_entry& pe);
 
   private:
@@ -166,7 +162,7 @@ class peerlist_manager {
                             boost::multi_index::tag<by_addr>,
                             boost::multi_index::member<
                                     peerlist_entry,
-                                    epee::net_utils::network_address,
+                                    oxen::quic::Address,
                                     &peerlist_entry::adr>>,
                     // sort by peerlist_entry::last_seen<
                     boost::multi_index::ordered_non_unique<
@@ -182,7 +178,7 @@ class peerlist_manager {
                             boost::multi_index::tag<by_addr>,
                             boost::multi_index::member<
                                     anchor_peerlist_entry,
-                                    epee::net_utils::network_address,
+                                    oxen::quic::Address,
                                     &anchor_peerlist_entry::adr>>,
                     // sort by anchor_peerlist_entry::first_seen
                     boost::multi_index::ordered_non_unique<

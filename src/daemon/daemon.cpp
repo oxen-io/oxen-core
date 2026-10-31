@@ -29,7 +29,6 @@
 //
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
-#include <common/exception.h>
 #include <fmt/color.h>
 #include <oxenmq/oxenmq.h>
 
@@ -47,7 +46,6 @@ extern "C" {
 #include "common/command_line.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "epee/misc_log_ex.h"
 #if defined(PER_BLOCK_CHECKPOINT)
 #include "blocks/blocks.h"
 #endif
@@ -88,7 +86,7 @@ std::pair<std::string, uint16_t> parse_ip_port(
         colon != std::string::npos && tools::parse_int(ip_port.substr(colon + 1), port))
         ip_port.remove_suffix(ip_port.size() - colon);
     else
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Invalid IP/port value specified to " + argname + ": " + std::string(ip_port)};
 
     if (!ip_port.empty() && ip_port.front() == '[' && ip_port.back() == ']') {
@@ -106,7 +104,7 @@ std::pair<std::string, uint16_t> parse_ip_port(
 #endif
             (ip_str, ec);
     if (ec)
-        throw oxen::traced<std::runtime_error>{"Invalid IP address specified: " + ip_str};
+        throw std::runtime_error{"Invalid IP address specified: " + ip_str};
 
     ip = addr.to_string();
 
@@ -127,11 +125,11 @@ daemon::daemon(boost::program_options::variables_map vm_) :
 
     log::info(logcat, "- cryptonote protocol");
     if (!protocol->init(vm))
-        throw oxen::traced<std::runtime_error>("Failed to initialize cryptonote protocol.");
+        throw std::runtime_error("Failed to initialize cryptonote protocol.");
 
     log::info(logcat, "- p2p");
     if (!p2p->init(vm))
-        throw oxen::traced<std::runtime_error>("Failed to initialize p2p server.");
+        throw std::runtime_error("Failed to initialize p2p server.");
 
     // Handle circular dependencies
     protocol->set_p2p_endpoint(p2p.get());
@@ -153,7 +151,7 @@ daemon::daemon(boost::program_options::variables_map vm_) :
             "--rpc-bind-ip/--rpc-bind-port/--rpc-restricted-bind-port/--restricted-rpc/--public-node/--rpc-use-ipv6"sv;
 
     if (new_rpc_options && deprecated_rpc_options)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Failed to initialize rpc settings: --rpc-public/--rpc-admin cannot be combined "
                 "with deprecated " +
                 std::string{deprecated_option_names} + " options"};
@@ -322,7 +320,7 @@ void daemon::init_options(
         boost::program_options::options_description& hidden) {
     static bool called = false;
     if (called)
-        throw oxen::traced<std::logic_error>("daemon::init_options must only be called once");
+        throw std::logic_error("daemon::init_options must only be called once");
     else
         called = true;
     cryptonote::core::init_options(option_spec);
@@ -335,7 +333,7 @@ void daemon::init_options(
 
 bool daemon::run(bool interactive) {
     if (!core)
-        throw oxen::traced<std::runtime_error>{"Can't run stopped daemon"};
+        throw std::runtime_error{"Can't run stopped daemon"};
 
     std::atomic<bool> stop_sig(false), shutdown(false);
     std::thread stop_thread{[&stop_sig, &shutdown, this] {
@@ -368,7 +366,7 @@ bool daemon::run(bool interactive) {
 #endif
         log::info(logcat, "Starting core");
         if (!core->init(vm, nullptr, get_checkpoints, &shutdown))
-            throw oxen::traced<std::runtime_error>("Failed to start core");
+            throw std::runtime_error("Failed to start core");
 
         log::info(logcat, "Starting OxenMQ");
         omq_rpc = std::make_unique<cryptonote::rpc::omq_rpc>(*core, *rpc, vm);
@@ -393,7 +391,7 @@ bool daemon::run(bool interactive) {
                     [&p](oxenmq::ConnectionID) { p.set_value(); },
                     [&p](oxenmq::ConnectionID, std::string_view err) {
                         try {
-                            throw oxen::traced<std::runtime_error>{
+                            throw std::runtime_error{
                                     "Internal oxend RPC connection failed: " + std::string{err}};
                         } catch (...) {
                             p.set_exception(std::current_exception());
@@ -468,7 +466,7 @@ Use "help <command>" to see a command's documentation.
 
 void daemon::stop() {
     if (!core)
-        throw oxen::traced<std::logic_error>{"Can't send stop signal to a stopped daemon"};
+        throw std::logic_error{"Can't send stop signal to a stopped daemon"};
 
     p2p->send_stop_signal();  // Make p2p stop so that `run()` above continues with tear down
 }

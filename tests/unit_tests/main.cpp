@@ -33,11 +33,6 @@
 #include "common/fs.h"
 #include <boost/program_options.hpp>
 
-#include "p2p/net_node.h"
-#include "p2p/net_node.inl"
-#include "cryptonote_protocol/cryptonote_protocol_handler.h"
-#include "cryptonote_protocol/cryptonote_protocol_handler.inl"
-#include "epee/string_tools.h"
 #include "common/command_line.h"
 #include "common/util.h"
 #include "unit_tests_utils.h"
@@ -46,16 +41,9 @@ namespace po = boost::program_options;
 
 fs::path unit_test::data_dir;
 
-namespace nodetool { template class node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core>>; }
-namespace cryptonote { template class t_cryptonote_protocol_handler<cryptonote::core>; }
-
 int main(int argc, char** argv)
-{
-  auto logcat = oxen::log::Cat("tests");
-  TRY_ENTRY();
-
+try {
   tools::on_startup();
-  epee::string_tools::set_module_name_and_folder(argv[0]);
 
   ::testing::InitGoogleTest(&argc, argv);
 
@@ -79,8 +67,8 @@ int main(int argc, char** argv)
 
   oxen::logging::init("unit_tests.log", command_line::get_arg(vm, arg_log_level));
 
-
-  CATCH_ENTRY("main", 1);
-
   return RUN_ALL_TESTS();
+} catch (const std::exception& e) {
+  oxen::log::error(oxen::log::Cat("tests"), "Exception in main: {}", e.what());
+  return 1;
 }

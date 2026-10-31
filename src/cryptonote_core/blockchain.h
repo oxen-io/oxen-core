@@ -63,7 +63,6 @@ using io_service = io_context;
 #include "cryptonote_core/oxen_name_system.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "cryptonote_tx_utils.h"
-#include "epee/rolling_median.h"
 #include "l2_tracker/l2_tracker.h"
 #include "pulse.h"
 #include "rpc/core_rpc_server_binary_commands.h"
@@ -495,7 +494,7 @@ class Blockchain {
      * smallest, height 1)
      *   - the genesis block (height 0)
      */
-    void get_short_chain_history(std::list<crypto::hash>& ids) const;
+    std::vector<crypto::hash> get_short_chain_history() const;
 
     /**
      * @brief get recent block hashes for a foreign chain
@@ -512,7 +511,7 @@ class Blockchain {
      * @return true if a block found in common, else false
      */
     bool find_blockchain_supplement(
-            const std::list<crypto::hash>& qblock_ids,
+            std::span<const crypto::hash> qblock_ids,
             std::vector<crypto::hash>& hashes,
             uint64_t& start_height,
             uint64_t& current_height) const;
@@ -530,7 +529,7 @@ class Blockchain {
      * @return true if a block found in common, else false
      */
     bool find_blockchain_supplement(
-            const std::list<crypto::hash>& qblock_ids,
+            std::span<const crypto::hash> qblock_ids,
             NOTIFY_RESPONSE_CHAIN_ENTRY::request& resp) const;
 
     /**
@@ -546,7 +545,7 @@ class Blockchain {
      * @return true if a block found in common, else false
      */
     bool find_blockchain_supplement(
-            const std::list<crypto::hash>& qblock_ids, uint64_t& starter_offset) const;
+            std::span<const crypto::hash> qblock_ids, uint64_t& starter_offset) const;
 
     struct BlockData {
         std::string block_blob;
@@ -574,7 +573,7 @@ class Blockchain {
      */
     bool find_blockchain_supplement(
             const uint64_t req_start_block,
-            const std::list<crypto::hash>& qblock_ids,
+            std::span<const crypto::hash> qblock_ids,
             std::vector<BlockData>& blocks,
             uint64_t& total_height,
             uint64_t& start_height,
@@ -594,7 +593,8 @@ class Blockchain {
      * @return true unless any blocks or transactions are missing
      */
     bool handle_get_blocks(
-            NOTIFY_REQUEST_GET_BLOCKS::request& arg, NOTIFY_RESPONSE_GET_BLOCKS::request& rsp);
+            const NOTIFY_REQUEST_GET_BLOCKS::request& arg,
+            NOTIFY_RESPONSE_GET_BLOCKS::request& rsp);
 
     /**
      * @brief retrieves a set of transactions
@@ -608,7 +608,7 @@ class Blockchain {
      * @return true unless any transactions are missing
      */
     bool handle_get_txs(
-            NOTIFY_REQUEST_GET_TXS::request& arg, NOTIFY_NEW_TRANSACTIONS::request& rsp);
+            const NOTIFY_REQUEST_GET_TXS::request& arg, NOTIFY_NEW_TRANSACTIONS::request& rsp);
 
     /**
      * @brief get number of outputs of an amount past the minimum spendable age
@@ -763,25 +763,18 @@ class Blockchain {
      * transaction beginning in Loki hard fork 13 and will be 0 before v13.
      *
      * @param block_reward the current block reward
-     * @param median_block_weight the median block weight in the past window
      * @param version hard fork version for rules and constants to use
      *
      * @return pair of {per-size, per-output} fees
      */
-    static byte_and_output_fees get_dynamic_base_fee(
-            uint64_t block_reward, size_t median_block_weight, hf version);
+    static byte_and_output_fees get_dynamic_base_fee(uint64_t block_reward, hf version);
 
     /**
-     * @brief get dynamic per kB or byte fee estimate for the next few blocks
+     * @brief get the per kB or byte fee (and per-output fee) for the current top of the chain
      *
-     * Returns an estimate of the get_dynamic_base_fee() value that will be
-     * valid for the next `grace_blocks` blocks.
-     *
-     * @param grace_blocks number of blocks we want the fee to be valid for
-     *
-     * @return the {per-size, per-output} fee estimate
+     * @return the {per-size, per-output} fees
      */
-    byte_and_output_fees get_dynamic_base_fee_estimate(uint64_t grace_blocks) const;
+    byte_and_output_fees get_current_base_fee() const;
 
     /**
      * @brief validate a transaction's fee
@@ -816,27 +809,6 @@ class Blockchain {
      * @return false if any outputs do not conform, otherwise true
      */
     bool check_tx_outputs(const transaction& tx, tx_verification_context& tvc) const;
-
-    /**
-     * @brief gets the block weight limit based on recent blocks
-     *
-     * @return the limit
-     */
-    uint64_t get_current_cumulative_block_weight_limit() const;
-
-    /**
-     * @brief gets the long term block weight for a new block
-     *
-     * @return the long term block weight
-     */
-    uint64_t get_next_long_term_block_weight(uint64_t block_weight) const;
-
-    /**
-     * @brief gets the block weight median based on recent blocks (same window as for the limit)
-     *
-     * @return the median
-     */
-    uint64_t get_current_cumulative_block_weight_median() const;
 
     /**
      * @brief gets the difficulty of the block with a given height
@@ -1340,10 +1312,6 @@ class Blockchain {
 
     mutable std::recursive_mutex m_blockchain_lock;  // TODO: add here reader/writer lock
 
-    // main chain
-    size_t m_current_block_cumul_weight_limit;
-    size_t m_current_block_cumul_weight_median;
-
     // metadata containers
     std::unordered_map<
             crypto::hash,
@@ -1371,12 +1339,6 @@ class Blockchain {
     std::chrono::steady_clock::time_point m_max_sync_last_log =
             std::chrono::steady_clock::now() - 1h;
 
-    uint64_t m_long_term_block_weights_window;
-    uint64_t m_long_term_effective_median_block_weight;
-    mutable crypto::hash m_long_term_block_weights_cache_tip_hash;
-    mutable epee::misc_utils::rolling_median_t<uint64_t>
-            m_long_term_block_weights_cache_rolling_median;
-
     // NOTE: PoW/Difficulty Cache
     // Before HF16, we use timestamps and difficulties only.
     // After HF16, we check if the state of block producing in Pulse and return
@@ -1402,6 +1364,8 @@ class Blockchain {
 
     // some invalid blocks
     std::set<crypto::hash> m_invalid_blocks;
+    // Guards m_invalid_blocks on its own, as have_block reads it without the blockchain lock
+    mutable std::mutex m_invalid_blocks_mutex;
 
     std::vector<BlockAddHook> m_block_add_hooks;
     std::vector<BlockAddHook> m_alt_block_add_hooks;
@@ -1715,28 +1679,6 @@ class Blockchain {
     bool can_rewind_to(uint64_t height) const;
 
     /**
-     * @brief gets recent block weights for median calculation
-     *
-     * get the block weights of the last <count> blocks, and return by reference <weights>.
-     *
-     * @param weights return-by-reference the list of weights
-     * @param count the number of blocks to get weights for
-     */
-    void get_last_n_blocks_weights(std::vector<uint64_t>& weights, size_t count) const;
-
-    /**
-     * @brief gets block long term weight median
-     *
-     * get the block long term weight median of <count> blocks starting at <start_height>
-     *
-     * @param start_height the block height of the first block to query
-     * @param count the number of blocks to get weights for
-     *
-     * @return the long term median block weight
-     */
-    uint64_t get_long_term_block_weight_median(uint64_t start_height, size_t count) const;
-
-    /**
      * @brief checks if a transaction is unlocked (its outputs spendable)
      *
      * This function checks to see if an output is unlocked.
@@ -1824,15 +1766,6 @@ class Blockchain {
      */
     bool complete_timestamps_vector(uint64_t start_height, std::vector<uint64_t>& timestamps) const;
 
-    /**
-     * @brief calculate the block weight limit for the next block to be added
-     *
-     * @param long_term_effective_median_block_weight optionally return that value
-     *
-     * @return true
-     */
-    bool update_next_cumulative_weight_limit(
-            uint64_t* long_term_effective_median_block_weight = NULL);
     void return_tx_to_pool(std::vector<std::pair<transaction, std::string>>& txs);
 
     /**

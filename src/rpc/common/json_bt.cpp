@@ -1,7 +1,5 @@
 #include "json_bt.h"
 
-#include <common/exception.h>
-
 namespace oxen {
 
 oxenc::bt_value json_to_bt(json&& j) {
@@ -29,7 +27,7 @@ oxenc::bt_value json_to_bt(json&& j) {
         return j.get<uint64_t>();
     if (j.is_number_integer())
         return j.get<int64_t>();
-    throw oxen::traced<std::domain_error>{
+    throw std::domain_error{
             "internal error: encountered some unhandled/invalid type in json-to-bt translation"};
 }
 

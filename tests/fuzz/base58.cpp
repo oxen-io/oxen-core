@@ -26,7 +26,6 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "epee/misc_log_ex.h"
 #include "common/file.h"
 #include "common/base58.h"
 #include "fuzzer.h"
@@ -69,10 +68,7 @@ int Base58Fuzzer::run(const std::string &filename)
 
 int main(int argc, const char **argv)
 {
-  auto logcat = oxen::log::Cat("fuzz");
-  TRY_ENTRY();
   Base58Fuzzer fuzzer;
   return run_fuzzer(argc, argv, fuzzer);
-  CATCH_ENTRY("main", 1);
 }
 

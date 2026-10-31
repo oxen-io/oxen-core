@@ -27,7 +27,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gtest/gtest.h"
-#include "epee/misc_log_ex.h"
 #include "rpc/core_rpc_server.h"
 #include "blockchain_db/blockchain_db.h"
 #include "cryptonote_core/cryptonote_core.h"
@@ -65,13 +64,6 @@ public:
       d.push_back(c);
     }
     return d;
-  }
-
-  std::vector<uint64_t> get_block_weights(uint64_t start_offset, size_t count) const override
-  {
-    std::vector<uint64_t> weights;
-    while (count--) weights.push_back(1);
-    return weights;
   }
 
   uint64_t blockchain_height;

@@ -82,13 +82,9 @@ class BlockchainSQLite : public BlockchainDB {
     uint64_t get_block_timestamp(const uint64_t& height) const override;
     uint64_t get_top_block_timestamp() const override;
     size_t get_block_weight(const uint64_t& height) const override;
-    std::vector<uint64_t> get_block_weights(uint64_t start_height, size_t count) const override;
     difficulty_type get_block_cumulative_difficulty(const uint64_t& height) const override;
     difficulty_type get_block_difficulty(const uint64_t& height) const override;
     uint64_t get_block_already_generated_coins(const uint64_t& height) const override;
-    uint64_t get_block_long_term_weight(const uint64_t& height) const override;
-    std::vector<uint64_t> get_long_term_block_weights(
-            uint64_t start_height, size_t count) const override;
     crypto::hash get_block_hash_from_height(const uint64_t& height) const override;
     std::vector<block> get_blocks_range(const uint64_t& h1, const uint64_t& h2) const override;
     std::vector<crypto::hash> get_hashes_range(
@@ -155,7 +151,6 @@ class BlockchainSQLite : public BlockchainDB {
     uint64_t add_block(
             const std::pair<block, std::string>& blk,
             size_t block_weight,
-            uint64_t long_term_block_weight,
             const difficulty_type& cumulative_difficulty,
             const uint64_t& coins_generated,
             const std::vector<std::pair<transaction, std::string>>& txs) override;
@@ -282,13 +277,9 @@ class BlockchainSQLite : public BlockchainDB {
     bool remove_service_node_proof(const crypto::public_key& pubkey) override;
 
   private:
-    uint64_t get_max_block_size() override;
-    void add_max_block_size(uint64_t sz) override;
-
     void add_block(
             const block& blk,
             size_t block_weight,
-            uint64_t long_term_block_weight,
             const difficulty_type& cumulative_difficulty,
             const uint64_t& coins_generated,
             uint64_t num_rct_outs,
@@ -350,9 +341,6 @@ class BlockchainSQLite : public BlockchainDB {
     // The stored block at `height`, as a block, block_header or (serialized) std::string.
     template <typename T>
     T get_stored_block(uint64_t height, size_t* size = nullptr) const;
-
-    std::vector<uint64_t> get_block_weight_column(
-            std::string_view column, uint64_t start_height, size_t count) const;
 
     // The height below which the history is no longer kept, as of the current height (0 if all of
     // it is kept).

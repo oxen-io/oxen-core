@@ -30,7 +30,6 @@
 
 #include "device_ledger.hpp"
 
-#include <common/exception.h>
 #include <oxenc/endian.h>
 
 #include <chrono>
@@ -137,7 +136,7 @@ void HMACmap::find_mac(const uint8_t sec[32], uint8_t hmac[32]) {
             return;
         }
     }
-    throw oxen::traced<std::runtime_error>("Protocol error: try to send untrusted secret");
+    throw std::runtime_error("Protocol error: try to send untrusted secret");
 }
 
 void HMACmap::add_mac(const uint8_t sec[32], const uint8_t hmac[32]) {
@@ -439,15 +438,19 @@ void device_ledger::send_simple(unsigned char ins, unsigned char p1) {
 }
 
 void device_ledger::send_bytes(const void* buf, size_t size, int& offset) {
-    CHECK_AND_ASSERT_THROW_MES(
-            offset + size <= BUFFER_SEND_SIZE, "send_bytes: out of bounds write");
+    if (offset + size > BUFFER_SEND_SIZE) {
+        log::error(logcat, "send_bytes: out of bounds write");
+        throw std::runtime_error{"send_bytes: out of bounds write"};
+    }
     std::memmove(buffer_send + offset, buf, size);
     offset += size;
 }
 
 void device_ledger::receive_bytes(void* dest, size_t size, int& offset) {
-    CHECK_AND_ASSERT_THROW_MES(
-            offset + size <= BUFFER_RECV_SIZE, "receive_bytes: out of bounds read");
+    if (offset + size > BUFFER_RECV_SIZE) {
+        log::error(logcat, "receive_bytes: out of bounds read");
+        throw std::runtime_error{"receive_bytes: out of bounds read"};
+    }
     std::memmove(dest, buffer_recv + offset, size);
     offset += size;
 }
@@ -482,8 +485,10 @@ void device_ledger::send_secret(const unsigned char sec[32], int& offset) {
     log::debug(logcat, "send_secret: {}", tx_in_progress);
     send_bytes(sec, 32, offset);
     if (tx_in_progress) {
-        CHECK_AND_ASSERT_THROW_MES(
-                offset + 32 <= BUFFER_SEND_SIZE, "send_secret: out of bounds write (mac)");
+        if (offset + 32 > BUFFER_SEND_SIZE) {
+            log::error(logcat, "send_secret: out of bounds write (mac)");
+            throw std::runtime_error{"send_secret: out of bounds write (mac)"};
+        }
         hmac_map.find_mac((uint8_t*)sec, buffer_send + offset);
         offset += 32;
     }
@@ -493,8 +498,10 @@ void device_ledger::receive_secret(unsigned char sec[32], int& offset) {
     log::debug(logcat, "receive_secret: {}", tx_in_progress);
     receive_bytes(sec, 32, offset);
     if (tx_in_progress) {
-        CHECK_AND_ASSERT_THROW_MES(
-                offset + 32 <= BUFFER_RECV_SIZE, "receive_secret: out of bounds read (mac)");
+        if (offset + 32 > BUFFER_RECV_SIZE) {
+            log::error(logcat, "receive_secret: out of bounds read (mac)");
+            throw std::runtime_error{"receive_secret: out of bounds read (mac)"};
+        }
         hmac_map.add_mac((uint8_t*)sec, buffer_recv + offset);
         offset += 32;
     }
@@ -514,22 +521,33 @@ unsigned int device_ledger::finish_and_exchange(int& offset, bool wait_on_input)
 bool device_ledger::reset() {
     reset_buffer();
     int offset = set_command_header_noopt(INS_RESET);
-    CHECK_AND_ASSERT_THROW_MES(
-            offset + OXEN_VERSION_STR.size() <= BUFFER_SEND_SIZE, "OXEN_VERSION_STR is too long");
+    if (offset + OXEN_VERSION_STR.size() > BUFFER_SEND_SIZE) {
+        log::error(logcat, "OXEN_VERSION_STR is too long");
+        throw std::runtime_error{"OXEN_VERSION_STR is too long"};
+    }
     send_bytes(OXEN_VERSION_STR.data(), OXEN_VERSION_STR.size(), offset);
     finish_and_exchange(offset);
 
-    CHECK_AND_ASSERT_THROW_MES(
-            length_recv >= 3,
-            "Communication error, less than three bytes received. Check your application version.");
+    if (length_recv < 3) {
+        log::error(
+                logcat,
+                "Communication error, less than three bytes received. Check your application "
+                "version.");
+        throw std::runtime_error{
+                "Communication error, less than three bytes received. Check your application "
+                "version."};
+    }
 
     std::array<uint8_t, 3> device_version = {buffer_recv[0], buffer_recv[1], buffer_recv[2]};
 
-    CHECK_AND_ASSERT_THROW_MES(
-            device_version >= MINIMUM_APP_VERSION,
-            "Unsupported device application version: {}. At least {} is required.",
-            fmt::join(device_version, "."),
-            fmt::join(MINIMUM_APP_VERSION, "."));
+    if (device_version < MINIMUM_APP_VERSION) {
+        auto msg = fmt::format(
+                "Unsupported device application version: {}. At least {} is required.",
+                fmt::join(device_version, "."),
+                fmt::join(MINIMUM_APP_VERSION, "."));
+        log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+    }
 
     return true;
 }
@@ -539,8 +557,10 @@ unsigned int device_ledger::exchange(bool wait_on_input) {
 
     length_recv = hw_device->exchange(
             buffer_send, length_send, buffer_recv, BUFFER_RECV_SIZE, wait_on_input);
-    CHECK_AND_ASSERT_THROW_MES(
-            length_recv >= 2, "Communication error, less than two bytes received");
+    if (length_recv < 2) {
+        log::error(logcat, "Communication error, less than two bytes received");
+        throw std::runtime_error{"Communication error, less than two bytes received"};
+    }
 
     length_recv -= 2;
     sw = (buffer_recv[length_recv] << 8) | buffer_recv[length_recv + 1];
@@ -550,13 +570,16 @@ unsigned int device_ledger::exchange(bool wait_on_input) {
     if (wait_on_input && sw == IO_SW_DENY)
         return sw;
 
-    CHECK_AND_ASSERT_THROW_MES(
-            sw == SW_OK,
-            "Wrong Device Status: 0x{:x} ({}), EXPECTED 0x{:x} ({})",
-            sw,
-            status_string(sw),
-            SW_OK,
-            status_string(SW_OK));
+    if (sw != SW_OK) {
+        auto msg = fmt::format(
+                "Wrong Device Status: 0x{:x} ({}), EXPECTED 0x{:x} ({})",
+                sw,
+                status_string(sw),
+                SW_OK,
+                status_string(SW_OK));
+        log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+    }
 
     return sw;
 }
@@ -716,7 +739,7 @@ bool device_ledger::connect() {
     else if (auto* tcp = dynamic_cast<io::ledger_tcp*>(hw_device.get()))
         tcp->connect();
     else
-        throw oxen::traced<std::logic_error>{"Invalid ledger hardware configure"};
+        throw std::logic_error{"Invalid ledger hardware configure"};
     reset();
 
     check_network_type();
@@ -757,10 +780,10 @@ void device_ledger::check_network_type() {
     log::debug(
             logcat, "Ledger wallet is set to {} {}", coin, network_type_to_string(device_nettype));
     if (coin != COIN_NETWORK)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Invalid wallet app: expected " + std::string{COIN_NETWORK} + ", got " + coin};
     if (device_nettype != nettype)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Ledger wallet is set to the wrong network type: expected {} but the device is set to {}"_format(
                         network_type_to_string(nettype), network_type_to_string(device_nettype))};
 }
@@ -865,8 +888,10 @@ void device_ledger::display_address(
     // payment ID
     send_bytes(payment_id ? payment_id->data() : crypto::null<crypto::hash8>.data(), 8, offset);
 
-    CHECK_AND_ASSERT_THROW_MES(
-            finish_and_exchange(offset, true) == SW_OK, "Timeout/Error on display address.");
+    if (finish_and_exchange(offset, true) != SW_OK) {
+        log::error(logcat, "Timeout/Error on display address.");
+        throw std::runtime_error{"Timeout/Error on display address."};
+    }
 }
 
 /* ======================================================================= */
@@ -1198,7 +1223,7 @@ crypto::secret_key device_ledger::generate_keys(
     auto locks = tools::unique_locks(device_locker, command_locker);
     int offset;
     if (recover) {
-        throw oxen::traced<std::runtime_error>("device generate key does not support recover");
+        throw std::runtime_error("device generate key does not support recover");
     }
 
 #ifdef DEBUG_HWDEVICE
@@ -1305,7 +1330,10 @@ bool device_ledger::conceal_derivation(
             }
         }
     }
-    CHECK_AND_ASSERT_THROW_MES(pkey, "Mismatched derivation on scan info");
+    if (!pkey) {
+        log::error(logcat, "Mismatched derivation on scan info");
+        throw std::runtime_error{"Mismatched derivation on scan info"};
+    }
     return generate_key_derivation(*pkey, crypto::null<crypto::secret_key>, derivation);
 }
 
@@ -1528,8 +1556,10 @@ bool device_ledger::generate_unlock_signature(
 
     // Ask for confirmation:
     int offset = set_command_header_noopt(INS_GEN_UNLOCK_SIGNATURE);
-    CHECK_AND_ASSERT_THROW_MES(
-            finish_and_exchange(offset, true) == SW_OK, "Unlock denied on device.");
+    if (finish_and_exchange(offset, true) != SW_OK) {
+        log::error(logcat, "Unlock denied on device.");
+        throw std::runtime_error{"Unlock denied on device."};
+    }
 
     // If we got permission then we can ask for the actual signature:
     offset = set_command_header_noopt(INS_GEN_UNLOCK_SIGNATURE, 1);
@@ -1560,7 +1590,10 @@ bool device_ledger::generate_ons_signature(
         crypto::signature& sig) {
     // Initialize (prompts the user):
     int offset = set_command_header_noopt(INS_GEN_ONS_SIGNATURE);
-    CHECK_AND_ASSERT_THROW_MES(finish_and_exchange(offset, true) == SW_OK, "ONS denied on device.");
+    if (finish_and_exchange(offset, true) != SW_OK) {
+        log::error(logcat, "ONS denied on device.");
+        throw std::runtime_error{"ONS denied on device."};
+    }
 
     // Send ons signature data to be hashed:
     exchange_multipart_data(INS_GEN_ONS_SIGNATURE, 1, sig_data, BLAKE2B_HASH_CHUNK_SIZE);
@@ -1710,7 +1743,7 @@ void device_ledger::get_transaction_prefix_hash(
     } catch (const std::exception& e) {
         auto err = "unable to serialize transaction prefix: {}"_format(e.what());
         log::error(logcat, "{}", err);
-        throw oxen::traced<std::runtime_error>{e.what()};
+        throw std::runtime_error{e.what()};
     }
 
     unsigned char* send = buffer_send + set_command_header_noopt(INS_PREFIX_HASH, 1);
@@ -1868,7 +1901,11 @@ bool device_ledger::generate_output_ephemeral_keys(
             32);
 #endif
 
-    CHECK_AND_ASSERT_THROW_MES(tx_version > 1, "TX version {} not supported", tx_version);
+    if (tx_version <= 1) {
+        auto msg = fmt::format("TX version {} not supported", tx_version);
+        log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+    }
 
     // make additional tx pubkey if necessary
     cryptonote::keypair additional_txkey;
@@ -1903,18 +1940,27 @@ bool device_ledger::generate_output_ephemeral_keys(
 
     // if (tx_version > 1)
     {
-        CHECK_AND_ASSERT_THROW_MES(recv_len >= 32, "Not enough data from device");
+        if (recv_len < 32) {
+            log::error(logcat, "Not enough data from device");
+            throw std::runtime_error{"Not enough data from device"};
+        }
         crypto::secret_key scalar1;
         receive_secret(scalar1.data(), offset);
         amount_keys.push_back(rct::sk2rct(scalar1));
         recv_len -= 32;
     }
-    CHECK_AND_ASSERT_THROW_MES(recv_len >= 32, "Not enough data from device");
+    if (recv_len < 32) {
+        log::error(logcat, "Not enough data from device");
+        throw std::runtime_error{"Not enough data from device"};
+    }
     receive_bytes(out_eph_public_key.data(), 32, offset);
     recv_len -= 32;
 
     if (need_additional_txkeys) {
-        CHECK_AND_ASSERT_THROW_MES(recv_len >= 32, "Not enough data from device");
+        if (recv_len < 32) {
+            log::error(logcat, "Not enough data from device");
+            throw std::runtime_error{"Not enough data from device"};
+        }
         receive_bytes(additional_txkey.pub.data(), 32, offset);
         additional_tx_public_keys.push_back(additional_txkey.pub);
         recv_len -= 32;
@@ -2091,10 +2137,16 @@ bool device_ledger::clsag_prehash(
     buffer_send[offset++] = data[data_offset++];
 
     // check fee user input
-    CHECK_AND_ASSERT_THROW_MES(finish_and_exchange(offset, true) == SW_OK, "Fee denied on device.");
+    if (finish_and_exchange(offset, true) != SW_OK) {
+        log::error(logcat, "Fee denied on device.");
+        throw std::runtime_error{"Fee denied on device."};
+    }
 
     auto type = static_cast<rct::RCTType>(data[0]);
-    CHECK_AND_ASSERT_THROW_MES(type == rct::RCTType::CLSAG, "non-CLSAG generation not supported");
+    if (type != rct::RCTType::CLSAG) {
+        log::error(logcat, "non-CLSAG generation not supported");
+        throw std::runtime_error{"non-CLSAG generation not supported"};
+    }
 
     // ======  Aout, Bout, AKout, C, v, k ======
     size_t kv_offset = data_offset;
@@ -2106,7 +2158,10 @@ bool device_ledger::clsag_prehash(
         found = key_map.find(outPk[i].dest, outKeys);
         if (!found) {
             log_hexbuffer("Pout not found", outPk[i].dest.bytes, 32);
-            CHECK_AND_ASSERT_THROW_MES(found, "Pout not found");
+            if (!found) {
+                log::error(logcat, "Pout not found");
+                throw std::runtime_error{"Pout not found"};
+            }
         }
         offset = set_command_header(INS_VALIDATE, 0x02, i + 1);
         // options
@@ -2125,8 +2180,10 @@ bool device_ledger::clsag_prehash(
         send_bytes(crypto::null<crypto::hash>.data(), 24, offset);  // v padding
 
         // check transaction user input
-        CHECK_AND_ASSERT_THROW_MES(
-                finish_and_exchange(offset, true) == SW_OK, "Transaction denied on device.");
+        if (finish_and_exchange(offset, true) != SW_OK) {
+            log::error(logcat, "Transaction denied on device.");
+            throw std::runtime_error{"Transaction denied on device."};
+        }
 #ifdef DEBUG_HWDEVICE
         log_hexbuffer("Prehash AKV input", &buffer_recv[64], 3 * 32);
 #endif

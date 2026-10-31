@@ -29,7 +29,7 @@
 #ifndef __tables_h
 #define __tables_h
 
-#include "epee/int-util.h"
+#include "int-util.h"
 
 #if BYTE_ORDER == LITTLE_ENDIAN
 const uint32_t T[512] = {

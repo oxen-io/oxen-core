@@ -27,7 +27,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <common/command_line.h>
-#include <common/exception.h>
 #include <common/signal_handler.h>
 #include <common/varint.h>
 #include <date/date.h>
@@ -45,13 +44,9 @@ using namespace cryptonote;
 
 static bool stop_requested = false;
 
-int main(int argc, char* argv[]) {
-    oxen::set_terminate_handler();
-    static auto logcat = log::Cat("bcutil");
+static auto logcat = log::Cat("bcutil");
 
-    TRY_ENTRY();
-
-    epee::string_tools::set_module_name_and_folder(argv[0]);
+int main(int argc, char* argv[]) try {
     uint64_t block_start = 0;
     uint64_t block_stop = 0;
     tools::on_startup();
@@ -134,7 +129,10 @@ int main(int argc, char* argv[]) {
     }
     r = core_storage->init(std::move(bdb), net_type);
 
-    CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
+    if (!r) {
+        log::error(logcat, "Failed to initialize source blockchain storage");
+        return 1;
+    }
     log::warning(logcat, "Source blockchain storage initialized OK");
 
     tools::signal_handler::install([](int type) { stop_requested = true; });
@@ -257,10 +255,10 @@ int main(int argc, char* argv[]) {
         currsz += bd.size();
         for (const auto& tx_id : blk.tx_hashes) {
             if (!tx_id) {
-                throw oxen::traced<std::runtime_error>("Aborting: null txid");
+                throw std::runtime_error("Aborting: null txid");
             }
             if (!db.get_pruned_tx_blob(tx_id, bd)) {
-                throw oxen::traced<std::runtime_error>("Aborting: tx not found");
+                throw std::runtime_error("Aborting: tx not found");
             }
             transaction tx;
             if (!parse_and_validate_tx_base_from_blob(bd, tx)) {
@@ -306,6 +304,7 @@ int main(int argc, char* argv[]) {
 
     core_storage->deinit();
     return 0;
-
-    CATCH_ENTRY("Stats reporting error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Stats reporting error: {}", e.what());
+    return 1;
 }

@@ -39,7 +39,6 @@ if(BUILD_GEN_MULTISIG)
         wallet
         rpc_commands
         cryptonote_core
-        epee
         version
         logging
         extra)

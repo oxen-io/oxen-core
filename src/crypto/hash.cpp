@@ -33,49 +33,67 @@ crypto::hash& crypto::hash::operator=(const crypto::hash8& h) {
     return *this;
 }
 
-void cn_slow_hash(const void* data, std::size_t length, hash& hash, cn_slow_hash_type type) {
-    switch (type) {
-        case cn_slow_hash_type::heavy_v1:
-        case cn_slow_hash_type::heavy_v2: {
-            static thread_local cn_heavy_hash_v2 v2;
-            static thread_local cn_heavy_hash_v1 v1 = cn_heavy_hash_v1::make_borrowed(v2);
+// The heavy v1 context borrows the (larger) scratchpad of the thread's heavy v2 context, so that a
+// thread using both allocates only one.
+static cn_heavy_hash_v2& heavy_v2_context() {
+    static thread_local cn_heavy_hash_v2 v2;
+    return v2;
+}
+static cn_heavy_hash_v1& heavy_v1_context() {
+    static thread_local cn_heavy_hash_v1 v1 = cn_heavy_hash_v1::make_borrowed(heavy_v2_context());
+    return v1;
+}
 
-            if (type == cn_slow_hash_type::heavy_v1)
-                v1.hash(data, length, hash.data());
-            else
-                v2.hash(data, length, hash.data());
-        } break;
+void cn_heavy_v1(std::span<const char> data, std::span<unsigned char, HASH_SIZE> out) {
+    heavy_v1_context().hash(data.data(), data.size(), out.data());
+}
+
+hash cn_heavy_v1(std::span<const char> data) {
+    hash h;
+    cn_heavy_v1(data, h.data_);
+    return h;
+}
+
+hash cn_heavy_v2(std::span<const char> data) {
+    hash h;
+    heavy_v2_context().hash(data.data(), data.size(), h.data());
+    return h;
+}
+
+hash cn_turtle_lite_v2(std::span<const char> data) {
+    constexpr uint32_t CN_TURTLE_SCRATCHPAD = 262144;
+    constexpr uint32_t CN_TURTLE_ITERATIONS = 131072;
+    hash h;
+    cn_turtle_hash(
+            data.data(),
+            data.size(),
+            h.data(),
+            1,  // light
+            2,  // variant
+            0,  // pre-hashed
+            CN_TURTLE_SCRATCHPAD,
+            CN_TURTLE_ITERATIONS);
+    return h;
+}
 
 #ifdef ENABLE_MONERO_SLOW_HASH
-        case cn_slow_hash_type::cryptonight_v0:
-        case cn_slow_hash_type::cryptonight_v1_prehashed: {
-            int variant = 0, prehashed = 0;
-            if (type == cn_slow_hash_type::cryptonight_v1_prehashed) {
-                prehashed = 1;
-                variant = 1;
-            } else if (type == cn_slow_hash_type::cryptonight_v0_prehashed) {
-                prehashed = 1;
-            }
-
-            cn_monero_hash(data, length, hash.data(), variant, prehashed);
-        } break;
-#endif
-
-        case cn_slow_hash_type::turtle_lite_v2:
-        default: {
-            constexpr uint32_t CN_TURTLE_SCRATCHPAD = 262144;
-            constexpr uint32_t CN_TURTLE_ITERATIONS = 131072;
-            cn_turtle_hash(
-                    data,
-                    length,
-                    hash.data(),
-                    1,  // light
-                    2,  // variant
-                    0,  // pre-hashed
-                    CN_TURTLE_SCRATCHPAD,
-                    CN_TURTLE_ITERATIONS);
-        } break;
-    }
+hash cn_monero_v0(std::span<const char> data) {
+    hash h;
+    cn_monero_hash(data.data(), data.size(), h.data(), 0 /*variant*/, 0 /*prehashed*/);
+    return h;
 }
+
+hash cn_monero_v0_prehashed(std::span<const char> data) {
+    hash h;
+    cn_monero_hash(data.data(), data.size(), h.data(), 0 /*variant*/, 1 /*prehashed*/);
+    return h;
+}
+
+hash cn_monero_v1_prehashed(std::span<const char> data) {
+    hash h;
+    cn_monero_hash(data.data(), data.size(), h.data(), 1 /*variant*/, 1 /*prehashed*/);
+    return h;
+}
+#endif
 
 }  // namespace crypto

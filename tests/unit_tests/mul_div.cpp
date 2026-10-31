@@ -30,7 +30,7 @@
 
 #include "gtest/gtest.h"
 
-#include "epee/int-util.h"
+#include "crypto/int-util.h"
 
 namespace
 {

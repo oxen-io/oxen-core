@@ -62,9 +62,9 @@ target_link_libraries(cryptonote_core
     l2_tracker
     sesh_transition_data
     ethyl
+    levin_kv
     network_config
   PRIVATE
-    net
     sqlitedb
     systemd
     logging

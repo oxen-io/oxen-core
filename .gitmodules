@@ -1,9 +1,6 @@
 [submodule "external/rapidjson"]
 	path = external/rapidjson
 	url = https://github.com/Tencent/rapidjson
-[submodule "external/trezor-common"]
-	path = external/trezor-common
-	url = https://github.com/trezor/trezor-common.git
 [submodule "external/randomx"]
 	path = external/randomx
 	url = https://github.com/oxen-io/loki-randomXL
@@ -38,9 +35,6 @@
 [submodule "external/oxen-encoding"]
 	path = external/oxen-encoding
 	url = https://github.com/session-foundation/oxen-encoding.git
-[submodule "external/cpptrace"]
-	path = external/cpptrace
-	url = https://github.com/jeremy-rifkin/cpptrace
 [submodule "external/bn256"]
 	path = external/bn256
 	url = https://github.com/oxen-io/bn256.git
@@ -53,3 +47,6 @@
 [submodule "external/session-sqlite"]
 	path = external/session-sqlite
 	url = https://github.com/session-foundation/session-sqlite.git
+[submodule "external/libquic"]
+	path = external/libquic
+	url = https://github.com/session-foundation/libquic.git

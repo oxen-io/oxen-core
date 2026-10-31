@@ -56,9 +56,9 @@ static bool parse_if_present(std::forward_list<std::string>& list, T& var, const
         return true;
     bool good = false;
     if constexpr (is_std_optional<T>)
-        good = epee::string_tools::get_xtype_from_string(var.emplace(), list.front());
+        good = tools::parse_int(list.front(), var.emplace());
     else
-        good = epee::string_tools::get_xtype_from_string(var, list.front());
+        good = tools::parse_int(list.front(), var);
     if (good) {
         list.pop_front();
         return true;
@@ -103,7 +103,7 @@ bool command_parser_executor::print_sn_state_changes(const std::vector<std::stri
     }
 
     std::forward_list<std::string> args_list(args.begin(), args.end());
-    if (!epee::string_tools::get_xtype_from_string(start_height, args_list.front())) {
+    if (!tools::parse_int(args_list.front(), start_height)) {
         std::cout << "start_height should be a number" << std::endl;
         return false;
     }
@@ -194,17 +194,17 @@ bool command_parser_executor::print_blockchain_info(const std::vector<std::strin
     uint64_t end_index = 0;
     if (args[0][0] == '-') {
         int64_t nblocks;
-        if (!epee::string_tools::get_xtype_from_string(nblocks, args[0])) {
+        if (!tools::parse_int(args[0], nblocks)) {
             std::cout << "wrong number of blocks" << std::endl;
             return false;
         }
         return m_executor.print_blockchain_info(nblocks, (uint64_t)-nblocks);
     }
-    if (!epee::string_tools::get_xtype_from_string(start_index, args[0])) {
+    if (!tools::parse_int(args[0], start_index)) {
         std::cout << "wrong starter block index parameter" << std::endl;
         return false;
     }
-    if (args.size() > 1 && !epee::string_tools::get_xtype_from_string(end_index, args[1])) {
+    if (args.size() > 1 && !tools::parse_int(args[1], end_index)) {
         std::cout << "wrong end block index parameter" << std::endl;
         return false;
     }
@@ -246,7 +246,7 @@ bool command_parser_executor::print_sr(const std::vector<std::string>& args) {
     }
 
     uint64_t height = 0;
-    if (!epee::string_tools::get_xtype_from_string(height, args[0])) {
+    if (!tools::parse_int(args[0], height)) {
         std::cout << "wrong block height parameter" << std::endl;
         return false;
     }
@@ -650,11 +650,11 @@ bool command_parser_executor::print_coinbase_tx_sum(const std::vector<std::strin
     }
     uint64_t height = 0;
     uint64_t count = 0;
-    if (!epee::string_tools::get_xtype_from_string(height, args[0])) {
+    if (!tools::parse_int(args[0], height)) {
         std::cout << "wrong starter block height parameter" << std::endl;
         return false;
     }
-    if (args.size() > 1 && !epee::string_tools::get_xtype_from_string(count, args[1])) {
+    if (args.size() > 1 && !tools::parse_int(args[1], count)) {
         std::cout << "wrong count parameter" << std::endl;
         return false;
     }
@@ -673,12 +673,12 @@ bool command_parser_executor::alt_chain_info(const std::vector<std::string>& arg
     uint64_t last_blocks = 0;
     if (args.size() == 1) {
         if (args[0].size() > 0 && args[0][0] == '>') {
-            if (!epee::string_tools::get_xtype_from_string(above, args[0].c_str() + 1)) {
+            if (!tools::parse_int(std::string_view{args[0]}.substr(1), above)) {
                 std::cout << "invalid above parameter" << std::endl;
                 return false;
             }
         } else if (args[0].size() > 0 && args[0][0] == '-') {
-            if (!epee::string_tools::get_xtype_from_string(last_blocks, args[0].c_str() + 1)) {
+            if (!tools::parse_int(std::string_view{args[0]}.substr(1), last_blocks)) {
                 std::cout << "invalid last_blocks parameter" << std::endl;
                 return false;
             }
@@ -697,7 +697,7 @@ bool command_parser_executor::print_blockchain_dynamic_stats(const std::vector<s
     }
 
     uint64_t nblocks = 0;
-    if (!epee::string_tools::get_xtype_from_string(nblocks, args[0]) || nblocks == 0) {
+    if (!tools::parse_int(args[0], nblocks) || nblocks == 0) {
         std::cout << "wrong number of blocks" << std::endl;
         return false;
     }

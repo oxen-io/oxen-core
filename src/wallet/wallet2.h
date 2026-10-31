@@ -46,6 +46,7 @@
 #include "common/password.h"
 #include "common/unordered_containers_boost_serialization.h"
 #include "crypto/chacha.h"
+#include "crypto/cleared_string.h"
 #include "crypto/hash.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/account_boost_serialization.h"
@@ -53,39 +54,21 @@
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
 #include "cryptonote_core/oxen_name_system.h"
+#include "multisig_info.h"
+#include "multisig_sig.h"
 #include "node_rpc_proxy.h"
+#include "pending_tx.h"
 #include "ringct/rctOps.h"
 #include "ringct/rctTypes.h"
 #include "rpc/core_rpc_server_binary_commands.h"
 #include "rpc/core_rpc_server_commands_defs.h"
-#include "wallet_errors.h"
-#ifdef WALLET_ENABLE_MMS
-#include "message_store.h"
-// Intended to make the ifdefs a bit less cumbersome where we need to pass an extra arg with MMS.
-// E.g. `foo(a, b IF_MMS(, c))`  becomes `foo(a, b, c)` undef MMS and `foo(a,b)` without MMS.
-#define ENABLE_IF_MMS(...) __VA_ARGS__
-#else
-#define ENABLE_IF_MMS(...)
-#endif
-
-#ifdef ENABLE_LIGHT_WALLET
-#include "wallet_light_rpc.h"
-// Same as above, but for light wallet args
-#define ENABLE_IF_LIGHT_WALLET(...) __VA_ARGS__
-#else
-#define ENABLE_IF_LIGHT_WALLET(...)
-#endif
-
-#include "epee/wipeable_string.h"
-#include "multisig_info.h"
-#include "multisig_sig.h"
-#include "pending_tx.h"
 #include "rpc/http_client.h"
 #include "transfer_destination.h"
 #include "transfer_details.h"
 #include "transfer_view.h"
 #include "tx_construction_data.h"
 #include "tx_sets.h"
+#include "wallet_errors.h"
 
 #define SUBADDRESS_LOOKAHEAD_MAJOR 50
 #define SUBADDRESS_LOOKAHEAD_MINOR 200
@@ -128,13 +111,13 @@ class gamma_picker {
 class wallet_keys_unlocker {
   public:
     wallet_keys_unlocker(wallet2& w, const std::optional<tools::password_container>& password);
-    wallet_keys_unlocker(wallet2& w, bool locked, const epee::wipeable_string& password);
+    wallet_keys_unlocker(wallet2& w, bool locked, const crypto::cleared_string& password);
     ~wallet_keys_unlocker();
 
   private:
     wallet2& w;
     bool locked;
-    crypto::chacha_key key;
+    crypto::chacha_key key{};
     static std::mutex lockers_mutex;
     static unsigned int lockers;
 };
@@ -166,7 +149,7 @@ class i_wallet2_callback {
             const cryptonote::subaddress_index& subaddr_index) {}
     virtual void on_skip_transaction(
             uint64_t height, const crypto::hash& txid, const cryptonote::transaction& tx) {}
-    virtual std::optional<epee::wipeable_string> on_get_password(const char* reason) {
+    virtual std::optional<crypto::cleared_string> on_get_password(const char* reason) {
         return std::nullopt;
     }
     // Light wallet callbacks
@@ -178,8 +161,8 @@ class i_wallet2_callback {
     // Device callbacks
     virtual void on_device_button_request(uint64_t code) {}
     virtual void on_device_button_pressed() {}
-    virtual std::optional<epee::wipeable_string> on_device_pin_request() { return std::nullopt; }
-    virtual std::optional<epee::wipeable_string> on_device_passphrase_request(bool& on_device) {
+    virtual std::optional<crypto::cleared_string> on_device_pin_request() { return std::nullopt; }
+    virtual std::optional<crypto::cleared_string> on_device_passphrase_request(bool& on_device) {
         on_device = true;
         return std::nullopt;
     }
@@ -194,8 +177,8 @@ class wallet_device_callback : public hw::i_device_callback {
     wallet_device_callback(wallet2* wallet) : wallet(wallet) {};
     void on_button_request(uint64_t code = 0) override;
     void on_button_pressed() override;
-    std::optional<epee::wipeable_string> on_pin_request() override;
-    std::optional<epee::wipeable_string> on_passphrase_request(bool& on_device) override;
+    std::optional<crypto::cleared_string> on_pin_request() override;
+    std::optional<crypto::cleared_string> on_passphrase_request(bool& on_device) override;
     void on_progress(const hw::device_progress& event) override;
 
   private:
@@ -338,14 +321,14 @@ class wallet2 {
 
     static bool verify_password(
             const fs::path& keys_file_name,
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             bool no_spend_key,
             hw::device& hwdev,
             uint64_t kdf_rounds);
     static bool query_device(
             hw::device::type& device_type,
             const fs::path& keys_file_name,
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             uint64_t kdf_rounds = 1);
 
     wallet2(cryptonote::network_type nettype = cryptonote::network_type::MAINNET,
@@ -383,11 +366,6 @@ class wallet2 {
                     (m_type == wallet::pay_type::service_node) ||
                     (m_type == wallet::pay_type::governance));
         }
-    };
-
-    struct address_tx : payment_details {
-        bool m_mempool;
-        bool m_incoming;
     };
 
     struct pool_payment_details {
@@ -532,8 +510,8 @@ class wallet2 {
      */
     void generate(
             const fs::path& wallet_,
-            const epee::wipeable_string& password,
-            const epee::wipeable_string& multisig_data,
+            const crypto::cleared_string& password,
+            const crypto::cleared_string& multisig_data,
             bool create_address_file = true);
 
     /*!
@@ -548,7 +526,7 @@ class wallet2 {
      */
     crypto::secret_key generate(
             const fs::path& wallet,
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             const crypto::secret_key& recovery_param = crypto::secret_key(),
             bool recover = false,
             bool two_random = false,
@@ -564,7 +542,7 @@ class wallet2 {
      */
     void generate(
             const fs::path& wallet,
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             const cryptonote::account_public_address& account_public_address,
             const crypto::secret_key& spendkey,
             const crypto::secret_key& viewkey,
@@ -579,7 +557,7 @@ class wallet2 {
      */
     void generate(
             const fs::path& wallet,
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             const cryptonote::account_public_address& account_public_address,
             const crypto::secret_key& viewkey = crypto::secret_key(),
             bool create_address_file = true);
@@ -596,7 +574,7 @@ class wallet2 {
      */
     void restore_from_device(
             const fs::path& wallet_,
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             const std::string& device_name,
             bool create_address_file = false,
             std::optional<std::string> hwdev_label = std::nullopt,
@@ -608,7 +586,7 @@ class wallet2 {
      * to other participants
      */
     std::string make_multisig(
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             const std::vector<std::string>& info,
             uint32_t threshold);
     /*!
@@ -617,29 +595,29 @@ class wallet2 {
      * to other participants
      */
     std::string make_multisig(
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             const std::vector<crypto::secret_key>& view_keys,
             const std::vector<crypto::public_key>& spend_keys,
             uint32_t threshold);
     std::string exchange_multisig_keys(
-            const epee::wipeable_string& password, const std::vector<std::string>& info);
+            const crypto::cleared_string& password, const std::vector<std::string>& info);
     /*!
      * \brief Any but first round of keys exchange
      */
     std::string exchange_multisig_keys(
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             std::unordered_set<crypto::public_key> pkeys,
             std::vector<crypto::public_key> signers);
     /*!
      * \brief Finalizes creation of a multisig wallet
      */
     bool finalize_multisig(
-            const epee::wipeable_string& password, const std::vector<std::string>& info);
+            const crypto::cleared_string& password, const std::vector<std::string>& info);
     /*!
      * \brief Finalizes creation of a multisig wallet
      */
     bool finalize_multisig(
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             const std::unordered_set<crypto::public_key>& pkeys,
             std::vector<crypto::public_key> signers);
     /*!
@@ -673,14 +651,14 @@ class wallet2 {
      * already there) \param wallet_name Name of wallet file (should exist) \param password Password
      * for wallet file
      */
-    void rewrite(const fs::path& wallet_name, const epee::wipeable_string& password);
+    void rewrite(const fs::path& wallet_name, const crypto::cleared_string& password);
     void write_watch_only_wallet(
             const fs::path& wallet_name,
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             fs::path& new_keys_filename);
     void load(
             const fs::path& wallet,
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             const std::string& keys_buf = "",
             const std::string& cache_buf = "");
     void store();
@@ -690,7 +668,7 @@ class wallet2 {
      * on this filename) \param password  Password to protect new wallet (TODO: probably better save
      * the password in the wallet object?)
      */
-    void store_to(const fs::path& path, const epee::wipeable_string& password);
+    void store_to(const fs::path& path, const crypto::cleared_string& password);
     /*!
      * \brief get_keys_file_data  Get wallet keys data which can be stored to a wallet file.
      * \param password            Password of the encrypted wallet buffer (TODO: probably better
@@ -699,7 +677,7 @@ class wallet2 {
      * keys data which can be stored to a wallet file
      */
     std::optional<wallet2::keys_file_data> get_keys_file_data(
-            const epee::wipeable_string& password, bool watch_only);
+            const crypto::cleared_string& password, bool watch_only);
     /*!
      * \brief get_cache_file_data   Get wallet cache data which can be stored to a wallet file.
      * \param password              Password to protect the wallet cache data (TODO: probably better
@@ -707,21 +685,21 @@ class wallet2 {
      * data which can be stored to a wallet file
      */
     std::optional<wallet2::cache_file_data> get_cache_file_data(
-            const epee::wipeable_string& password);
+            const crypto::cleared_string& password);
 
     const fs::path& path() const;
 
     /*!
      * \brief verifies given password is correct for default wallet keys file
      */
-    bool verify_password(const epee::wipeable_string& password);
+    bool verify_password(const crypto::cleared_string& password);
     cryptonote::account_base& get_account() { return m_account; }
     const cryptonote::account_base& get_account() const { return m_account; }
 
     void encrypt_keys(const crypto::chacha_key& key);
-    void encrypt_keys(const epee::wipeable_string& password);
+    void encrypt_keys(const crypto::cleared_string& password);
     void decrypt_keys(const crypto::chacha_key& key);
-    void decrypt_keys(const epee::wipeable_string& password);
+    void decrypt_keys(const crypto::cleared_string& password);
 
     void set_refresh_from_block_height(uint64_t height) { m_refresh_from_block_height = height; }
     uint64_t get_refresh_from_block_height() const { return m_refresh_from_block_height; }
@@ -744,12 +722,7 @@ class wallet2 {
             std::string proxy = "",
             bool trusted_daemon = true);
 
-    void stop() {
-        m_run.store(false, std::memory_order_relaxed);
-#ifdef WALLET_ENABLE_MMS
-        m_message_store.stop();
-#endif
-    }
+    void stop() { m_run.store(false, std::memory_order_relaxed); }
 
     i_wallet2_callback* callback() const { return m_callback; }
     void callback(i_wallet2_callback* callback) { m_callback = callback; }
@@ -762,21 +735,8 @@ class wallet2 {
      */
     bool is_deterministic() const;
     bool get_seed(
-            epee::wipeable_string& electrum_words,
-            const epee::wipeable_string& passphrase = epee::wipeable_string()) const;
-
-#ifdef ENABLE_LIGHT_WALLET
-    /*!
-     * \brief Checks if light wallet. A light wallet sends view key to a server where the blockchain
-     * is scanned.
-     */
-    bool light_wallet() const { return m_light_wallet; }
-    void set_light_wallet(bool light_wallet) { m_light_wallet = light_wallet; }
-    uint64_t get_light_wallet_scanned_block_height() const {
-        return m_light_wallet_scanned_block_height;
-    }
-    uint64_t get_light_wallet_blockchain_height() const { return m_light_wallet_blockchain_height; }
-#endif
+            crypto::cleared_string& electrum_words,
+            const crypto::cleared_string& passphrase = crypto::cleared_string()) const;
 
     /*!
      * \brief Gets the seed language
@@ -842,8 +802,8 @@ class wallet2 {
     bool has_multisig_partial_key_images() const;
     bool has_unknown_key_images() const;
     bool get_multisig_seed(
-            epee::wipeable_string& seed,
-            const epee::wipeable_string& passphrase = std::string(),
+            crypto::cleared_string& seed,
+            const crypto::cleared_string& passphrase = std::string(),
             bool raw = true) const;
     bool key_on_device() const { return get_device_type() != hw::device::type::SOFTWARE; }
     hw::device::type get_device_type() const { return m_key_device_type; }
@@ -1595,11 +1555,11 @@ class wallet2 {
             bool authenticated = true) const;
     std::string encrypt_with_view_secret_key(
             std::string_view plaintext, bool authenticated = true) const;
-    epee::wipeable_string decrypt(
+    crypto::cleared_string decrypt(
             std::string_view ciphertext,
             const crypto::secret_key& skey,
             bool authenticated = true) const;
-    epee::wipeable_string decrypt_with_view_secret_key(
+    crypto::cleared_string decrypt_with_view_secret_key(
             std::string_view ciphertext, bool authenticated = true) const;
 
     std::string make_uri(
@@ -1641,39 +1601,6 @@ class wallet2 {
 
     bool is_unattended() const { return m_unattended; }
 
-#ifdef ENABLE_LIGHT_WALLET
-    // Light wallet specific functions
-    // fetch unspent outs from lw node and store in m_transfers
-    void light_wallet_get_unspent_outs();
-    // fetch txs and store in m_payments
-    void light_wallet_get_address_txs();
-    // get_address_info
-    bool light_wallet_get_address_info(tools::light_rpc::GET_ADDRESS_INFO::response& response);
-    // Login. new_address is true if address hasn't been used on lw node before.
-    bool light_wallet_login(bool& new_address);
-    // Send an import request to lw node. returns info about import fee, address and payment_id
-    bool light_wallet_import_wallet_request(
-            tools::light_rpc::IMPORT_WALLET_REQUEST::response& response);
-    // get random outputs from light wallet server
-    void light_wallet_get_outs(
-            std::vector<std::vector<get_outs_entry>>& outs,
-            const std::vector<size_t>& selected_transfers,
-            size_t fake_outputs_count);
-    // Parse rct string
-    bool light_wallet_parse_rct_str(
-            const std::string& rct_string,
-            const crypto::public_key& tx_pub_key,
-            uint64_t internal_output_index,
-            rct::key& decrypted_mask,
-            rct::key& rct_commit,
-            bool decrypt) const;
-    // check if key image is ours
-    bool light_wallet_key_image_is_ours(
-            const crypto::key_image& key_image,
-            const crypto::public_key& tx_public_key,
-            uint64_t out_index);
-#endif
-
     /*
      * "attributes" are a mechanism to store an arbitrary number of string values
      * on the level of the wallet as a whole, identified by keys. Their introduction,
@@ -1698,34 +1625,16 @@ class wallet2 {
     crypto::public_key get_multisig_signing_public_key(size_t idx) const;
     crypto::public_key get_multisig_signing_public_key(const crypto::secret_key& skey) const;
 
-    template <typename RPC>
+    template <std::derived_from<cryptonote::rpc::BINARY> RPC>
     bool invoke_http(
             const typename RPC::request& req,
             typename RPC::response& res,
             bool throw_on_error = false) {
-        using namespace cryptonote::rpc;
-        static_assert(
-                std::is_base_of_v<RPC_COMMAND, RPC>
-#ifdef ENABLE_LIGHT_WALLET
-                || std::is_base_of_v<tools::light_rpc::LIGHT_RPC_COMMAND, RPC>
-#endif
-        );
-
         if (m_offline)
             return false;
 
         try {
-            if constexpr (std::is_base_of_v<LEGACY, RPC>)
-                // TODO: post-8.x hard fork we can remove this one and let everything go through the
-                // non-binary json_rpc version instead (because all legacy json commands are
-                // callable via json_rpc as of daemon 8.x).
-                res = m_http_client.json<RPC>(RPC::names().front(), req);
-            else if constexpr (std::is_base_of_v<BINARY, RPC>)
-                res = m_http_client.binary<RPC>(RPC::names().front(), req);
-            else if constexpr (std::is_base_of_v<RPC_COMMAND, RPC>)
-                res = m_http_client.json_rpc<RPC>(RPC::names().front(), req);
-            else  // light RPC:
-                res = m_http_client.json<RPC>(RPC::name, req);
+            res = m_http_client.binary<RPC>(RPC::names().front(), req);
             return true;
         } catch (const std::exception& e) {
             if (throw_on_error)
@@ -1907,22 +1816,14 @@ class wallet2 {
     uint64_t get_bytes_sent() const;
     uint64_t get_bytes_received() const;
 
-#ifdef WALLET_ENABLE_MMS
-    // MMS
-    // -------------------------------------------------------------------------------------------------
-    mms::message_store& get_message_store() { return m_message_store; };
-    const mms::message_store& get_message_store() const { return m_message_store; };
-    mms::multisig_wallet_state get_multisig_wallet_state() const;
-#endif
-
     bool lock_keys_file();
     bool unlock_keys_file();
     bool is_keys_file_locked() const;
 
     void change_password(
             const fs::path& filename,
-            const epee::wipeable_string& original_password,
-            const epee::wipeable_string& new_password);
+            const crypto::cleared_string& original_password,
+            const crypto::cleared_string& new_password);
 
     void set_tx_notify(std::shared_ptr<tools::Notify> notify) { m_tx_notify = std::move(notify); }
 
@@ -1947,23 +1848,23 @@ class wallet2 {
      */
     bool store_keys(
             const fs::path& keys_file_name,
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             bool watch_only = false);
     /*!
      * \brief Load wallet keys information from wallet file.
      * \param keys_file_name Name of wallet file
      * \param password       Password of wallet file
      */
-    bool load_keys(const fs::path& keys_file_name, const epee::wipeable_string& password);
+    bool load_keys(const fs::path& keys_file_name, const crypto::cleared_string& password);
     /*!
      * \brief Load wallet keys information from a string buffer.
      * \param keys_buf       Keys buffer to load
      * \param password       Password of keys buffer
      */
-    bool load_keys_buf(const std::string& keys_buf, const epee::wipeable_string& password);
+    bool load_keys_buf(const std::string& keys_buf, const crypto::cleared_string& password);
     bool load_keys_buf(
             const std::string& keys_buf,
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             std::optional<crypto::chacha_key>& keys_to_encrypt);
     void process_new_transaction(
             const crypto::hash& txid,
@@ -2056,7 +1957,7 @@ class wallet2 {
     void check_genesis(const crypto::hash& genesis_hash) const;  // throws
     bool generate_chacha_key_from_secret_keys(crypto::chacha_key& key) const;
     void generate_chacha_key_from_password(
-            const epee::wipeable_string& pass, crypto::chacha_key& key) const;
+            const crypto::cleared_string& pass, crypto::chacha_key& key) const;
     crypto::hash get_payment_id(const pending_tx& ptx) const;
     void check_acc_out_precomp(
             const cryptonote::tx_out& o,
@@ -2149,11 +2050,8 @@ class wallet2 {
             const crypto::key_image& key_image,
             std::vector<uint64_t>& outs);
     crypto::chacha_key get_ringdb_key();
-    void setup_keys(const epee::wipeable_string& password);
+    void setup_keys(const crypto::cleared_string& password);
     size_t get_transfer_details(const crypto::key_image& ki) const;
-
-    void register_devices();
-    hw::device& lookup_device(const std::string& device_descriptor);
 
     bool get_rct_distribution(uint64_t& start_height, std::vector<uint64_t>& distribution);
     bool get_output_blacklist(std::vector<uint64_t>& blacklist);
@@ -2180,14 +2078,14 @@ class wallet2 {
     void create_keys_file(
             const fs::path& wallet_,
             bool watch_only,
-            const epee::wipeable_string& password,
+            const crypto::cleared_string& password,
             bool create_address_file);
 
     wallet_device_callback* get_device_callback();
     void on_device_button_request(uint64_t code);
     void on_device_button_pressed();
-    std::optional<epee::wipeable_string> on_device_pin_request();
-    std::optional<epee::wipeable_string> on_device_passphrase_request(bool& on_device);
+    std::optional<crypto::cleared_string> on_device_pin_request();
+    std::optional<crypto::cleared_string> on_device_passphrase_request(bool& on_device);
     void on_device_progress(const hw::device_progress& event);
 
     std::string get_rpc_status(std::string_view s) const;
@@ -2197,9 +2095,6 @@ class wallet2 {
     cryptonote::account_base m_account;
     fs::path m_wallet_file;
     fs::path m_keys_file;
-#ifdef WALLET_ENABLE_MMS
-    fs::path m_mms_file;
-#endif
     hashchain m_blockchain;
     std::atomic<uint64_t> m_cached_height;  // Tracks m_blockchain.size(), but thread-safe.
     std::unordered_map<crypto::hash, unconfirmed_transfer_details> m_unconfirmed_txs;
@@ -2289,25 +2184,6 @@ class wallet2 {
     // Aux transaction data from device
     std::unordered_map<crypto::hash, std::string> m_tx_device;
 
-#ifdef ENABLE_LIGHT_WALLET
-    // Light wallet
-    bool m_light_wallet; /* sends view key to daemon for scanning */
-    uint64_t m_light_wallet_scanned_block_height;
-    uint64_t m_light_wallet_blockchain_height;
-    uint64_t m_light_wallet_per_kb_fee = FEE_PER_BYTE_V13 * 1024;
-    bool m_light_wallet_connected;
-    uint64_t m_light_wallet_balance;
-    uint64_t m_light_wallet_unlocked_balance;
-    // Light wallet info needed to populate m_payment requires 2 separate api calls (get_address_txs
-    // and get_unspent_outs) We save the info from the first call in m_light_wallet_address_txs for
-    // easier lookup.
-    std::unordered_map<crypto::hash, address_tx> m_light_wallet_address_txs;
-#endif
-
-    // FIXME should this be with the light wallet stuff?
-    // store calculated key image for faster lookup
-    std::unordered_map<crypto::public_key, std::map<uint64_t, crypto::key_image>> m_key_image_cache;
-
     fs::path m_ring_database;
     bool m_ring_history_saved;
     std::unique_ptr<ringdb> m_ringdb;
@@ -2316,20 +2192,12 @@ class wallet2 {
     uint64_t m_last_block_reward;
     std::unique_ptr<tools::file_locker> m_keys_file_locker;
 
-#ifdef WALLET_ENABLE_MMS
-    mms::message_store m_message_store;
-#endif
-    bool m_original_keys_available;
-    cryptonote::account_public_address m_original_address;
-    crypto::secret_key m_original_view_secret_key;
-
-    crypto::chacha_key m_cache_key;
-    std::optional<epee::wipeable_string> m_encrypt_keys_after_refresh;
+    crypto::chacha_key m_cache_key{};
+    std::optional<crypto::cleared_string> m_encrypt_keys_after_refresh;
     std::mutex m_decrypt_keys_mutex;
     unsigned int m_decrypt_keys_lockers;
 
     bool m_unattended;
-    bool m_devices_registered;
 
     std::shared_ptr<tools::Notify> m_tx_notify;
     std::unique_ptr<wallet_device_callback> m_device_callback;

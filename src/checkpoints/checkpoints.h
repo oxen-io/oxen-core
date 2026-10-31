@@ -99,20 +99,6 @@ inline const checkpoint_t* find_immutable_checkpoint(std::span<const checkpoint_
 struct height_to_hash {
     uint64_t height;   //!< the height of the checkpoint
     std::string hash;  //!< the hash for the checkpoint
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(height)
-    KV_SERIALIZE(hash)
-    END_KV_SERIALIZE_MAP()
-};
-
-/**
- * @brief struct for loading many checkpoints from json
- */
-struct height_to_hash_json {
-    std::vector<height_to_hash> hashlines;  //!< the checkpoint lines from the file
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(hashlines)
-    END_KV_SERIALIZE_MAP()
 };
 
 crypto::hash get_newest_hardcoded_checkpoint(cryptonote::network_type nettype, uint64_t* height);

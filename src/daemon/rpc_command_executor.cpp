@@ -50,7 +50,6 @@
 #include <type_traits>
 
 #include "checkpoints/checkpoints.h"
-#include "common/exception.h"
 #include "common/guts.h"
 #include "common/median.h"
 #include "common/password.h"
@@ -59,8 +58,7 @@
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_rules.h"
-#include "epee/int-util.h"
-#include "epee/string_tools.h"
+#include "net/address.h"
 #include "networks.h"
 #include "oxen_economy.h"
 #include "rpc/core_rpc_server_commands_defs.h"
@@ -138,7 +136,6 @@ cumulative_difficulty: {}
 POW hash: {}
 block size: {}
 block weight: {}
-long term weight: {}
 num txes: {}
 reward: {}
 coinbase payouts: {}
@@ -157,7 +154,6 @@ miner tx hash: {})",
                 header.value<std::string_view>("pow_hash", "N/A"),
                 header["block_size"].get<uint64_t>(),
                 header["block_weight"].get<uint64_t>(),
-                header["long_term_weight"].get<uint64_t>(),
                 header["num_txes"].get<uint64_t>(),
                 cryptonote::print_money(header["reward"].get<uint64_t>()),
                 cryptonote::print_money(header["coinbase_payouts"].get<uint64_t>()),
@@ -284,11 +280,11 @@ json rpc_command_executor::invoke(
                             tools::join(" ", data));
                     try {
                         if (!success)
-                            throw oxen::traced<std::runtime_error>{"Request timed out"};
+                            throw std::runtime_error{"Request timed out"};
                         if (data.size() >= 2 && data[0] == "200")
                             result_p.set_value(json::parse(data[1]));
                         else
-                            throw oxen::traced<std::runtime_error>{
+                            throw std::runtime_error{
                                     "RPC method failed: " +
                                     (data.empty() ? "empty response" : tools::join(" ", data))};
                     } catch (...) {
@@ -303,7 +299,7 @@ json rpc_command_executor::invoke(
     if (check_status_ok) {
         if (auto it = result.find("status");
             it == result.end() || it->get<std::string_view>() != cryptonote::rpc::STATUS_OK)
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Received status " +
                     (it == result.end() ? "(empty)" : it->get_ref<const std::string&>()) +
                     " != OK"};
@@ -752,14 +748,12 @@ bool rpc_command_executor::mining_status() {
     return true;
 }
 
-static const char* get_address_type_name(epee::net_utils::address_type address_type) {
+static const char* get_address_type_name(net::address_type address_type) {
     switch (address_type) {
         default:
-        case epee::net_utils::address_type::invalid: return "invalid";
-        case epee::net_utils::address_type::ipv4: return "IPv4";
-        case epee::net_utils::address_type::ipv6: return "IPv6";
-        case epee::net_utils::address_type::i2p: return "I2P";
-        case epee::net_utils::address_type::tor: return "Tor";
+        case net::address_type::invalid: return "invalid";
+        case net::address_type::ipv4: return "IPv4";
+        case net::address_type::ipv6: return "IPv6";
     }
 }
 
@@ -793,7 +787,7 @@ bool rpc_command_executor::print_connections() {
                         info["incoming"].get<bool>() ? "INC" : "OUT",
                         info["ip"].get<std::string_view>(),
                         info["port"].get<uint16_t>()),
-                get_address_type_name(info["address_type"].get<epee::net_utils::address_type>()),
+                get_address_type_name(info["address_type"].get<net::address_type>()),
                 info["peer_id"].get<std::string_view>(),
                 "{}({}/{})"_format(
                         info["recv_count"].get<uint64_t>(),
@@ -875,8 +869,7 @@ bool rpc_command_executor::print_blockchain_info(
     auto writer = tools::msg_writer("\n");
     for (auto& header : block_headers["headers"]) {
         writer.flush().append(
-                "height: {}, timestamp: {} ({}), size: {}, weight: {} (long term {}), "
-                "transactions: {}\n"
+                "height: {}, timestamp: {} ({}), size: {}, weight: {}, transactions: {}\n"
                 "major version: {}, minor version: {}\n"
                 "block id: {}, previous block id: {}\n"
                 "difficulty: {}, nonce {}, reward {}\n",
@@ -885,7 +878,6 @@ bool rpc_command_executor::print_blockchain_info(
                 tools::get_human_readable_timestamp(header["timestamp"].get<uint64_t>()),
                 header["block_size"].get<int64_t>(),
                 header["block_weight"].get<int64_t>(),
-                header["long_term_weight"].get<int64_t>(),
                 header["num_txes"].get<int64_t>(),
                 header["major_version"].get<int64_t>(),
                 header["minor_version"].get<int64_t>(),
@@ -1866,8 +1858,6 @@ static void append_printable_service_node_list_entry(
     if (is_funded)  // Print service node tests
     {
         auto proof_time = entry.value("last_uptime_proof", uint64_t{0});
-        epee::console_colors uptime_proof_color =
-                proof_time ? epee::console_color_red : epee::console_color_green;
 
         stream << indent2 << "Last Uptime Proof Received: "
                << (proof_time == 0 ? "(Awaiting confirmation from network)"

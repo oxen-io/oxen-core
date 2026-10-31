@@ -70,8 +70,6 @@ struct address_parse_info {
     crypto::hash8 payment_id;
 
     std::string as_str(network_type nettype) const;
-
-    KV_MAP_SERIALIZABLE
 };
 
 // Strongly-typed money amount used to calculate rewards at a higher precision by a factor of
@@ -250,11 +248,9 @@ struct public_integrated_address_outer_blob {
 /************************************************************************/
 /* Cryptonote helper functions                                          */
 /************************************************************************/
-size_t get_min_block_weight(hf version);
 uint64_t block_reward_unpenalized_formula_v7(uint64_t already_generated_coins, uint64_t height);
 uint64_t block_reward_unpenalized_formula_v8(uint64_t height);
 bool get_base_block_reward(
-        size_t median_weight,
         size_t current_block_weight,
         uint64_t already_generated_coins,
         uint64_t& reward,

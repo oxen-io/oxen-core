@@ -30,7 +30,6 @@
 
 #include <fmt/std.h>
 
-#include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
 #include "spawn.h"
 #include "string_util.h"
@@ -45,12 +44,22 @@ static auto logcat = log::Cat("notify");
   - Windows unicode support (implies implementing unicode command line parsing code)
 */
 Notify::Notify(std::string_view spec) {
-    CHECK_AND_ASSERT_THROW_MES(!spec.empty(), "Empty spec");
+    if (spec.empty()) {
+        oxen::log::error(logcat, "Empty spec");
+        throw std::runtime_error{"Empty spec"};
+    }
 
     auto pieces = tools::split_any(spec, " \t", true);
-    CHECK_AND_ASSERT_THROW_MES(pieces.size() > 0, "Failed to parse spec");
+    if (pieces.size() <= 0) {
+        oxen::log::error(logcat, "Failed to parse spec");
+        throw std::runtime_error{"Failed to parse spec"};
+    }
     filename = tools::utf8_path(pieces[0]);
-    CHECK_AND_ASSERT_THROW_MES(fs::exists(filename), "File not found: {}", filename);
+    if (!fs::exists(filename)) {
+        auto msg = fmt::format("File not found: {}", filename);
+        oxen::log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+    }
 
     args.reserve(pieces.size());
     for (const auto& piece : pieces)

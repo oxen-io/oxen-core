@@ -165,8 +165,7 @@
 #include <type_traits>
 
 #include "base.h"
-#include "common/exception.h"
-#include "epee/byte_span.h"  // for detecting epee-wrapped byte spannable objects
+#include "crypto/cleared.h"
 
 namespace serialization {
 
@@ -224,9 +223,7 @@ void value(Archive& ar, T& v) {
 template <class Archive, typename T>
     requires T::binary_serializable || binary_serializable<T>
 void value(Archive& ar, T& v) {
-    static_assert(
-            std::has_unique_object_representations_v<T> || epee::is_byte_spannable<T>,
-            "Type is not safe for binary serialization");
+    static_assert(crypto::is_byte_spannable<T>, "Type is not safe for binary serialization");
     ar.serialize_blob(&v, sizeof(v));
 }
 
@@ -274,7 +271,7 @@ template <class Archive, typename T, std::predicate<const T&> Predicate>
 void value(Archive& ar, T& v, Predicate test) {
     value(ar, v);
     if (Archive::is_deserializer && !test(v))
-        throw oxen::traced<std::out_of_range>{"Invalid value during deserialization"};
+        throw std::out_of_range{"Invalid value during deserialization"};
 }
 
 /// Serializes an integer value using varint encoding.
@@ -304,8 +301,7 @@ template <class Archive, typename T, std::predicate<const T&> Predicate>
 void varint(Archive& ar, T& val, Predicate test) {
     varint(ar, val);
     if (Archive::is_deserializer && !test(val))
-        throw oxen::traced<std::out_of_range>{
-                "Invalid integer or enum value during deserialization"};
+        throw std::out_of_range{"Invalid integer or enum value during deserialization"};
 }
 
 /// Adds a key-value pair
@@ -355,7 +351,7 @@ template <class Archive>
 void done(Archive& ar) {
     if constexpr (Archive::is_deserializer)
         if (auto remaining = ar.remaining_bytes(); remaining > 0)
-            throw oxen::traced<std::runtime_error>(
+            throw std::runtime_error(
                     "Expected end of serialization data but not all data was consumed (" +
                     std::to_string(remaining) + ")");
 }

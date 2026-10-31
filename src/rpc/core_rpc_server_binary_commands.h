@@ -36,7 +36,7 @@
 namespace cryptonote::rpc {
 
 struct EMPTY {
-    KV_MAP_SERIALIZABLE
+    void serialize(levin_kv::archive& ar);
 };
 
 /// Specifies that the RPC call is legacy, deprecated Monero custom binary input/ouput.  If not
@@ -55,7 +55,7 @@ struct GET_BLOCKS_BIN : PUBLIC, BINARY {
     static constexpr size_t MAX_COUNT = 1000;
 
     struct request {
-        std::list<crypto::hash>
+        std::vector<crypto::hash>
                 block_ids;  // Descending list of block IDs used to detect reorganizations and
                             // network: the first 10 blocks id are sequential, then height drops by
                             // a power of 2 (2, 4, 8, 16, etc.) down to height 1, and then finally
@@ -65,19 +65,19 @@ struct GET_BLOCKS_BIN : PUBLIC, BINARY {
         bool no_miner_tx;  // If specified and true, don't include miner transactions in transaction
                            // results.
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct tx_output_indices {
         std::vector<uint64_t> indices;  // Array of unsigned int.
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct block_output_indices {
         std::vector<tx_output_indices> indices;  // Array of TX output indices:
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -90,7 +90,7 @@ struct GET_BLOCKS_BIN : PUBLIC, BINARY {
                          // therefore not trusted (`true`), or when the daemon is fully synced
                          // (`false`).
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -107,7 +107,7 @@ struct GET_BLOCKS_BY_HEIGHT_BIN : PUBLIC, BINARY {
     struct request {
         std::vector<uint64_t> heights;  // List of block heights
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -117,24 +117,7 @@ struct GET_BLOCKS_BY_HEIGHT_BIN : PUBLIC, BINARY {
                              // therefore not trusted (`true`), or when the daemon is fully synced
                              // (`false`).
 
-        KV_MAP_SERIALIZABLE
-    };
-};
-
-OXEN_RPC_DOC_INTROSPECT
-// Get the known blocks hashes which are not on the main chain.
-struct GET_ALT_BLOCKS_HASHES_BIN : PUBLIC, BINARY {
-    static constexpr auto names() { return NAMES("get_alt_blocks_hashes.bin"); }
-
-    struct request : EMPTY {};
-    struct response {
-        std::vector<std::string> blks_hashes;  // List of alternative blocks hashes to main chain.
-        std::string status;  // General RPC error code. "OK" means everything looks good.
-        bool untrusted;      // States if the result is obtained using the bootstrap mode, and is
-                             // therefore not trusted (`true`), or when the daemon is fully synced
-                             // (`false`).
-
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -144,12 +127,12 @@ struct GET_HASHES_BIN : PUBLIC, BINARY {
     static constexpr auto names() { return NAMES("get_hashes.bin", "gethashes.bin"); }
 
     struct request {
-        std::list<crypto::hash> block_ids;  // First 10 blocks id goes sequential, next goes in
-                                            // pow(2,n) offset, like 2, 4, 8, 16, 32, 64 and so on,
-                                            // and the last one is always genesis block */
-        uint64_t start_height;              // The starting block's height.
+        std::vector<crypto::hash> block_ids;  // First 10 blocks id goes sequential, next goes in
+                                              // pow(2,n) offset, like 2, 4, 8, 16, 32, 64 and so
+                                              // on, and the last one is always genesis block */
+        uint64_t start_height;                // The starting block's height.
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -161,29 +144,7 @@ struct GET_HASHES_BIN : PUBLIC, BINARY {
                              // therefore not trusted (`true`), or when the daemon is fully synced
                              // (`false`).
 
-        KV_MAP_SERIALIZABLE
-    };
-};
-
-OXEN_RPC_DOC_INTROSPECT
-// Get global outputs of transactions. Binary request.
-struct GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN : PUBLIC, BINARY {
-    static constexpr auto names() { return NAMES("get_o_indexes.bin"); }
-
-    struct request {
-        crypto::hash txid;  // Binary txid.
-
-        KV_MAP_SERIALIZABLE
-    };
-
-    struct response {
-        std::vector<uint64_t> o_indexes;  // List of output indexes
-        std::string status;  // General RPC error code. "OK" means everything looks good.
-        bool untrusted;      // States if the result is obtained using the bootstrap mode, and is
-                             // therefore not trusted (`true`), or when the daemon is fully synced
-                             // (`false`).
-
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -192,7 +153,7 @@ struct get_outputs_out {
     uint64_t amount;  // Amount of Loki in TXID.
     uint64_t index;
 
-    KV_MAP_SERIALIZABLE
+    void serialize(levin_kv::archive& ar);
 };
 
 OXEN_RPC_DOC_INTROSPECT
@@ -207,7 +168,7 @@ struct GET_OUTPUTS_BIN : PUBLIC, BINARY {
         std::vector<get_outputs_out> outputs;  // Array of structure `get_outputs_out`.
         bool get_txid;                         // TXID
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct outkey {
@@ -217,7 +178,7 @@ struct GET_OUTPUTS_BIN : PUBLIC, BINARY {
         uint64_t height;    // Block height of the output.
         crypto::hash txid;  // Transaction id.
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -227,7 +188,7 @@ struct GET_OUTPUTS_BIN : PUBLIC, BINARY {
                          // therefore not trusted (`true`), or when the daemon is fully synced
                          // (`false`).
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -247,7 +208,7 @@ struct GET_TRANSACTION_POOL_HASHES_BIN : PUBLIC, BINARY {
         crypto::hash tx_pool_checksum;  // Optional: If `long_poll` is true the caller must pass the
                                         // hashes of all their known tx pool hashes, XOR'ed
                                         // together.  Ignored when using OMQ RPC.
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 
     struct response {
@@ -257,7 +218,7 @@ struct GET_TRANSACTION_POOL_HASHES_BIN : PUBLIC, BINARY {
                          // therefore not trusted (`true`), or when the daemon is fully synced
                          // (`false`).
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -283,7 +244,7 @@ struct GET_OUTPUT_BLACKLIST_BIN : PUBLIC, BINARY {
         bool untrusted;  // If the result is obtained using bootstrap mode, and therefore not
                          // trusted `true`, or otherwise `false`.
 
-        KV_MAP_SERIALIZABLE
+        void serialize(levin_kv::archive& ar);
     };
 };
 
@@ -293,14 +254,12 @@ struct GET_OUTPUT_BLACKLIST_BIN : PUBLIC, BINARY {
 /// <TYPE>::response.  The <TYPE>::request has to be unique (for overload resolution);
 /// <TYPE>::response does not.
 using core_rpc_binary_types = tools::type_list<
-        GET_ALT_BLOCKS_HASHES_BIN,
         GET_BLOCKS_BIN,
         GET_BLOCKS_BY_HEIGHT_BIN,
         GET_HASHES_BIN,
         GET_OUTPUTS_BIN,
         GET_OUTPUT_BLACKLIST_BIN,
         GET_OUTPUT_DISTRIBUTION_BIN,
-        GET_TRANSACTION_POOL_HASHES_BIN,
-        GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN>;
+        GET_TRANSACTION_POOL_HASHES_BIN>;
 
 }  // namespace cryptonote::rpc

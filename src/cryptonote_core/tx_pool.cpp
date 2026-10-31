@@ -40,7 +40,6 @@
 #include "blockchain_db/blockchain_db.h"
 #include "blockchain_db/locked_txn.h"
 #include "common/boost_serialization_helper.h"
-#include "common/exception.h"
 #include "common/lock.h"
 #include "common/median.h"
 #include "common/util.h"
@@ -52,10 +51,6 @@
 #include "cryptonote_core/ethereum_transactions.h"
 #include "cryptonote_core/service_node_list.h"
 #include "cryptonote_tx_utils.h"
-#include "epee/warnings.h"
-
-DISABLE_VS_WARNINGS(4244 4345 4503)  //'boost::foreach_detail_::or_' : decorated name length
-                                     // exceeded, name was truncated
 
 using namespace crypto;
 
@@ -84,9 +79,9 @@ namespace {
     uint64_t get_transaction_weight_limit(hf version) {
         // from v10, bulletproofs, limit a tx to 50% of the minimum block weight
         if (version >= hf::hf10_bulletproofs)
-            return get_min_block_weight(version) / 2 - COINBASE_BLOB_RESERVED_SIZE;
+            return BLOCK_GRANTED_FULL_REWARD_ZONE / 2 - COINBASE_BLOB_RESERVED_SIZE;
         else
-            return get_min_block_weight(version) - COINBASE_BLOB_RESERVED_SIZE;
+            return BLOCK_GRANTED_FULL_REWARD_ZONE - COINBASE_BLOB_RESERVED_SIZE;
     }
 }  // namespace
 //---------------------------------------------------------------------------------
@@ -314,7 +309,7 @@ bool tx_memory_pool::add_tx(
     std::unique_lock lock{m_transactions_lock};
     if (blob.size() == 0) {
         oxen::log::error(logcat, "Could not add to txpool, blob is empty of tx: {}", id);
-        throw oxen::traced<std::runtime_error>("Could not add to txpool, blob empty");
+        throw std::runtime_error("Could not add to txpool, blob empty");
     }
 
     if (tx.version == txversion::v0) {
@@ -588,8 +583,12 @@ bool tx_memory_pool::add_new_blink(
     auto hf_version = m_blockchain.get_network_version(blink.height);
     bool result = add_tx(tx, tvc, tx_pool_options::new_blink(approved, hf_version), hf_version);
     if (result && approved) {
-        auto lock = blink_unique_lock();
-        m_blinks[txhash] = blink_ptr;
+        {
+            auto lock = blink_unique_lock();
+            m_blinks[txhash] = blink_ptr;
+        }
+        for (const auto& hook : m_blink_added_hooks)
+            hook();
     } else if (!result) {
         // Adding failed, but might have failed because another thread inserted it, so check again
         // for existence of the blink
@@ -601,11 +600,15 @@ bool tx_memory_pool::add_new_blink(
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::add_existing_blink(std::shared_ptr<blink_tx> blink_ptr) {
     assert(blink_ptr && blink_ptr->approved());
-    auto& ptr = m_blinks[blink_ptr->get_txhash()];
-    if (ptr)
-        return false;
-
-    ptr = blink_ptr;
+    {
+        auto lock = blink_unique_lock();
+        auto& ptr = m_blinks[blink_ptr->get_txhash()];
+        if (ptr)
+            return false;
+        ptr = blink_ptr;
+    }
+    for (const auto& hook : m_blink_added_hooks)
+        hook();
     return true;
 }
 //---------------------------------------------------------------------------------
@@ -916,20 +919,22 @@ bool tx_memory_pool::insert_key_images(
     for (const auto& in : tx.vin) {
         CHECKED_GET_SPECIFIC_VARIANT(in, txin_to_key, txin, false);
         std::unordered_set<crypto::hash>& kei_image_set = m_spent_key_images[txin.k_image];
-        CHECK_AND_ASSERT_MES(
-                kept_by_block || kei_image_set.size() == 0,
-                false,
-                "internal error: kept_by_block={}, "
-                "kei_image_set.size()={}\ntxin.k_image={}\ntx_id={}",
-                kept_by_block,
-                kei_image_set.size(),
-                txin.k_image,
-                id);
+        if (!(kept_by_block || kei_image_set.size() == 0)) {
+            log::error(
+                    logcat,
+                    "internal error: kept_by_block={}, "
+                    "kei_image_set.size()={}\ntxin.k_image={}\ntx_id={}",
+                    kept_by_block,
+                    kei_image_set.size(),
+                    txin.k_image,
+                    id);
+            return false;
+        }
         auto ins_res = kei_image_set.insert(id);
-        CHECK_AND_ASSERT_MES(
-                ins_res.second,
-                false,
-                "internal error: try to insert duplicate iterator in key_image set");
+        if (!ins_res.second) {
+            log::error(logcat, "internal error: try to insert duplicate iterator in key_image set");
+            return false;
+        }
     }
     ++m_cookie;
     return true;
@@ -946,27 +951,29 @@ bool tx_memory_pool::remove_transaction_keyimages(
     for (const txin_v& vi : tx.vin) {
         CHECKED_GET_SPECIFIC_VARIANT(vi, txin_to_key, txin, false);
         auto it = m_spent_key_images.find(txin.k_image);
-        CHECK_AND_ASSERT_MES(
-                it != m_spent_key_images.end(),
-                false,
-                "failed to find transaction input in key images. img={}, txid={}",
-                txin.k_image,
-                actual_hash);
+        if (it == m_spent_key_images.end()) {
+            log::error(
+                    logcat,
+                    "failed to find transaction input in key images. img={}, txid={}",
+                    txin.k_image,
+                    actual_hash);
+            return false;
+        }
         std::unordered_set<crypto::hash>& key_image_set = it->second;
-        CHECK_AND_ASSERT_MES(
-                key_image_set.size(),
-                false,
-                "empty key_image set, img={}, txid={}",
-                txin.k_image,
-                actual_hash);
+        if (!key_image_set.size()) {
+            log::error(logcat, "empty key_image set, img={}, txid={}", txin.k_image, actual_hash);
+            return false;
+        }
 
         auto it_in_set = key_image_set.find(actual_hash);
-        CHECK_AND_ASSERT_MES(
-                it_in_set != key_image_set.end(),
-                false,
-                "transaction id not found in key_image set, img={}, txid={}",
-                txin.k_image,
-                actual_hash);
+        if (it_in_set == key_image_set.end()) {
+            log::error(
+                    logcat,
+                    "transaction id not found in key_image set, img={}, txid={}",
+                    txin.k_image,
+                    actual_hash);
+            return false;
+        }
         key_image_set.erase(it_in_set);
         if (!key_image_set.size()) {
             // it is now empty hash container for this key_image
@@ -1700,7 +1707,7 @@ bool tx_memory_pool::is_transaction_ready_to_go(
         std::optional<uint64_t> l2_max) const {
 
     if (!parse_and_validate_tx_from_blob(txblob, tx))
-        throw oxen::traced<std::runtime_error>{"failed to parse transaction blob"};
+        throw std::runtime_error{"failed to parse transaction blob"};
     tx.set_hash(txid);
 
     if (txd.l2_height != 0) {
@@ -1817,11 +1824,13 @@ static bool append_key_images(
     for (size_t i = 0; i != tx.vin.size(); i++) {
         CHECKED_GET_SPECIFIC_VARIANT(tx.vin[i], txin_to_key, itk, false);
         auto i_res = k_images.insert(itk.k_image);
-        CHECK_AND_ASSERT_MES(
-                i_res.second,
-                false,
-                "internal error: key images pool cache - inserted duplicate image in set: {}",
-                itk.k_image);
+        if (!i_res.second) {
+            log::error(
+                    logcat,
+                    "internal error: key images pool cache - inserted duplicate image in set: {}",
+                    itk.k_image);
+            return false;
+        }
     }
     return true;
 }
@@ -1863,7 +1872,6 @@ void tx_memory_pool::mark_double_spend(const transaction& tx) {
 //---------------------------------------------------------------------------------
 bool tx_memory_pool::fill_block_template(
         block& bl,
-        size_t median_weight,
         uint64_t already_generated_coins,
         size_t& total_weight,
         uint64_t& raw_fee,
@@ -1885,7 +1893,6 @@ bool tx_memory_pool::fill_block_template(
 
         block_reward_parts reward_parts = {};
         if (!get_oxen_block_reward(
-                    median_weight,
                     total_weight,
                     already_generated_coins,
                     version,
@@ -1897,7 +1904,7 @@ bool tx_memory_pool::fill_block_template(
 
         best_reward = version >= hf::hf16_pulse ? 0 /*Empty block, starts with 0 fee*/
                                                 : reward_parts.base_miner;
-        max_total_weight = 2 * median_weight - COINBASE_BLOB_RESERVED_SIZE;
+        max_total_weight = BLOCK_WEIGHT_LIMIT - COINBASE_BLOB_RESERVED_SIZE;
     } else {  // HF21+
         // Before SESH, there was the "full reward" limit (300kB) and then a hard limit of double
         // that (600kB), but over 300kB a quadratic penalty applied that reduced the miner (or pulse
@@ -1905,7 +1912,7 @@ bool tx_memory_pool::fill_block_template(
         //
         // Under SESH we don't have any Oxen rewards to subtract *from* so all OXEN tx fees just get
         // burned and the 300kB block weight soft limit (before HF21) just becomes a hard limit.
-        max_total_weight = BLOCK_GRANTED_FULL_REWARD_ZONE_V5 - COINBASE_BLOB_RESERVED_SIZE;
+        max_total_weight = BLOCK_GRANTED_FULL_REWARD_ZONE - COINBASE_BLOB_RESERVED_SIZE;
     }
 
     std::unordered_set<crypto::key_image> k_images;
@@ -1916,11 +1923,7 @@ bool tx_memory_pool::fill_block_template(
     // but actual block addition does).
     std::unordered_set<crypto::hash> ons_seen;
 
-    log::debug(
-            logcat,
-            "Filling block template, median weight {}, {} txes in the pool",
-            median_weight,
-            m_txs_by_priority.size());
+    log::debug(logcat, "Filling block template, {} txes in the pool", m_txs_by_priority.size());
 
     LockedTXN lock(m_blockchain);
 
@@ -1963,7 +1966,6 @@ bool tx_memory_pool::fill_block_template(
             next_block_reward_context.fee = raw_fee + meta.fee;
 
             if (!get_oxen_block_reward(
-                        median_weight,
                         total_weight + meta.weight,
                         already_generated_coins,
                         version,

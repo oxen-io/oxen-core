@@ -490,16 +490,24 @@ bool oxen_quorum_history::generate(std::vector<test_event_entry>& events)
     DEFINE_TESTS_ERROR_CONTEXT("check_quorum_history");
     auto& db = c.blockchain.db();
     CHECK_EQ(c.blockchain.get_current_blockchain_height(), top + 1);
-    for (uint64_t h = enabled + 1; h <= top; h++)
-      CHECK_AND_ASSERT_MES(c.service_node_list.get_quorum(service_nodes::quorum_type::obligations, h, true), false, "[{}] no obligations quorum at height {}", perr_context, h);
+    for (uint64_t h = enabled + 1; h <= top; h++) {
+      if (!c.service_node_list.get_quorum(service_nodes::quorum_type::obligations, h, true)) {
+        oxen::log::error(logcat, "[{}] no obligations quorum at height {}", perr_context, h);
+        return false;
+      }
+    }
     // A node keeping a limited history stores its states differently (see store_state_snapshot),
     // and the recent heights it has in memory have no rows yet.
     if (!db.history())
     {
       // A height's state is stored when the next block replaces it, so the top's is still only in
       // memory.
-      for (uint64_t h = enabled + 1; h < top; h++)
-        CHECK_AND_ASSERT_MES(db.get_service_node_archive(h), false, "[{}] no stored quorums at height {} (history from {} to {})", perr_context, h, enabled + 1, top);
+      for (uint64_t h = enabled + 1; h < top; h++) {
+        if (!db.get_service_node_archive(h)) {
+          oxen::log::error(logcat, "[{}] no stored quorums at height {} (history from {} to {})", perr_context, h, enabled + 1, top);
+          return false;
+        }
+      }
       // Before the history was asked for, the stored quorums were dropped as usual once the states
       // they were kept for had been.
       const uint64_t before = enabled - 250;
@@ -945,7 +953,7 @@ bool oxen_core_fee_burning::generate(std::vector<test_event_entry>& events)
     ctx.height = gen.blocks().back().block.get_height();
     ctx.fee = send_fee_burn[0][1] + send_fee_burn[1][1] - send_fee_burn[0][2] - send_fee_burn[1][2];
     block_reward_parts reward_parts;
-    cryptonote::get_oxen_block_reward(0, 0, 1 /*already generated, needs to be >0 to avoid premine*/, newest_hf, reward_parts, ctx);
+    cryptonote::get_oxen_block_reward(0, 1 /*already generated, needs to be >0 to avoid premine*/, newest_hf, reward_parts, ctx);
     good_miner_reward = reward_parts.miner_fee + reward_parts.base_miner + reward_parts.service_node_total;
   }
 
@@ -3203,7 +3211,10 @@ bool oxen_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
 
       /// Check present
       const bool found_a = contains(sn_list, pk_a);
-      CHECK_AND_ASSERT_MES(found_a, false, "Node deregistered in alt chain is not found in the main chain after reorg.");
+      if (!found_a) {
+        oxen::log::error(logcat, "Node deregistered in alt chain is not found in the main chain after reorg.");
+        return false;
+      }
     }
 
     /// Test that node B is not registered
@@ -3221,7 +3232,10 @@ bool oxen_service_nodes_test_rollback::generate(std::vector<test_event_entry>& e
 
       /// Check not present
       const bool found_b = contains(sn_list, pk_b);
-      CHECK_AND_ASSERT_MES(!found_b, false, "Node registered in alt chain is present in the main chain after reorg.");
+      if (found_b) {
+        oxen::log::error(logcat, "Node registered in alt chain is present in the main chain after reorg.");
+        return false;
+      }
     }
     return true;
   });

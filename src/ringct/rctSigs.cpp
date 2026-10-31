@@ -30,6 +30,8 @@
 
 #include "rctSigs.h"
 
+#include <sodium/utils.h>
+
 #include <span>
 
 #include "bulletproofs.h"
@@ -37,7 +39,6 @@
 #include "common/util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_config.h"
-#include "epee/misc_log_ex.h"
 
 namespace rct {
 static auto logcat = log::Cat("ringct");
@@ -79,13 +80,18 @@ Bulletproof proveRangeBulletproof(
         const std::vector<uint64_t>& amounts,
         std::span<const key> sk,
         hw::device& hwdev) {
-    CHECK_AND_ASSERT_THROW_MES(amounts.size() == sk.size(), "Invalid amounts/sk sizes");
+    if (amounts.size() != sk.size()) {
+        log::error(logcat, "Invalid amounts/sk sizes");
+        throw std::runtime_error{"Invalid amounts/sk sizes"};
+    }
     masks.resize(amounts.size());
     for (size_t i = 0; i < masks.size(); ++i)
         masks[i] = hwdev.genCommitmentMask(sk[i]);
     Bulletproof proof = bulletproof_PROVE(amounts, masks);
-    CHECK_AND_ASSERT_THROW_MES(
-            proof.V.size() == amounts.size(), "V does not have the expected size");
+    if (proof.V.size() != amounts.size()) {
+        log::error(logcat, "V does not have the expected size");
+        throw std::runtime_error{"V does not have the expected size"};
+    }
     C = proof.V;
     return proof;
 }
@@ -163,15 +169,26 @@ clsag CLSAG_Gen(
         hw::device& hwdev) {
     clsag sig;
     size_t n = P.size();  // ring size
-    CHECK_AND_ASSERT_THROW_MES(
-            n == C.size(), "Signing and commitment key vector sizes must match!");
-    CHECK_AND_ASSERT_THROW_MES(
-            n == C_nonzero.size(), "Signing and commitment key vector sizes must match!");
-    CHECK_AND_ASSERT_THROW_MES(l < n, "Signing index out of range!");
-    CHECK_AND_ASSERT_THROW_MES(
-            (kLRki && mscout) || (!kLRki && !mscout), "Only one of kLRki/mscout is present");
-    CHECK_AND_ASSERT_THROW_MES(
-            (mscout && mspout) || !kLRki, "Multisig pointers are not all present");
+    if (n != C.size()) {
+        log::error(logcat, "Signing and commitment key vector sizes must match!");
+        throw std::runtime_error{"Signing and commitment key vector sizes must match!"};
+    }
+    if (n != C_nonzero.size()) {
+        log::error(logcat, "Signing and commitment key vector sizes must match!");
+        throw std::runtime_error{"Signing and commitment key vector sizes must match!"};
+    }
+    if (l >= n) {
+        log::error(logcat, "Signing index out of range!");
+        throw std::runtime_error{"Signing index out of range!"};
+    }
+    if (!((kLRki && mscout) || (!kLRki && !mscout))) {
+        log::error(logcat, "Only one of kLRki/mscout is present");
+        throw std::runtime_error{"Only one of kLRki/mscout is present"};
+    }
+    if (!((mscout && mspout) || !kLRki)) {
+        log::error(logcat, "Multisig pointers are not all present");
+        throw std::runtime_error{"Multisig pointers are not all present"};
+    }
 
     // Key images
     ge_p3 H_p3;
@@ -303,7 +320,7 @@ clsag CLSAG_Gen(
 
     // Compute final scalar
     hwdev.clsag_sign(c, a, p, z, mu_P, mu_C, sig.s[l]);
-    memwipe(&a, sizeof(key));
+    sodium_memzero(&a, sizeof(key));
 
     if (mscout)
         *mscout = c;
@@ -344,32 +361,62 @@ clsag CLSAG_Gen(
 // Note that using more than one linkable dimension is not recommended.
 bool MLSAG_Ver(const key& message, const keyM& pk, const mgSig& rv, size_t dsRows) {
     size_t cols = pk.size();
-    CHECK_AND_ASSERT_MES(cols >= 2, false, "Signature must contain more than one public key");
+    if (cols < 2) {
+        log::error(logcat, "Signature must contain more than one public key");
+        return false;
+    }
     size_t rows = pk[0].size();
-    CHECK_AND_ASSERT_MES(rows >= 1, false, "Bad total row number");
+    if (rows < 1) {
+        log::error(logcat, "Bad total row number");
+        return false;
+    }
     for (size_t i = 1; i < cols; ++i) {
-        CHECK_AND_ASSERT_MES(pk[i].size() == rows, false, "Bad public key matrix dimensions");
+        if (pk[i].size() != rows) {
+            log::error(logcat, "Bad public key matrix dimensions");
+            return false;
+        }
     }
-    CHECK_AND_ASSERT_MES(rv.II.size() == dsRows, false, "Wrong number of key images present");
-    CHECK_AND_ASSERT_MES(rv.ss.size() == cols, false, "Bad scalar matrix dimensions");
+    if (rv.II.size() != dsRows) {
+        log::error(logcat, "Wrong number of key images present");
+        return false;
+    }
+    if (rv.ss.size() != cols) {
+        log::error(logcat, "Bad scalar matrix dimensions");
+        return false;
+    }
     for (size_t i = 0; i < cols; ++i) {
-        CHECK_AND_ASSERT_MES(rv.ss[i].size() == rows, false, "Bad scalar matrix dimensions");
+        if (rv.ss[i].size() != rows) {
+            log::error(logcat, "Bad scalar matrix dimensions");
+            return false;
+        }
     }
-    CHECK_AND_ASSERT_MES(dsRows <= rows, false, "Non-double-spend rows cannot exceed total rows");
+    if (dsRows > rows) {
+        log::error(logcat, "Non-double-spend rows cannot exceed total rows");
+        return false;
+    }
 
     for (size_t i = 0; i < rv.ss.size(); ++i) {
         for (size_t j = 0; j < rv.ss[i].size(); ++j) {
-            CHECK_AND_ASSERT_MES(sc_check(rv.ss[i][j].bytes) == 0, false, "Bad signature scalar");
+            if (sc_check(rv.ss[i][j].bytes) != 0) {
+                log::error(logcat, "Bad signature scalar");
+                return false;
+            }
         }
     }
-    CHECK_AND_ASSERT_MES(sc_check(rv.cc.bytes) == 0, false, "Bad initial signature hash");
+    if (sc_check(rv.cc.bytes) != 0) {
+        log::error(logcat, "Bad initial signature hash");
+        return false;
+    }
 
     size_t i = 0, j = 0, ii = 0;
     key c, L, R;
     key c_old = copy(rv.cc);
     std::vector<geDsmp> Ip(dsRows);
     for (i = 0; i < dsRows; i++) {
-        CHECK_AND_ASSERT_MES(!(rv.II[i] == rct::identity()), false, "Bad key image");
+        if (rv.II[i] == rct::identity()) {
+            log::error(logcat, "Bad key image");
+            return false;
+        }
         precomp(Ip[i].k, rv.II[i]);
     }
     size_t ndsRows = 3 * dsRows;  // number of dimensions not requiring linkability
@@ -399,7 +446,10 @@ bool MLSAG_Ver(const key& message, const keyM& pk, const mgSig& rv, size_t dsRow
             toHash[ndsRows + 2 * ii + 2] = L;
         }
         c = hash_to_scalar(toHash);
-        CHECK_AND_ASSERT_MES(!(c == rct::zero()), false, "Bad signature hash");
+        if (c == rct::zero()) {
+            log::error(logcat, "Bad signature hash");
+            return false;
+        }
         copy(c_old, c);
         i = (i + 1);
     }
@@ -461,7 +511,10 @@ key get_pre_clsag_hash(const rctSig& rv, hw::device& hwdev) {
     hashes.push_back(rv.message);
     crypto::hash h;
 
-    CHECK_AND_ASSERT_THROW_MES(!rv.mixRing.empty(), "Empty mixRing");
+    if (rv.mixRing.empty()) {
+        log::error(logcat, "Empty mixRing");
+        throw std::runtime_error{"Empty mixRing"};
+    }
     const size_t inputs = is_rct_simple(rv.type) ? rv.mixRing.size() : rv.mixRing[0].size();
     const size_t outputs = rv.ecdhInfo.size();
     key prehash;
@@ -525,9 +578,14 @@ clsag proveRctCLSAGSimple(
     // setup vars
     size_t rows = 1;
     size_t cols = pubs.size();
-    CHECK_AND_ASSERT_THROW_MES(cols >= 1, "Empty pubs");
-    CHECK_AND_ASSERT_THROW_MES(
-            (kLRki && mscout) || (!kLRki && !mscout), "Only one of kLRki/mscout is present");
+    if (cols < 1) {
+        log::error(logcat, "Empty pubs");
+        throw std::runtime_error{"Empty pubs"};
+    }
+    if (!((kLRki && mscout) || (!kLRki && !mscout))) {
+        log::error(logcat, "Only one of kLRki/mscout is present");
+        throw std::runtime_error{"Only one of kLRki/mscout is present"};
+    }
     keyV tmp(rows + 1);
     keyV sk(rows + 1);
     size_t i;
@@ -549,7 +607,7 @@ clsag proveRctCLSAGSimple(
     sc_sub(sk[1].bytes, inSk.mask.bytes, a.bytes);
     clsag result = CLSAG_Gen(
             message, P, sk[0], C, sk[1], C_nonzero, Cout, index, kLRki, mscout, mspout, hwdev);
-    memwipe(sk.data(), sk.size() * sizeof(key));
+    sodium_memzero(sk.data(), sk.size() * sizeof(key));
     return result;
 }
 
@@ -569,11 +627,20 @@ bool verRctMG(
         const key& message) {
     // setup vars
     size_t cols = pubs.size();
-    CHECK_AND_ASSERT_MES(cols >= 1, false, "Empty pubs");
+    if (cols < 1) {
+        log::error(logcat, "Empty pubs");
+        return false;
+    }
     size_t rows = pubs[0].size();
-    CHECK_AND_ASSERT_MES(rows >= 1, false, "Empty pubs");
+    if (rows < 1) {
+        log::error(logcat, "Empty pubs");
+        return false;
+    }
     for (size_t i = 1; i < cols; ++i) {
-        CHECK_AND_ASSERT_MES(pubs[i].size() == rows, false, "pubs is not rectangular");
+        if (pubs[i].size() != rows) {
+            log::error(logcat, "pubs is not rectangular");
+            return false;
+        }
     }
 
     keyV tmp(rows + 1);
@@ -609,7 +676,10 @@ bool verRctMGSimple(const key& message, const mgSig& mg, const ctkeyV& pubs, con
         // setup vars
         size_t rows = 1;
         size_t cols = pubs.size();
-        CHECK_AND_ASSERT_MES(cols >= 1, false, "Empty pubs");
+        if (cols < 1) {
+            log::error(logcat, "Empty pubs");
+            return false;
+        }
         keyV tmp(rows + 1);
         size_t i;
         keyM M(cols, tmp);
@@ -646,27 +716,45 @@ bool verRctCLSAGSimple(
         const size_t n = pubs.size();
 
         // Check data
-        CHECK_AND_ASSERT_MES(n >= 1, false, "Empty pubs");
-        CHECK_AND_ASSERT_MES(
-                n == sig.s.size(), false, "Signature scalar vector is the wrong size!");
-        for (size_t i = 0; i < n; ++i)
-            CHECK_AND_ASSERT_MES(sc_check(sig.s[i].bytes) == 0, false, "Bad signature scalar!");
-        CHECK_AND_ASSERT_MES(sc_check(sig.c1.bytes) == 0, false, "Bad signature commitment!");
-        CHECK_AND_ASSERT_MES(!(sig.I == rct::identity()), false, "Bad key image!");
+        if (n < 1) {
+            log::error(logcat, "Empty pubs");
+            return false;
+        }
+        if (n != sig.s.size()) {
+            log::error(logcat, "Signature scalar vector is the wrong size!");
+            return false;
+        }
+        for (size_t i = 0; i < n; ++i) {
+            if (sc_check(sig.s[i].bytes) != 0) {
+                log::error(logcat, "Bad signature scalar!");
+                return false;
+            }
+        }
+        if (sc_check(sig.c1.bytes) != 0) {
+            log::error(logcat, "Bad signature commitment!");
+            return false;
+        }
+        if (sig.I == rct::identity()) {
+            log::error(logcat, "Bad key image!");
+            return false;
+        }
 
         // Cache commitment offset for efficient subtraction later
         ge_p3 C_offset_p3;
-        CHECK_AND_ASSERT_MES(
-                ge_frombytes_vartime(&C_offset_p3, C_offset.bytes) == 0,
-                false,
-                "point conv failed");
+        if (ge_frombytes_vartime(&C_offset_p3, C_offset.bytes) != 0) {
+            log::error(logcat, "point conv failed");
+            return false;
+        }
         ge_cached C_offset_cached;
         ge_p3_to_cached(&C_offset_cached, &C_offset_p3);
 
         // Prepare key images
         key c = copy(sig.c1);
         key D_8 = scalarmult8(sig.D);
-        CHECK_AND_ASSERT_MES(!(D_8 == rct::identity()), false, "Bad auxiliary key image!");
+        if (D_8 == rct::identity()) {
+            log::error(logcat, "Bad auxiliary key image!");
+            return false;
+        }
         geDsmp I_precomp;
         geDsmp D_precomp;
         precomp(I_precomp.k, sig.I);
@@ -735,10 +823,10 @@ bool verRctCLSAGSimple(
             // Precompute points for L/R
             precomp(P_precomp.k, pubs[i].dest);
 
-            CHECK_AND_ASSERT_MES(
-                    ge_frombytes_vartime(&temp_p3, pubs[i].mask.bytes) == 0,
-                    false,
-                    "point conv failed");
+            if (ge_frombytes_vartime(&temp_p3, pubs[i].mask.bytes) != 0) {
+                log::error(logcat, "point conv failed");
+                return false;
+            }
             ge_sub(&temp_p1, &temp_p3, &C_offset_cached);
             ge_p1p1_to_p3(&temp_p3, &temp_p1);
             ge_dsm_precomp(C_precomp.k, &temp_p3);
@@ -754,7 +842,10 @@ bool verRctCLSAGSimple(
             c_to_hash[2 * n + 3] = L;
             c_to_hash[2 * n + 4] = R;
             c_new = hash_to_scalar(c_to_hash);
-            CHECK_AND_ASSERT_MES(!(c_new == rct::zero()), false, "Bad signature hash");
+            if (c_new == rct::zero()) {
+                log::error(logcat, "Bad signature hash");
+                return false;
+            }
             copy(c, c_new);
 
             i = i + 1;
@@ -818,31 +909,54 @@ rctSig genRctSimple(
         ctkeyV& outSk,
         const RCTConfig& rct_config,
         hw::device& hwdev) {
-    CHECK_AND_ASSERT_THROW_MES(inamounts.size() > 0, "Empty inamounts");
-    CHECK_AND_ASSERT_THROW_MES(
-            inamounts.size() == inSk.size(), "Different number of inamounts/inSk");
-    CHECK_AND_ASSERT_THROW_MES(
-            outamounts.size() == destinations.size(), "Different number of amounts/destinations");
-    CHECK_AND_ASSERT_THROW_MES(
-            amount_keys.size() == destinations.size(),
-            "Different number of amount_keys/destinations");
-    CHECK_AND_ASSERT_THROW_MES(index.size() == inSk.size(), "Different number of index/inSk");
-    CHECK_AND_ASSERT_THROW_MES(mixRing.size() == inSk.size(), "Different number of mixRing/inSk");
-    for (size_t n = 0; n < mixRing.size(); ++n) {
-        CHECK_AND_ASSERT_THROW_MES(index[n] < mixRing[n].size(), "Bad index into mixRing");
+    if (inamounts.size() <= 0) {
+        log::error(logcat, "Empty inamounts");
+        throw std::runtime_error{"Empty inamounts"};
     }
-    CHECK_AND_ASSERT_THROW_MES(
-            (kLRki && msout) || (!kLRki && !msout), "Only one of kLRki/msout is present");
+    if (inamounts.size() != inSk.size()) {
+        log::error(logcat, "Different number of inamounts/inSk");
+        throw std::runtime_error{"Different number of inamounts/inSk"};
+    }
+    if (outamounts.size() != destinations.size()) {
+        log::error(logcat, "Different number of amounts/destinations");
+        throw std::runtime_error{"Different number of amounts/destinations"};
+    }
+    if (amount_keys.size() != destinations.size()) {
+        log::error(logcat, "Different number of amount_keys/destinations");
+        throw std::runtime_error{"Different number of amount_keys/destinations"};
+    }
+    if (index.size() != inSk.size()) {
+        log::error(logcat, "Different number of index/inSk");
+        throw std::runtime_error{"Different number of index/inSk"};
+    }
+    if (mixRing.size() != inSk.size()) {
+        log::error(logcat, "Different number of mixRing/inSk");
+        throw std::runtime_error{"Different number of mixRing/inSk"};
+    }
+    for (size_t n = 0; n < mixRing.size(); ++n) {
+        if (index[n] >= mixRing[n].size()) {
+            log::error(logcat, "Bad index into mixRing");
+            throw std::runtime_error{"Bad index into mixRing"};
+        }
+    }
+    if (!((kLRki && msout) || (!kLRki && !msout))) {
+        log::error(logcat, "Only one of kLRki/msout is present");
+        throw std::runtime_error{"Only one of kLRki/msout is present"};
+    }
     if (kLRki && msout) {
-        CHECK_AND_ASSERT_THROW_MES(
-                kLRki->size() == inamounts.size(), "Mismatched kLRki/inamounts sizes");
+        if (kLRki->size() != inamounts.size()) {
+            log::error(logcat, "Mismatched kLRki/inamounts sizes");
+            throw std::runtime_error{"Mismatched kLRki/inamounts sizes"};
+        }
     }
 
-    CHECK_AND_ASSERT_THROW_MES(
-            rct_config.range_proof_type != RangeProofType::Borromean &&
-                    (rct_config.bp_version == 3 ||
-                     rct_config.bp_version == 0),  // 0 means latest version
-            "Unable to generate rct for non-CLSAG-bulletproof");
+    if (!(rct_config.range_proof_type != RangeProofType::Borromean &&
+          (rct_config.bp_version == 3 || rct_config.bp_version == 0))) {
+        auto msg = fmt::format(  // 0 means latest version
+                "Unable to generate rct for non-CLSAG-bulletproof");
+        log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+    }
 
     rctSig rv;
     rv.type = RCTType::CLSAG;
@@ -870,9 +984,10 @@ rctSig genRctSimple(
             rv.p.bulletproofs.push_back(
                     proveRangeBulletproof(C, masks, outamounts, amount_keys, hwdev));
 #ifdef DBG
-            CHECK_AND_ASSERT_THROW_MES(
-                    verBulletproof(rv.p.bulletproofs.back()),
-                    "verBulletproof failed on newly created proof");
+            if (!verBulletproof(rv.p.bulletproofs.back())) {
+                log::error(logcat, "verBulletproof failed on newly created proof");
+                throw std::runtime_error{"verBulletproof failed on newly created proof"};
+            }
 #endif
         }
         for (i = 0; i < outamounts.size(); ++i) {
@@ -899,9 +1014,10 @@ rctSig genRctSimple(
                 rv.p.bulletproofs.push_back(
                         proveRangeBulletproof(C, masks, batch_amounts, keys, hwdev));
 #ifdef DBG
-                CHECK_AND_ASSERT_THROW_MES(
-                        verBulletproof(rv.p.bulletproofs.back()),
-                        "verBulletproof failed on newly created proof");
+                if (!verBulletproof(rv.p.bulletproofs.back())) {
+                    log::error(logcat, "verBulletproof failed on newly created proof");
+                    throw std::runtime_error{"verBulletproof failed on newly created proof"};
+                }
 #endif
             }
             for (i = 0; i < batch_size; ++i) {
@@ -1010,17 +1126,23 @@ rctSig genRctSimple(
 //    must know the destination private key to find the correct amount, else will return a random
 //    number
 bool verRct(const rctSig& rv, bool semantics) {
-    CHECK_AND_ASSERT_MES(rv.type == RCTType::Full, false, "verRct called on non-full rctSig");
+    if (rv.type != RCTType::Full) {
+        log::error(logcat, "verRct called on non-full rctSig");
+        return false;
+    }
     if (semantics) {
-        CHECK_AND_ASSERT_MES(
-                rv.outPk.size() == rv.p.rangeSigs.size(),
-                false,
-                "Mismatched sizes of outPk and rv.p.rangeSigs");
-        CHECK_AND_ASSERT_MES(
-                rv.outPk.size() == rv.ecdhInfo.size(),
-                false,
-                "Mismatched sizes of outPk and rv.ecdhInfo");
-        CHECK_AND_ASSERT_MES(rv.p.MGs.size() == 1, false, "full rctSig has not one MG");
+        if (rv.outPk.size() != rv.p.rangeSigs.size()) {
+            log::error(logcat, "Mismatched sizes of outPk and rv.p.rangeSigs");
+            return false;
+        }
+        if (rv.outPk.size() != rv.ecdhInfo.size()) {
+            log::error(logcat, "Mismatched sizes of outPk and rv.ecdhInfo");
+            return false;
+        }
+        if (rv.p.MGs.size() != 1) {
+            log::error(logcat, "full rctSig has not one MG");
+            return false;
+        }
     } else {
         // semantics check is early, we don't have the MGs resolved yet
     }
@@ -1085,49 +1207,62 @@ bool verRctSemanticsSimple(const std::vector<const rctSig*>& rvv) {
         size_t max_non_bp_proofs = 0, offset = 0;
 
         for (const rctSig* rvp : rvv) {
-            CHECK_AND_ASSERT_MES(rvp, false, "rctSig pointer is NULL");
+            if (!rvp) {
+                log::error(logcat, "rctSig pointer is NULL");
+                return false;
+            }
             const rctSig& rv = *rvp;
-            CHECK_AND_ASSERT_MES(
-                    rct::is_rct_simple(rv.type),
-                    false,
-                    "verRctSemanticsSimple called on non simple rctSig");
+            if (!rct::is_rct_simple(rv.type)) {
+                log::error(logcat, "verRctSemanticsSimple called on non simple rctSig");
+                return false;
+            }
             const bool bulletproof = is_rct_bulletproof(rv.type);
             if (bulletproof) {
-                CHECK_AND_ASSERT_MES(
-                        rv.outPk.size() == n_bulletproof_amounts(rv.p.bulletproofs),
-                        false,
-                        "Mismatched sizes of outPk and bulletproofs");
-                if (rv.type == RCTType::CLSAG) {
-                    CHECK_AND_ASSERT_MES(rv.p.MGs.empty(), false, "MGs are not empty for CLSAG");
-                    CHECK_AND_ASSERT_MES(
-                            rv.p.pseudoOuts.size() == rv.p.CLSAGs.size(),
-                            false,
-                            "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
-                } else {
-                    CHECK_AND_ASSERT_MES(
-                            rv.p.CLSAGs.empty(), false, "CLSAGs are not empty for MLSAG");
-                    CHECK_AND_ASSERT_MES(
-                            rv.p.pseudoOuts.size() == rv.p.MGs.size(),
-                            false,
-                            "Mismatched sizes of rv.p.pseudoOuts and rv.p.MGs");
+                if (rv.outPk.size() != n_bulletproof_amounts(rv.p.bulletproofs)) {
+                    log::error(logcat, "Mismatched sizes of outPk and bulletproofs");
+                    return false;
                 }
-                CHECK_AND_ASSERT_MES(rv.pseudoOuts.empty(), false, "rv.pseudoOuts is not empty");
+                if (rv.type == RCTType::CLSAG) {
+                    if (!rv.p.MGs.empty()) {
+                        log::error(logcat, "MGs are not empty for CLSAG");
+                        return false;
+                    }
+                    if (rv.p.pseudoOuts.size() != rv.p.CLSAGs.size()) {
+                        log::error(logcat, "Mismatched sizes of rv.p.pseudoOuts and rv.p.CLSAGs");
+                        return false;
+                    }
+                } else {
+                    if (!rv.p.CLSAGs.empty()) {
+                        log::error(logcat, "CLSAGs are not empty for MLSAG");
+                        return false;
+                    }
+                    if (rv.p.pseudoOuts.size() != rv.p.MGs.size()) {
+                        log::error(logcat, "Mismatched sizes of rv.p.pseudoOuts and rv.p.MGs");
+                        return false;
+                    }
+                }
+                if (!rv.pseudoOuts.empty()) {
+                    log::error(logcat, "rv.pseudoOuts is not empty");
+                    return false;
+                }
             } else {
-                CHECK_AND_ASSERT_MES(
-                        rv.outPk.size() == rv.p.rangeSigs.size(),
-                        false,
-                        "Mismatched sizes of outPk and rv.p.rangeSigs");
-                CHECK_AND_ASSERT_MES(
-                        rv.pseudoOuts.size() == rv.p.MGs.size(),
-                        false,
-                        "Mismatched sizes of rv.pseudoOuts and rv.p.MGs");
-                CHECK_AND_ASSERT_MES(
-                        rv.p.pseudoOuts.empty(), false, "rv.p.pseudoOuts is not empty");
+                if (rv.outPk.size() != rv.p.rangeSigs.size()) {
+                    log::error(logcat, "Mismatched sizes of outPk and rv.p.rangeSigs");
+                    return false;
+                }
+                if (rv.pseudoOuts.size() != rv.p.MGs.size()) {
+                    log::error(logcat, "Mismatched sizes of rv.pseudoOuts and rv.p.MGs");
+                    return false;
+                }
+                if (!rv.p.pseudoOuts.empty()) {
+                    log::error(logcat, "rv.p.pseudoOuts is not empty");
+                    return false;
+                }
             }
-            CHECK_AND_ASSERT_MES(
-                    rv.outPk.size() == rv.ecdhInfo.size(),
-                    false,
-                    "Mismatched sizes of outPk and rv.ecdhInfo");
+            if (rv.outPk.size() != rv.ecdhInfo.size()) {
+                log::error(logcat, "Mismatched sizes of outPk and rv.ecdhInfo");
+                return false;
+            }
 
             if (!bulletproof)
                 max_non_bp_proofs += rv.p.rangeSigs.size();
@@ -1203,22 +1338,23 @@ bool verRctSemanticsSimple(const rctSig& rv) {
 bool verRctNonSemanticsSimple(const rctSig& rv) {
     try {
 
-        CHECK_AND_ASSERT_MES(
-                rct::is_rct_simple(rv.type),
-                false,
-                "verRctNonSemanticsSimple called on non simple rctSig");
+        if (!rct::is_rct_simple(rv.type)) {
+            log::error(logcat, "verRctNonSemanticsSimple called on non simple rctSig");
+            return false;
+        }
         const bool bulletproof = is_rct_bulletproof(rv.type);
         // semantics check is early, and mixRing/MGs aren't resolved yet
-        if (bulletproof)
-            CHECK_AND_ASSERT_MES(
-                    rv.p.pseudoOuts.size() == rv.mixRing.size(),
-                    false,
-                    "Mismatched sizes of rv.p.pseudoOuts and mixRing");
-        else
-            CHECK_AND_ASSERT_MES(
-                    rv.pseudoOuts.size() == rv.mixRing.size(),
-                    false,
-                    "Mismatched sizes of rv.pseudoOuts and mixRing");
+        if (bulletproof) {
+            if (rv.p.pseudoOuts.size() != rv.mixRing.size()) {
+                log::error(logcat, "Mismatched sizes of rv.p.pseudoOuts and mixRing");
+                return false;
+            }
+        } else {
+            if (rv.pseudoOuts.size() != rv.mixRing.size()) {
+                log::error(logcat, "Mismatched sizes of rv.pseudoOuts and mixRing");
+                return false;
+            }
+        }
 
         const size_t threads = std::max(rv.outPk.size(), rv.mixRing.size());
 
@@ -1275,10 +1411,18 @@ bool verRctNonSemanticsSimple(const rctSig& rv) {
 //    number
 xmr_amount decodeRct(
         const rctSig& rv, const key& sk, unsigned int i, key& mask, hw::device& hwdev) {
-    CHECK_AND_ASSERT_MES(rv.type == RCTType::Full, false, "decodeRct called on non-full rctSig");
-    CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
-    CHECK_AND_ASSERT_THROW_MES(
-            rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
+    if (rv.type != RCTType::Full) {
+        log::error(logcat, "decodeRct called on non-full rctSig");
+        return false;
+    }
+    if (i >= rv.ecdhInfo.size()) {
+        log::error(logcat, "Bad index");
+        throw std::runtime_error{"Bad index"};
+    }
+    if (rv.outPk.size() != rv.ecdhInfo.size()) {
+        log::error(logcat, "Mismatched sizes of rv.outPk and rv.ecdhInfo");
+        throw std::runtime_error{"Mismatched sizes of rv.outPk and rv.ecdhInfo"};
+    }
 
     // mask amount and mask
     ecdhTuple ecdh_info = rv.ecdhInfo[i];
@@ -1289,14 +1433,20 @@ xmr_amount decodeRct(
     DP("C");
     DP(C);
     key Ctmp;
-    CHECK_AND_ASSERT_THROW_MES(sc_check(mask.bytes) == 0, "warning, bad ECDH mask");
-    CHECK_AND_ASSERT_THROW_MES(sc_check(amount.bytes) == 0, "warning, bad ECDH amount");
+    if (sc_check(mask.bytes) != 0) {
+        log::error(logcat, "warning, bad ECDH mask");
+        throw std::runtime_error{"warning, bad ECDH mask"};
+    }
+    if (sc_check(amount.bytes) != 0) {
+        log::error(logcat, "warning, bad ECDH amount");
+        throw std::runtime_error{"warning, bad ECDH amount"};
+    }
     addKeys2(Ctmp, mask, amount, H);
     DP("Ctmp");
     DP(Ctmp);
     if (equalKeys(C, Ctmp) == false) {
-        CHECK_AND_ASSERT_THROW_MES(
-                false, "warning, amount decoded incorrectly, will be unable to spend");
+        log::error(logcat, "warning, amount decoded incorrectly, will be unable to spend");
+        throw std::runtime_error{"warning, amount decoded incorrectly, will be unable to spend"};
     }
     return h2d(amount);
 }
@@ -1308,11 +1458,18 @@ xmr_amount decodeRct(const rctSig& rv, const key& sk, unsigned int i, hw::device
 
 xmr_amount decodeRctSimple(
         const rctSig& rv, const key& sk, unsigned int i, key& mask, hw::device& hwdev) {
-    CHECK_AND_ASSERT_MES(
-            rct::is_rct_simple(rv.type), false, "decodeRct called on non simple rctSig");
-    CHECK_AND_ASSERT_THROW_MES(i < rv.ecdhInfo.size(), "Bad index");
-    CHECK_AND_ASSERT_THROW_MES(
-            rv.outPk.size() == rv.ecdhInfo.size(), "Mismatched sizes of rv.outPk and rv.ecdhInfo");
+    if (!rct::is_rct_simple(rv.type)) {
+        log::error(logcat, "decodeRct called on non simple rctSig");
+        return false;
+    }
+    if (i >= rv.ecdhInfo.size()) {
+        log::error(logcat, "Bad index");
+        throw std::runtime_error{"Bad index"};
+    }
+    if (rv.outPk.size() != rv.ecdhInfo.size()) {
+        log::error(logcat, "Mismatched sizes of rv.outPk and rv.ecdhInfo");
+        throw std::runtime_error{"Mismatched sizes of rv.outPk and rv.ecdhInfo"};
+    }
 
     // mask amount and mask
     ecdhTuple ecdh_info = rv.ecdhInfo[i];
@@ -1323,14 +1480,20 @@ xmr_amount decodeRctSimple(
     DP("C");
     DP(C);
     key Ctmp;
-    CHECK_AND_ASSERT_THROW_MES(sc_check(mask.bytes) == 0, "warning, bad ECDH mask");
-    CHECK_AND_ASSERT_THROW_MES(sc_check(amount.bytes) == 0, "warning, bad ECDH amount");
+    if (sc_check(mask.bytes) != 0) {
+        log::error(logcat, "warning, bad ECDH mask");
+        throw std::runtime_error{"warning, bad ECDH mask"};
+    }
+    if (sc_check(amount.bytes) != 0) {
+        log::error(logcat, "warning, bad ECDH amount");
+        throw std::runtime_error{"warning, bad ECDH amount"};
+    }
     addKeys2(Ctmp, mask, amount, H);
     DP("Ctmp");
     DP(Ctmp);
     if (equalKeys(C, Ctmp) == false) {
-        CHECK_AND_ASSERT_THROW_MES(
-                false, "warning, amount decoded incorrectly, will be unable to spend");
+        log::error(logcat, "warning, amount decoded incorrectly, will be unable to spend");
+        throw std::runtime_error{"warning, amount decoded incorrectly, will be unable to spend"};
     }
     return h2d(amount);
 }
@@ -1346,25 +1509,46 @@ bool signMultisigMLSAG(
         const keyV& k,
         const multisig_out& msout,
         const key& secret_key) {
-    CHECK_AND_ASSERT_MES(
-            tools::equals_any(
-                    rv.type,
-                    RCTType::Full,
-                    RCTType::Simple,
-                    RCTType::Bulletproof,
-                    RCTType::Bulletproof2),
-            false,
-            "unsupported rct type");
-    CHECK_AND_ASSERT_MES(indices.size() == k.size(), false, "Mismatched k/indices sizes");
-    CHECK_AND_ASSERT_MES(k.size() == rv.p.MGs.size(), false, "Mismatched k/MGs size");
-    CHECK_AND_ASSERT_MES(k.size() == msout.c.size(), false, "Mismatched k/msout.c size");
-    CHECK_AND_ASSERT_MES(rv.p.CLSAGs.empty(), false, "CLSAGs not empty for MLSAGs");
+    if (!tools::equals_any(
+                rv.type,
+                RCTType::Full,
+                RCTType::Simple,
+                RCTType::Bulletproof,
+                RCTType::Bulletproof2)) {
+        log::error(logcat, "unsupported rct type");
+        return false;
+    }
+    if (indices.size() != k.size()) {
+        log::error(logcat, "Mismatched k/indices sizes");
+        return false;
+    }
+    if (k.size() != rv.p.MGs.size()) {
+        log::error(logcat, "Mismatched k/MGs size");
+        return false;
+    }
+    if (k.size() != msout.c.size()) {
+        log::error(logcat, "Mismatched k/msout.c size");
+        return false;
+    }
+    if (!rv.p.CLSAGs.empty()) {
+        log::error(logcat, "CLSAGs not empty for MLSAGs");
+        return false;
+    }
     if (rv.type == RCTType::Full) {
-        CHECK_AND_ASSERT_MES(rv.p.MGs.size() == 1, false, "MGs not a single element");
+        if (rv.p.MGs.size() != 1) {
+            log::error(logcat, "MGs not a single element");
+            return false;
+        }
     }
     for (size_t n = 0; n < indices.size(); ++n) {
-        CHECK_AND_ASSERT_MES(indices[n] < rv.p.MGs[n].ss.size(), false, "Index out of range");
-        CHECK_AND_ASSERT_MES(!rv.p.MGs[n].ss[indices[n]].empty(), false, "empty ss line");
+        if (indices[n] >= rv.p.MGs[n].ss.size()) {
+            log::error(logcat, "Index out of range");
+            return false;
+        }
+        if (rv.p.MGs[n].ss[indices[n]].empty()) {
+            log::error(logcat, "empty ss line");
+            return false;
+        }
     }
 
     // MLSAG: each player contributes a share to the secret-index ss: k - cc*secret_key_share
@@ -1385,14 +1569,35 @@ bool signMultisigCLSAG(
         const keyV& k,
         const multisig_out& msout,
         const key& secret_key) {
-    CHECK_AND_ASSERT_MES(rv.type == RCTType::CLSAG, false, "unsupported rct type");
-    CHECK_AND_ASSERT_MES(indices.size() == k.size(), false, "Mismatched k/indices sizes");
-    CHECK_AND_ASSERT_MES(k.size() == rv.p.CLSAGs.size(), false, "Mismatched k/CLSAGs size");
-    CHECK_AND_ASSERT_MES(k.size() == msout.c.size(), false, "Mismatched k/msout.c size");
-    CHECK_AND_ASSERT_MES(rv.p.MGs.empty(), false, "MGs not empty for CLSAGs");
-    CHECK_AND_ASSERT_MES(msout.c.size() == msout.mu_p.size(), false, "Bad mu_p size");
+    if (rv.type != RCTType::CLSAG) {
+        log::error(logcat, "unsupported rct type");
+        return false;
+    }
+    if (indices.size() != k.size()) {
+        log::error(logcat, "Mismatched k/indices sizes");
+        return false;
+    }
+    if (k.size() != rv.p.CLSAGs.size()) {
+        log::error(logcat, "Mismatched k/CLSAGs size");
+        return false;
+    }
+    if (k.size() != msout.c.size()) {
+        log::error(logcat, "Mismatched k/msout.c size");
+        return false;
+    }
+    if (!rv.p.MGs.empty()) {
+        log::error(logcat, "MGs not empty for CLSAGs");
+        return false;
+    }
+    if (msout.c.size() != msout.mu_p.size()) {
+        log::error(logcat, "Bad mu_p size");
+        return false;
+    }
     for (size_t n = 0; n < indices.size(); ++n) {
-        CHECK_AND_ASSERT_MES(indices[n] < rv.p.CLSAGs[n].s.size(), false, "Index out of range");
+        if (indices[n] >= rv.p.CLSAGs[n].s.size()) {
+            log::error(logcat, "Index out of range");
+            return false;
+        }
     }
 
     // CLSAG: each player contributes a share to the secret-index ss: k - cc*mu_p*secret_key_share

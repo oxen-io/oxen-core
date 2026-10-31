@@ -42,7 +42,7 @@ extern "C" {
 
 #include <boost/algorithm/string.hpp>
 #include <csignal>
-#include <ranges>
+#include <oxen/quic/format.hpp>
 #include <unordered_set>
 
 #include "blockchain_db/blockchain_db.h"
@@ -51,9 +51,9 @@ extern "C" {
 #include "bls/bls_crypto.h"
 #include "checkpoints/checkpoints.h"
 #include "common/command_line.h"
-#include "common/exception.h"
 #include "common/file.h"
 #include "common/guts.h"
+#include "common/ipv4.h"
 #include "common/notify.h"
 #include "common/sha256sum.h"
 #include "common/string_util.h"
@@ -63,19 +63,12 @@ extern "C" {
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
-#include "epee/memwipe.h"
-#include "epee/net/local_ip.h"
-#include "epee/string_tools.h"
-#include "epee/warnings.h"
 #include "logging/oxen_logger.h"
-#include "net/parse.h"
 #include "network_config/mocknet.h"
 #include "ringct/rctSigs.h"
 #include "ringct/rctTypes.h"
 #include "uptime_proof.h"
 #include "version.h"
-
-DISABLE_VS_WARNINGS(4355)
 
 #define BAD_SEMANTICS_TXES_MAX_SIZE 100
 
@@ -252,7 +245,7 @@ static const command_line::arg_descriptor<std::vector<std::string>> arg_force_un
 // Loads stubs that fail if invoked.  The stubs are replaced in the
 // cryptonote_protocol/quorumnet.cpp glue code.
 [[noreturn]] static void need_core_init(std::string_view stub_name) {
-    throw oxen::traced<std::logic_error>(
+    throw std::logic_error(
             "Internal error: core callback initialization was not performed for "s +
             std::string(stub_name));
 }
@@ -392,12 +385,13 @@ void core::init_options(boost::program_options::options_description& desc) {
     BlockchainDB::init_options(desc);
 }
 //-----------------------------------------------------------------------------------------------
-bool core::is_forced_unreachable(uint32_t ip) const {
-    // 0 means we don't know the IP (no proof yet), which shouldn't match even a /0
-    return ip != 0 && std::any_of(
-                              m_force_unreachable.begin(),
-                              m_force_unreachable.end(),
-                              [ip](const auto& subnet) { return subnet.matches(ip); });
+bool core::is_forced_unreachable(const oxen::quic::ipv4& ip) const {
+    // 0.0.0.0 means we don't know the IP (no proof yet), which shouldn't match even a /0
+    return ip != oxen::quic::ipv4{} &&
+           std::any_of(
+                   m_force_unreachable.begin(),
+                   m_force_unreachable.end(),
+                   [&ip](const auto& range) { return range.contains(ip); });
 }
 //-----------------------------------------------------------------------------------------------
 bool core::handle_command_line(const boost::program_options::variables_map& vm) {
@@ -420,17 +414,17 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
         service_node_list.debug_allow_local_ips = true;
 
     for (const auto& val : command_line::get_arg(vm, arg_force_unreachable)) {
-        for (auto range : tools::split_any(val, ", \t", true)) {
-            auto subnet = net::get_ipv4_subnet_address(range, true);
-            if (!subnet) {
+        for (auto range_str : tools::split_any(val, ", \t", true)) {
+            auto range = tools::parse_ipv4_range(range_str, true);
+            if (!range) {
                 log::error(
                         logcat,
                         "Invalid --{} value '{}': expected an IPv4 address or CIDR range",
                         arg_force_unreachable.name,
-                        range);
+                        range_str);
                 return false;
             }
-            m_force_unreachable.push_back(*subnet);
+            m_force_unreachable.push_back(*range);
         }
     }
     if (!m_force_unreachable.empty())
@@ -438,10 +432,7 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
                 logcat,
                 "Service nodes with public IPs in {} will be treated as unreachable when voting in "
                 "obligations quorums",
-                fmt::join(
-                        m_force_unreachable |
-                                std::views::transform([](const auto& s) { return s.str(); }),
-                        ", "));
+                fmt::join(m_force_unreachable, ", "));
 
     m_service_node = command_line::get_arg(vm, arg_service_node);
 
@@ -468,12 +459,14 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
 
         const std::string pub_ip = command_line::get_arg(vm, arg_public_ip);
         if (pub_ip.size()) {
-            if (!epee::string_tools::get_ip_int32_from_string(m_sn_public_ip, pub_ip)) {
+            try {
+                m_sn_public_ip = oxen::quic::ipv4{pub_ip};
+            } catch (const std::invalid_argument&) {
                 log::error(logcat, "Unable to parse IPv4 public address from: {}", pub_ip);
                 args_okay = false;
             }
 
-            if (!epee::net_utils::is_ip_public(m_sn_public_ip)) {
+            if (!m_sn_public_ip.is_public()) {
                 if (service_node_list.debug_allow_local_ips) {
                     log::warning(
                             logcat,
@@ -484,7 +477,7 @@ bool core::handle_command_line(const boost::program_options::variables_map& vm) 
                     log::error(
                             logcat,
                             "Address given for public-ip is not public: {}",
-                            epee::string_tools::get_ip_string_from_int32(m_sn_public_ip));
+                            m_sn_public_ip);
                     args_okay = false;
                 }
             }
@@ -625,13 +618,19 @@ bool core::init(
     bool r = handle_command_line(vm);
     /// Currently terminating before blockchain is initialized results in a crash
     /// during deinitialization... TODO: fix that
-    CHECK_AND_ASSERT_MES(r, false, "Failed to apply command line options.");
+    if (!r) {
+        log::error(logcat, "Failed to apply command line options.");
+        return false;
+    }
 
     size_t max_txpool_weight = command_line::get_arg(vm, arg_max_txpool_weight);
     bool keep_alt_blocks = command_line::get_arg(vm, arg_keep_alt_blocks);
 
     r = init_service_keys();
-    CHECK_AND_ASSERT_MES(r, false, "Failed to create or load service keys");
+    if (!r) {
+        log::error(logcat, "Failed to create or load service keys");
+        return false;
+    }
     if (m_service_node) {
         // Only use our service keys for our service node if we are running in SN mode:
         service_node_list.set_my_service_node_keys(&m_service_keys);
@@ -848,7 +847,7 @@ bool core::init(
                         globallogcat,
                         fg(fmt::terminal_color::green) | fmt::emphasis::bold,
                         "Running as an L2 proxy reachable at:\n\t{}:{}/{}",
-                        epee::string_tools::get_ip_string_from_int32(m_sn_public_ip),
+                        m_sn_public_ip,
                         m_quorumnet_port,
                         m_service_keys.pub_ed25519);
             else
@@ -954,10 +953,16 @@ bool core::init(
             command_line::get_arg(vm, arg_fixed_difficulty),
             get_checkpoints,
             abort);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to initialize blockchain storage");
+    if (!r) {
+        log::error(logcat, "Failed to initialize blockchain storage");
+        return false;
+    }
 
     r = mempool.init(max_txpool_weight);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to initialize memory pool");
+    if (!r) {
+        log::error(logcat, "Failed to initialize memory pool");
+        return false;
+    }
 
     // now that we have a valid `blockchain`, we can clean out any
     // transactions in the pool that do not conform to the current fork
@@ -974,13 +979,18 @@ bool core::init(
                 BLOCKS_SYNCHRONIZING_MAX_COUNT);
 
     log::info(globallogcat, "Loading checkpoints");
-    CHECK_AND_ASSERT_MES(
-            update_checkpoints_from_json_file(),
-            false,
-            "One or more checkpoints loaded from json conflicted with existing checkpoints.");
+    if (!update_checkpoints_from_json_file()) {
+        log::error(
+                logcat,
+                "One or more checkpoints loaded from json conflicted with existing checkpoints.");
+        return false;
+    }
 
     r = miner.init(vm, m_nettype);
-    CHECK_AND_ASSERT_MES(r, false, "Failed to initialize miner instance");
+    if (!r) {
+        log::error(logcat, "Failed to initialize miner instance");
+        return false;
+    }
 
     if (!keep_alt_blocks && !blockchain.db().is_read_only())
         blockchain.db().drop_alt_blocks();
@@ -1167,15 +1177,18 @@ bool init_key(
     if (fs::exists(keypath, ec)) {
         std::string keystr;
         bool r = tools::slurp_file(keypath, keystr);
-        CHECK_AND_ASSERT_MES(r, false, "failed to load service node key from {}", keypath);
+        if (!r) {
+            log::error(logcat, "failed to load service node key from {}", keypath);
+            return false;
+        }
 
         OXEN_DEFER {
-            memwipe(keystr.data(), keystr.size());
+            sodium_memzero(keystr.data(), keystr.size());
         };
 
         if (keystr.size() == sizeof(privkey))
             // raw bytes:
-            memcpy(&unwrap(unwrap(privkey)), keystr.data(), sizeof(privkey));
+            memcpy(privkey.data(), keystr.data(), sizeof(privkey));
         else {
             // Try to load as hex with a 0x prefix and optional \n suffix
             std::string_view keyv{keystr};
@@ -1192,7 +1205,10 @@ bool init_key(
         }
 
         r = get_pubkey(privkey, pubkey, extra...);
-        CHECK_AND_ASSERT_MES(r, false, "failed to generate pubkey from secret key");
+        if (!r) {
+            log::error(logcat, "failed to generate pubkey from secret key");
+            return false;
+        }
     } else {
         try {
             generate_pair(privkey, pubkey, extra...);
@@ -1203,7 +1219,7 @@ bool init_key(
 
         std::string privkey_hex;
         OXEN_DEFER {
-            memwipe(privkey_hex.data(), privkey_hex.size());
+            sodium_memzero(privkey_hex.data(), privkey_hex.size());
         };
         privkey_hex.reserve(2 * sizeof(privkey) + 3);
         privkey_hex += "0x";
@@ -1211,7 +1227,10 @@ bool init_key(
         oxenc::to_hex(guts.begin(), guts.end(), std::back_inserter(privkey_hex));
         privkey_hex += '\n';
         bool r = tools::dump_file(keypath, privkey_hex);
-        CHECK_AND_ASSERT_MES(r, false, "failed to save service node key to {}", keypath);
+        if (!r) {
+            log::error(logcat, "failed to save service node key to {}", keypath);
+            return false;
+        }
 
         fs::permissions(keypath, fs::perms::owner_read, ec);
     }
@@ -1248,7 +1267,10 @@ bool core::init_service_keys() {
     // Standard x25519 keys generated from the ed25519 keypair, used for encrypted communication
     // between SNs
     int rc = crypto_sign_ed25519_pk_to_curve25519(keys.pub_x25519.data(), keys.pub_ed25519.data());
-    CHECK_AND_ASSERT_MES(rc == 0, false, "failed to convert ed25519 pubkey to x25519");
+    if (rc != 0) {
+        log::error(logcat, "failed to convert ed25519 pubkey to x25519");
+        return false;
+    }
     crypto_sign_ed25519_sk_to_curve25519(keys.key_x25519.data(), keys.key_ed25519.data());
 
     // BLS pubkey, used by service nodes when interacting with the Ethereum smart contract
@@ -1284,9 +1306,9 @@ bool core::init_service_keys() {
     if (m_service_node) {
         keys.key = crypto::ed25519_to_monero_secret_key(keys.key_ed25519);
         if (!crypto::secret_key_to_public_key(keys.key, keys.pub))
-            throw oxen::traced<std::runtime_error>{"Failed to derive primary key from ed25519 key"};
+            throw std::runtime_error{"Failed to derive primary key from ed25519 key"};
         if (std::memcmp(keys.pub.data(), keys.pub_ed25519.data(), 32))
-            throw oxen::traced<std::runtime_error>{
+            throw std::runtime_error{
                     "Internal error: unexpected primary pubkey and ed25519 pubkey mismatch"};
     } else {
         keys.key.zero();
@@ -1412,6 +1434,8 @@ void core::start_oxenmq() {
         m_omq->add_timer([this]() { check_service_node_time(); }, 5s, false);
         m_omq->add_timer([this]() { check_service_node_ip_address(); }, 15min, false);
     }
+    m_omq->add_timer([this] { run_periodic_tasks(); }, 1s);
+    m_chain_thread_id = m_omq->add_tagged_thread("chain");
     m_omq->start();
 
     // This forces an IP check after initialization instead of deferring it 15 minutes.
@@ -1890,8 +1914,6 @@ int core::add_blinks(const std::vector<std::shared_ptr<blink_tx>>& blinks) {
     if (blinks.empty())
         return added;
 
-    auto lock = mempool.blink_unique_lock();
-
     for (auto& b : blinks)
         if (b->approved())
             if (mempool.add_existing_blink(b))
@@ -1984,14 +2006,12 @@ bool core::check_tx_semantic(const transaction& tx, bool keeped_by_block) const 
     }
 
     if (!keeped_by_block &&
-        get_transaction_weight(tx) >= blockchain.get_current_cumulative_block_weight_limit() -
-                                              COINBASE_BLOB_RESERVED_SIZE) {
+        get_transaction_weight(tx) >= BLOCK_WEIGHT_LIMIT - COINBASE_BLOB_RESERVED_SIZE) {
         log::error(
                 log::Cat("verify"),
                 "tx is too large {}, expected not bigger than {}",
                 get_transaction_weight(tx),
-                blockchain.get_current_cumulative_block_weight_limit() -
-                        COINBASE_BLOB_RESERVED_SIZE);
+                BLOCK_WEIGHT_LIMIT - COINBASE_BLOB_RESERVED_SIZE);
         return false;
     }
 
@@ -2018,8 +2038,7 @@ void core::check_service_node_ip_address() {
         return;
     }
 
-    auto service_node_ip = epee::string_tools::get_ip_string_from_int32(m_sn_public_ip);
-    auto service_node_address = "tcp://{}:{}"_format(service_node_ip, m_quorumnet_port);
+    auto service_node_address = "tcp://{}:{}"_format(m_sn_public_ip, m_quorumnet_port);
     auto connection_error_callback = [service_node_address]() {
         log::warning(
                 globallogcat,
@@ -2296,13 +2315,11 @@ bool core::relay_txpool_transactions() {
     // we attempt to relay txes that should be relayed, but were not
     std::vector<std::pair<crypto::hash, std::string>> txs;
     if (mempool.get_relayable_transactions(txs) && !txs.empty()) {
-        cryptonote_connection_context fake_context{};
-        tx_verification_context tvc{};
         NOTIFY_NEW_TRANSACTIONS::request r{};
         for (auto it = txs.begin(); it != txs.end(); ++it) {
             r.txs.push_back(it->second);
         }
-        get_protocol()->relay_transactions(r, fake_context);
+        get_protocol()->relay_transactions(r, std::nullopt);
         mempool.set_relayed(txs);
     }
     return true;
@@ -2313,7 +2330,6 @@ bool core::submit_uptime_proof() {
         return true;
 
     try {
-        cryptonote_connection_context fake_context{};
         bool relayed;
         auto height = blockchain.get_current_blockchain_height() -
                       1;  // -1 or would use new rules 1 block too early
@@ -2329,7 +2345,7 @@ bool core::submit_uptime_proof() {
                 srouter_version,
                 lokinet_version);
         auto req = proof.generate_request(hf_version);
-        relayed = get_protocol()->relay_uptime_proof(req, fake_context);
+        relayed = get_protocol()->relay_uptime_proof(req, std::nullopt);
 
         if (relayed)
             log::info(
@@ -2391,11 +2407,11 @@ bool core::handle_uptime_proof(
         // else they should be non-zero.
         if (!get_config(m_nettype).HAVE_STORAGE_SERVER) {
             if (proof->storage_omq_port != 0 || proof->storage_https_port != 0)
-                throw oxen::traced<std::runtime_error>{
+                throw std::runtime_error{
                         "Invalid storage port(s) in proof: devnet storage ports must be 0"};
         } else {
             if (proof->storage_omq_port == 0 || proof->storage_https_port == 0)
-                throw oxen::traced<std::runtime_error>{
+                throw std::runtime_error{
                         "Invalid storage port(s) in proof: storage ports cannot be 0"};
         }
 
@@ -2417,17 +2433,16 @@ bool core::handle_uptime_proof(
     return result;
 }
 //-----------------------------------------------------------------------------------------------
-crypto::hash core::on_transaction_relayed(const std::string& tx_blob) {
+void core::on_transaction_relayed(const std::string& tx_blob) {
     std::vector<std::pair<crypto::hash, std::string>> txs;
     cryptonote::transaction tx;
     crypto::hash tx_hash;
     if (!parse_and_validate_tx_from_blob(tx_blob, tx, tx_hash)) {
         log::error(logcat, "Failed to parse relayed transaction");
-        return crypto::null<crypto::hash>;
+        return;
     }
-    txs.push_back(std::make_pair(tx_hash, std::move(tx_blob)));
+    txs.push_back(std::make_pair(tx_hash, tx_blob));
     mempool.set_relayed(txs);
-    return tx_hash;
 }
 //-----------------------------------------------------------------------------------------------
 bool core::relay_service_node_votes() {
@@ -2442,8 +2457,7 @@ bool core::relay_service_node_votes() {
     if (!p2p_votes.empty()) {
         NOTIFY_NEW_SERVICE_NODE_VOTE::request req{};
         req.votes = std::move(p2p_votes);
-        cryptonote_connection_context fake_context{};
-        get_protocol()->relay_service_node_votes(req, fake_context);
+        get_protocol()->relay_service_node_votes(req, std::nullopt);
     }
 
     return true;
@@ -2518,22 +2532,23 @@ bool core::handle_block_found(block& b, block_verification_context& bvc) {
                     "this block");
             return true;
         }
-        CHECK_AND_ASSERT_MES(
-                txs.size() == b.tx_hashes.size() && !missed_txs.size(),
-                false,
-                "can't find some transactions in found block:{} txs.size()={}, "
-                "b.tx_hashes.size()={}, missed_txs.size()={}",
-                get_block_hash(b),
-                txs.size(),
-                b.tx_hashes.size(),
-                missed_txs.size());
+        if (!(txs.size() == b.tx_hashes.size() && !missed_txs.size())) {
+            log::error(
+                    logcat,
+                    "can't find some transactions in found block:{} txs.size()={}, "
+                    "b.tx_hashes.size()={}, missed_txs.size()={}",
+                    get_block_hash(b),
+                    txs.size(),
+                    b.tx_hashes.size(),
+                    missed_txs.size());
+            return false;
+        }
 
-        cryptonote_connection_context exclude_context{};
         NOTIFY_NEW_FLUFFY_BLOCK::request arg{};
         arg.current_blockchain_height = blockchain.get_current_blockchain_height();
         arg.b = blocks[0];
 
-        m_pprotocol->relay_block(arg, exclude_context);
+        m_pprotocol->relay_block(arg, std::nullopt);
     }
     return true;
 }
@@ -2584,17 +2599,15 @@ bool core::handle_incoming_block(
         const block* b,
         block_verification_context& bvc,
         checkpoint_t* checkpoint,
-        bool update_miner_blocktemplate) {
+        bool update_miner_blocktemplate) try {
     ZoneScoped;
-    TRY_ENTRY();
     bvc = {};
 
     // note: we assume block weight is always >= block blob size, so we check incoming
     // blob size against the block weight limit, which acts as a sanity check without
     // having to parse/weigh first; in fact, since the block blob is the block header
     // plus the tx hashes, the weight will typically be much larger than the blob size
-    if (block_blob.size() >
-        blockchain.get_current_cumulative_block_weight_limit() + BLOCK_SIZE_SANITY_LEEWAY) {
+    if (block_blob.size() > BLOCK_WEIGHT_LIMIT + BLOCK_SIZE_SANITY_LEEWAY) {
         log::info(
                 logcat,
                 "WRONG BLOCK BLOB, sanity check failed on size {}, rejected",
@@ -2607,10 +2620,12 @@ bool core::handle_incoming_block(
         log::warning(
                 logcat, "This block's size is {}, closing on the 32 bit limit", block_blob.size());
 
-    CHECK_AND_ASSERT_MES(
-            update_checkpoints_from_json_file(),
-            false,
-            "One or more checkpoints loaded from json conflicted with existing checkpoints.");
+    if (!update_checkpoints_from_json_file()) {
+        log::error(
+                logcat,
+                "One or more checkpoints loaded from json conflicted with existing checkpoints.");
+        return false;
+    }
 
     block lb;
     if (!b) {
@@ -2627,8 +2642,9 @@ bool core::handle_incoming_block(
     if (update_miner_blocktemplate && bvc.m_added_to_main_chain)
         miner.on_block_chain_update();
     return true;
-
-    CATCH_ENTRY("core::handle_incoming_block()", false);
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in core::handle_incoming_block(): {}", e.what());
+    return false;
 }
 
 void core::update_omq_sns() {
@@ -2740,8 +2756,7 @@ void core::do_uptime_proof_call() {
                                         "corrected. (Do both service nodes have the correct IP for "
                                         "the service-node-public-ip setting?)",
                                         pk,
-                                        epee::string_tools::get_ip_string_from_int32(
-                                                m_sn_public_ip),
+                                        m_sn_public_ip,
                                         proof.proof->qnet_port,
                                         proof.proof->storage_https_port,
                                         proof.proof->storage_omq_port);
@@ -2835,7 +2850,7 @@ void core::do_uptime_proof_call() {
     }
 }
 //-----------------------------------------------------------------------------------------------
-bool core::on_idle() {
+void core::run_periodic_tasks() {
     ZoneScoped;
     m_txpool_auto_relayer.do_call([this] { return relay_txpool_transactions(); });
     m_service_node_vote_relayer.do_call([this] { return relay_service_node_votes(); });
@@ -2864,8 +2879,6 @@ bool core::on_idle() {
     m_systemd_notify_interval.do_call(
             [this] { sd_notify(0, ("WATCHDOG=1\nSTATUS=" + get_status_string()).c_str()); });
 #endif
-
-    return true;
 }
 //-----------------------------------------------------------------------------------------------
 bool core::check_disk_space() {

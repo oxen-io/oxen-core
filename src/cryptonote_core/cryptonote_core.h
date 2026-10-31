@@ -25,11 +25,11 @@
 #include <ctime>
 #include <future>
 #include <mutex>
+#include <oxen/quic/ip.hpp>
 
 #include "blockchain.h"
 #include "bls/bls_aggregator.h"
 #include "common/command_line.h"
-#include "common/exception.h"
 #include "crypto/crypto.h"
 #include "crypto/eth.h"
 #include "crypto/hash.h"
@@ -38,21 +38,15 @@
 #include "cryptonote_basic/miner.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler_common.h"
 #include "cryptonote_protocol/quorumnet.h"
-#include "epee/net/net_utils_base.h"
-#include "epee/storages/portable_storage_template_helper.h"
-#include "epee/warnings.h"
 #include "pulse.h"
 #include "service_node_list.h"
 #include "service_node_quorum_cop.h"
 #include "service_node_voting.h"
 #include "tx_pool.h"
-PUSH_WARNINGS
-DISABLE_VS_WARNINGS(4355)
 
 namespace cryptonote {
 struct test_options {
     std::vector<hard_fork> hard_forks;
-    size_t long_term_block_weight_window;
 };
 
 extern const command_line::arg_descriptor<std::string> arg_data_dir;
@@ -128,15 +122,6 @@ class core final {
     // Non-copyable:
     core(const core&) = delete;
     core& operator=(const core&) = delete;
-
-    /**
-     * @brief calls various idle routines
-     *
-     * @note see miner::on_idle and tx_memory_pool::on_idle
-     *
-     * @return true
-     */
-    bool on_idle();
 
     /**
      * @brief handles an incoming uptime proof that is encoded using B-encoding
@@ -342,10 +327,9 @@ class core final {
     bool handle_block_found(block& b, block_verification_context& bvc);
 
     /**
-     * @brief called when a transaction is relayed; return the hash of the parsed tx, or null hash
-     * on parse failure.
+     * @brief called when a transaction is relayed, to mark it as relayed in the mempool.
      */
-    crypto::hash on_transaction_relayed(const std::string& tx);
+    void on_transaction_relayed(const std::string& tx);
 
     /**
      * @brief adds command line options to the given options set
@@ -688,11 +672,10 @@ class core final {
     std::atomic<time_t> m_last_storage_server_ping, m_last_lokinet_ping, m_last_srouter_ping;
     std::atomic<uint16_t> m_storage_https_port{0}, m_storage_omq_port{0};
 
-    uint32_t sn_public_ip() const { return m_sn_public_ip; }
+    const oxen::quic::ipv4& sn_public_ip() const { return m_sn_public_ip; }
 
-    /// Returns true if `ip` (in network byte order, as stored in uptime proofs) is within one of
-    /// the `--force-unreachable` ranges.
-    bool is_forced_unreachable(uint32_t ip) const;
+    /// Returns true if `ip` is within one of the `--force-unreachable` ranges.
+    bool is_forced_unreachable(const oxen::quic::ipv4& ip) const;
     uint16_t storage_https_port() const { return m_storage_https_port; }
     uint16_t storage_omq_port() const { return m_storage_omq_port; }
     uint16_t quorumnet_port() const { return m_quorumnet_port; }
@@ -740,6 +723,11 @@ class core final {
     bool check_tx_semantic(const transaction& tx, bool kept_by_block) const;
     void check_service_node_ip_address();
     void check_service_node_time();
+
+    // Runs core's periodic housekeeping (relays, disk space checks, service node state, uptime
+    // proofs, miner and mempool upkeep); called each second from an OxenMQ timer.
+    void run_periodic_tasks();
+
     void set_semantics_failed(const crypto::hash& tx_hash);
 
     void parse_incoming_tx_pre(tx_verification_batch_info& tx_info);
@@ -839,6 +827,10 @@ class core final {
         return m_omq_auth;
     }
     oxenmq::TaggedThreadID const& pulse_thread_id() const { return *m_pulse_thread_id; }
+    // The thread the p2p layer does its chain work on (verifying and adding what peers send, and
+    // reading the chain to answer them), one job at a time.  Exists once start_oxenmq() has been
+    // called.
+    oxenmq::TaggedThreadID const& chain_thread_id() const { return *m_chain_thread_id; }
 
     /// Service Node's storage server, lokinet, and Sesion Router versions
     std::array<uint16_t, 3> ss_version;
@@ -917,7 +909,7 @@ class core final {
     /// interval for systemd watchdog pings & updating the service Status line
     tools::periodic_task m_systemd_notify_interval{"systemd notifier", 10s};
 
-    uint64_t m_target_blockchain_height;  //!< blockchain height target
+    std::atomic<uint64_t> m_target_blockchain_height;  //!< blockchain height target
 
     network_type m_nettype;  //!< which network are we on?
 
@@ -933,10 +925,10 @@ class core final {
                                   // public oxenmq rpc
 
     /// Service Node's public IP and qnet ports
-    uint32_t m_sn_public_ip;
+    oxen::quic::ipv4 m_sn_public_ip;
     uint16_t m_quorumnet_port;
 
-    std::vector<epee::net_utils::ipv4_network_subnet> m_force_unreachable;
+    std::vector<oxen::quic::ipv4_range> m_force_unreachable;
 
     /// OxenMQ main object.  Gets created during init().
     std::shared_ptr<oxenmq::OxenMQ> m_omq;
@@ -991,7 +983,6 @@ class core final {
     } m_coinbase_cache;
 
     std::optional<oxenmq::TaggedThreadID> m_pulse_thread_id;
+    std::optional<oxenmq::TaggedThreadID> m_chain_thread_id;
 };
 }  // namespace cryptonote
-
-POP_WARNINGS
