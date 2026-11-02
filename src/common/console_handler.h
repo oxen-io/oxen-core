@@ -43,6 +43,11 @@
 #ifdef __OpenBSD__
 #include <stdio.h>
 #endif
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/select.h>
+#endif
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
 
@@ -101,7 +106,7 @@ class async_stdin_reader {
         if (m_run) {
             m_run.store(false, std::memory_order_relaxed);
 
-#if defined(WIN32)
+#ifdef _WIN32
             ::CloseHandle(::GetStdHandle(STD_INPUT_HANDLE));
 #endif
 
@@ -144,7 +149,7 @@ class async_stdin_reader {
     }
 
     bool wait_stdin_data() {
-#if !defined(WIN32)
+#ifndef _WIN32
 #if defined(__OpenBSD__) || defined(__ANDROID__)
         int stdin_fileno = fileno(stdin);
 #else
