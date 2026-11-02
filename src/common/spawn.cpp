@@ -143,7 +143,7 @@ int spawn(const fs::path& filename, const std::vector<std::string>& args, bool w
         char* envp[] = {NULL};
         execve(filename.c_str(), argv.data(), envp);
         log::error(logcat, "Failed to execve: {}", strerror(errno));
-        return -1;
+        _exit(127);
     }
 
     // parent

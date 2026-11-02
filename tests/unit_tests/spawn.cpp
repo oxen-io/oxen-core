@@ -20,4 +20,10 @@ TEST(spawn, no_wait_leaves_child_waiting_alone) {
     EXPECT_EQ(tools::spawn("/bin/sh", {"sh", "-c", "exit 3"}, true), 3);
 }
 
+TEST(spawn, exec_failure) {
+    // The child exits, as a shell does for a command it can't run, rather than carrying on as a
+    // copy of this process.
+    EXPECT_EQ(tools::spawn("/nonexistent/program", {"program"}, true), 127);
+}
+
 #endif
