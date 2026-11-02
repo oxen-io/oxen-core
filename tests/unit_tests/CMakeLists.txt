@@ -77,6 +77,7 @@ add_executable(unit_tests
   service_nodes.cpp
   service_nodes_swarm.cpp
   sha256.cpp
+  spawn.cpp
   sqlite.cpp
   string_util.cpp
   subaddress.cpp
