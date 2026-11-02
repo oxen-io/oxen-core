@@ -28,7 +28,6 @@ struct kv_test {
     std::string str;
     std::vector<uint64_t> list;
     std::vector<int32_t> signed_list;
-    std::vector<bool> bools;
     std::vector<std::string> strs;
     inner in;
     std::list<inner> ins;
@@ -42,7 +41,6 @@ struct kv_test {
         ar.value("str", str);
         ar.value("list", list);
         ar.value("signed_list", signed_list);
-        ar.value("bools", bools);
         ar.value("strs", strs);
         ar.value("in", in);
         ar.value("ins", ins);
@@ -61,7 +59,6 @@ TEST(kv_json, round_trip) {
         "str": "hello \"world\"\n",
         "list": [1, 2, 18446744073709551615],
         "signed_list": [5, -6],
-        "bools": [true, false],
         "strs": ["a", "b"],
         "in": {"name": "x", "nums": [1]},
         "ins": [{"name": "y", "nums": [2, 3]}, {"name": "z"}],

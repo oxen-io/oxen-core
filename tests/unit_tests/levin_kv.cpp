@@ -285,10 +285,10 @@ TEST(levin_kv, other_containers) {
 }
 
 TEST(levin_kv, bool_arrays) {
-    // (Which epee can't write, so they aren't in `everything`)
-    one<std::vector<bool>> bools{{true, false, true}};
-    EXPECT_EQ(round_trip(bools).v, bools.v);
-    EXPECT_EQ(oxenc::to_hex(levin_kv::encode(bools)), header_and_v("8b", "0c", "010001"));
+    // Nothing can be read from one, but it still parses
+    one<std::vector<uint8_t>> v{{7}};
+    ASSERT_TRUE(levin_kv::decode(oxenc::from_hex(header_and_v("8b", "0c", "010001")), v));
+    EXPECT_EQ(v.v, (std::vector<uint8_t>{7}));
 }
 
 TEST(levin_kv, enums) {

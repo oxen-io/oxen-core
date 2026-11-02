@@ -47,20 +47,29 @@ template <typename T>
 concept serializable = requires(T& v, archive& ar) { v.serialize(ar); } ||
                        requires(T& v, archive& ar) { serialize(ar, v); };
 
-/// The element types of arrays: each of the format's types, exactly (as epee had).
+namespace detail {
+    /// Exactly one of the format's scalar types (not, say, long long, where int64_t is long)
+    template <typename T>
+    concept exact_scalar =
+            one_of<T,
+                   int64_t,
+                   int32_t,
+                   int16_t,
+                   int8_t,
+                   uint64_t,
+                   uint32_t,
+                   uint16_t,
+                   uint8_t,
+                   bool,
+                   std::string>;
+}  // namespace detail
+
+/// The element types of arrays: each of the format's scalar types, exactly (as epee had), but bool.
+/// The format has bool arrays, but nothing sends them, and std::vector<bool> is a cursed type (bit
+/// packed, so its elements aren't bools and can't be referenced); if bool arrays are ever needed,
+/// support them as a std::vector<uint8_t> of 0s and 1s instead.
 template <typename T>
-concept array_element = detail::one_of<
-        T,
-        int64_t,
-        int32_t,
-        int16_t,
-        int8_t,
-        uint64_t,
-        uint32_t,
-        uint16_t,
-        uint8_t,
-        bool,
-        std::string>;
+concept array_element = detail::exact_scalar<T> && !std::same_as<T, bool>;
 
 /// A value sent as its bytes (a hash, a key, a signature), which a vector of is sent as one string
 /// of all their bytes.
@@ -150,7 +159,7 @@ class archive {
 
     template <scalar T>
     bool value(std::string_view name, T& v) {
-        if constexpr (array_element<T>)
+        if constexpr (detail::exact_scalar<T>)
             return scalar_value(name, std::ref(v));
         else {
             // An integer type with the size and signedness of a fixed one but not that type (such
@@ -187,6 +196,9 @@ class archive {
     bool value(std::string_view name, std::vector<T>& v) {
         return array(name, std::ref(v));
     }
+
+    /// Not supported: see array_element
+    bool value(std::string_view name, std::vector<bool>& v) = delete;
 
     /// An array of maps; an empty one isn't written.
     template <serializable T>
@@ -294,7 +306,6 @@ class archive {
             std::vector<uint32_t>,
             std::vector<uint16_t>,
             std::vector<uint8_t>,
-            std::vector<bool>,
             std::vector<std::string>>;
     using packed_ref = ref_to_one_of<
             std::vector<uint64_t>,
