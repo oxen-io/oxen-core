@@ -101,6 +101,12 @@ struct cryptonote_connection_context {
     crypto::hash m_last_known_hash{};
     bool m_anchor{false};
     // size_t m_score{0};  TODO: add score calculations
+
+    // The connection as the prefix of a log message about it, e.g. "[1.2.3.4:22022 OUT]"
+    std::string to_string() const {
+        return fmt::format("[{} {}]", m_remote_address.to_string(), m_is_income ? "INC" : "OUT");
+    }
+    static constexpr bool to_string_formattable = true;
 };
 
 constexpr std::string_view get_protocol_state_string(cryptonote_connection_context::state s) {
@@ -124,14 +130,3 @@ constexpr char get_protocol_state_char(cryptonote_connection_context::state s) {
 }
 
 }  // namespace cryptonote
-
-// Formats a connection (as the prefix of a log message about it) as e.g. "[1.2.3.4:22022 OUT]"
-template <std::derived_from<cryptonote::cryptonote_connection_context> T, typename Char>
-struct fmt::formatter<T, Char> : fmt::formatter<std::string_view> {
-    auto format(const cryptonote::cryptonote_connection_context& c, format_context& ctx) const {
-        return formatter<std::string_view>::format(
-                fmt::format(
-                        "[{} {}]", c.m_remote_address.to_string(), c.m_is_income ? "INC" : "OUT"),
-                ctx);
-    }
-};

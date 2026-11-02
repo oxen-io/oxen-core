@@ -27,12 +27,12 @@ struct connection_id_t : std::array<unsigned char, 16> {
 }  // namespace cryptonote
 
 // connection_id_t is a std::array, which fmt would otherwise also consider formattable as a range,
-// making it ambiguous with its to_string formatting.
-template <typename T, typename Char>
-    requires std::same_as<std::remove_cv_t<T>, cryptonote::connection_id_t>
-struct fmt::is_range<T, Char> {
-    static constexpr bool value = false;
-};
+// making it ambiguous with its to_string formatting.  (Some fmt versions look it up for the const
+// type too.)
+template <>
+struct fmt::is_range<cryptonote::connection_id_t, char> : std::false_type {};
+template <>
+struct fmt::is_range<const cryptonote::connection_id_t, char> : std::false_type {};
 
 template <>
 struct std::hash<cryptonote::connection_id_t> {
