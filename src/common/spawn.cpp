@@ -32,11 +32,9 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
-#include <signal.h>
 #include <sys/wait.h>
 #endif
 
-#include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
 #include "oxen.h"
 #include "spawn.h"
@@ -132,18 +130,34 @@ int spawn(const fs::path& filename, const std::vector<std::string>& args, bool w
 
     // child
     if (pid == 0) {
+        // When not waiting, run the program in a grandchild and exit, so that the parent can reap
+        // this child at once and init reaps the grandchild: ignoring SIGCHLD in the parent instead
+        // would break every other waitpid in the process.
+        if (!wait) {
+            pid_t grandchild = fork();
+            if (grandchild != 0)
+                _exit(grandchild < 0 ? 1 : 0);
+        }
         tools::closefrom(3);
         close(0);
         char* envp[] = {NULL};
         execve(filename.c_str(), argv.data(), envp);
         log::error(logcat, "Failed to execve: {}", strerror(errno));
-        return -1;
+        _exit(127);
     }
 
     // parent
     if (pid > 0) {
         if (!wait) {
-            signal(SIGCHLD, SIG_IGN);
+            int wstatus = 0;
+            if (waitpid(pid, &wstatus, 0) < 0) {
+                log::error(logcat, "Error waiting for child: {}", strerror(errno));
+                return -1;
+            }
+            if (!WIFEXITED(wstatus) || WEXITSTATUS(wstatus) != 0) {
+                log::error(logcat, "Error forking the child's child");
+                return -1;
+            }
             return 0;
         }
 

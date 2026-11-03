@@ -41,11 +41,9 @@
 #include "bootstrap_file.h"
 #include "bootstrap_serialization.h"
 #include "common/command_line.h"
-#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_protocol/quorumnet.h"
-#include "epee/misc_log_ex.h"
 #include "logging/oxen_logger.h"
 #include "serialization/binary_utils.h"
 
@@ -305,15 +303,14 @@ int import_from_file(
         try {
             serialization::parse_binary(std::string_view{buffer1, sizeof(chunk_size)}, chunk_size);
         } catch (const std::exception& e) {
-            throw oxen::traced<std::runtime_error>(
-                    "Error in deserialization of chunk size: "s + e.what());
+            throw std::runtime_error("Error in deserialization of chunk size: "s + e.what());
         }
         log::debug(logcat, "chunk_size: {}", chunk_size);
 
         if (chunk_size > BUFFER_SIZE) {
             log::warning(
                     logcat, "WARNING: chunk_size {} > BUFFER_SIZE {}", chunk_size, BUFFER_SIZE);
-            throw oxen::traced<std::runtime_error>("Aborting: chunk size exceeds buffer size");
+            throw std::runtime_error("Aborting: chunk size exceeds buffer size");
         }
         if (chunk_size > CHUNK_SIZE_WARNING_THRESHOLD) {
             log::info(logcat, "NOTE: chunk_size {} > {}", chunk_size, CHUNK_SIZE_WARNING_THRESHOLD);
@@ -358,8 +355,7 @@ int import_from_file(
             try {
                 serialization::parse_binary(std::string_view{buffer_block, chunk_size}, bp);
             } catch (const std::exception& e) {
-                throw oxen::traced<std::runtime_error>(
-                        "Error in deserialization of chunk"s + e.what());
+                throw std::runtime_error("Error in deserialization of chunk"s + e.what());
             }
 
             int display_interval = 1000;
@@ -425,12 +421,9 @@ int import_from_file(
                     coins_generated = bp.coins_generated;
 
                     try {
-                        uint64_t long_term_block_weight =
-                                core.blockchain.get_next_long_term_block_weight(block_weight);
                         core.blockchain.db().add_block(
                                 std::make_pair(b, block_to_blob(b)),
                                 block_weight,
-                                long_term_block_weight,
                                 cumulative_difficulty,
                                 coins_generated,
                                 txs);
@@ -495,12 +488,7 @@ quitting:
     return 0;
 }
 
-int main(int argc, char* argv[]) {
-    oxen::set_terminate_handler();
-    TRY_ENTRY();
-
-    epee::string_tools::set_module_name_and_folder(argv[0]);
-
+int main(int argc, char* argv[]) try {
     uint64_t num_blocks = 0;
     uint64_t block_stop = 0;
     std::string m_config_folder;
@@ -690,6 +678,7 @@ int main(int argc, char* argv[]) {
     }
 
     return 0;
-
-    CATCH_ENTRY("Import error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Import error: {}", e.what());
+    return 1;
 }

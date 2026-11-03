@@ -4,11 +4,10 @@
 
 #include <chrono>
 
+#include "common/guts.h"
 #include "common/string_util.h"
 #include "cryptonote_protocol/peer_history.h"
-#include "epee/string_tools.h"
-#include "net/i2p_address.h"  // needed for serialization
-#include "net/tor_address.h"  // needed for serialization
+#include "serialization/levin_kv/archive.h"
 
 namespace nodetool {
 
@@ -18,7 +17,7 @@ std::string print_peerlist_to_string(const std::vector<peerlist_entry>& pl) {
     for (const auto& pe : pl) {
         result += "{:016x}\t{}\tlast_seen {}\thistory {}\n"_format(
                 pe.id,
-                pe.adr.str(),
+                pe.adr.to_string(),
                 pe.last_seen == 0
                         ? "never"s
                         : tools::friendly_duration(
@@ -28,77 +27,55 @@ std::string print_peerlist_to_string(const std::vector<peerlist_entry>& pl) {
     return result;
 }
 
-KV_SERIALIZE_MAP_CODE_BEGIN(peerlist_entry)
-KV_SERIALIZE(adr)
-KV_SERIALIZE(id)
-KV_SERIALIZE_OPT(last_seen, (int64_t)0)
-// rpc_port is unused, but pass it along anyway to avoid breaking the protocol
-uint16_t rpc_port = 0;
-KV_SERIALIZE_VALUE(rpc_port);
-KV_SERIALIZE(history)
-KV_SERIALIZE_MAP_CODE_END()
+void peerlist_entry::serialize(levin_kv::archive& ar) {
+    ar.value("adr", adr);
+    ar.value("id", id);
+    ar.value_or("last_seen", last_seen, int64_t{0});
+    // rpc_port is unused, but pass it along anyway to avoid breaking the protocol
+    uint16_t rpc_port = 0;
+    ar.value("rpc_port", rpc_port);
+    ar.value("history", history);
+}
 
-KV_SERIALIZE_MAP_CODE_BEGIN(anchor_peerlist_entry)
-KV_SERIALIZE(adr)
-KV_SERIALIZE(id)
-KV_SERIALIZE(first_seen)
-KV_SERIALIZE_MAP_CODE_END()
+void basic_node_data::serialize(levin_kv::archive& ar) {
+    ar.value("network_id", tools::byte_span(network_id));
+    ar.value("peer_id", peer_id);
+    ar.value("my_port", my_port);
+    // Unused, but pass a 0 to avoid breaking the protocol
+    uint16_t rpc_port = 0;
+    ar.value("rpc_port", rpc_port);
+}
 
-KV_SERIALIZE_MAP_CODE_BEGIN(connection_entry)
-KV_SERIALIZE(adr)
-KV_SERIALIZE(id)
-KV_SERIALIZE(is_income)
-KV_SERIALIZE_MAP_CODE_END()
+void COMMAND_HANDSHAKE::request::serialize(levin_kv::archive& ar) {
+    ar.value("node_data", node_data);
+    ar.value("payload_data", payload_data);
+}
 
-KV_SERIALIZE_MAP_CODE_BEGIN(network_config)
-KV_SERIALIZE(max_out_connection_count)
-KV_SERIALIZE(max_in_connection_count)
-KV_SERIALIZE(handshake_interval)
-KV_SERIALIZE(packet_max_size)
-KV_SERIALIZE(config_id)
-KV_SERIALIZE_MAP_CODE_END()
+void COMMAND_HANDSHAKE::response::serialize(levin_kv::archive& ar) {
+    ar.value("node_data", node_data);
+    ar.value("payload_data", payload_data);
+    ar.value("local_peerlist_new", local_peerlist_new);
+}
 
-KV_SERIALIZE_MAP_CODE_BEGIN(basic_node_data)
-KV_SERIALIZE_VAL_POD_AS_BLOB(network_id)
-KV_SERIALIZE(peer_id)
-KV_SERIALIZE(my_port)
-// Unused, but pass a 0 to avoid breaking the protocol
-uint16_t rpc_port = 0;
-KV_SERIALIZE_VALUE(rpc_port);
-KV_SERIALIZE_MAP_CODE_END()
+void COMMAND_TIMED_SYNC::request::serialize(levin_kv::archive& ar) {
+    ar.value("payload_data", payload_data);
+}
 
-KV_SERIALIZE_MAP_CODE_BEGIN(COMMAND_HANDSHAKE::request)
-KV_SERIALIZE(node_data)
-KV_SERIALIZE(payload_data)
-KV_SERIALIZE_MAP_CODE_END()
+void COMMAND_TIMED_SYNC::response::serialize(levin_kv::archive& ar) {
+    ar.value("payload_data", payload_data);
+    ar.value("local_peerlist_new", local_peerlist_new);
+}
 
-KV_SERIALIZE_MAP_CODE_BEGIN(COMMAND_HANDSHAKE::response)
-KV_SERIALIZE(node_data)
-KV_SERIALIZE(payload_data)
-KV_SERIALIZE(local_peerlist_new)
-KV_SERIALIZE_MAP_CODE_END()
+void COMMAND_PING::request::serialize(levin_kv::archive&) {}
 
-KV_SERIALIZE_MAP_CODE_BEGIN(COMMAND_TIMED_SYNC::request)
-KV_SERIALIZE(payload_data)
-KV_SERIALIZE_MAP_CODE_END()
+void COMMAND_PING::response::serialize(levin_kv::archive& ar) {
+    ar.value("status", status);
+    ar.value("peer_id", peer_id);
+}
 
-KV_SERIALIZE_MAP_CODE_BEGIN(COMMAND_TIMED_SYNC::response)
-KV_SERIALIZE(payload_data)
-KV_SERIALIZE(local_peerlist_new)
-KV_SERIALIZE_MAP_CODE_END()
+void COMMAND_REQUEST_SUPPORT_FLAGS::request::serialize(levin_kv::archive&) {}
 
-KV_SERIALIZE_MAP_CODE_BEGIN(COMMAND_PING::request)
-KV_SERIALIZE_MAP_CODE_END()
-
-KV_SERIALIZE_MAP_CODE_BEGIN(COMMAND_PING::response)
-KV_SERIALIZE(status)
-KV_SERIALIZE(peer_id)
-KV_SERIALIZE_MAP_CODE_END()
-
-KV_SERIALIZE_MAP_CODE_BEGIN(COMMAND_REQUEST_SUPPORT_FLAGS::request)
-KV_SERIALIZE_MAP_CODE_END()
-
-KV_SERIALIZE_MAP_CODE_BEGIN(COMMAND_REQUEST_SUPPORT_FLAGS::response)
-KV_SERIALIZE(support_flags)
-KV_SERIALIZE_MAP_CODE_END()
+void COMMAND_REQUEST_SUPPORT_FLAGS::response::serialize(levin_kv::archive& ar) {
+    ar.value("support_flags", support_flags);
+}
 }  // namespace nodetool

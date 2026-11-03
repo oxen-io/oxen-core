@@ -34,12 +34,9 @@
 #include <sstream>
 
 #include "common/command_line.h"
-#include "common/exception.h"
 #include "common/file.h"
 #include "common/i18n.h"
 #include "common/util.h"
-#include "epee/misc_log_ex.h"
-#include "epee/string_tools.h"
 #include "logging/oxen_logger.h"
 #include "version.h"
 
@@ -114,8 +111,6 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
 #endif
     tools::set_strict_default_file_permissions(true);
 
-    epee::string_tools::set_module_name_and_folder(argv[0]);
-
     po::options_description desc_general(wallet_args::tr("General options"));
     command_line::add_arg(desc_general, command_line::arg_help);
     command_line::add_arg(desc_general, command_line::arg_version);
@@ -169,8 +164,7 @@ std::pair<std::optional<boost::program_options::variables_map>, bool> main(
             if (std::error_code ec; fs::exists(config, ec)) {
                 std::ifstream cfg{config};
                 if (!cfg.is_open())
-                    throw oxen::traced<std::runtime_error>{
-                            "Unable to open config file: {}"_format(config)};
+                    throw std::runtime_error{"Unable to open config file: {}"_format(config)};
                 po::store(po::parse_config_file<char>(cfg, desc_params), vm);
             } else {
                 log::error(logcat, "{}{}", wallet_args::tr("Can't find config file "), config);

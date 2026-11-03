@@ -6,13 +6,12 @@
 #include <variant>
 
 #include "common/command_line.h"
-#include "common/exception.h"
 #include "common/string_util.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_core.h"
-#include "epee/net/jsonrpc_structs.h"
 #include "rpc/common/rpc_args.h"
 #include "rpc/core_rpc_server_commands_defs.h"
+#include "serialization/levin_kv/levin_kv.h"
 #include "version.h"
 
 namespace cryptonote::rpc {
@@ -149,7 +148,7 @@ http_server::http_server(
                         error << "tried to bind to:";
                         for (const auto& [addr, port, required] : bind)
                             error << ' ' << addr << ':' << port;
-                        throw oxen::traced<std::runtime_error>(error.str());
+                        throw std::runtime_error(error.str());
                     }
                 } catch (...) {
                     startup_success.set_exception(std::current_exception());
@@ -432,10 +431,7 @@ namespace {
         GET_TRANSACTION_POOL_HASHES_BIN::response res{};
         res.tx_hashes = std::move(pool_hashes);
         res.status = STATUS_OK;
-
-        std::string response;
-        epee::serialization::store_t_to_binary(res, response);
-        return response;
+        return levin_kv::encode(res);
     }
 
     std::list<std::pair<std::shared_ptr<call_data>, std::chrono::steady_clock::time_point>>
@@ -451,7 +447,7 @@ namespace {
         else
             throw parse_error{"Internal error: got unexpected request body type"};
 
-        if (!epee::serialization::load_t_from_binary(req, body))
+        if (!levin_kv::decode(body, req))
             throw parse_error{"Failed to parse binary data parameters"};
 
         std::vector<crypto::hash> pool_hashes;
@@ -540,7 +536,7 @@ namespace {
         if (long_poll_timeout_body.empty()) {
             GET_TRANSACTION_POOL_HASHES_BIN::response res{};
             res.status = STATUS_TX_LONG_POLL_TIMED_OUT;
-            epee::serialization::store_t_to_binary(res, long_poll_timeout_body);
+            long_poll_timeout_body = levin_kv::encode(res);
         }
 
         int count = 0;
@@ -702,7 +698,7 @@ static std::unordered_set<oxenmq::OxenMQ*> timer_started;
 
 void http_server::start() {
     if (m_sent_startup)
-        throw oxen::traced<std::logic_error>{"Cannot call http_server::start() more than once"};
+        throw std::logic_error{"Cannot call http_server::start() more than once"};
 
     auto net = m_server.nettype();
     m_server_header = "oxend/{} {}"_format(

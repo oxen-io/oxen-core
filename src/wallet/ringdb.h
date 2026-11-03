@@ -34,9 +34,9 @@
 #include <vector>
 
 #include "common/fs.h"
+#include "crypto/cleared_string.h"
 #include "crypto/crypto.h"
 #include "cryptonote_basic/cryptonote_basic.h"
-#include "epee/wipeable_string.h"
 
 namespace tools {
 class ringdb {
