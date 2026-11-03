@@ -70,11 +70,18 @@ struct raw_hasher {
 
 }  // namespace crypto
 
+// Defined inside namespace fmt, not as fmt::formatter<T>: GCC 11 takes a partial specialization
+// defined with a qualified name as a redefinition of any other already seen with the same template
+// arguments (such as libquic's formatter<T, char>), whatever their constraints.
+namespace fmt {
+
 template <crypto::hash_hex_comparable T>
-struct fmt::formatter<T> : formattable::hex_span_formatter {};
+struct formatter<T> : formattable::hex_span_formatter {};
 
 // Define this so that the above does not conflict with fmt's build in range overload:
 template <crypto::hash_hex_comparable T, typename Char>
-struct fmt::is_range<T, Char> {
+struct is_range<T, Char> {
     static constexpr bool value = false;
 };
+
+}  // namespace fmt
