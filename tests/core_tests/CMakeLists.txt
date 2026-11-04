@@ -27,7 +27,6 @@
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 add_executable(core_tests
-#  block_reward.cpp
   block_validation.cpp
   bulletproofs.cpp
   chain_split_1.cpp
@@ -53,7 +52,6 @@ target_link_libraries(core_tests
     cryptonote_core
     p2p
     version
-    epee
     device
     wallet
     Boost::program_options

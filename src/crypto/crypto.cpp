@@ -44,10 +44,8 @@
 #include <mutex>
 #include <stdexcept>
 
-#include "common/exception.h"
 #include "common/varint.h"
-#include "epee/warnings.h"
-#include "epee/wipeable_string.h"
+#include "crypto/cleared_string.h"
 extern "C" {
 #include "crypto-ops.h"
 #include "keccak.h"
@@ -326,7 +324,7 @@ signature generate_signature(
         sc_mulsub(sig.r(), sig.c(), sec.data(), k.data());
         if (!sc_isnonzero(sig.r()))
             continue;
-        memwipe(k.data(), k.size());
+        sodium_memzero(k.data(), k.size());
         return sig;
     }
 }
@@ -379,13 +377,13 @@ void generate_tx_proof(
     ge_p3 B_p3;
     ge_p3 D_p3;
     if (ge_frombytes_vartime(&R_p3, R.data()) != 0)
-        throw oxen::traced<std::runtime_error>("tx pubkey is invalid");
+        throw std::runtime_error("tx pubkey is invalid");
     if (ge_frombytes_vartime(&A_p3, A.data()) != 0)
-        throw oxen::traced<std::runtime_error>("recipient view pubkey is invalid");
+        throw std::runtime_error("recipient view pubkey is invalid");
     if (B && ge_frombytes_vartime(&B_p3, B->data()) != 0)
-        throw oxen::traced<std::runtime_error>("recipient spend pubkey is invalid");
+        throw std::runtime_error("recipient spend pubkey is invalid");
     if (ge_frombytes_vartime(&D_p3, D.data()) != 0)
-        throw oxen::traced<std::runtime_error>("key derivation is invalid");
+        throw std::runtime_error("key derivation is invalid");
 #if !defined(NDEBUG)
     {
         assert(sc_check(r.data()) == 0);
@@ -440,7 +438,7 @@ void generate_tx_proof(
     // sig.r = k - sig.c*r
     sc_mulsub(sig.r(), sig.c(), r.data(), k.data());
 
-    memwipe(k.data(), k.size());
+    sodium_memzero(k.data(), k.size());
 }
 
 bool check_tx_proof(
@@ -629,7 +627,7 @@ void generate_ring_signature(
             random_scalar(sig[i].c());  // ci = wi = random
             random_scalar(sig[i].r());  // ri = qi = random
             if (ge_frombytes_vartime(&tmp3, pubs[i]->data()) != 0) {
-                memwipe(qs.data(), qs.size());
+                sodium_memzero(qs.data(), qs.size());
                 local_abort("invalid pubkey");
             }
             ge_double_scalarmult_base_vartime(
@@ -647,7 +645,7 @@ void generate_ring_signature(
     sc_sub(sig[sec_index].c(), c.data(), sum.data());  // cs = c - sum(ci, i≠s) = c - sum(wi)
     sc_mulsub(sig[sec_index].r(), sig[sec_index].c(), sec.data(), qs.data());  // rs = qs - cs*x
 
-    memwipe(qs.data(), qs.size());
+    sodium_memzero(qs.data(), qs.size());
 }
 
 bool check_ring_signature(
@@ -711,7 +709,7 @@ void generate_key_image_signature(
     sig.c(rs.hash_to_scalar());                         // c = H(I || L || R) = H(I || kG || kH(A))
     sc_mulsub(sig.r(), sig.c(), sec.data(), k.data());  // r = k - ac = k - aH(I || kG || kH(A))
 
-    memwipe(k.data(), k.size());
+    sodium_memzero(k.data(), k.size());
 }
 
 bool check_key_image_signature(
@@ -756,7 +754,7 @@ bool check_key_image_signature(
 }
 
 secret_key ed25519_to_monero_secret_key(const ed25519_secret_key& skey) {
-    epee::wipeable_string privkey_signhash;
+    crypto::cleared_string privkey_signhash;
     privkey_signhash.resize(crypto_hash_sha512_BYTES);
     unsigned char* pk_sh_data = reinterpret_cast<unsigned char*>(privkey_signhash.data());
     crypto_hash_sha512(pk_sh_data, skey.data(), 32 /* first 32 bytes are the seed to be SHA512 hashed (the last 32 are just the pubkey) */);

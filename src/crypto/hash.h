@@ -135,21 +135,24 @@ Hash keccak_prefix(T&&... piece) {
     return result;
 }
 
-enum struct cn_slow_hash_type {
+// The cryptonight slow hashes: heavy v1 is used for key derivation from passphrases, and the three
+// of them for proof of work before RandomX (heavy v1, then v2 from HF7, then turtle lite v2 from
+// HF11).
+hash cn_heavy_v1(std::span<const char> data);
+hash cn_heavy_v2(std::span<const char> data);
+hash cn_turtle_lite_v2(std::span<const char> data);
+
+// Writes the hash directly into `out`, for deriving a key that must not leave an uncleared copy
+// behind.
+void cn_heavy_v1(std::span<const char> data, std::span<unsigned char, HASH_SIZE> out);
+
 #ifdef ENABLE_MONERO_SLOW_HASH
-    // NOTE: Monero's slow hash for Android only, we still use the old hashing algorithm for hashing
-    // the KeyStore containing private keys
-    cryptonight_v0 = 0,
-    cryptonight_v0_prehashed,
-    cryptonight_v1_prehashed,
+// Monero's cryptonight variants, for the Android wallet only (which still uses them to hash the
+// KeyStore holding private keys).
+hash cn_monero_v0(std::span<const char> data);
+hash cn_monero_v0_prehashed(std::span<const char> data);
+hash cn_monero_v1_prehashed(std::span<const char> data);
 #endif
-
-    heavy_v1 = 3,
-    heavy_v2,
-    turtle_lite_v2,
-};
-
-void cn_slow_hash(const void* data, std::size_t length, hash& hash, cn_slow_hash_type type);
 
 using ::tree_hash;
 inline void tree_hash(const hash* hashes, std::size_t count, hash& root_hash) {

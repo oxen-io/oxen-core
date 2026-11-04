@@ -32,8 +32,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "epee/int-util.h"
 #include "hash-ops.h"
+#include "int-util.h"
 #include "keccak.h"
 
 void hash_permutation(union hash_state* state) {

@@ -52,9 +52,9 @@ struct mocknet_global_data {
 static mocknet_global_data globals;
 
 struct mocknet_key {
-    eth::bls_secret_key bls;
+    eth::bls_secret_key bls{};
     eth::bls_public_key bls_pubkey;
-    crypto::ed25519_secret_key ed25519;
+    crypto::ed25519_secret_key ed25519{};
     crypto::ed25519_public_key ed25519_pubkey;
 };
 
@@ -299,8 +299,7 @@ void mocknet_push_mock_pulse_block(cryptonote::core& core) {
     if (!globals.fork_enabled || (top_block.get_height() + 1) < globals.fork_at_height)
         return;
 
-    auto* protocol = reinterpret_cast<cryptonote::t_cryptonote_protocol_handler<cryptonote::core>*>(
-            core.get_protocol());
+    auto* protocol = static_cast<cryptonote::protocol_handler*>(core.get_protocol());
     if (!globals.protocol_is_disabled && protocol) {
         globals.protocol_is_disabled = true;
         protocol->set_no_sync(true);

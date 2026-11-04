@@ -28,12 +28,8 @@
 
 #include "parse.h"
 
-#include <boost/version.hpp>
-
 #include "common/string_util.h"
-#include "epee/string_tools.h"
-#include "net/i2p_address.h"
-#include "net/tor_address.h"
+#include "net/error.h"
 
 namespace net {
 std::pair<std::string_view, std::string_view> get_network_address_host_and_port(
@@ -55,26 +51,12 @@ std::pair<std::string_view, std::string_view> get_network_address_host_and_port(
     return result;
 }
 
-expect<epee::net_utils::network_address> get_network_address(
+expect<oxen::quic::Address> get_network_address(
         std::string_view address, const std::uint16_t default_port) {
-    bool ipv6 = false;
-
     auto [host_str, port_str] = get_network_address_host_and_port(address);
 
     if (host_str.empty())
         return make_error_code(net::error::invalid_host);
-    if (host_str.ends_with(".onion"))
-        return tor_address::make(address, default_port);
-    if (host_str.ends_with(".i2p"))
-        return i2p_address::make(address, default_port);
-
-    boost::system::error_code ec;
-#if BOOST_VERSION >= 106600
-    auto v6 = boost::asio::ip::make_address_v6(host_str, ec);
-#else
-    auto v6 = boost::asio::ip::address_v6::from_string(std::string{host_str}, ec);
-#endif
-    ipv6 = !ec;
 
     std::uint16_t port = default_port;
     if (port_str.size()) {
@@ -82,31 +64,13 @@ expect<epee::net_utils::network_address> get_network_address(
             return make_error_code(net::error::invalid_port);
     }
 
-    if (ipv6) {
-        return {epee::net_utils::ipv6_network_address{v6, port}};
-    } else {
-        std::uint32_t ip = 0;
-        if (epee::string_tools::get_ip_int32_from_string(ip, std::string{host_str}))
-            return {epee::net_utils::ipv4_network_address{ip, port}};
+    std::string host{host_str};
+    try {
+        if (host.find(':') != std::string::npos)
+            return oxen::quic::Address{oxen::quic::ipv6{host}, port};
+        return oxen::quic::Address{oxen::quic::ipv4{host}, port};
+    } catch (const std::invalid_argument&) {
+        return make_error_code(net::error::unsupported_address);
     }
-
-    return make_error_code(net::error::unsupported_address);
-}
-
-expect<epee::net_utils::ipv4_network_subnet> get_ipv4_subnet_address(
-        std::string_view address, bool allow_implicit_32) {
-    std::uint8_t mask = 32;
-    auto slash = address.find_first_of('/');
-    if (slash != std::string_view::npos) {
-        if (!tools::parse_int(address.substr(slash + 1), mask) || mask > 32)
-            return make_error_code(net::error::invalid_mask);
-    } else if (!allow_implicit_32)
-        return make_error_code(net::error::invalid_mask);
-
-    std::uint32_t ip = 0;
-    if (!epee::string_tools::get_ip_int32_from_string(ip, std::string{address.substr(0, slash)}))
-        return make_error_code(net::error::invalid_host);
-
-    return {epee::net_utils::ipv4_network_subnet{ip, (uint8_t)mask}};
 }
 }  // namespace net

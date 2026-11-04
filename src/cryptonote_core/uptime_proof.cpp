@@ -1,10 +1,8 @@
 #include "uptime_proof.h"
 
-#include <common/exception.h>
 #include <common/guts.h>
 #include <crypto/crypto.h>
 #include <cryptonote_config.h>
-#include <epee/string_tools.h>
 #include <logging/oxen_logger.h>
 #include <oxenc/bt_producer.h>
 #include <version.h>
@@ -25,7 +23,7 @@ namespace feature = cryptonote::feature;
 Proof::Proof(
         hf hardfork,
         cryptonote::network_type nettype,
-        uint32_t sn_public_ip,
+        oxen::quic::ipv4 sn_public_ip,
         uint16_t sn_storage_https_port,
         uint16_t sn_storage_omq_port,
         const std::array<uint16_t, 3> ss_version,
@@ -92,16 +90,20 @@ Proof::Proof(
             version_tag = proof.consume_string();
         }
         if (version_tag.size() > 100)
-            throw oxen::traced<std::runtime_error>{"version tag too long"};
+            throw std::runtime_error{"version tag too long"};
     }
 
-    if (auto ip = proof.require<std::string>("ip");
-        !epee::string_tools::get_ip_int32_from_string(public_ip, ip) || public_ip == 0)
-        throw oxen::traced<std::runtime_error>{"Invalid IP address in proof"};
+    try {
+        public_ip = oxen::quic::ipv4{proof.require<std::string>("ip")};
+    } catch (const std::invalid_argument&) {
+        throw std::runtime_error{"Invalid IP address in proof"};
+    }
+    if (public_ip == oxen::quic::ipv4{})
+        throw std::runtime_error{"Invalid IP address in proof"};
 
     l2_height = proof.require<uint64_t>("l2");
     if (l2_height == 0)
-        throw oxen::traced<std::runtime_error>{"Invalid L2 height in proof"};
+        throw std::runtime_error{"Invalid L2 height in proof"};
 
     lokinet_version =
             proof.maybe<std::array<uint16_t, 3>>("lv").value_or(std::array<uint16_t, 3>{0, 0, 0});
@@ -111,7 +113,7 @@ Proof::Proof(
 
     qnet_port = proof.require<uint16_t>("q");
     if (qnet_port == 0)
-        throw oxen::traced<std::runtime_error>{"Invalid omq port in proof"};
+        throw std::runtime_error{"Invalid omq port in proof"};
 
     // Unlike qnet_port, these *can* be zero (on devnet); but this is checked elsewhere.
     storage_https_port = proof.require<uint16_t>("shp");
@@ -163,7 +165,7 @@ std::string Proof::bt_encode_uptime_proof(hf hardfork, cryptonote::network_type 
     proof.append("bp", tools::view_guts(pop_bls));
     if (nettype != cryptonote::network_type::MAINNET)
         proof.append("gh", version_tag);
-    proof.append("ip", epee::string_tools::get_ip_string_from_int32(public_ip));
+    proof.append("ip", public_ip.to_string());
     proof.append("l2", l2_height);
     proof.append("lv", lokinet_version);
     proof.append("pke", tools::view_guts(pubkey_ed25519));

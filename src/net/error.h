@@ -35,13 +35,9 @@ namespace net {
 //! General net errors
 enum class error : int {
     // 0 reserved for success (as per expect<T>)
-    expected_tld = 1,  //!< Expected a tld
-    invalid_host,      //!< Hostname is not valid
-    invalid_i2p_address,
+    invalid_host = 1,     //!< Hostname is not valid
     invalid_port,         //!< Outside of 0-65535 range
-    invalid_tor_address,  //!< Invalid base32 or length
     unsupported_address,  //!< Type not supported by `get_network_address`
-    invalid_mask,         //!< Outside of 0-32 range
 };
 
 //! \return `std::error_category` for `net` namespace.
