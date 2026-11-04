@@ -45,6 +45,10 @@ sessiondep_or_submodule(liboxenc 1.5.0 oxen-encoding oxenc::oxenc)
 # from session-deps itself) and the proxy deadlock fix.
 sessiondep_or_submodule(liboxenmq 1.3.2 oxen-mq oxenmq::oxenmq)
 
+# 1.14.0 is the first release with the address/IP types split out into quic-utils, which (unlike
+# the full library) needs neither libevent nor ngtcp2.
+sessiondep_or_submodule(liboxenquic-utils 1.14.0 libquic oxen::quic-utils)
+
 add_subdirectory(db_drivers)
 add_subdirectory(randomx EXCLUDE_FROM_ALL)
 oxen_install_library(randomx)
@@ -163,12 +167,6 @@ set(ethyl_ENABLE_LTO FALSE CACHE BOOL "" FORCE)
 add_subdirectory(ethyl EXCLUDE_FROM_ALL)
 oxen_install_library(ethyl)
 
-
-# NOTE: By default cpptrace is configured to make stack-traces using libdwarf.
-# On this codebase libdward segfaults trying to handle our stack-traces so we
-# switch to a more primitive method, addr2line which does work.
-set(CPPTRACE_GET_SYMBOLS_WITH_ADDR2LINE ON CACHE BOOL "")
-add_subdirectory(cpptrace EXCLUDE_FROM_ALL)
 
 option(TRACY_ENABLE "Enable the profiler markers to be captured and displayable with the Tracy Profiler" OFF)
 if (TRACY_ENABLE)

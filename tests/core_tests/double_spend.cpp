@@ -330,3 +330,49 @@ bool gen_double_spend_in_different_chains::generate(std::vector<test_event_entry
   });
   return true;
 }
+
+bool gen_double_spend_failed_reorg_hooks::generate(std::vector<test_event_entry>& events) const
+{
+  auto hard_forks = oxen_generate_hard_fork_table();
+  oxen_chain_generator gen(events, hard_forks);
+  gen.add_blocks_until_version(hard_forks.back().version);
+  gen.add_n_blocks(10);
+  gen.add_mined_money_unlock_blocks();
+
+  uint64_t amount              = MK_COINS(10);
+  cryptonote::account_base const &miner = gen.first_miner_;
+  cryptonote::account_base bob = gen.add_account();
+  cryptonote::transaction tx_1 = gen.create_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
+  cryptonote::transaction tx_2 = gen.create_tx(miner, bob.get_keys().m_account_address, amount, TESTS_DEFAULT_FEE);
+
+  // The height of the chain as a hook subscriber sees it
+  auto seen_height = std::make_shared<uint64_t>(0);
+  oxen_register_callback(events, "watch_chain_hooks", [seen_height](cryptonote::core &c, size_t ev_index)
+  {
+    *seen_height = c.blockchain.get_current_blockchain_height();
+    c.blockchain.hook_block_post_add([seen_height](const auto& info) { *seen_height = info.block.get_height() + 1; });
+    c.blockchain.hook_blockchain_detached([seen_height](const auto& info) { *seen_height = info.height; });
+    return true;
+  });
+
+  auto fork = gen;
+  gen.create_and_add_next_block();
+  crypto::hash const main_top = cryptonote::get_block_hash(gen.top().block);
+
+  // The alt chain spends tx_1, then double spends it with tx_2 in the block that makes the alt chain
+  // longer: switching to it fails at that block, and the original chain is restored.
+  fork.add_tx(tx_1, true /*can_be_added_to_blockchain*/, "", true /*kept_by_block*/);
+  fork.create_and_add_next_block({tx_1});
+  fork.add_tx(tx_2, true /*can_be_added_to_blockchain*/, "", true /*kept_by_block*/);
+  fork.create_and_add_next_block({tx_2}, nullptr, false /*can_be_added_to_blockchain*/, "Alt chain double spend fails the reorg");
+
+  oxen_register_callback(events, "check_chain_hooks", [seen_height, main_top](cryptonote::core &c, size_t ev_index)
+  {
+    DEFINE_TESTS_ERROR_CONTEXT("check_chain_hooks");
+    const auto [top_height, top_hash] = c.blockchain.get_tail_id();
+    CHECK_EQ(top_hash, main_top);
+    CHECK_EQ(*seen_height, top_height + 1);
+    return true;
+  });
+  return true;
+}

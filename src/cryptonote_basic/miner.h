@@ -116,14 +116,6 @@ class miner {
     bool request_block_template();
     void update_hashrate();
 
-    struct miner_config {
-        uint64_t current_extra_message_index;
-
-        BEGIN_KV_SERIALIZE_MAP()
-        KV_SERIALIZE(current_extra_message_index)
-        END_KV_SERIALIZE_MAP()
-    };
-
     std::atomic<bool> m_stop;
     uint64_t m_stop_height = std::numeric_limits<uint64_t>::max();
     std::mutex m_template_lock;

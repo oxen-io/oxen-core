@@ -27,7 +27,7 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gtest/gtest.h"
-#include "epee/wipeable_string.h"
+#include "crypto/cleared_string.h"
 #include "mnemonics/language_base.h"
 #include "mnemonics/electrum-words.h"
 #include "crypto/crypto.h"
@@ -76,7 +76,7 @@ namespace
    */
   void test_language(const Language::Base &language)
   {
-    epee::wipeable_string w_seed = "", w_return_seed = "";
+    crypto::cleared_string w_seed = "", w_return_seed = "";
     std::string seed, return_seed;
     // Generate a random seed without checksum
     crypto::secret_key randkey;
@@ -211,16 +211,16 @@ TEST(mnemonics, language_detection_with_bad_checksum)
 
 TEST(mnemonics, utf8prefix)
 {
-  ASSERT_TRUE(Language::utf8prefix(epee::wipeable_string("foo"), 0) == "");
-  ASSERT_TRUE(Language::utf8prefix(epee::wipeable_string("foo"), 1) == "f");
-  ASSERT_TRUE(Language::utf8prefix(epee::wipeable_string("foo"), 2) == "fo");
-  ASSERT_TRUE(Language::utf8prefix(epee::wipeable_string("foo"), 3) == "foo");
-  ASSERT_TRUE(Language::utf8prefix(epee::wipeable_string("foo"), 4) == "foo");
-  ASSERT_TRUE(Language::utf8prefix(epee::wipeable_string("æon"), 0) == "");
-  ASSERT_TRUE(Language::utf8prefix(epee::wipeable_string("æon"), 1) == "æ");
-  ASSERT_TRUE(Language::utf8prefix(epee::wipeable_string("æon"), 2) == "æo");
-  ASSERT_TRUE(Language::utf8prefix(epee::wipeable_string("æon"), 3) == "æon");
-  ASSERT_TRUE(Language::utf8prefix(epee::wipeable_string("æon"), 4) == "æon");
+  ASSERT_TRUE(Language::utf8prefix(crypto::cleared_string("foo"), 0) == "");
+  ASSERT_TRUE(Language::utf8prefix(crypto::cleared_string("foo"), 1) == "f");
+  ASSERT_TRUE(Language::utf8prefix(crypto::cleared_string("foo"), 2) == "fo");
+  ASSERT_TRUE(Language::utf8prefix(crypto::cleared_string("foo"), 3) == "foo");
+  ASSERT_TRUE(Language::utf8prefix(crypto::cleared_string("foo"), 4) == "foo");
+  ASSERT_TRUE(Language::utf8prefix(crypto::cleared_string("æon"), 0) == "");
+  ASSERT_TRUE(Language::utf8prefix(crypto::cleared_string("æon"), 1) == "æ");
+  ASSERT_TRUE(Language::utf8prefix(crypto::cleared_string("æon"), 2) == "æo");
+  ASSERT_TRUE(Language::utf8prefix(crypto::cleared_string("æon"), 3) == "æon");
+  ASSERT_TRUE(Language::utf8prefix(crypto::cleared_string("æon"), 4) == "æon");
 }
 
 TEST(mnemonics, case_tolerance)
