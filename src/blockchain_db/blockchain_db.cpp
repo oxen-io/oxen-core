@@ -34,13 +34,11 @@
 #include <chrono>
 
 #include "checkpoints/checkpoints.h"
-#include "common/exception.h"
 #include "common/string_util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/service_node_rules.h"
-#include "epee/string_tools.h"
 #include "history.h"
 #include "lmdb/db_lmdb.h"
 #include "ringct/rctOps.h"
@@ -274,7 +272,6 @@ void BlockchainDB::add_transaction(
 uint64_t BlockchainDB::add_block(
         const std::pair<block, std::string>& blck,
         size_t block_weight,
-        uint64_t long_term_block_weight,
         const difficulty_type& cumulative_difficulty,
         const uint64_t& coins_generated,
         const std::vector<std::pair<transaction, std::string>>& txs) {
@@ -282,9 +279,9 @@ uint64_t BlockchainDB::add_block(
 
     // sanity
     if (blk.tx_hashes.size() != txs.size())
-        throw oxen::traced<std::runtime_error>("Inconsistent tx/hashes sizes");
+        throw std::runtime_error("Inconsistent tx/hashes sizes");
     if ((blk.major_version >= feature::ETH_BLS) == blk.miner_tx.has_value())
-        throw oxen::traced<std::runtime_error>("Block with HF {} {} have a miner_tx"_format(
+        throw std::runtime_error("Block with HF {} {} have a miner_tx"_format(
                 static_cast<int>(blk.major_version),
                 blk.major_version >= feature::ETH_BLS ? "should not" : "should"));
 
@@ -320,14 +317,7 @@ uint64_t BlockchainDB::add_block(
 
     // call out to subclass implementation to add the block & metadata
     started = std::chrono::steady_clock::now();
-    add_block(
-            blk,
-            block_weight,
-            long_term_block_weight,
-            cumulative_difficulty,
-            coins_generated,
-            num_rct_outs,
-            blk_hash);
+    add_block(blk, block_weight, cumulative_difficulty, coins_generated, num_rct_outs, blk_hash);
     time_add_block1 += std::chrono::steady_clock::now() - started;
 
     ++num_calls;
