@@ -30,7 +30,6 @@
 #include <oxenc/hex.h>
 
 #include "common/command_line.h"
-#include "common/exception.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/tx_extra.h"
 #include "cryptonote_core/blockchain.h"
@@ -169,7 +168,6 @@ static void print_extra_fields(const std::vector<cryptonote::tx_extra_field>& fi
 }
 
 int main(int argc, char* argv[]) {
-    oxen::set_terminate_handler();
     std::string input;
 
     tools::on_startup();

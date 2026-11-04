@@ -32,8 +32,6 @@
 
 #include <oxenc/hex.h>
 
-#include "epee/misc_log_ex.h"
-
 namespace hw {
 
 static auto logcat = log::Cat("device");
@@ -116,7 +114,10 @@ namespace ledger {
             bool crypted) {
         char dd[32];
         if (crypted) {
-            CHECK_AND_ASSERT_THROW_MES(len <= 32, "encrypted data greater than 32");
+            if (len > 32) {
+                log::error(logcat, "encrypted data greater than 32");
+                throw std::runtime_error{"encrypted data greater than 32"};
+            }
             decrypt(dd, len);
             d = dd;
         }

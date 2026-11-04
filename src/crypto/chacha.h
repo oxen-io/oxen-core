@@ -46,12 +46,11 @@ void chacha20(const void* data, size_t length, const uint8_t* key, const uint8_t
 #ifdef __cplusplus
 }
 
-#include "epee/memwipe.h"
-#include "epee/mlocker.h"
+#include "cleared.h"
 
 namespace crypto {
 
-using chacha_key = epee::mlocked<tools::scrubbed_arr<uint8_t, CHACHA_KEY_SIZE>>;
+using chacha_key = cleared_array<uint8_t, CHACHA_KEY_SIZE>;
 
 struct chacha_iv {
     uint8_t data[CHACHA_IV_SIZE];

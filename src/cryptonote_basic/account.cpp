@@ -34,19 +34,39 @@
 #include <fstream>
 
 #include "crypto/crypto.h"
-#include "epee/warnings.h"
 extern "C" {
 #include "crypto/keccak.h"
 }
+#include "common/guts.h"
 #include "common/meta.h"
 #include "cryptonote_basic_impl.h"
 #include "cryptonote_config.h"
 #include "cryptonote_format_utils.h"
-
-DISABLE_VS_WARNINGS(4244 4345)
+#include "serialization/levin_kv/archive.h"
 
 namespace cryptonote {
 static auto logcat = log::Cat("account");
+
+void account_public_address::serialize(levin_kv::archive& ar) {
+    ar.value("m_spend_public_key", tools::byte_span(m_spend_public_key));
+    ar.value("m_view_public_key", tools::byte_span(m_view_public_key));
+}
+
+void account_keys::serialize(levin_kv::archive& ar) {
+    ar.value("m_account_address", m_account_address);
+    ar.value("m_spend_secret_key", tools::byte_span(m_spend_secret_key));
+    ar.value("m_view_secret_key", tools::byte_span(m_view_secret_key));
+    ar.value("m_multisig_keys", m_multisig_keys);
+    ar.value_or(
+            "m_encryption_iv",
+            tools::byte_span(m_encryption_iv),
+            tools::byte_span(crypto::null<crypto::chacha_iv>));
+}
+
+void account_base::serialize(levin_kv::archive& ar) {
+    ar.value("m_keys", m_keys);
+    ar.value("m_creation_timestamp", m_creation_timestamp);
+}
 
 //-----------------------------------------------------------------
 hw::device& account_keys::get_device() const {
@@ -65,28 +85,28 @@ static void derive_key(const crypto::chacha_key& base_key, crypto::chacha_key& k
     static_assert(
             sizeof(base_key) == sizeof(crypto::hash),
             "chacha key and hash should be the same size");
-    epee::mlocked<tools::scrubbed_arr<char, sizeof(base_key) + 1>> data;
+    crypto::cleared_array<char, sizeof(base_key) + 1> data;
     memcpy(data.data(), &base_key, sizeof(base_key));
     data[sizeof(base_key)] = cryptonote::hashkey::MEMORY;
     crypto::generate_chacha_key(data.data(), sizeof(data), key, 1);
 }
 //-----------------------------------------------------------------
-static epee::wipeable_string get_key_stream(
+static crypto::cleared_string get_key_stream(
         const crypto::chacha_key& base_key, const crypto::chacha_iv& iv, size_t bytes) {
     // derive a new key
     crypto::chacha_key key;
     derive_key(base_key, key);
 
     // chacha
-    epee::wipeable_string buffer0(std::string(bytes, '\0'));
-    epee::wipeable_string buffer1 = buffer0;
+    crypto::cleared_string buffer0(std::string(bytes, '\0'));
+    crypto::cleared_string buffer1 = buffer0;
     crypto::chacha20(buffer0.data(), buffer0.size(), key, iv, buffer1.data());
     return buffer1;
 }
 //-----------------------------------------------------------------
 void account_keys::xor_with_key_stream(const crypto::chacha_key& key) {
     // encrypt a large enough byte stream with chacha20
-    epee::wipeable_string key_stream = get_key_stream(
+    crypto::cleared_string key_stream = get_key_stream(
             key, m_encryption_iv, sizeof(crypto::secret_key) * (2 + m_multisig_keys.size()));
     const char* ptr = key_stream.data();
     for (size_t i = 0; i < sizeof(crypto::secret_key); ++i)
@@ -110,7 +130,7 @@ void account_keys::decrypt(const crypto::chacha_key& key) {
 //-----------------------------------------------------------------
 void account_keys::encrypt_viewkey(const crypto::chacha_key& key) {
     // encrypt a large enough byte stream with chacha20
-    epee::wipeable_string key_stream =
+    crypto::cleared_string key_stream =
             get_key_stream(key, m_encryption_iv, sizeof(crypto::secret_key) * 2);
     const char* ptr = key_stream.data();
     ptr += sizeof(crypto::secret_key);
@@ -207,14 +227,23 @@ void account_base::create_from_device(const std::string& device_name) {
 void account_base::create_from_device(hw::device& hwdev) {
     m_keys.set_device(hwdev);
     log::debug(log::Cat("device"), "device type: {}", tools::type_name(typeid(hwdev)));
-    CHECK_AND_ASSERT_THROW_MES(hwdev.init(), "Device init failed");
-    CHECK_AND_ASSERT_THROW_MES(hwdev.connect(), "Device connect failed");
+    if (!hwdev.init()) {
+        log::error(logcat, "Device init failed");
+        throw std::runtime_error{"Device init failed"};
+    }
+    if (!hwdev.connect()) {
+        log::error(logcat, "Device connect failed");
+        throw std::runtime_error{"Device connect failed"};
+    }
     try {
-        CHECK_AND_ASSERT_THROW_MES(
-                hwdev.get_public_address(m_keys.m_account_address), "Cannot get a device address");
-        CHECK_AND_ASSERT_THROW_MES(
-                hwdev.get_secret_keys(m_keys.m_view_secret_key, m_keys.m_spend_secret_key),
-                "Cannot get device secret");
+        if (!hwdev.get_public_address(m_keys.m_account_address)) {
+            log::error(logcat, "Cannot get a device address");
+            throw std::runtime_error{"Cannot get a device address"};
+        }
+        if (!hwdev.get_secret_keys(m_keys.m_view_secret_key, m_keys.m_spend_secret_key)) {
+            log::error(logcat, "Cannot get device secret");
+            throw std::runtime_error{"Cannot get device secret"};
+        }
     } catch (const std::exception& e) {
         hwdev.disconnect();
         throw;
@@ -225,9 +254,7 @@ void account_base::create_from_device(hw::device& hwdev) {
 //-----------------------------------------------------------------
 void account_base::create_from_viewkey(
         const cryptonote::account_public_address& address, const crypto::secret_key& viewkey) {
-    crypto::secret_key fake;
-    memset(&unwrap(unwrap(fake)), 0, sizeof(fake));
-    create_from_keys(address, fake, viewkey);
+    create_from_keys(address, crypto::secret_key{}, viewkey);
 }
 //-----------------------------------------------------------------
 bool account_base::make_multisig(

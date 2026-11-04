@@ -32,9 +32,8 @@
 
 #include <logging/oxen_logger.h>
 
+#include "crypto/int-util.h"
 #include "cryptonote_config.h"
-#include "epee/int-util.h"
-#include "epee/misc_log_ex.h"
 
 using namespace crypto;
 
@@ -190,18 +189,34 @@ xmr_amount b2d(bits amountb) {
 }
 
 size_t n_bulletproof_amounts(const Bulletproof& proof) {
-    CHECK_AND_ASSERT_MES(proof.L.size() >= 6, 0, "Invalid bulletproof L size");
-    CHECK_AND_ASSERT_MES(proof.L.size() == proof.R.size(), 0, "Mismatched bulletproof L/R size");
+    if (proof.L.size() < 6) {
+        oxen::log::error(logcat, "Invalid bulletproof L size");
+        return 0;
+    }
+    if (proof.L.size() != proof.R.size()) {
+        oxen::log::error(logcat, "Mismatched bulletproof L/R size");
+        return 0;
+    }
     static const size_t extra_bits = 4;
     static_assert(
             (1 << extra_bits) == cryptonote::TX_BULLETPROOF_MAX_OUTPUTS,
             "log2(BULLETPROOF_MAX_OUTPUTS) is out of date");
-    CHECK_AND_ASSERT_MES(proof.L.size() <= 6 + extra_bits, 0, "Invalid bulletproof L size");
-    CHECK_AND_ASSERT_MES(
-            proof.V.size() <= (1u << (proof.L.size() - 6)), 0, "Invalid bulletproof V/L");
-    CHECK_AND_ASSERT_MES(
-            proof.V.size() * 2 > (1u << (proof.L.size() - 6)), 0, "Invalid bulletproof V/L");
-    CHECK_AND_ASSERT_MES(proof.V.size() > 0, 0, "Empty bulletproof");
+    if (proof.L.size() > 6 + extra_bits) {
+        oxen::log::error(logcat, "Invalid bulletproof L size");
+        return 0;
+    }
+    if (proof.V.size() > (1u << (proof.L.size() - 6))) {
+        oxen::log::error(logcat, "Invalid bulletproof V/L");
+        return 0;
+    }
+    if (proof.V.size() * 2 <= (1u << (proof.L.size() - 6))) {
+        oxen::log::error(logcat, "Invalid bulletproof V/L");
+        return 0;
+    }
+    if (proof.V.size() <= 0) {
+        oxen::log::error(logcat, "Empty bulletproof");
+        return 0;
+    }
     return proof.V.size();
 }
 
@@ -209,8 +224,10 @@ size_t n_bulletproof_amounts(const std::vector<Bulletproof>& proofs) {
     size_t n = 0;
     for (const Bulletproof& proof : proofs) {
         size_t n2 = n_bulletproof_amounts(proof);
-        CHECK_AND_ASSERT_MES(
-                n2 < std::numeric_limits<uint32_t>::max() - n, 0, "Invalid number of bulletproofs");
+        if (!(n2 < std::numeric_limits<uint32_t>::max() - n)) {
+            oxen::log::error(logcat, "Invalid number of bulletproofs");
+            return 0;
+        }
         if (n2 == 0)
             return 0;
         n += n2;
@@ -219,13 +236,22 @@ size_t n_bulletproof_amounts(const std::vector<Bulletproof>& proofs) {
 }
 
 size_t n_bulletproof_max_amounts(const Bulletproof& proof) {
-    CHECK_AND_ASSERT_MES(proof.L.size() >= 6, 0, "Invalid bulletproof L size");
-    CHECK_AND_ASSERT_MES(proof.L.size() == proof.R.size(), 0, "Mismatched bulletproof L/R size");
+    if (proof.L.size() < 6) {
+        oxen::log::error(logcat, "Invalid bulletproof L size");
+        return 0;
+    }
+    if (proof.L.size() != proof.R.size()) {
+        oxen::log::error(logcat, "Mismatched bulletproof L/R size");
+        return 0;
+    }
     static const size_t extra_bits = 4;
     static_assert(
             (1 << extra_bits) == cryptonote::TX_BULLETPROOF_MAX_OUTPUTS,
             "log2(BULLETPROOF_MAX_OUTPUTS) is out of date");
-    CHECK_AND_ASSERT_MES(proof.L.size() <= 6 + extra_bits, 0, "Invalid bulletproof L size");
+    if (proof.L.size() > 6 + extra_bits) {
+        oxen::log::error(logcat, "Invalid bulletproof L size");
+        return 0;
+    }
     return 1 << (proof.L.size() - 6);
 }
 
@@ -233,8 +259,10 @@ size_t n_bulletproof_max_amounts(const std::vector<Bulletproof>& proofs) {
     size_t n = 0;
     for (const Bulletproof& proof : proofs) {
         size_t n2 = n_bulletproof_max_amounts(proof);
-        CHECK_AND_ASSERT_MES(
-                n2 < std::numeric_limits<uint32_t>::max() - n, 0, "Invalid number of bulletproofs");
+        if (!(n2 < std::numeric_limits<uint32_t>::max() - n)) {
+            oxen::log::error(logcat, "Invalid number of bulletproofs");
+            return 0;
+        }
         if (n2 == 0)
             return 0;
         n += n2;

@@ -51,7 +51,7 @@ bool is_cin_tty() noexcept {
     return 0 != _isatty(_fileno(stdin));
 }
 
-bool read_from_tty(epee::wipeable_string& pass, bool hide_input) {
+bool read_from_tty(crypto::cleared_string& pass, bool hide_input) {
     HANDLE h_cin = ::GetStdHandle(STD_INPUT_HANDLE);
 
     DWORD mode_old;
@@ -124,7 +124,7 @@ int getch(bool hide_input) noexcept {
     return ch;
 }
 
-bool read_from_tty(epee::wipeable_string& aPass, bool hide_input) {
+bool read_from_tty(crypto::cleared_string& aPass, bool hide_input) {
     static constexpr const char BACKSPACE = 127;
 
     aPass.reserve(tools::password_container::max_password_size);
@@ -158,8 +158,8 @@ bool read_from_tty(
         const bool verify,
         const char* message,
         bool hide_input,
-        epee::wipeable_string& pass1,
-        epee::wipeable_string& pass2) {
+        crypto::cleared_string& pass1,
+        crypto::cleared_string& pass2) {
     while (true) {
         if (message)
             std::cout << message << ": " << std::flush;
@@ -183,7 +183,7 @@ bool read_from_tty(
     return false;
 }
 
-bool read_from_file(epee::wipeable_string& pass) {
+bool read_from_file(crypto::cleared_string& pass) {
     pass.reserve(tools::password_container::max_password_size);
     for (size_t i = 0; i < tools::password_container::max_password_size; ++i) {
         char ch = static_cast<char>(std::cin.get());
@@ -203,7 +203,7 @@ bool read_from_file(epee::wipeable_string& pass) {
 namespace tools {
 // deleted via private member
 password_container::password_container() noexcept : m_password() {}
-password_container::password_container(epee::wipeable_string password) noexcept :
+password_container::password_container(crypto::cleared_string password) noexcept :
         m_password{std::move(password)} {}
 
 std::atomic<bool> password_container::is_prompting(false);

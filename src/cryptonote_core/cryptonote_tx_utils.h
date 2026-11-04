@@ -29,7 +29,6 @@
 // Parts of this file are originally copyright (c) 2012-2013 The Cryptonote developers
 
 #pragma once
-#include <common/exception.h>
 
 #include <boost/serialization/utility.hpp>
 #include <boost/serialization/vector.hpp>
@@ -142,7 +141,6 @@ struct reward_payout {
 
 std::pair<bool, uint64_t> construct_miner_tx(
         size_t height,
-        size_t median_weight,
         uint64_t already_generated_coins,
         size_t current_block_weight,
         uint64_t fee,
@@ -183,7 +181,6 @@ struct oxen_block_reward_context {
 
 // NOTE: Block reward function that should be called after hard fork v10
 bool get_oxen_block_reward(
-        size_t median_weight,
         size_t current_block_weight,
         uint64_t already_generated_coins,
         hf hard_fork_version,
@@ -222,7 +219,7 @@ struct tx_source_entry {
         field(ar, "multisig_kLRki", multisig_kLRki);
 
         if (real_output >= outputs.size())
-            throw oxen::traced<std::invalid_argument>{"invalid real_output size"};
+            throw std::invalid_argument{"invalid real_output size"};
     }
 };
 

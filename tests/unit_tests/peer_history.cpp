@@ -4,10 +4,10 @@
 
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "cryptonote_protocol/peer_history.h"
-#include "epee/serialization/keyvalue_serialization.h"
-#include "epee/storages/portable_storage_template_helper.h"
+#include "net/address.h"
 #include "p2p/net_peerlist.h"
 #include "p2p/p2p_protocol_defs.h"
+#include "serialization/levin_kv/levin_kv.h"
 
 using cryptonote::history_covers;
 using cryptonote::peer_can_serve;
@@ -15,8 +15,8 @@ using cryptonote::PEER_HISTORY_MARGIN;
 
 namespace {
 
-epee::net_utils::network_address addr(uint32_t ip, uint16_t port = 22022) {
-    return epee::net_utils::ipv4_network_address{ip, port};
+oxen::quic::Address addr(uint32_t ip, uint16_t port = 22022) {
+    return oxen::quic::Address{oxen::quic::ipv4{ip}, port};
 }
 
 // CORE_SYNC_DATA and peerlist_entry as peers that predate the history field have them.
@@ -28,28 +28,28 @@ struct old_core_sync_data {
     std::vector<uint64_t> blink_blocks;
     std::vector<crypto::hash> blink_hash;
 
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(current_height)
-    KV_SERIALIZE(cumulative_difficulty)
-    KV_SERIALIZE_VAL_POD_AS_BLOB(top_id)
-    KV_SERIALIZE_ENUM(top_version)
-    KV_SERIALIZE(blink_blocks)
-    KV_SERIALIZE_CONTAINER_POD_AS_BLOB(blink_hash)
-    END_KV_SERIALIZE_MAP()
+    void serialize(levin_kv::archive& ar) {
+        ar.value("current_height", current_height);
+        ar.value("cumulative_difficulty", cumulative_difficulty);
+        ar.value("top_id", tools::byte_span(top_id));
+        ar.value("top_version", top_version);
+        ar.value("blink_blocks", blink_blocks);
+        ar.value("blink_hash", blink_hash);
+    }
 };
 
 struct old_peerlist_entry {
-    epee::net_utils::network_address adr;
+    oxen::quic::Address adr{};
     nodetool::peerid_type id;
     int64_t last_seen;
 
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(adr)
-    KV_SERIALIZE(id)
-    KV_SERIALIZE_OPT(last_seen, (int64_t)0)
-    uint16_t rpc_port = 0;
-    KV_SERIALIZE_VALUE(rpc_port);
-    END_KV_SERIALIZE_MAP()
+    void serialize(levin_kv::archive& ar) {
+        ar.value("adr", adr);
+        ar.value("id", id);
+        ar.value_or("last_seen", last_seen, int64_t{0});
+        uint16_t rpc_port = 0;
+        ar.value("rpc_port", rpc_port);
+    }
 };
 
 }  // namespace
@@ -120,10 +120,10 @@ TEST(peer_history, missing_field_means_archive) {
     old_core_sync_data old{};
     old.current_height = 1234;
     old.top_version = cryptonote::hf::hf21_eth;
-    std::string blob = epee::serialization::store_t_to_binary(old);
+    std::string blob = levin_kv::encode(old);
     cryptonote::CORE_SYNC_DATA sync{};
     sync.history = 99;
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(sync, blob));
+    ASSERT_TRUE(levin_kv::decode(blob, sync));
     EXPECT_EQ(sync.current_height, 1234);
     EXPECT_EQ(sync.history, std::nullopt);
     EXPECT_TRUE(history_covers(0, 1'000'000, sync.history));
@@ -135,10 +135,10 @@ TEST(peer_history, missing_field_means_archive) {
 
     // and so do its peerlist entries
     old_peerlist_entry old_pe{addr(0x01020304), 42, 1000};
-    blob = epee::serialization::store_t_to_binary(old_pe);
+    blob = levin_kv::encode(old_pe);
     nodetool::peerlist_entry pe{};
     pe.history = 99;
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(pe, blob));
+    ASSERT_TRUE(levin_kv::decode(blob, pe));
     EXPECT_EQ(pe.id, 42);
     EXPECT_EQ(pe.history, std::nullopt);
 }
@@ -148,36 +148,36 @@ TEST(peer_history, history_is_sent_and_old_peers_accept_it) {
     sync.current_height = 1234;
     sync.top_version = cryptonote::hf::hf21_eth;
     sync.history = 20'160;
-    std::string blob = epee::serialization::store_t_to_binary(sync);
+    std::string blob = levin_kv::encode(sync);
 
     cryptonote::CORE_SYNC_DATA sync2{};
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(sync2, blob));
+    ASSERT_TRUE(levin_kv::decode(blob, sync2));
     EXPECT_EQ(sync2.history, 20'160);
 
     old_core_sync_data old{};
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(old, blob));
+    ASSERT_TRUE(levin_kv::decode(blob, old));
     EXPECT_EQ(old.current_height, 1234);
 
     // An archive node says so (a 0), so that it can be told from a node that never said
     sync.history = 0;
-    blob = epee::serialization::store_t_to_binary(sync);
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(sync2, blob));
+    blob = levin_kv::encode(sync);
+    ASSERT_TRUE(levin_kv::decode(blob, sync2));
     EXPECT_EQ(sync2.history, 0);
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(old, blob));
+    ASSERT_TRUE(levin_kv::decode(blob, old));
     EXPECT_EQ(old.current_height, 1234);
     // while an unknown history is left out, as the nodes that never say leave it
     sync.history = std::nullopt;
     EXPECT_EQ(
-            epee::serialization::store_t_to_binary(sync),
-            epee::serialization::store_t_to_binary(old));
+            levin_kv::encode(sync),
+            levin_kv::encode(old));
 
     nodetool::peerlist_entry pe{addr(0x01020304), 42, 1000, 720};
-    blob = epee::serialization::store_t_to_binary(pe);
+    blob = levin_kv::encode(pe);
     nodetool::peerlist_entry pe2{};
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(pe2, blob));
+    ASSERT_TRUE(levin_kv::decode(blob, pe2));
     EXPECT_EQ(pe2.history, 720);
     old_peerlist_entry old_pe{};
-    ASSERT_TRUE(epee::serialization::load_t_from_binary(old_pe, blob));
+    ASSERT_TRUE(levin_kv::decode(blob, old_pe));
     EXPECT_EQ(old_pe.id, 42);
 }
 
@@ -261,7 +261,7 @@ TEST(peer_history, stored_in_the_peerlist_file) {
     std::istringstream in{out.str()};
     auto read = nodetool::peerlist_storage::open(in, true);
     ASSERT_TRUE(read);
-    auto public_ = read->take_zone(epee::net_utils::zone::public_);
+    auto public_ = read->take();
     ASSERT_EQ(public_.white.size(), 2);
     EXPECT_EQ(public_.white[0].history, 20'160);
     EXPECT_EQ(public_.white[1].history, std::nullopt);

@@ -31,7 +31,6 @@
 #pragma once
 
 #include "chaingen.h"
-#include "block_reward.h"
 #include "block_validation.h"
 #include "chain_split_1.h"
 #include "chain_switch_1.h"

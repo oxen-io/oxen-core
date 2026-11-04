@@ -70,7 +70,7 @@ int test_variant2_int_sqrt_ref();
 
 int main(int argc, char *argv[]) {
   std::fstream input;
-  std::vector<unsigned char> data;
+  std::vector<char> data;
   chash expected, actual;
   size_t test = 0;
   bool error = false;
@@ -144,9 +144,9 @@ int main(int argc, char *argv[]) {
       case hash_type::extra_groestl:   hash_extra_groestl(buf, len, actual_byte_ptr); break;
       case hash_type::extra_jh:        hash_extra_jh     (buf, len, actual_byte_ptr); break;
       case hash_type::extra_skein:     hash_extra_skein  (buf, len, actual_byte_ptr); break;
-      case hash_type::heavy_v1:        cn_slow_hash      (buf, len, actual, cn_slow_hash_type::heavy_v1); break;
-      case hash_type::heavy_v2:        cn_slow_hash      (buf, len, actual, cn_slow_hash_type::heavy_v2); break;
-      case hash_type::turtle_light_v2: cn_slow_hash      (buf, len, actual, cn_slow_hash_type::turtle_lite_v2); break;
+      case hash_type::heavy_v1:        actual = cn_heavy_v1(data); break;
+      case hash_type::heavy_v2:        actual = cn_heavy_v2(data); break;
+      case hash_type::turtle_light_v2: actual = cn_turtle_lite_v2(data); break;
       default: throw std::runtime_error{"Unknown hashing function"};
     }
 
