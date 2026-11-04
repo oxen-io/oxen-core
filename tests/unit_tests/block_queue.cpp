@@ -26,16 +26,15 @@
 // STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include "epee/net/net_utils_base.h"
 #include "gtest/gtest.h"
 #include "crypto/crypto.h"
 #include "cryptonote_protocol/cryptonote_protocol_defs.h"
 #include "cryptonote_protocol/block_queue.h"
 
 template <size_t I>
-static const epee::connection_id_t& uuid()
+static const cryptonote::connection_id_t& uuid()
 {
-  static const auto uuid = epee::connection_id_t::random();
+  static const auto uuid = cryptonote::connection_id_t::random();
   return uuid;
 }
 

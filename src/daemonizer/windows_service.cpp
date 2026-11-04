@@ -43,7 +43,6 @@
 #include <utility>
 
 #include "common/scoped_message_writer.h"
-#include "epee/string_tools.h"
 
 namespace windows {
 
@@ -52,6 +51,12 @@ using namespace std::literals;
 namespace {
     typedef std::unique_ptr<std::remove_pointer<SC_HANDLE>::type, decltype(&::CloseServiceHandle)>
             service_handle;
+
+    std::string get_module_path() {
+        char path[MAX_PATH + 1] = {};
+        GetModuleFileNameA(nullptr, path, MAX_PATH);
+        return path;
+    }
 
     std::string get_last_error() {
         LPSTR p_error_text = nullptr;
@@ -140,14 +145,14 @@ bool ensure_admin(std::string const& arguments) {
     if (admin) {
         return true;
     } else {
-        std::string command = epee::string_tools::get_current_module_path();
+        std::string command = get_module_path();
         relaunch_as_admin(command, arguments);
         return false;
     }
 }
 
 bool install_service(char const* service_name, std::string const& arguments) {
-    std::string command = epee::string_tools::get_current_module_path();
+    std::string command = get_module_path();
     std::string full_command = command + arguments;
 
     service_handle p_manager{

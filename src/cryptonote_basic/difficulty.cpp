@@ -35,8 +35,8 @@
 
 #include "common/oxen.h"
 #include "crypto/hash.h"
+#include "crypto/int-util.h"
 #include "cryptonote_config.h"
-#include "epee/int-util.h"
 #include "hardfork.h"
 
 namespace cryptonote {

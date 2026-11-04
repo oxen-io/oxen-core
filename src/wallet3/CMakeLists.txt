@@ -84,7 +84,6 @@ if (STATIC AND BUILD_STATIC_DEPS)
             checkpoints
             version
             net
-            epee
             blockchain_db
             rpc_common
             rpc_http_client

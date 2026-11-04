@@ -11,9 +11,8 @@
 #include <type_traits>
 #include <utility>
 
-#include "common/exception.h"
 #include "common/format.h"
-#include "epee/byte_span.h"
+#include "crypto/cleared.h"
 
 namespace tools {
 
@@ -24,7 +23,7 @@ constexpr bool is_span<std::span<T, E>> = true;
 
 template <typename T>
 concept safe_to_memcpy =
-        (std::is_trivially_copyable_v<T> || epee::is_byte_spannable<T>) && !is_span<T>;
+        (std::is_trivially_copyable_v<T> || crypto::is_byte_spannable<T>) && !is_span<T>;
 
 template <typename T>
 concept byte_spannable = std::convertible_to<T, std::span<const typename T::value_type>> &&
@@ -68,13 +67,20 @@ std::string hex_guts(const T& val) {
 template <safe_to_memcpy S = uint8_t, safe_to_memcpy T>
     requires(sizeof(T) % sizeof(S) == 0 && alignof(S) <= alignof(T))
 constexpr auto span_guts(T& val) {
-    return std::span<S, sizeof(T) / sizeof(S)>{reinterpret_cast<S*>(&val), sizeof(val)};
+    return std::span<S, sizeof(T) / sizeof(S)>{reinterpret_cast<S*>(&val), sizeof(T) / sizeof(S)};
 }
 /// const version of the above, return a span<const S>
 template <safe_to_memcpy S = uint8_t, safe_to_memcpy T>
     requires(sizeof(T) % sizeof(S) == 0 && alignof(S) <= alignof(T))
 constexpr auto span_guts(const T& val) {
-    return std::span<const S, sizeof(T) / sizeof(S)>{reinterpret_cast<const S*>(&val), sizeof(val)};
+    return std::span<const S, sizeof(T) / sizeof(S)>{
+            reinterpret_cast<const S*>(&val), sizeof(T) / sizeof(S)};
+}
+
+/// span_guts as std::bytes
+template <safe_to_memcpy T>
+constexpr auto byte_span(T& val) {
+    return span_guts<std::byte>(val);
 }
 
 /// Function to reverse the above functions (not including hex_guts); takes anything byte spannable
@@ -83,7 +89,7 @@ template <safe_to_memcpy T, byte_spannable Spannable>
 T make_from_guts(const Spannable& s) {
     std::span<const typename Spannable::value_type> span{s};
     if (s.size() != sizeof(T))
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Cannot reconstitute type: wrong data size ({} vs {}) for type"_format(
                         s.size(), sizeof(T))};
     T x;
@@ -109,13 +115,13 @@ template <safe_to_memcpy T, byte_spannable Spannable>
 void load_from_hex_guts(const Spannable& s, T& x, bool check_hex = true) {
     auto span = hex_span(s);
     if (span.size() != sizeof(T) * 2)
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Cannot reconstitute type from hex: wrong size ({} vs {}) for type"_format(
                         span.size(), sizeof(T) * 2)};
 
     if (check_hex && !oxenc::is_hex(span.begin(), span.end())) {
         std::string_view span_str = std::string_view(span.data(), span.size());
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Cannot reconstitute type from hex: invalid hex characters in {}"_format(span_str)};
     }
     oxenc::from_hex(span.begin(), span.end(), reinterpret_cast<char*>(&x));
@@ -299,7 +305,7 @@ constexpr detail::tuple_without_skips<T...> split_guts_into(const Spannable& s) 
     constexpr auto min_size = (detail::split_guts_piece_size<T>() + ...);
     if ((detail::final_is_view<T...> || detail::final_is_ignore<T...>) ? span.size() < min_size
                                                                        : span.size() != min_size)
-        throw oxen::traced<std::runtime_error>{"Invalid split_guts_into string size"};
+        throw std::runtime_error{"Invalid split_guts_into string size"};
 
     detail::tuple_without_skips<T...> result;
     detail::load_split_tuple<0, T...>(
@@ -321,13 +327,13 @@ constexpr detail::tuple_without_skips<T...> split_hex_into(std::string_view hex_
 
     constexpr auto min_size = 2 * (detail::split_guts_piece_size<T>() + ...);
     if ((detail::final_is_view<T...> ? hex_in.size() < min_size : hex_in.size() != min_size)) {
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Invalid split_hex_into string input: incorrect hex string size (hex_in {}, min_size {})"_format(
                         hex_in.size(), min_size)};
     }
 
     if (!oxenc::is_hex(hex_in)) {
-        throw oxen::traced<std::runtime_error>{
+        throw std::runtime_error{
                 "Invalid split_hex_into string input: invalid hex characters encountered"};
     }
 
