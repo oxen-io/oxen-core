@@ -38,6 +38,8 @@
 
 #include "mnemonics/electrum-words.h"
 
+#include <sodium/utils.h>
+
 #include <boost/crc.hpp>
 #include <cstdint>
 #include <string>
@@ -45,13 +47,12 @@
 #include <vector>
 
 #include "chinese_simplified.h"
-#include "common/exception.h"
 #include "common/oxen.h"
+#include "crypto/cleared_string.h"
+#include "crypto/int-util.h"
 #include "dutch.h"
 #include "english.h"
 #include "english_old.h"
-#include "epee/int-util.h"
-#include "epee/wipeable_string.h"
 #include "esperanto.h"
 #include "french.h"
 #include "german.h"
@@ -74,8 +75,8 @@ namespace {
     auto logcat = log::Cat("mnemonic");
 
     uint32_t create_checksum_index(
-            const std::vector<epee::wipeable_string>& word_list, const Language::Base* language);
-    bool checksum_test(std::vector<epee::wipeable_string> seed, const Language::Base* language);
+            const std::vector<crypto::cleared_string>& word_list, const Language::Base* language);
+    bool checksum_test(std::vector<crypto::cleared_string> seed, const Language::Base* language);
 
     /*!
      * \brief Finds the word list that contains the seed words and puts the indices
@@ -87,7 +88,7 @@ namespace {
      * \return                 true if all the words were present in some language false if not.
      */
     bool find_seed_language(
-            const std::vector<epee::wipeable_string>& seed,
+            const std::vector<crypto::cleared_string>& seed,
             bool has_checksum,
             std::vector<uint32_t>& matched_indices,
             Language::Base** language) {
@@ -108,7 +109,7 @@ namespace {
                  Language::Singleton<Language::EnglishOld>::instance()});
         Language::Base* fallback = NULL;
 
-        std::vector<epee::wipeable_string>::const_iterator it2;
+        std::vector<crypto::cleared_string>::const_iterator it2;
         matched_indices.reserve(seed.size());
 
         // Iterate through all the languages and find a match
@@ -116,19 +117,19 @@ namespace {
              it1 != language_instances.end();
              it1++) {
             const std::unordered_map<
-                    epee::wipeable_string,
+                    crypto::cleared_string,
                     uint32_t,
                     Language::WordHash,
                     Language::WordEqual>& word_map = (*it1)->get_word_map();
             const std::unordered_map<
-                    epee::wipeable_string,
+                    crypto::cleared_string,
                     uint32_t,
                     Language::WordHash,
                     Language::WordEqual>& trimmed_word_map = (*it1)->get_trimmed_word_map();
             // To iterate through seed words
             bool full_match = true;
 
-            epee::wipeable_string trimmed_word;
+            crypto::cleared_string trimmed_word;
             // Iterate through all the words and see if they're all present
             for (it2 = seed.begin(); it2 != seed.end(); it2++) {
                 if (has_checksum) {
@@ -165,7 +166,8 @@ namespace {
                 return true;
             }
             // Some didn't match. Clear the index array.
-            memwipe(matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
+            sodium_memzero(
+                    matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
             matched_indices.clear();
         }
 
@@ -182,7 +184,7 @@ namespace {
         }
 
         log::info(logcat, "No match found");
-        memwipe(matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
+        sodium_memzero(matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
         return false;
     }
 
@@ -193,19 +195,19 @@ namespace {
      * \return                      Checksum index
      */
     uint32_t create_checksum_index(
-            const std::vector<epee::wipeable_string>& word_list, const Language::Base* language) {
-        epee::wipeable_string trimmed_words = "", word;
+            const std::vector<crypto::cleared_string>& word_list, const Language::Base* language) {
+        crypto::cleared_string trimmed_words = "", word;
 
         const auto& word_map = language->get_word_map();
         const auto& trimmed_word_map = language->get_trimmed_word_map();
         const uint32_t unique_prefix_length = language->get_unique_prefix_length();
-        for (std::vector<epee::wipeable_string>::const_iterator it = word_list.begin();
+        for (std::vector<crypto::cleared_string>::const_iterator it = word_list.begin();
              it != word_list.end();
              it++) {
             word = Language::utf8prefix(*it, unique_prefix_length);
             auto it2 = trimmed_word_map.find(word);
             if (it2 == trimmed_word_map.end())
-                throw oxen::traced<std::runtime_error>(
+                throw std::runtime_error(
                         "Word \"" + std::string(word.data(), word.size()) +
                         "\" not found in trimmed word map in " +
                         language->get_english_language_name());
@@ -222,23 +224,23 @@ namespace {
      * \param unique_prefix_length  the prefix length of each word to use for checksum
      * \return                      True if the test passed false if not.
      */
-    bool checksum_test(std::vector<epee::wipeable_string> seed, const Language::Base* language) {
+    bool checksum_test(std::vector<crypto::cleared_string> seed, const Language::Base* language) {
         if (seed.empty())
             return false;
         // The last word is the checksum.
-        epee::wipeable_string last_word = seed.back();
+        crypto::cleared_string last_word = seed.back();
         seed.pop_back();
 
         const uint32_t unique_prefix_length = language->get_unique_prefix_length();
 
         auto idx = create_checksum_index(seed, language);
-        epee::wipeable_string checksum = seed[idx];
+        crypto::cleared_string checksum = seed[idx];
 
-        epee::wipeable_string trimmed_checksum =
+        crypto::cleared_string trimmed_checksum =
                 checksum.length() > unique_prefix_length
                         ? Language::utf8prefix(checksum, unique_prefix_length)
                         : checksum;
-        epee::wipeable_string trimmed_last_word =
+        crypto::cleared_string trimmed_last_word =
                 last_word.length() > unique_prefix_length
                         ? Language::utf8prefix(last_word, unique_prefix_length)
                         : last_word;
@@ -264,14 +266,12 @@ namespace ElectrumWords {
      * not a multiple of 3 words, or if word is not in the words list
      */
     bool words_to_bytes(
-            const epee::wipeable_string& words,
-            epee::wipeable_string& dst,
+            const crypto::cleared_string& words,
+            crypto::cleared_string& dst,
             size_t len,
             bool duplicate,
             std::string& language_name) {
-        std::vector<epee::wipeable_string> seed;
-
-        words.split(seed);
+        auto seed = words.split();
 
         if (len % 4) {
             log::error(logcat, "Invalid seed: not a multiple of 4");
@@ -294,7 +294,8 @@ namespace ElectrumWords {
 
         std::vector<uint32_t> matched_indices;
         OXEN_DEFER {
-            memwipe(matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
+            sodium_memzero(
+                    matched_indices.data(), matched_indices.size() * sizeof(matched_indices[0]));
         };
         Language::Base* language;
         if (!find_seed_language(seed, has_checksum, matched_indices, &language)) {
@@ -325,14 +326,14 @@ namespace ElectrumWords {
                            (((word_list_length - w[2]) + w[3]) % word_list_length);
 
             if (!(w[0] % word_list_length == w[1])) {
-                memwipe(w, sizeof(w));
+                sodium_memzero(w, sizeof(w));
                 log::error(logcat, "Invalid seed: mumble mumble");
                 return false;
             }
 
             w[0] = SWAP32LE(w[0]);
             dst.append((const char*)&w[0], 4);  // copy 4 bytes to position
-            memwipe(w, sizeof(w));
+            sodium_memzero(w, sizeof(w));
         }
 
         if (len > 0 && duplicate) {
@@ -354,10 +355,10 @@ namespace ElectrumWords {
      * list
      */
     bool words_to_bytes(
-            const epee::wipeable_string& words,
+            const crypto::cleared_string& words,
             crypto::secret_key& dst,
             std::string& language_name) {
-        epee::wipeable_string s;
+        crypto::cleared_string s;
         if (!words_to_bytes(words, s, sizeof(dst), true, language_name)) {
             log::error(logcat, "Invalid seed: failed to convert words to bytes");
             return false;
@@ -380,7 +381,7 @@ namespace ElectrumWords {
     bool bytes_to_words(
             const unsigned char* src,
             size_t len,
-            epee::wipeable_string& words,
+            crypto::cleared_string& words,
             const std::string& language_name) {
 
         if (len % 4 != 0 || len == 0)
@@ -399,7 +400,7 @@ namespace ElectrumWords {
         }
         const std::vector<std::string>& word_list = language->get_word_list();
         // To store the words for random access to add the checksum word later.
-        std::vector<epee::wipeable_string> words_store;
+        std::vector<crypto::cleared_string> words_store;
 
         uint32_t word_list_length = word_list.size();
         // 4 bytes -> 3 words.  8 digits base 16 -> 3 digits base 1626
@@ -422,7 +423,7 @@ namespace ElectrumWords {
             words_store.push_back(word_list[w[2]]);
             words_store.push_back(word_list[w[3]]);
 
-            memwipe(w, sizeof(w));
+            sodium_memzero(w, sizeof(w));
         }
 
         words += words_store[create_checksum_index(words_store, language)];
@@ -431,15 +432,15 @@ namespace ElectrumWords {
 
     bool bytes_to_words(
             const crypto::secret_key& src,
-            epee::wipeable_string& words,
+            crypto::cleared_string& words,
             const std::string& language_name) {
         return bytes_to_words(src.data(), src.size(), words, language_name);
     }
 
     std::string bytes_to_words(const crypto::secret_key& src, const std::string& language_name) {
-        epee::wipeable_string epee_words;
+        crypto::cleared_string epee_words;
         if (!bytes_to_words(src.data(), src.size(), epee_words, language_name))
-            throw oxen::traced<std::runtime_error>(
+            throw std::runtime_error(
                     "Failed to create seed from key for language: " + language_name);
         return std::string(epee_words.view());
     }
@@ -480,10 +481,8 @@ namespace ElectrumWords {
      * \param  seed The seed to check (a space delimited concatenated word list)
      * \return      true if the seed passed is a old style seed false if not.
      */
-    bool get_is_old_style_seed(const epee::wipeable_string& seed) {
-        std::vector<epee::wipeable_string> word_list;
-        seed.split(word_list);
-        return word_list.size() != (seed_length + 1);
+    bool get_is_old_style_seed(const crypto::cleared_string& seed) {
+        return seed.split().size() != (seed_length + 1);
     }
 
     std::string get_english_name_for(const std::string& name) {

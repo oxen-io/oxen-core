@@ -81,8 +81,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   const auto last_hf  = hard_forks.back().version;
   generator.m_hf_version = first_hf;
   for (size_t n = 0; n < NUM_UNLOCKED_BLOCKS; ++n) {
-    CHECK_AND_ASSERT_MES(
-        generator.construct_block_manually(blocks[n],
+    if (!generator.construct_block_manually(blocks[n],
                                            *prev_block,
                                            miner_accounts[n % NUM_MINERS],
                                            test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
@@ -93,9 +92,10 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
                                            0,
                                            transaction(),
                                            std::vector<crypto::hash>(),
-                                           0),
-        false,
-        "Failed to generate block");
+                                           0)) {
+      oxen::log::error(logcat, "Failed to generate block");
+      return false;
+    }
     events.push_back(blocks[n]);
     prev_block = blocks + n;
   }
@@ -106,8 +106,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
     blk_last = blocks[NUM_UNLOCKED_BLOCKS - 1];
     for (size_t i = 0; i < MINED_MONEY_UNLOCK_WINDOW; ++i)
     {
-      CHECK_AND_ASSERT_MES(
-          generator.construct_block_manually(blocks[NUM_UNLOCKED_BLOCKS + i],
+      if (!generator.construct_block_manually(blocks[NUM_UNLOCKED_BLOCKS + i],
                                              blk_last,
                                              miner_account,
                                              test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
@@ -118,9 +117,10 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
                                              0,
                                              transaction(),
                                              std::vector<crypto::hash>(),
-                                             0),
-          false,
-          "Failed to generate block");
+                                             0)) {
+        oxen::log::error(logcat, "Failed to generate block");
+        return false;
+      }
       events.push_back(blocks[NUM_UNLOCKED_BLOCKS+i]);
       blk_last = blocks[NUM_UNLOCKED_BLOCKS+i];
     }
@@ -135,8 +135,7 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
   for (size_t i = 0; i < extra_blocks; i++)
   {
     block blk;
-    CHECK_AND_ASSERT_MES(
-        generator.construct_block_manually(blk,
+    if (!generator.construct_block_manually(blk,
                                            blk_last,
                                            miner_account,
                                            test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_hf_version,
@@ -147,9 +146,10 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
                                            0,
                                            transaction(),
                                            std::vector<crypto::hash>(),
-                                           0),
-        false,
-        "Failed to generate block");
+                                           0)) {
+      oxen::log::error(logcat, "Failed to generate block");
+      return false;
+    }
     events.push_back(blk);
     blk_last = blk;
   }
@@ -261,7 +261,10 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
     {
       crypto::key_derivation derivation;
       bool r = crypto::generate_key_derivation(destinations[o].addr.m_view_public_key, private_tx_key, derivation);
-      CHECK_AND_ASSERT_MES(r, false, "Failed to generate key derivation");
+      if (!r) {
+        oxen::log::error(logcat, "Failed to generate key derivation");
+        return false;
+      }
       crypto::secret_key amount_key;
       crypto::derivation_to_scalar(derivation, o, amount_key);
       rct::key rct_tx_mask;
@@ -283,18 +286,23 @@ bool gen_bp_tx_validation_base::generate_with(std::vector<test_event_entry>& eve
     ++amounts_paid;
 
     txn_fee += tx.rct_signatures.txnFee;
-    CHECK_AND_ASSERT_MES(expected_amount_encoded == total_amount_encoded, false, "Decoded rct did not match amount to pay");
+    if (expected_amount_encoded != total_amount_encoded) {
+      oxen::log::error(logcat, "Decoded rct did not match amount to pay");
+      return false;
+    }
   }
 
   if (!valid)
     DO_CALLBACK(events, "mark_invalid_tx");
   events.push_back(rct_txes);
 
-  CHECK_AND_ASSERT_MES(generator.construct_block_manually(blk_txes, blk_last, miner_account,
+  if (!generator.construct_block_manually(blk_txes, blk_last, miner_account,
       test_generator::bf_major_ver | test_generator::bf_minor_ver | test_generator::bf_timestamp | test_generator::bf_tx_hashes | test_generator::bf_hf_version,
       generator.m_hf_version, static_cast<uint8_t>(generator.m_hf_version), blk_last.timestamp + tools::to_seconds(get_config(network_type::FAKECHAIN).TARGET_BLOCK_TIME) * 2, // v2 has blocks twice as long
-      crypto::hash(), 0, transaction(), starting_rct_tx_hashes, 0, txn_fee),
-      false, "Failed to generate block");
+      crypto::hash(), 0, transaction(), starting_rct_tx_hashes, 0, txn_fee)) {
+    oxen::log::error(logcat, "Failed to generate block");
+    return false;
+  }
   if (!valid)
     DO_CALLBACK(events, "mark_invalid_block");
   events.push_back(blk_txes);

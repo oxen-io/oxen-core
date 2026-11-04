@@ -35,7 +35,6 @@
 #include "cryptonote_core/blockchain.h"
 #include "cryptonote_core/cryptonote_core.h"
 #include "cryptonote_protocol/cryptonote_protocol_handler.h"
-#include "epee/net/connection_basic.hpp"
 #include "p2p/net_node.h"
 #include "p2p/net_peerlist.h"
 #include "p2p/p2p_protocol_defs.h"
@@ -60,7 +59,6 @@ class size_logger {
 #define SL(type) sl.add(#type, sizeof(type))
 
 int main(int argc, char* argv[]) {
-    oxen::set_terminate_handler();
     size_logger sl;
 
     tools::on_startup();
@@ -70,7 +68,6 @@ int main(int argc, char* argv[]) {
 
     SL(boost::thread);
     SL(boost::asio::io_service);
-    SL(boost::asio::steady_timer);
 
     SL(cryptonote::DB_ERROR);
     SL(cryptonote::mdb_txn_safe);
@@ -83,16 +80,13 @@ int main(int argc, char* argv[]) {
 
     SL(cryptonote::txpool_tx_meta_t);
 
-    SL(epee::net_utils::ipv4_network_address);
-    SL(epee::net_utils::network_address);
-    SL(epee::net_utils::connection_context_base);
-    SL(epee::net_utils::connection_basic);
+    SL(oxen::quic::Address);
+    SL(cryptonote::cryptonote_connection_context);
 
     SL(nodetool::peerlist_entry);
     SL(nodetool::anchor_peerlist_entry);
-    SL(nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core>>);
-    SL(nodetool::p2p_connection_context_t<
-            cryptonote::t_cryptonote_protocol_handler<cryptonote::core>::connection_context>);
+    SL(nodetool::node_server);
+    SL(nodetool::p2p_connection_context);
 
     SL(nodetool::network_config);
     SL(nodetool::basic_node_data);

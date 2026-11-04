@@ -27,4 +27,5 @@
 # STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF
 # THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-# Nothing to do here: serialization code is completely header-only.
+# The cryptonote serialization here is header-only; levin_kv is a library of its own.
+add_subdirectory(levin_kv)

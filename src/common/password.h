@@ -36,7 +36,7 @@
 #include <optional>
 #include <string>
 
-#include "epee/wipeable_string.h"
+#include "crypto/cleared_string.h"
 
 namespace tools {
 class password_container {
@@ -47,24 +47,24 @@ class password_container {
     password_container() noexcept;
 
     //! `password` is used as password
-    password_container(epee::wipeable_string password) noexcept;
+    password_container(crypto::cleared_string password) noexcept;
 
     //! \return A password from stdin TTY prompt or `std::cin` pipe.
     static std::optional<password_container> prompt(
             bool verify, const char* mesage = "Password", bool hide_input = true);
     static std::atomic<bool> is_prompting;
 
-    const epee::wipeable_string& password() const noexcept { return m_password; }
+    const crypto::cleared_string& password() const noexcept { return m_password; }
 
   private:
-    epee::wipeable_string m_password;
+    crypto::cleared_string m_password;
 };
 
 struct login {
     login() = default;
 
     /// Constructs a login from a username/password.  Does not prompt.
-    login(std::string_view user, epee::wipeable_string pass) :
+    login(std::string_view user, crypto::cleared_string pass) :
             username{user}, password{std::move(pass)} {}
 
     /*!
