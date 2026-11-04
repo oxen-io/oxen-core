@@ -1,3 +1,116 @@
+oxen (11.7.2-1~ubuntu2204) jammy; urgency=medium
+
+  * Add libquic submodule for its addr/IP and event loop
+  * Use quic::ipv4 for service node IPs
+  * Drop asserts duplicating accrued_history::advance's throw
+  * Fix use of an erased iterator when a subnet ban expires
+  * Replace epee's IPv4 address and subnet types
+  * Remove tor/i2p support
+  * Remove epee's remaining IPv4 helpers
+  * Remove dead epee code
+  * Replace epee mlocker/memwipe/scrubbed with libsodium-based clearing
+  * Remove epee string_tools.h and warnings.h
+  * Remove Trezor support
+  * Remove performance_tests
+  * Expand epee's CHECK_AND_ASSERT macros into plain code
+  * Remove epee's CHECK_AND_ASSERT macros
+  * Replace TRY_ENTRY/CATCH_ENTRY outside epee
+  * Remove oxen::traced and cpptrace
+  * Move int-util into crypto; drop epee scope_leaver and pragma_comp_defs
+  * Remove the connection callback request counter
+  * Replace block weight medians with the constant full reward zone
+  * Stop storing long-term block weights and the max block size
+  * Drop misc_log_ex.h includes outside epee
+  * Load the checkpoints file with nlohmann::json
+  * Remove the unused get_o_indexes.bin and get_alt_blocks_hashes.bin endpoints
+  * Delete the functional, libwallet API and daemon tests
+  * Remove the light wallet and the multisig messaging system
+  * Remove unused KV-serialized JSON RPC client code
+  * Parse and produce the wallet RPC's JSON with nlohmann
+  * Replace epee::strspan with libquic's reinterpret_span
+  * Remove misc_log_ex.h
+  * Add tests pinning the serialized form of peer addresses
+  * Collapse the p2p network zones into the one network
+  * Keep the p2p bind ports as integers
+  * Replace epee's network_address with oxen::quic::Address
+  * Drop levin noise and fragment messages
+  * Use a fast hash for fake-chain proof of work
+  * Replace cn_slow_hash's type switch with a function per hash
+  * Remove the dead synchronous levin invoke
+  * Relay transactions like every other notify
+  * Run core's periodic tasks from its own OxenMQ timer
+  * Mark anchor connections as anchors
+  * Make outgoing connections without blocking
+  * Stop templating the p2p endpoint interface on its connection context
+  * Make the cryptonote protocol handler a plain class
+  * Make node_server a plain class
+  * Add a levin frame codec and parser
+  * Add a levin connection over libquic's event loop
+  * Add a fuzz target for the levin frame parser
+  * Remove the unused connection_entry
+  * Build peerlist entries with designated initializers
+  * Check whether an address is in use without a made-up peer
+  * Remove the unused get_random_exp_index
+  * Let a levin invoke's response be sent later
+  * Run the p2p network on the new levin transport
+  * Format net_node.cpp and cryptonote_protocol_handler.cpp
+  * Stop rebuilding blink data that tx relays never send
+  * Publish our sync data instead of computing it per handshake
+  * Check a peer's sync data without taking chain locks
+  * Answer the p2p layer's own commands on the event loop
+  * Call node_server directly from the transport
+  * Send notifies and connection calls by connection id
+  * Take peers' requests for chain data on the event loop
+  * Exclude a relay's source peer by connection id
+  * Take relayed txes, proofs, votes and blinks on the event loop
+  * Remove the dead second chance before dropping a peer
+  * Dispatch levin commands through tables instead of epee's macros
+  * Refresh our sync data from the chain's hooks
+  * Refresh our sync data once per span rather than per block
+  * Test that hooks see the chain restored after a failed reorg
+  * Fire the post-add hooks when a failed reorg restores the chain
+  * Refresh our sync data when a blink is added to the mempool
+  * Keep the short chain history in our cached chain state
+  * Schedule the sync from our cached chain height
+  * Add spans as a chain job, apart from the peer that delivered them
+  * Split a fluffy block's handling into the peer's part and a chain job
+  * Share the sync's bookkeeping safely between the loop and chain thread
+  * Check a chain entry's hashes on the chain thread
+  * Handle everything the connections deliver on the event loop
+  * Name the p2p layer's OxenMQ thread for what it now does: chain work
+  * Keep the connection table on the loop, without a lock
+  * Drop the node's last uses of epee levin and Boost.Asio
+  * Remove epee's networking
+  * Count incoming connections when a handshake needs it, not by a thread
+  * Drop a peer whose chain entry has more hashes than any oxend sends
+  * Find the needed hashes we already have with one range query
+  * Drop a peer whose chain request is longer than a short chain history
+  * Remove epee's shared_sv, which only its own test still used
+  * Move connection ids and contexts out of epee
+  * Replace epee's wipeable_string with crypto::cleared_string
+  * Move the console and readline code out of epee into common
+  * Add tools::byte_span
+  * Add levin_kv, a replacement for epee's portable storage
+  * Fix span_guts constructing its span with a byte count
+  * Remove KV serialization that nothing serializes
+  * Stop object_sizes measuring boost's steady_timer
+  * Use vectors, not lists, for short chain histories
+  * Serialize p2p and core RPC binary messages with levin_kv
+  * Remove address_parse_info's KV serialization, which nothing used
+  * Store the wallet's account keys with levin_kv
+  * Serialize the wallet RPC's JSON through levin_kv's archive
+  * Remove epee
+  * Version bump for epeedectomy
+  * levin_kv: refuse bool arrays
+  * Fix connection context and id formatting on GCC 11/12 and fmt 9
+  * Fix Windows includes that came through epee
+  * Don't ignore SIGCHLD process-wide when spawning without waiting
+  * Exit a spawned child whose exec fails
+  * Define crypto's fmt specializations inside namespace fmt
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 04 Nov 2026 15:00:10 -0400
+
 oxen (11.7.1-1~ubuntu2204) jammy; urgency=medium
 
   * Fix missing git tag detection in release archive
