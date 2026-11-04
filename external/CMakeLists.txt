@@ -45,9 +45,14 @@ sessiondep_or_submodule(liboxenc 1.5.0 oxen-encoding oxenc::oxenc)
 # from session-deps itself) and the proxy deadlock fix.
 sessiondep_or_submodule(liboxenmq 1.3.2 oxen-mq oxenmq::oxenmq)
 
-# 1.14.0 is the first release with the address/IP types split out into quic-utils, which (unlike
-# the full library) needs neither libevent nor ngtcp2.
-sessiondep_or_submodule(liboxenquic-utils 1.14.0 libquic oxen::quic-utils)
+# 1.14.0 is the first release with the address/IP types split out into quic-utils and the event
+# loop into quic-event, neither of which needs ngtcp2.  The submodule provides both targets, but a
+# system lib only gives us the one we ask for, so a system quic-event needs quic-utils loaded
+# separately (its .pc requires liboxenquic-utils, so it's always there to be found).
+sessiondep_or_submodule(liboxenquic-event 1.14.0 libquic oxen::quic-event)
+if(NOT TARGET oxen::quic-utils)
+    sessiondep_or_submodule(liboxenquic-utils 1.14.0 libquic oxen::quic-utils)
+endif()
 
 add_subdirectory(db_drivers)
 add_subdirectory(randomx EXCLUDE_FROM_ALL)
