@@ -9,11 +9,11 @@ override it to x86-64 when compiled with the deb default `westmere`.
  1 file changed, 4 insertions(+)
 
 diff --git a/external/CMakeLists.txt b/external/CMakeLists.txt
-index 31277a1..57be06e 100644
+index a4998c8..3557209 100644
 --- a/external/CMakeLists.txt
 +++ b/external/CMakeLists.txt
-@@ -50,6 +50,10 @@ sessiondep_or_submodule(liboxenmq 1.3.2 oxen-mq oxenmq::oxenmq)
- sessiondep_or_submodule(liboxenquic-utils 1.14.0 libquic oxen::quic-utils)
+@@ -55,6 +55,10 @@ if(NOT TARGET oxen::quic-utils)
+ endif()
  
  add_subdirectory(db_drivers)
 +
