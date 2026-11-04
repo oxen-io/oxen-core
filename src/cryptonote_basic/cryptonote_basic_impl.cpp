@@ -36,18 +36,24 @@
 #include "common/base58.h"
 #include "common/oxen.h"
 #include "crypto/hash.h"
+#include "crypto/int-util.h"
 #include "cryptonote_config.h"
 #include "cryptonote_format_utils.h"
-#include "epee/int-util.h"
-#include "epee/string_tools.h"
 #include "logging/oxen_logger.h"
 #include "networks.h"
 #include "serialization/binary_utils.h"
 #include "serialization/container.h"
+#include "serialization/levin_kv/archive.h"
+#include "subaddress_index.h"
 
 namespace cryptonote {
 
 static auto logcat = log::Cat("cn");
+
+void subaddress_index::serialize(levin_kv::archive& ar) {
+    ar.value("major", major);
+    ar.value("minor", minor);
+}
 
 struct integrated_address {
     account_public_address adr;
@@ -63,10 +69,6 @@ struct integrated_address {
 /************************************************************************/
 /* Cryptonote helper functions                                          */
 /************************************************************************/
-//-----------------------------------------------------------------------------------------------
-size_t get_min_block_weight(hf /*version*/) {
-    return BLOCK_GRANTED_FULL_REWARD_ZONE_V5;
-}
 //-----------------------------------------------------------------------------------------------
 // TODO(oxen): Move into oxen_economy, this will require access to oxen::exp2
 uint64_t block_reward_unpenalized_formula_v7(
@@ -91,7 +93,6 @@ uint64_t block_reward_unpenalized_formula_v8(uint64_t height) {
 }
 
 bool get_base_block_reward(
-        size_t median_weight,
         size_t current_block_weight,
         uint64_t already_generated_coins,
         uint64_t& reward,
@@ -111,41 +112,32 @@ bool get_base_block_reward(
                                                    : block_reward_unpenalized_formula_v7(
                                                         already_generated_coins, height);
 
-    uint64_t full_reward_zone = get_min_block_weight(version);
-
-    // make it soft
-    if (median_weight < full_reward_zone) {
-        median_weight = full_reward_zone;
-    }
+    constexpr uint64_t median_weight = BLOCK_GRANTED_FULL_REWARD_ZONE;
 
     if (current_block_weight <= median_weight) {
         reward = reward_unpenalized = base_reward;
         return true;
     }
 
-    if (current_block_weight > 2 * median_weight) {
+    if (current_block_weight > BLOCK_WEIGHT_LIMIT) {
         log::error(
                 logcat,
                 "Block cumulative weight is too big: {}, expected less than {}",
                 current_block_weight,
-                2 * median_weight);
+                BLOCK_WEIGHT_LIMIT);
         return false;
     }
 
-    assert(median_weight < std::numeric_limits<uint32_t>::max());
-    assert(current_block_weight < std::numeric_limits<uint32_t>::max());
-
     uint64_t product_hi;
-    // BUGFIX: 32-bit saturation bug (e.g. ARM7), the result was being
-    // treated as 32-bit by default.
-    uint64_t multiplicand = 2 * median_weight - current_block_weight;
-    multiplicand *= current_block_weight;
-    uint64_t product_lo = mul128(base_reward, multiplicand, &product_hi);
+    uint64_t product_lo =
+            mul128(base_reward,
+                   (BLOCK_WEIGHT_LIMIT - current_block_weight) * current_block_weight,
+                   &product_hi);
 
     uint64_t reward_hi;
     uint64_t reward_lo;
-    div128_32(product_hi, product_lo, static_cast<uint32_t>(median_weight), &reward_hi, &reward_lo);
-    div128_32(reward_hi, reward_lo, static_cast<uint32_t>(median_weight), &reward_hi, &reward_lo);
+    div128_32(product_hi, product_lo, median_weight, &reward_hi, &reward_lo);
+    div128_32(reward_hi, reward_lo, median_weight, &reward_hi, &reward_lo);
     assert(0 == reward_hi);
     assert(reward_lo < base_reward);
 
@@ -267,10 +259,3 @@ bool operator==(const cryptonote::block& a, const cryptonote::block& b) {
     return cryptonote::get_block_hash(a) == cryptonote::get_block_hash(b);
 }
 }  // namespace cryptonote
-
-KV_SERIALIZE_MAP_CODE_BEGIN(cryptonote::address_parse_info)
-KV_SERIALIZE(address)
-KV_SERIALIZE(is_subaddress)
-KV_SERIALIZE(has_payment_id)
-KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(payment_id)
-KV_SERIALIZE_MAP_CODE_END()

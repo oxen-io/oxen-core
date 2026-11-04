@@ -38,7 +38,6 @@
 #include <string>
 #include <thread>
 
-#include "epee/string_tools.h"
 #include "i18n.h"
 #include "logging/oxen_logger.h"
 #include "string_util.h"
@@ -46,6 +45,10 @@
 #ifdef __GLIBC__
 #include <gnu/libc-version.h>
 #include <sys/resource.h>
+#endif
+
+#ifdef _WIN32
+#include <windows.h>
 #endif
 
 namespace tools {
@@ -142,9 +145,9 @@ std::optional<std::pair<uint32_t, uint32_t>> parse_subaddress_lookahead(const st
     auto pos = str.find(":");
     bool r = pos != std::string::npos;
     uint32_t major;
-    r = r && epee::string_tools::get_xtype_from_string(major, str.substr(0, pos));
+    r = r && parse_int(std::string_view{str}.substr(0, pos), major);
     uint32_t minor;
-    r = r && epee::string_tools::get_xtype_from_string(minor, str.substr(pos + 1));
+    r = r && parse_int(std::string_view{str}.substr(pos + 1), minor);
     if (r) {
         return std::make_pair(major, minor);
     } else {

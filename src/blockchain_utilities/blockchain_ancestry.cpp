@@ -31,7 +31,6 @@
 #endif
 
 #include <common/command_line.h>
-#include <common/exception.h>
 #include <common/signal_handler.h>
 #include <common/unordered_containers_boost_serialization.h>
 #include <fmt/std.h>
@@ -103,7 +102,7 @@ struct tx_data_t {
                             cryptonote::relative_output_offsets_to_absolute(txin->key_offsets)));
                 else {
                     log::warning(logcat, "Bad vin type in txid {}", get_transaction_hash(tx));
-                    throw oxen::traced<std::runtime_error>("Bad vin type");
+                    throw std::runtime_error("Bad vin type");
                 }
             }
         }
@@ -113,7 +112,7 @@ struct tx_data_t {
                 vout.push_back(txout->key);
             } else {
                 log::warning(logcat, "Bad vout type in txid {}", get_transaction_hash(tx));
-                throw oxen::traced<std::runtime_error>("Bad vout type");
+                throw std::runtime_error("Bad vout type");
             }
         }
     }
@@ -210,7 +209,7 @@ static std::unordered_set<ancestor> get_ancestry(
             ancestry.find(txid);
     if (i == ancestry.end()) {
         // log::error(logcat, "txid ancestry not found: {}", txid);
-        // throw oxen::traced<std::runtime_error>("txid ancestry not found");
+        // throw std::runtime_error("txid ancestry not found");
         return std::unordered_set<ancestor>();
     }
     return i->second;
@@ -317,10 +316,7 @@ static bool get_output_txid(
     return false;
 }
 
-int main(int argc, char* argv[]) {
-    TRY_ENTRY();
-
-    epee::string_tools::set_module_name_and_folder(argv[0]);
+int main(int argc, char* argv[]) try {
 
     tools::on_startup();
 
@@ -434,7 +430,10 @@ int main(int argc, char* argv[]) {
     }
     r = core_storage->init(std::move(bdb), net_type);
 
-    CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
+    if (!r) {
+        log::error(logcat, "Failed to initialize source blockchain storage");
+        return 1;
+    }
     log::warning(logcat, "Source blockchain storage initialized OK");
 
     std::vector<crypto::hash> start_txids;
@@ -678,6 +677,7 @@ done:
                 std::to_string(cached_outputs * 100. / total_outputs));
 
     return 0;
-
-    CATCH_ENTRY("Depth query error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Ancestry query error: {}", e.what());
+    return 1;
 }

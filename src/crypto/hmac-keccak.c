@@ -28,7 +28,7 @@
 
 #include "hmac-keccak.h"
 
-#include "epee/memwipe.h"
+#include <sodium/utils.h>
 
 #define KECCAK_BLOCKLEN 136
 #define HASH_SIZE 32
@@ -59,7 +59,7 @@ void hmac_keccak_init(hmac_keccak_state* S, const uint8_t* _key, size_t keylen) 
     }
     keccak_update(&S->outer, pad, KECCAK_BLOCKLEN);
 
-    memwipe(keyhash, HASH_SIZE);
+    sodium_memzero(keyhash, HASH_SIZE);
 }
 
 void hmac_keccak_update(hmac_keccak_state* S, const uint8_t* data, size_t datalen) {
@@ -71,7 +71,7 @@ void hmac_keccak_finish(hmac_keccak_state* S, uint8_t* digest) {
     keccak_finish(&S->inner, ihash, HASH_SIZE);
     keccak_update(&S->outer, ihash, HASH_SIZE);
     keccak_finish(&S->outer, digest, HASH_SIZE);
-    memwipe(ihash, HASH_SIZE);
+    sodium_memzero(ihash, HASH_SIZE);
 }
 
 void hmac_keccak_hash(

@@ -30,13 +30,13 @@
 
 #include <oxenc/endian.h>
 
+#include <oxen/quic/format.hpp>
+
 #include "common/oxen.h"
 #include "common/util.h"
 #include "cryptonote_basic/hardfork.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core.h"
-#include "epee/net/local_ip.h"
-#include "epee/string_tools.h"
 #include "service_node_list.h"
 #include "service_node_voting.h"
 #include "uptime_proof.h"
@@ -101,7 +101,7 @@ service_node_test_results quorum_cop::check_service_node(
 
     service_node_test_results result;  // Defaults to true for individual tests
     bool ss_reachable = true, lokinet_reachable = true, sr_reachable = true;
-    uint32_t public_ip = 0;
+    oxen::quic::ipv4 public_ip{};
     uint64_t timestamp = 0;
     decltype(std::declval<proof_info>().public_ips) ips{};
     uint64_t l2_height = 0;
@@ -178,12 +178,12 @@ service_node_test_results quorum_cop::check_service_node(
                 logcat,
                 "Service Node {} public IP {} is within a --force-unreachable range",
                 pubkey,
-                epee::string_tools::get_ip_string_from_int32(public_ip));
+                public_ip);
         result.forced_unreachable = true;
     }
 
     // IP change checks
-    if (ips[0].first && ips[1].first) {
+    if (ips[0].first != oxen::quic::ipv4{} && ips[1].first != oxen::quic::ipv4{}) {
         // Figure out when we last had a blockchain-level IP change penalty (or when we registered);
         // we only consider IP changes starting two hours after the last IP penalty.
         if (info.last_ip_change_height < m_core.blockchain.get_current_blockchain_height()) {

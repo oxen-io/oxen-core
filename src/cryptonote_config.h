@@ -55,16 +55,15 @@ inline constexpr uint64_t DEFAULT_DUST_THRESHOLD = 2'000'000'000;  // 2 * pow(10
 
 inline constexpr uint64_t BLOCKCHAIN_TIMESTAMP_CHECK_WINDOW = 11;
 
-inline constexpr uint64_t REWARD_BLOCKS_WINDOW = 100;
 // NOTE(oxen): For testing suite, size of block (bytes) after which reward for block calculated
 // using block size - before first fork:
 inline constexpr uint64_t BLOCK_GRANTED_FULL_REWARD_ZONE_V1 = 20000;
-// size of block (bytes) after which reward for block calculated using block size -
-// second change, from v5
-inline constexpr uint64_t BLOCK_GRANTED_FULL_REWARD_ZONE_V5 = 300000;
-// size in blocks of the long term block weight median window
-inline constexpr uint64_t LONG_TERM_BLOCK_WEIGHT_WINDOW_SIZE = 100000;
-inline constexpr uint64_t SHORT_TERM_BLOCK_WEIGHT_SURGE_FACTOR = 50;
+// Block weight (bytes) above which the (pre-HF21) block reward is penalized, and half of the
+// maximum block weight.  In Monero this tracks the median weight of recent blocks, but that is
+// clamped to never go below this value, and Oxen's median has never risen above it: on mainnet the
+// largest 100-block median ever was 299022.  It is therefore simply a constant.
+inline constexpr uint64_t BLOCK_GRANTED_FULL_REWARD_ZONE = 300000;
+inline constexpr uint64_t BLOCK_WEIGHT_LIMIT = 2 * BLOCK_GRANTED_FULL_REWARD_ZONE;
 inline constexpr uint64_t COINBASE_BLOB_RESERVED_SIZE = 600;
 
 inline constexpr uint64_t LOCKED_TX_ALLOWED_DELTA_BLOCKS = 1;
@@ -132,6 +131,10 @@ inline constexpr uint64_t FEE_QUANTIZATION_DECIMALS = 8;
 
 // by default, blocks ids count in synchronizing
 inline constexpr size_t BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT = 10000;
+// The most block ids a chain request (a short chain history) may hold: 11, then ~log2(height),
+// then the genesis block, plus a hash of where we got to on the peer.  77 would do for a chain of
+// 2^64 blocks.
+inline constexpr size_t SHORT_CHAIN_HISTORY_MAX_COUNT = 100;
 // by default, blocks count in blocks downloading
 inline constexpr size_t BLOCKS_SYNCHRONIZING_DEFAULT_COUNT = 100;
 // must be a power of 2, greater than 128, equal to SEEDHASH_EPOCH_BLOCKS in
@@ -180,16 +183,6 @@ constexpr int64_t BATCH_REWARD_FACTOR = 1000;
 // (2min).
 inline constexpr auto REACHABLE_MAX_FAILURE_VALIDITY = 5min;
 
-// see src/cryptonote_protocol/levin_notify.cpp
-inline constexpr auto NOISE_MIN_EPOCH = 5min;
-inline constexpr auto NOISE_EPOCH_RANGE = 30s;
-inline constexpr auto NOISE_MIN_DELAY = 10s;
-inline constexpr auto NOISE_DELAY_RANGE = 5s;
-inline constexpr uint64_t NOISE_BYTES = 3 * 1024;  // 3 kiB
-inline constexpr size_t NOISE_CHANNELS = 2;
-// ~20 * NOISE_BYTES max payload size for covert/noise send:
-inline constexpr size_t MAX_FRAGMENTS = 20;
-
 // p2p-specific constants:
 namespace p2p {
 
@@ -202,7 +195,6 @@ namespace p2p {
     inline constexpr uint32_t DEFAULT_PACKET_MAX_SIZE = 50000000;
     inline constexpr uint32_t DEFAULT_PEERS_IN_HANDSHAKE = 250;
     inline constexpr auto DEFAULT_CONNECTION_TIMEOUT = 5s;
-    inline constexpr auto DEFAULT_SOCKS_CONNECT_TIMEOUT = 45s;
     inline constexpr auto DEFAULT_PING_CONNECTION_TIMEOUT = 2s;
     inline constexpr auto DEFAULT_INVOKE_TIMEOUT = 2min;
     inline constexpr auto DEFAULT_HANDSHAKE_INVOKE_TIMEOUT = 5s;
@@ -277,7 +269,6 @@ static_assert(static_cast<uint8_t>(hf_max) == 23);
 namespace feature {
     constexpr auto PER_BYTE_FEE = hf::hf10_bulletproofs;
     constexpr auto SMALLER_BP = hf::hf11_infinite_staking;
-    constexpr auto LONG_TERM_BLOCK_WEIGHT = hf::hf11_infinite_staking;
     constexpr auto INCREASE_FEE = hf::hf12_checkpointing;
     constexpr auto PER_OUTPUT_FEE = hf::hf13_enforce_checkpoints;
     constexpr auto ED25519_KEY = hf::hf13_enforce_checkpoints;
@@ -286,7 +277,6 @@ namespace feature {
     constexpr auto MIN_2_OUTPUTS = hf::hf16_pulse;
     constexpr auto REJECT_SIGS_IN_COINBASE = hf::hf16_pulse;
     constexpr auto ENFORCE_MIN_AGE = hf::hf16_pulse;
-    constexpr auto EFFECTIVE_SHORT_TERM_MEDIAN_IN_PENALTY = hf::hf16_pulse;
     constexpr auto PULSE = hf::hf16_pulse;
     constexpr auto CLSAG = hf::hf16_pulse;
     constexpr auto PROOF_BTENC = hf::hf18;

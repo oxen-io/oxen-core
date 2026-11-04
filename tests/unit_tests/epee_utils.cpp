@@ -27,7 +27,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <array>
-#include <boost/predef/other/endian.h>
 #include <oxenc/endian.h>
 #include <cstdint>
 #include <gtest/gtest.h>
@@ -37,20 +36,10 @@
 #include <type_traits>
 #include <vector>
 
-#ifndef _WIN32
-# include <arpa/inet.h>
-#endif
+#include <oxen/quic/address.hpp>
 
-#include "boost/archive/portable_binary_iarchive.hpp"
-#include "boost/archive/portable_binary_oarchive.hpp"
-#include "epee/shared_sv.h"
 #include "crypto/crypto.h"
-#include "epee/net/net_utils_base.h"
-#include "epee/net/local_ip.h"
-#include "epee/net/buffer.h"
-#include "p2p/net_peerlist_boost_serialization.h"
-#include "epee/string_tools.h"
-#include "epee/storages/parserse_base_utils.h"
+#include "net/address.h"
 
 namespace
 {
@@ -81,322 +70,51 @@ namespace
     EXPECT_TRUE( rhs > lhs );    \
     EXPECT_FALSE( lhs >= rhs );  \
     EXPECT_TRUE( rhs >= lhs )
-
-  #if BOOST_ENDIAN_LITTLE_BYTE
-    #define CHECK_LESS_ENDIAN(lhs, rhs) CHECK_LESS( rhs , lhs )
-  #else
-    #define CHECK_LESS_ENDIAN(lhs, rhs) CHECK_LESS( lhs , rhs )
-  #endif
 }
 
-static_assert(std::is_default_constructible_v<epee::shared_sv>);
-static_assert(std::is_move_constructible_v<epee::shared_sv>);
-static_assert(std::is_copy_constructible_v<epee::shared_sv>);
-static_assert(std::is_move_assignable_v<epee::shared_sv>);
-static_assert(std::is_copy_assignable_v<epee::shared_sv>);
-static_assert(std::is_nothrow_default_constructible_v<epee::shared_sv>);
-static_assert(std::is_nothrow_move_constructible_v<epee::shared_sv>);
-static_assert(std::is_nothrow_move_assignable_v<epee::shared_sv>);
+using namespace std::literals;
 
-TEST(SharedSV, Tests)
+TEST(NetUtils, Address)
 {
-  epee::shared_sv slice{};
-  auto& view = slice.view;
+  const oxen::quic::Address address1{oxen::quic::ipv4{51, 0, 18, 255}, 65535};
+  const oxen::quic::Address address2{oxen::quic::ipv4{51, 0, 18, 255}, 55};
+  const oxen::quic::Address loopback{oxen::quic::ipv4{127, 0, 0, 1}, 0};
+  const oxen::quic::Address local{oxen::quic::ipv4{10, 0, 0, 0}, 8080};
+  const oxen::quic::Address ipv6{oxen::quic::ipv6{"2001:db8::1"s}, 22022};
+  const oxen::quic::Address ipv6_loopback{oxen::quic::ipv6_loopback, 0};
 
-  EXPECT_TRUE(view.empty());
-  EXPECT_EQ(0u, slice.extract_prefix(0).size());
-  EXPECT_EQ(0u, slice.extract_prefix(1).size());
+  EXPECT_EQ(address1.to_string(), "51.0.18.255:65535");
+  EXPECT_EQ(address1.host(), "51.0.18.255");
+  EXPECT_EQ(ipv6.to_string(), "[2001:db8::1]:22022");
+  EXPECT_EQ(ipv6.host(), "2001:db8::1");
+  EXPECT_EQ(net::type_of(address1), net::address_type::ipv4);
+  EXPECT_EQ(net::type_of(ipv6), net::address_type::ipv6);
 
-  using namespace std::literals;
-  epee::shared_sv from_str{"abcdef"s};
-  EXPECT_EQ("abcdef"sv, from_str.view);
-  auto sv2 = from_str.extract_prefix(4);
-  EXPECT_EQ(4, sv2.size());
-  EXPECT_EQ(2, from_str.size());
-  auto sv3 = sv2.extract_prefix(1);
-  EXPECT_EQ("a"sv, sv3.view);
-  EXPECT_EQ("bcd"sv, sv2.view);
-  EXPECT_EQ("ef"sv, from_str.view);
-  EXPECT_EQ(3, from_str.ptr.use_count());
-  sv2 = {};
-  EXPECT_EQ(2, from_str.ptr.use_count());
-  sv3 = {};
-  EXPECT_EQ(1, from_str.ptr.use_count());
-  auto ptr = from_str.ptr;
-  from_str = {};
-  EXPECT_EQ(1, ptr.use_count());
-  ptr.reset();
-  EXPECT_EQ(0, from_str.size());
-  EXPECT_EQ(0, sv2.size());
-  EXPECT_EQ(0, sv3.size());
-}
-
-TEST(StringTools, GetIpString)
-{
-  EXPECT_EQ(
-    std::string{"0.0.0.0"}, epee::string_tools::get_ip_string_from_int32(0)
-  );
-  EXPECT_EQ(
-    std::string{"255.0.255.0"},
-    epee::string_tools::get_ip_string_from_int32(htonl(0xff00ff00))
-  );
-  EXPECT_EQ(
-    std::string{"255.255.255.255"},
-    epee::string_tools::get_ip_string_from_int32(htonl(0xffffffff))
-  );
-}
-
-TEST(StringTools, GetIpInt32)
-{
-  std::uint32_t ip = 0;
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, ""));
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, "1."));
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, "1.1."));
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, "1.1.1."));
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, "ff.0.ff.0"));
-  EXPECT_FALSE(epee::string_tools::get_ip_int32_from_string(ip, "1.1.1.256"));
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "1"));
-  EXPECT_EQ(htonl(1), ip);
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "1.1"));
-  EXPECT_EQ(htonl(0x1000001), ip);
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "1.1.1"));
-  EXPECT_EQ(htonl(0x1010001), ip);
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "0.0.0.0"));
-  EXPECT_EQ(0, ip);
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "1.1.1.1"));
-  EXPECT_EQ(htonl(0x01010101), ip);
-
-/*
-  The existing epee conversion function does not work with 255.255.255.255, for
-  the reasons specified in the inet_addr documentation. Consider fixing in a
-  future patch. This address is not likely to be used for purposes within
-  monero.
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "255.255.255.255"));
-  EXPECT_EQ(htonl(0xffffffff), ip);
-*/
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "10.0377.0.0377"));
-  EXPECT_EQ(htonl(0xaff00ff), ip);
-
-  EXPECT_TRUE(epee::string_tools::get_ip_int32_from_string(ip, "0xff.10.0xff.0"));
-  EXPECT_EQ(htonl(0xff0aff00), ip);
-}
-
-TEST(NetUtils, IPv4NetworkAddress)
-{
-  static_assert(epee::net_utils::ipv4_network_address::get_type_id() == epee::net_utils::address_type::ipv4, "bad ipv4 type id");
-
-  const auto ip1 = oxenc::host_to_big(0x330012FFu);
-  const auto ip_loopback = oxenc::host_to_big(0x7F000001u);
-  const auto ip_local = oxenc::host_to_big(0x0A000000u);
-
-  epee::net_utils::ipv4_network_address address1{ip1, 65535};
-  CHECK_EQUAL(address1, address1);
-  EXPECT_STREQ("51.0.18.255:65535", address1.str().c_str());
-  EXPECT_STREQ("51.0.18.255", address1.host_str().c_str());
-  EXPECT_FALSE(address1.is_loopback());
-  EXPECT_FALSE(address1.is_local());
-  EXPECT_EQ(epee::net_utils::ipv4_network_address::get_type_id(), address1.get_type_id());
-  EXPECT_EQ(ip1, address1.ip());
-  EXPECT_EQ(65535, address1.port());
-  EXPECT_TRUE(epee::net_utils::ipv4_network_address{std::move(address1)} == address1);
-  EXPECT_TRUE(epee::net_utils::ipv4_network_address{address1} == address1);
-
-  const epee::net_utils::ipv4_network_address loopback{ip_loopback, 0};
-  CHECK_EQUAL(loopback, loopback);
-  CHECK_LESS_ENDIAN(address1, loopback);
-  EXPECT_STREQ("127.0.0.1:0", loopback.str().c_str());
-  EXPECT_STREQ("127.0.0.1", loopback.host_str().c_str());
-  EXPECT_TRUE(loopback.is_loopback());
-  EXPECT_FALSE(loopback.is_local());
-  EXPECT_EQ(epee::net_utils::ipv4_network_address::get_type_id(), address1.get_type_id());
-  EXPECT_EQ(ip_loopback, loopback.ip());
-  EXPECT_EQ(0, loopback.port());
-
-  const epee::net_utils::ipv4_network_address local{ip_local, 8080};
-  CHECK_EQUAL(local, local);
-  CHECK_LESS(local, address1);
-  CHECK_LESS(local, loopback);
-  EXPECT_FALSE(local.is_loopback());
-  EXPECT_TRUE(local.is_local());
-
-  epee::net_utils::ipv4_network_address address2{ip1, 55};
-  CHECK_EQUAL(address2, address2);
-  CHECK_LESS_ENDIAN(address2, loopback);
+  // Addresses order as they always have (which sets and maps of peers depend on): IPv4 before
+  // IPv6, then by IP, then by port.
+  CHECK_EQUAL(address1, oxen::quic::Address{address1});
   CHECK_LESS(local, address2);
-  EXPECT_STREQ("51.0.18.255:55", address2.str().c_str());
-  EXPECT_STREQ("51.0.18.255", address2.host_str().c_str());
-
-
-  address2 = std::move(address1);
-  CHECK_EQUAL(address2, address1);
-
-  address2 = local;
-  CHECK_EQUAL(address2, local);
   CHECK_LESS(address2, address1);
+  CHECK_LESS(address1, loopback);
+  CHECK_LESS(loopback, ipv6);
 
-  {
-    std::stringstream stream;
-    {
-      boost::archive::portable_binary_oarchive ostream{stream};
-      ostream << address1;
-    }
-    {
-      boost::archive::portable_binary_iarchive istream{stream};
-      istream >> address2;
-    }
-  }
-  CHECK_EQUAL(address1, address2);
-  EXPECT_EQ(ip1, address2.ip());
-  EXPECT_EQ(65535, address2.port());
-}
+  EXPECT_TRUE(net::same_host(address1, address2));
+  EXPECT_FALSE(net::same_host(address1, loopback));
+  EXPECT_FALSE(net::same_host(address1, ipv6));
 
-TEST(NetUtils, NetworkAddress)
-{
-  const auto ip1 = oxenc::host_to_big(0x330012FFu);
-  const auto ip_loopback = oxenc::host_to_big(0x7F000001u);
-  const auto ip_local = oxenc::host_to_big(0x0A000000u);
-
-  struct custom_address {
-    constexpr static bool equal(const custom_address&) noexcept { return false; }
-    constexpr static bool less(const custom_address&) noexcept { return false; }
-    constexpr static bool is_same_host(const custom_address&) noexcept { return false; }
-    constexpr static bool is_loopback() noexcept { return false; }
-    constexpr static bool is_local() noexcept { return false; }
-    constexpr uint16_t port() const noexcept { return 0;};
-    static std::string str() { return {}; }
-    static std::string host_str() { return {}; }
-    constexpr static epee::net_utils::address_type get_type_id() noexcept { return epee::net_utils::address_type(-1); }
-    constexpr static epee::net_utils::zone get_zone() noexcept { return epee::net_utils::zone::invalid; }
-    constexpr static bool is_blockable() noexcept { return false; }
-  };
-
-  const epee::net_utils::network_address empty;
-  CHECK_EQUAL(empty, empty);
-  EXPECT_TRUE(empty.is_same_host(empty));
-  EXPECT_STREQ("<none>", empty.str().c_str());
-  EXPECT_STREQ("<none>", empty.host_str().c_str());
-  EXPECT_FALSE(empty.is_loopback());
-  EXPECT_FALSE(empty.is_local());
-  EXPECT_EQ(epee::net_utils::address_type::invalid, empty.get_type_id());
-  EXPECT_EQ(epee::net_utils::zone::invalid, empty.get_zone());
-  EXPECT_FALSE(empty.is_blockable());
-  EXPECT_THROW(empty.as<custom_address>(), std::bad_cast);
-
-  epee::net_utils::network_address address1{
-    epee::net_utils::ipv4_network_address{ip1, 65535}
-  };
-  CHECK_EQUAL(address1, address1);
-  CHECK_EQUAL(epee::net_utils::network_address{address1}, address1);
-  CHECK_LESS(empty, address1);
-  EXPECT_TRUE(address1.is_same_host(address1));
-  EXPECT_FALSE(empty.is_same_host(address1));
-  EXPECT_FALSE(address1.is_same_host(empty));
-  EXPECT_STREQ("51.0.18.255:65535", address1.str().c_str());
-  EXPECT_STREQ("51.0.18.255", address1.host_str().c_str());
-  EXPECT_FALSE(address1.is_loopback());
-  EXPECT_FALSE(address1.is_local());
-  EXPECT_EQ(epee::net_utils::ipv4_network_address::get_type_id(), address1.get_type_id());
-  EXPECT_EQ(epee::net_utils::zone::public_, address1.get_zone());
-  EXPECT_TRUE(address1.is_blockable());
-  EXPECT_NO_THROW(address1.as<epee::net_utils::ipv4_network_address>());
-  EXPECT_THROW(address1.as<custom_address>(), std::bad_cast);
-
-  const epee::net_utils::network_address loopback{
-    epee::net_utils::ipv4_network_address{ip_loopback, 0}
-  };
-  CHECK_EQUAL(loopback, loopback);
-  CHECK_LESS(empty, loopback);
-  CHECK_LESS_ENDIAN(address1, loopback);
-  EXPECT_TRUE(loopback.is_same_host(loopback));
-  EXPECT_FALSE(loopback.is_same_host(address1));
-  EXPECT_FALSE(address1.is_same_host(loopback));
-  EXPECT_STREQ("127.0.0.1:0", loopback.str().c_str());
-  EXPECT_STREQ("127.0.0.1", loopback.host_str().c_str());
-  EXPECT_TRUE(loopback.is_loopback());
-  EXPECT_FALSE(loopback.is_local());
-  EXPECT_EQ(epee::net_utils::ipv4_network_address::get_type_id(), address1.get_type_id());
-  EXPECT_EQ(epee::net_utils::zone::public_, address1.get_zone());
-  EXPECT_EQ(epee::net_utils::ipv4_network_address::get_type_id(), address1.get_type_id());
-
-  const epee::net_utils::network_address local{
-    epee::net_utils::ipv4_network_address{ip_local, 8080}
-  };
-  CHECK_EQUAL(local, local);
-  CHECK_LESS(local, loopback);
-  CHECK_LESS(local, address1);
-  EXPECT_FALSE(local.is_loopback());
-  EXPECT_TRUE(local.is_local());
-
-  epee::net_utils::network_address address2{
-    epee::net_utils::ipv4_network_address{ip1, 55}
-  };
-  CHECK_EQUAL(address2, address2);
-  CHECK_LESS(address2, address1);
-  CHECK_LESS(local, address2);
-  CHECK_LESS_ENDIAN(address2, loopback);
-  EXPECT_TRUE(address1.is_same_host(address2));
-  EXPECT_TRUE(address2.is_same_host(address1));
-  EXPECT_STREQ("51.0.18.255:55", address2.str().c_str());
-  EXPECT_STREQ("51.0.18.255", address2.host_str().c_str());
-
-  address2 = std::move(address1);
-  CHECK_EQUAL(address1, address1);
-  CHECK_EQUAL(empty, address1);
-  CHECK_LESS(address1, address2);
-  EXPECT_FALSE(address1.is_same_host(address2));
-  EXPECT_FALSE(address2.is_same_host(address1));
-  EXPECT_STREQ("51.0.18.255:65535", address2.str().c_str());
-  EXPECT_STREQ("51.0.18.255", address2.host_str().c_str());
-  EXPECT_FALSE(address1.is_loopback());
-  EXPECT_FALSE(address1.is_local());
-  EXPECT_THROW(address1.as<epee::net_utils::ipv4_network_address>(), std::bad_cast);
-  EXPECT_NO_THROW(address2.as<epee::net_utils::ipv4_network_address>());
-
-  address2 = local;
-  CHECK_EQUAL(address2, local);
-  CHECK_LESS(address1, address2);
-  EXPECT_TRUE(address2.is_same_host(local));
-  EXPECT_TRUE(local.is_same_host(address2));
-  EXPECT_FALSE(address2.is_same_host(address1));
-  EXPECT_FALSE(address1.is_same_host(address2));
-
-  {
-    std::stringstream stream;
-    {
-      boost::archive::portable_binary_oarchive ostream{stream};
-      ostream << address2;
-    }
-    {
-      boost::archive::portable_binary_iarchive istream{stream};
-      istream >> address1;
-    }
-  }
-  CHECK_EQUAL(address1, address2);
-  EXPECT_TRUE(address1.is_same_host(address2));
-  EXPECT_TRUE(address2.is_same_host(address1));
-  EXPECT_NO_THROW(address1.as<epee::net_utils::ipv4_network_address>());
-
-  address1 = custom_address{};
-  CHECK_EQUAL(address1, address1);
-  CHECK_LESS(address2, address1);
-  EXPECT_FALSE(address1.is_same_host(loopback));
-  EXPECT_FALSE(loopback.is_same_host(address1));
-  EXPECT_THROW(address1.as<epee::net_utils::ipv4_network_address>(), std::bad_cast);
-  EXPECT_NO_THROW(address1.as<custom_address>());
+  // A 0 port doesn't stop an address being loopback.
+  EXPECT_TRUE(net::is_loopback(loopback));
+  EXPECT_TRUE(net::is_loopback(ipv6_loopback));
+  EXPECT_FALSE(net::is_local(loopback));
+  EXPECT_FALSE(net::is_loopback(address1));
+  EXPECT_FALSE(net::is_local(address1));
+  EXPECT_FALSE(net::is_loopback(local));
+  EXPECT_TRUE(net::is_local(local));
 }
 
 static bool is_local(const char *s)
 {
-  auto& logcat = epee::logcat;
-  uint32_t ip;
-  CHECK_AND_ASSERT_THROW_MES(epee::string_tools::get_ip_int32_from_string(ip, s), "Invalid IP address: {}", s);
-  return epee::net_utils::is_ip_local(ip);
+  return net::is_local(oxen::quic::Address{oxen::quic::ipv4{std::string{s}}, 0});
 }
 
 TEST(NetUtils, PrivateRanges)
@@ -414,209 +132,13 @@ TEST(NetUtils, PrivateRanges)
   ASSERT_EQ(is_local("172.16.255.255"), true);
   ASSERT_EQ(is_local("172.31.255.255"), true);
   ASSERT_EQ(is_local("172.32.0.0"), false);
-  ASSERT_EQ(is_local("0.0.0.0"), false);
-  ASSERT_EQ(is_local("255.255.255.254"), false);
   ASSERT_EQ(is_local("11.255.255.255"), false);
-  ASSERT_EQ(is_local("0.0.0.10"), false);
-  ASSERT_EQ(is_local("0.0.168.192"), false);
-  ASSERT_EQ(is_local("0.0.30.172"), false);
-  ASSERT_EQ(is_local("0.0.30.127"), false);
-}
-
-TEST(net_buffer, basic)
-{
-  epee::net_utils::buffer buf;
-
-  ASSERT_EQ(buf.size(), 0);
-  EXPECT_THROW(buf.span(1), std::runtime_error);
-  buf.append("a", 1);
-  std::span<const uint8_t> span =buf.span(1);
-  ASSERT_EQ(span.size(), 1);
-  ASSERT_EQ(span.data()[0], 'a');
-  EXPECT_THROW(buf.span(2), std::runtime_error);
-  buf.append("bc", 2);
-  buf.erase(1);
-  EXPECT_THROW(buf.span(3), std::runtime_error);
-  span = buf.span(2);
-  ASSERT_EQ(span.size(), 2);
-  ASSERT_EQ(span.data()[0], 'b');
-  ASSERT_EQ(span.data()[1], 'c');
-  buf.erase(1);
-  EXPECT_THROW(buf.span(2), std::runtime_error);
-  span = buf.span(1);
-  ASSERT_EQ(span.size(), 1);
-  ASSERT_EQ(span.data()[0], 'c');
-  EXPECT_THROW(buf.erase(2), std::runtime_error);
-  buf.erase(1);
-  EXPECT_EQ(buf.size(), 0);
-  EXPECT_THROW(buf.span(1), std::runtime_error);
-}
-
-TEST(net_buffer, existing_capacity)
-{
-  epee::net_utils::buffer buf;
-
-  buf.append("123456789", 9);
-  buf.erase(9);
-  buf.append("abc", 3);
-  buf.append("def", 3);
-  ASSERT_EQ(buf.size(), 6);
-  std::span<const uint8_t> span =buf.span(6);
-  ASSERT_TRUE(!memcmp(span.data(), "abcdef", 6));
-}
-
-TEST(net_buffer, reallocate)
-{
-  epee::net_utils::buffer buf;
-
-  buf.append(std::string(4000, ' ').c_str(), 4000);
-  buf.append(std::string(8000, '0').c_str(), 8000);
-  ASSERT_EQ(buf.size(), 12000);
-  std::span<const uint8_t> span =buf.span(12000);
-  ASSERT_TRUE(!memcmp(span.data(), std::string(4000, ' ').c_str(), 4000));
-  ASSERT_TRUE(!memcmp(span.data() + 4000, std::string(8000, '0').c_str(), 8000));
-}
-
-TEST(net_buffer, move)
-{
-  epee::net_utils::buffer buf;
-
-  buf.append(std::string(400, ' ').c_str(), 400);
-  buf.erase(399);
-  buf.append(std::string(4000, '0').c_str(), 4000);
-  ASSERT_EQ(buf.size(), 4001);
-  std::span<const uint8_t> span =buf.span(4001);
-  ASSERT_TRUE(!memcmp(span.data(), std::string(1, ' ').c_str(), 1));
-  ASSERT_TRUE(!memcmp(span.data() + 1, std::string(4000, '0').c_str(), 4000));
-}
-
-TEST(parsing, isspace)
-{
-  ASSERT_FALSE(epee::misc_utils::parse::isspace(0));
-  for (int c = 1; c < 256; ++c)
-  {
-    ASSERT_EQ(epee::misc_utils::parse::isspace(c), strchr("\r\n\t\f\v ", c) != NULL);
-  }
-}
-
-TEST(parsing, isdigit)
-{
-  ASSERT_FALSE(epee::misc_utils::parse::isdigit(0));
-  for (int c = 1; c < 256; ++c)
-  {
-    ASSERT_EQ(epee::misc_utils::parse::isdigit(c), strchr("0123456789", c) != NULL);
-  }
-}
-
-TEST(parsing, number)
-{
-  std::string_view val;
-  std::string s;
-  bool is_float, is_negative;
-
-  // the parser expects another character to end the number, and accepts things
-  // that aren't numbers, as it's meant as a pre-filter for strto* functions,
-  // so we just check that numbers get accepted, but don't test non numbers
-
-  s = "0 ";
-  const char* i = s.data();
-  const char* e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, "0");
-  ASSERT_FALSE(is_float);
-  ASSERT_FALSE(is_negative);
-
-  s = "000 ";
-  i = s.data(); e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, "000");
-  ASSERT_FALSE(is_float);
-  ASSERT_FALSE(is_negative);
-
-  s = "10x";
-  i = s.data(); e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, "10");
-  ASSERT_FALSE(is_float);
-  ASSERT_FALSE(is_negative);
-
-  s = "10.09/";
-  i = s.data(); e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, "10.09");
-  ASSERT_TRUE(is_float);
-  ASSERT_FALSE(is_negative);
-
-  s = "-1.r";
-  i = s.data(); e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, "-1.");
-  ASSERT_TRUE(is_float);
-  ASSERT_TRUE(is_negative);
-
-  s = "-49.;";
-  i = s.data(); e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, "-49.");
-  ASSERT_TRUE(is_float);
-  ASSERT_TRUE(is_negative);
-
-  s = "0.78/";
-  i = s.data(); e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, "0.78");
-  ASSERT_TRUE(is_float);
-  ASSERT_FALSE(is_negative);
-
-  s = "33E9$";
-  i = s.data(); e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, "33E9");
-  ASSERT_TRUE(is_float);
-  ASSERT_FALSE(is_negative);
-
-  s = ".34e2=";
-  i = s.data(); e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, ".34e2");
-  ASSERT_TRUE(is_float);
-  ASSERT_FALSE(is_negative);
-
-  s = "-9.34e-2=";
-  i = s.data(); e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, "-9.34e-2");
-  ASSERT_TRUE(is_float);
-  ASSERT_TRUE(is_negative);
-
-  s = "9.34e-2=";
-  i = s.data(); e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, "9.34e-2");
-  ASSERT_TRUE(is_float);
-  ASSERT_FALSE(is_negative);
-
-  s = "+9.34e+03=";
-  i = s.data(); e = i + s.size();
-  epee::misc_utils::parse::match_number2(i, e, val, is_float, is_negative);
-  ASSERT_EQ(val, "+9.34e+03");
-  ASSERT_TRUE(is_float);
-  ASSERT_FALSE(is_negative);
-}
-
-TEST(parsing, unicode)
-{
-  std::string bs;
-  std::string s;
-  const char* si;
-
-  s = "\"\""; si = s.data(); ASSERT_NO_THROW(epee::misc_utils::parse::match_string2(si, s.data() + s.size(), bs)); ASSERT_EQ(bs, "");
-  s = "\"\\u0000\""; si = s.data(); ASSERT_NO_THROW(epee::misc_utils::parse::match_string2(si, s.data() + s.size(), bs)); ASSERT_EQ(bs, std::string(1, '\0'));
-  s = "\"\\u0020\""; si = s.data(); ASSERT_NO_THROW(epee::misc_utils::parse::match_string2(si, s.data() + s.size(), bs)); ASSERT_EQ(bs, " ");
-  s = "\"\\u1\""; si = s.data(); ASSERT_ANY_THROW(epee::misc_utils::parse::match_string2(si, s.data() + s.size(), bs));
-  s = "\"\\u12\""; si = s.data(); ASSERT_ANY_THROW(epee::misc_utils::parse::match_string2(si, s.data() + s.size(), bs));
-  s = "\"\\u123\""; si = s.data(); ASSERT_ANY_THROW(epee::misc_utils::parse::match_string2(si, s.data() + s.size(), bs));
-  s = "\"\\u1234\""; si = s.data(); ASSERT_NO_THROW(epee::misc_utils::parse::match_string2(si, s.data() + s.size(), bs)); ASSERT_EQ(bs, "ሴ");
-  s = "\"foo\\u1234bar\""; si = s.data(); ASSERT_NO_THROW(epee::misc_utils::parse::match_string2(si, s.data() + s.size(), bs)); ASSERT_EQ(bs, "fooሴbar");
-  s = "\"\\u3042\\u307e\\u3084\\u304b\\u3059\""; si = s.data(); ASSERT_NO_THROW(epee::misc_utils::parse::match_string2(si, s.data() + s.size(), bs)); ASSERT_EQ(bs, "あまやかす");
+  // Not publicly routable, so local:
+  ASSERT_EQ(is_local("0.0.0.0"), true);
+  ASSERT_EQ(is_local("255.255.255.254"), true);
+  // Byte-reversed private addresses (which a byte order mixup would confuse) are public:
+  ASSERT_EQ(is_local("1.0.0.10"), false);
+  ASSERT_EQ(is_local("1.0.168.192"), false);
+  ASSERT_EQ(is_local("1.0.16.172"), false);
+  ASSERT_EQ(is_local("1.0.0.127"), false);
 }

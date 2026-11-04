@@ -44,8 +44,8 @@
 
 #include "crypto/crypto.h"  // for declaration of crypto::secret_key
 
-namespace epee {
-class wipeable_string;
+namespace crypto {
+class cleared_string;
 }
 
 /*!
@@ -73,8 +73,8 @@ namespace ElectrumWords {
      * not a multiple of 3 words, or if word is not in the words list
      */
     bool words_to_bytes(
-            const epee::wipeable_string& words,
-            epee::wipeable_string& dst,
+            const crypto::cleared_string& words,
+            crypto::cleared_string& dst,
             size_t len,
             bool duplicate,
             std::string& language_name);
@@ -87,7 +87,7 @@ namespace ElectrumWords {
      * list
      */
     bool words_to_bytes(
-            const epee::wipeable_string& words,
+            const crypto::cleared_string& words,
             crypto::secret_key& dst,
             std::string& language_name);
 
@@ -102,7 +102,7 @@ namespace ElectrumWords {
     bool bytes_to_words(
             const unsigned char* src,
             size_t len,
-            epee::wipeable_string& words,
+            crypto::cleared_string& words,
             const std::string& language_name);
 
     /*!
@@ -114,7 +114,7 @@ namespace ElectrumWords {
      */
     bool bytes_to_words(
             const crypto::secret_key& src,
-            epee::wipeable_string& words,
+            crypto::cleared_string& words,
             const std::string& language_name);
 
     /*!
@@ -137,7 +137,7 @@ namespace ElectrumWords {
      * \param  seed The seed to check (a space delimited concatenated word list)
      * \return      true if the seed passed is a old style seed false if not.
      */
-    bool get_is_old_style_seed(const epee::wipeable_string& seed);
+    bool get_is_old_style_seed(const crypto::cleared_string& seed);
 
     /*!
      * \brief Returns the name of a language in English

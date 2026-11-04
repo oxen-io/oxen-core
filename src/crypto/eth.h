@@ -1,8 +1,7 @@
 #pragma once
 
 #include "base.h"
-#include "epee/memwipe.h"
-#include "epee/mlocker.h"
+#include "cleared.h"
 
 namespace eth {
 
@@ -22,7 +21,7 @@ struct bls_signature : crypto::bytes<128, true> {
 };
 
 struct bls_secret_key_ : crypto::bytes<32> {};
-using bls_secret_key = epee::mlocked<tools::scrubbed<bls_secret_key_>>;
+using bls_secret_key = crypto::sodium_cleared<bls_secret_key_>;
 
 }  // namespace eth
 

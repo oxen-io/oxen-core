@@ -28,7 +28,6 @@
 // THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <common/command_line.h>
-#include <common/exception.h>
 #include <fmt/std.h>
 
 #include "blockchain_db/blockchain_db.h"
@@ -75,11 +74,7 @@ struct reference {
     reference(uint64_t h, uint64_t rs, uint64_t p) : height(h), ring_size(rs), position(p) {}
 };
 
-int main(int argc, char* argv[]) {
-    oxen::set_terminate_handler();
-    TRY_ENTRY();
-
-    epee::string_tools::set_module_name_and_folder(argv[0]);
+int main(int argc, char* argv[]) try {
     tools::on_startup();
     auto opt_size = command_line::boost_option_sizes();
 
@@ -160,7 +155,10 @@ int main(int argc, char* argv[]) {
 
     r = core_storage->init(std::move(db), command_line::get_network(vm));
 
-    CHECK_AND_ASSERT_MES(r, 1, "Failed to initialize source blockchain storage");
+    if (!r) {
+        log::error(logcat, "Failed to initialize source blockchain storage");
+        return 1;
+    }
     log::warning(logcat, "Source blockchain storage initialized OK");
 
     log::warning(logcat, "Building usage patterns...");
@@ -222,6 +220,7 @@ int main(int argc, char* argv[]) {
 
     log::warning(logcat, "Blockchain usage exported OK");
     return 0;
-
-    CATCH_ENTRY("Export error", 1);
+} catch (const std::exception& e) {
+    log::error(logcat, "Usage export error: {}", e.what());
+    return 1;
 }

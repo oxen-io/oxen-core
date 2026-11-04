@@ -3,13 +3,11 @@
 namespace cryptonote {
 
 void unhelpful_peers::add(
-        const epee::net_utils::network_address& addr,
-        uint64_t height,
-        std::optional<uint64_t> history) {
+        const oxen::quic::Address& addr, uint64_t height, std::optional<uint64_t> history) {
     m_peers.insert_or_assign(addr, std::make_pair(height, history));
 }
 
-bool unhelpful_peers::contains(const epee::net_utils::network_address& addr) const {
+bool unhelpful_peers::contains(const oxen::quic::Address& addr) const {
     return m_peers.count(addr);
 }
 

@@ -31,7 +31,6 @@ target_link_libraries(block_fuzz_tests
   PRIVATE
     cryptonote_core
     p2p
-    epee
     device
     logging
     extra)
@@ -44,7 +43,6 @@ target_link_libraries(transaction_fuzz_tests
   PRIVATE
     cryptonote_core
     p2p
-    epee
     device
     logging
     extra)
@@ -58,7 +56,6 @@ target_link_libraries(signature_fuzz_tests
     wallet
     cryptonote_core
     p2p
-    epee
     device
     logging
     extra)
@@ -72,7 +69,6 @@ target_link_libraries(cold-outputs_fuzz_tests
     wallet
     cryptonote_core
     p2p
-    epee
     device
     logging
     extra)
@@ -86,7 +82,6 @@ target_link_libraries(cold-transaction_fuzz_tests
     wallet
     cryptonote_core
     p2p
-    epee
     device
     logging
     extra)
@@ -98,7 +93,7 @@ add_executable(load-from-binary_fuzz_tests load_from_binary.cpp fuzzer.cpp)
 target_link_libraries(load-from-binary_fuzz_tests
   PRIVATE
     common
-    epee
+    levin_kv
     Boost::program_options
     logging
     extra)
@@ -106,23 +101,10 @@ set_property(TARGET load-from-binary_fuzz_tests
   PROPERTY
     FOLDER "tests")
 
-add_executable(load-from-json_fuzz_tests load_from_json.cpp fuzzer.cpp)
-target_link_libraries(load-from-json_fuzz_tests
-  PRIVATE
-    common
-    epee
-    Boost::program_options
-    logging
-    extra)
-set_property(TARGET load-from-json_fuzz_tests
-  PROPERTY
-    FOLDER "tests")
-
 add_executable(base58_fuzz_tests base58.cpp fuzzer.cpp)
 target_link_libraries(base58_fuzz_tests
   PRIVATE
     common
-    epee
     Boost::program_options
     logging
     extra)
@@ -130,16 +112,14 @@ set_property(TARGET base58_fuzz_tests
   PROPERTY
     FOLDER "tests")
 
-add_executable(levin_fuzz_tests levin.cpp fuzzer.cpp)
-target_link_libraries(levin_fuzz_tests
+add_executable(levin_frame_fuzz_tests levin_frame.cpp fuzzer.cpp)
+target_link_libraries(levin_frame_fuzz_tests
   PRIVATE
     common
-    epee
-    Boost::thread
-    Boost::program_options
+    p2p
     logging
     extra)
-set_property(TARGET levin_fuzz_tests
+set_property(TARGET levin_frame_fuzz_tests
   PROPERTY
     FOLDER "tests")
 
@@ -147,7 +127,6 @@ add_executable(bulletproof_fuzz_tests bulletproof.cpp fuzzer.cpp)
 target_link_libraries(bulletproof_fuzz_tests
   PRIVATE
     common
-    epee
     Boost::thread
     Boost::program_options
     logging

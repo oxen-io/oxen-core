@@ -20,7 +20,7 @@ Issue Date: 20/12/2007
 
 #include <stdint.h>
 
-#include "epee/int-util.h"
+#include "int-util.h"
 
 #if defined(__cplusplus)
 extern "C" {

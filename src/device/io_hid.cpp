@@ -79,16 +79,21 @@ void hid::io_hid_log(int read, unsigned char* buffer, int block_len) {
 void hid::init() {
     int r;
     r = hid_init();
-    CHECK_AND_ASSERT_THROW_MES(
-            r >= 0, "Unable to init hidapi library. Error {}: {}", r, safe_hid_error(usb_device));
+    if (r < 0) {
+        auto msg = fmt::format(
+                "Unable to init hidapi library. Error {}: {}", r, safe_hid_error(usb_device));
+        log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+    }
 }
 
 void hid::connect(const std::vector<hid_conn_params>& hcp) {
     for (const auto& p : hcp)
         if (connect(p.vid, p.pid, p.interface_number, p.usage_page))
             return;
-    CHECK_AND_ASSERT_THROW_MES(
-            false, "No device found. (Is the device running with the wallet app opened?)");
+    log::error(logcat, "No device found. (Is the device running with the wallet app opened?)");
+    throw std::runtime_error{
+            "No device found. (Is the device running with the wallet app opened?)"};
 }
 
 hid_device_info* hid::find_device(
@@ -147,7 +152,11 @@ bool hid::connect(
         hwdev = hid_open_path(device->path);
     }
     hid_free_enumeration(hwdev_info_list);
-    CHECK_AND_ASSERT_THROW_MES(hwdev, "Unable to open device {}: {}", pid, vid);
+    if (!hwdev) {
+        auto msg = fmt::format("Unable to open device {}: {}", pid, vid);
+        log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+    }
     usb_vid = vid;
     usb_pid = pid;
     usb_device = hwdev;
@@ -172,7 +181,10 @@ int hid::exchange(
     unsigned int remaining;
     unsigned int offset = 0;
 
-    CHECK_AND_ASSERT_THROW_MES(usb_device, "No device opened");
+    if (!usb_device) {
+        log::error(logcat, "No device opened");
+        throw std::runtime_error{"No device opened"};
+    }
 
     // Split command in several HID packet
     memset(buffer, 0, sizeof(buffer));
@@ -185,11 +197,14 @@ int hid::exchange(
         memcpy(padding_buffer + 1, buffer + offset, block_size);
         io_hid_log(0, padding_buffer, block_size + 1);
         hid_ret = hid_write(usb_device, padding_buffer, block_size + 1);
-        CHECK_AND_ASSERT_THROW_MES(
-                hid_ret >= 0,
-                "Unable to send hidapi command. Error {}: {}",
-                result,
-                safe_hid_error(usb_device));
+        if (hid_ret < 0) {
+            auto msg = fmt::format(
+                    "Unable to send hidapi command. Error {}: {}",
+                    result,
+                    safe_hid_error(usb_device));
+            log::error(logcat, "{}", msg);
+            throw std::runtime_error{msg};
+        }
         offset += block_size;
         remaining -= block_size;
     }
@@ -201,11 +216,12 @@ int hid::exchange(
     } else {
         hid_ret = hid_read(usb_device, buffer, MAX_BLOCK);
     }
-    CHECK_AND_ASSERT_THROW_MES(
-            hid_ret >= 0,
-            "Unable to read hidapi response. Error {}: {}",
-            result,
-            safe_hid_error(usb_device));
+    if (hid_ret < 0) {
+        auto msg = fmt::format(
+                "Unable to read hidapi response. Error {}: {}", result, safe_hid_error(usb_device));
+        log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+    }
     result = (unsigned int)hid_ret;
     io_hid_log(1, buffer, result);
     offset = MAX_BLOCK;
@@ -216,11 +232,14 @@ int hid::exchange(
             break;
         }
         hid_ret = hid_read_timeout(usb_device, buffer + offset, MAX_BLOCK, timeout);
-        CHECK_AND_ASSERT_THROW_MES(
-                hid_ret >= 0,
-                "Unable to receive hidapi response. Error {}: {}",
-                result,
-                safe_hid_error(usb_device));
+        if (hid_ret < 0) {
+            auto msg = fmt::format(
+                    "Unable to receive hidapi response. Error {}: {}",
+                    result,
+                    safe_hid_error(usb_device));
+            log::error(logcat, "{}", msg);
+            throw std::runtime_error{msg};
+        }
         result = static_cast<unsigned int>(hid_ret);
         io_hid_log(1, buffer + offset, result);
         offset += MAX_BLOCK;
@@ -249,8 +268,16 @@ unsigned int hid::wrapCommand(
     unsigned int offset_out = 0;
     unsigned int block_size;
 
-    CHECK_AND_ASSERT_THROW_MES(packet_size >= 3, "Invalid Packet size: {}", packet_size);
-    CHECK_AND_ASSERT_THROW_MES(out_len >= 7, "out_len too short: {}", out_len);
+    if (packet_size < 3) {
+        auto msg = fmt::format("Invalid Packet size: {}", packet_size);
+        log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+    }
+    if (out_len < 7) {
+        auto msg = fmt::format("out_len too short: {}", out_len);
+        log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+    }
 
     out_len -= 7;
     out[offset_out++] = ((channel >> 8) & 0xff);
@@ -262,13 +289,21 @@ unsigned int hid::wrapCommand(
     out[offset_out++] = ((command_len >> 8) & 0xff);
     out[offset_out++] = (command_len & 0xff);
     block_size = (command_len > packet_size - 7 ? packet_size - 7 : command_len);
-    CHECK_AND_ASSERT_THROW_MES(out_len >= block_size, "out_len too short: {}", out_len);
+    if (out_len < block_size) {
+        auto msg = fmt::format("out_len too short: {}", out_len);
+        log::error(logcat, "{}", msg);
+        throw std::runtime_error{msg};
+    }
     out_len -= block_size;
     memcpy(out + offset_out, command + offset, block_size);
     offset_out += block_size;
     offset += block_size;
     while (offset != command_len) {
-        CHECK_AND_ASSERT_THROW_MES(out_len >= 5, "out_len too short: {}", out_len);
+        if (out_len < 5) {
+            auto msg = fmt::format("out_len too short: {}", out_len);
+            log::error(logcat, "{}", msg);
+            throw std::runtime_error{msg};
+        }
         out_len -= 5;
         out[offset_out++] = ((channel >> 8) & 0xff);
         out[offset_out++] = (channel & 0xff);
@@ -278,14 +313,22 @@ unsigned int hid::wrapCommand(
         sequence_idx++;
         block_size =
                 ((command_len - offset) > packet_size - 5 ? packet_size - 5 : command_len - offset);
-        CHECK_AND_ASSERT_THROW_MES(out_len >= block_size, "out_len too short: {}", out_len);
+        if (out_len < block_size) {
+            auto msg = fmt::format("out_len too short: {}", out_len);
+            log::error(logcat, "{}", msg);
+            throw std::runtime_error{msg};
+        }
         out_len -= block_size;
         memcpy(out + offset_out, command + offset, block_size);
         offset_out += block_size;
         offset += block_size;
     }
     while ((offset_out % packet_size) != 0) {
-        CHECK_AND_ASSERT_THROW_MES(out_len >= 1, "out_len too short: {}", out_len);
+        if (out_len < 1) {
+            auto msg = fmt::format("out_len too short: {}", out_len);
+            log::error(logcat, "{}", msg);
+            throw std::runtime_error{msg};
+        }
         out_len--;
         out[offset_out++] = 0;
     }
@@ -313,18 +356,30 @@ unsigned int hid::unwrapReponse(
     // check hid header
     val = (data[offset] << 8) + data[offset + 1];
     offset += 2;
-    CHECK_AND_ASSERT_THROW_MES(val == channel, "Wrong Channel");
+    if (val != channel) {
+        log::error(logcat, "Wrong Channel");
+        throw std::runtime_error{"Wrong Channel"};
+    }
     val = data[offset];
     offset++;
-    CHECK_AND_ASSERT_THROW_MES(val == tag, "Wrong TAG");
+    if (val != tag) {
+        log::error(logcat, "Wrong TAG");
+        throw std::runtime_error{"Wrong TAG"};
+    }
     val = (data[offset] << 8) + data[offset + 1];
     offset += 2;
-    CHECK_AND_ASSERT_THROW_MES(val == sequence_idx, "Wrong sequence_idx");
+    if (val != sequence_idx) {
+        log::error(logcat, "Wrong sequence_idx");
+        throw std::runtime_error{"Wrong sequence_idx"};
+    }
 
     // fetch
     response_len = (data[offset++] << 8);
     response_len |= data[offset++];
-    CHECK_AND_ASSERT_THROW_MES(out_len >= response_len, "Out Buffer too short");
+    if (out_len < response_len) {
+        log::error(logcat, "Out Buffer too short");
+        throw std::runtime_error{"Out Buffer too short"};
+    }
     if (data_len < (7 + response_len)) {
         return 0;
     }
@@ -339,13 +394,22 @@ unsigned int hid::unwrapReponse(
         }
         val = (data[offset] << 8) + data[offset + 1];
         offset += 2;
-        CHECK_AND_ASSERT_THROW_MES(val == channel, "Wrong Channel");
+        if (val != channel) {
+            log::error(logcat, "Wrong Channel");
+            throw std::runtime_error{"Wrong Channel"};
+        }
         val = data[offset];
         offset++;
-        CHECK_AND_ASSERT_THROW_MES(val == tag, "Wrong TAG");
+        if (val != tag) {
+            log::error(logcat, "Wrong TAG");
+            throw std::runtime_error{"Wrong TAG"};
+        }
         val = (data[offset] << 8) + data[offset + 1];
         offset += 2;
-        CHECK_AND_ASSERT_THROW_MES(val == sequence_idx, "Wrong sequence_idx");
+        if (val != sequence_idx) {
+            log::error(logcat, "Wrong sequence_idx");
+            throw std::runtime_error{"Wrong sequence_idx"};
+        }
 
         block_size =
                 ((response_len - offset_out) > packet_size - 5 ? packet_size - 5
