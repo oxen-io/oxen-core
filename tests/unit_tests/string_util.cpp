@@ -101,6 +101,18 @@ TEST(common_string_util, parse_int)
   ASSERT_FALSE(tools::parse_int("", i32));
   ASSERT_FALSE(tools::parse_int("+", i32));
   ASSERT_FALSE(tools::parse_int("-", i32));
+
+  ASSERT_FALSE(tools::parse_int("+1", u32));
+  ASSERT_FALSE(tools::parse_int("+1", i32));
+  ASSERT_FALSE(tools::parse_int("-0", u32));
+  ASSERT_TRUE(tools::parse_int("-0", i32)); ASSERT_EQ(i32, 0);
+  ASSERT_FALSE(tools::parse_int(" 1", u32));
+  ASSERT_FALSE(tools::parse_int("1 ", u32));
+  ASSERT_FALSE(tools::parse_int(".1", u32));
+  ASSERT_FALSE(tools::parse_int("1.0", u32));
+  ASSERT_FALSE(tools::parse_int("w", u32));
+  ASSERT_FALSE(tools::parse_int("1w", u32));
+  ASSERT_FALSE(tools::parse_int("1w1", u32));
 }
 
 TEST(common_string_util, split)

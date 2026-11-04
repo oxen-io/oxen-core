@@ -57,25 +57,6 @@ namespace {
             updated.history = known.history;
     }
 
-    struct by_zone {
-        using zone = epee::net_utils::zone;
-
-        template <typename T>
-        bool operator()(const T& left, const zone right) const {
-            return left.adr.get_zone() < right;
-        }
-
-        template <typename T>
-        bool operator()(const zone left, const T& right) const {
-            return left < right.adr.get_zone();
-        }
-
-        template <typename T, typename U>
-        bool operator()(const T& left, const U& right) const {
-            return left.adr.get_zone() < right.adr.get_zone();
-        }
-    };
-
     template <typename Elem, typename Archive>
     std::vector<Elem> load_peers(Archive& a, unsigned ver) {
         // at v6, we drop existing peerlists, because annoying change
@@ -103,17 +84,6 @@ namespace {
         a & size;
         for (const auto& elem : elems)
             a & elem;
-    }
-
-    template <typename T>
-    std::vector<T> do_take_zone(std::vector<T>& src, epee::net_utils::zone zone) {
-        const auto start = std::lower_bound(src.begin(), src.end(), zone, by_zone{});
-        const auto end = std::upper_bound(start, src.end(), zone, by_zone{});
-
-        std::vector<T> out{};
-        out.assign(std::make_move_iterator(start), std::make_move_iterator(end));
-        src.erase(start, end);
-        return out;
     }
 
     template <typename Container, typename T>
@@ -163,12 +133,8 @@ std::optional<peerlist_storage> peerlist_storage::open(std::istream& src, const 
             a >> out.m_types;
         }
 
-        if (src.good()) {
-            std::sort(out.m_types.white.begin(), out.m_types.white.end(), by_zone{});
-            std::sort(out.m_types.gray.begin(), out.m_types.gray.end(), by_zone{});
-            std::sort(out.m_types.anchor.begin(), out.m_types.anchor.end(), by_zone{});
+        if (src.good())
             return {std::move(out)};
-        }
     } catch (const std::exception& e) {
     }
 
@@ -227,12 +193,8 @@ bool peerlist_storage::store(const fs::path& path, const peerlist_types& other) 
     return store(dest_file, other);
 }
 
-peerlist_types peerlist_storage::take_zone(epee::net_utils::zone zone) {
-    peerlist_types out{};
-    out.white = do_take_zone(m_types.white, zone);
-    out.gray = do_take_zone(m_types.gray, zone);
-    out.anchor = do_take_zone(m_types.anchor, zone);
-    return out;
+peerlist_types peerlist_storage::take() {
+    return std::exchange(m_types, {});
 }
 
 bool peerlist_manager::init(peerlist_types&& peers, bool allow_local_ip) {
@@ -314,12 +276,12 @@ bool peerlist_manager::get_gray_peer_by_index(peerlist_entry& p, size_t i) {
     return true;
 }
 //--------------------------------------------------------------------------------------------------
-bool peerlist_manager::is_host_allowed(const epee::net_utils::network_address& address) {
+bool peerlist_manager::is_host_allowed(const oxen::quic::Address& address) {
     // never allow loopback ip
-    if (address.is_loopback())
+    if (net::is_loopback(address))
         return false;
 
-    if (!m_allow_local_ip && address.is_local())
+    if (!m_allow_local_ip && net::is_local(address))
         return false;
 
     return true;
@@ -365,19 +327,16 @@ bool peerlist_manager::get_peerlist_head(
 }
 
 bool peerlist_manager::set_peer_just_seen(
-        peerid_type peer,
-        const epee::net_utils::network_address& addr,
-        std::optional<uint64_t> history) {
-    TRY_ENTRY();
+        peerid_type peer, const oxen::quic::Address& addr, std::optional<uint64_t> history) try {
     if (!is_host_allowed(addr))
         return true;
 
     std::lock_guard lock{m_peerlist_lock};
-    peerlist_entry ple;
-    ple.adr = addr;
-    ple.id = peer;
-    ple.last_seen = time(NULL);
-    ple.history = history;
+    const peerlist_entry ple{
+            .adr = addr,
+            .id = peer,
+            .last_seen = static_cast<int64_t>(time(nullptr)),
+            .history = history};
     // This comes from the peer itself, so unlike what append_with_peer_white is given it replaces
     // the whole entry, last seen time and history included.
     auto by_addr_it = m_peers_white.get<by_addr>().find(addr);
@@ -386,11 +345,12 @@ bool peerlist_manager::set_peer_just_seen(
         return true;
     }
     return append_with_peer_white(ple);
-    CATCH_ENTRY("peerlist_manager::set_peer_just_seen()", false);
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in peerlist_manager::set_peer_just_seen(): {}", e.what());
+    return false;
 }
 //--------------------------------------------------------------------------------------------------
-bool peerlist_manager::append_with_peer_white(const peerlist_entry& ple) {
-    TRY_ENTRY();
+bool peerlist_manager::append_with_peer_white(const peerlist_entry& ple) try {
     if (!is_host_allowed(ple.adr))
         return true;
 
@@ -415,11 +375,12 @@ bool peerlist_manager::append_with_peer_white(const peerlist_entry& ple) {
         m_peers_gray.erase(by_addr_it_gr);
     }
     return true;
-    CATCH_ENTRY("peerlist_manager::append_with_peer_white()", false);
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in peerlist_manager::append_with_peer_white(): {}", e.what());
+    return false;
 }
 //--------------------------------------------------------------------------------------------------
-bool peerlist_manager::append_with_peer_gray(const peerlist_entry& ple) {
-    TRY_ENTRY();
+bool peerlist_manager::append_with_peer_gray(const peerlist_entry& ple) try {
     if (!is_host_allowed(ple.adr))
         return true;
 
@@ -444,12 +405,12 @@ bool peerlist_manager::append_with_peer_gray(const peerlist_entry& ple) {
         m_peers_gray.replace(by_addr_it_gr, new_ple);
     }
     return true;
-    CATCH_ENTRY("peerlist_manager::append_with_peer_gray()", false);
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in peerlist_manager::append_with_peer_gray(): {}", e.what());
+    return false;
 }
 //--------------------------------------------------------------------------------------------------
-bool peerlist_manager::append_with_peer_anchor(const anchor_peerlist_entry& ple) {
-    TRY_ENTRY();
-
+bool peerlist_manager::append_with_peer_anchor(const anchor_peerlist_entry& ple) try {
     std::lock_guard lock{m_peerlist_lock};
 
     auto by_addr_it_anchor = m_peers_anchor.get<by_addr>().find(ple.adr);
@@ -459,13 +420,12 @@ bool peerlist_manager::append_with_peer_anchor(const anchor_peerlist_entry& ple)
     }
 
     return true;
-
-    CATCH_ENTRY("peerlist_manager::append_with_peer_anchor()", false);
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in peerlist_manager::append_with_peer_anchor(): {}", e.what());
+    return false;
 }
 //--------------------------------------------------------------------------------------------------
-bool peerlist_manager::get_random_gray_peer(peerlist_entry& pe) {
-    TRY_ENTRY();
-
+bool peerlist_manager::get_random_gray_peer(peerlist_entry& pe) try {
     std::lock_guard lock{m_peerlist_lock};
 
     if (m_peers_gray.empty()) {
@@ -478,13 +438,12 @@ bool peerlist_manager::get_random_gray_peer(peerlist_entry& pe) {
     pe = *std::prev(by_time_index.end(), random_index + 1);
 
     return true;
-
-    CATCH_ENTRY("peerlist_manager::get_random_gray_peer()", false);
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in peerlist_manager::get_random_gray_peer(): {}", e.what());
+    return false;
 }
 //--------------------------------------------------------------------------------------------------
-bool peerlist_manager::remove_from_peer_white(const peerlist_entry& pe) {
-    TRY_ENTRY();
-
+bool peerlist_manager::remove_from_peer_white(const peerlist_entry& pe) try {
     std::lock_guard lock{m_peerlist_lock};
 
     peers_indexed::index_iterator<by_addr>::type iterator =
@@ -495,13 +454,12 @@ bool peerlist_manager::remove_from_peer_white(const peerlist_entry& pe) {
     }
 
     return true;
-
-    CATCH_ENTRY("peerlist_manager::remove_from_peer_white()", false);
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in peerlist_manager::remove_from_peer_white(): {}", e.what());
+    return false;
 }
 //--------------------------------------------------------------------------------------------------
-bool peerlist_manager::remove_from_peer_gray(const peerlist_entry& pe) {
-    TRY_ENTRY();
-
+bool peerlist_manager::remove_from_peer_gray(const peerlist_entry& pe) try {
     std::lock_guard lock{m_peerlist_lock};
 
     peers_indexed::index_iterator<by_addr>::type iterator =
@@ -512,13 +470,12 @@ bool peerlist_manager::remove_from_peer_gray(const peerlist_entry& pe) {
     }
 
     return true;
-
-    CATCH_ENTRY("peerlist_manager::remove_from_peer_gray()", false);
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in peerlist_manager::remove_from_peer_gray(): {}", e.what());
+    return false;
 }
 //--------------------------------------------------------------------------------------------------
-bool peerlist_manager::get_and_empty_anchor_peerlist(std::vector<anchor_peerlist_entry>& apl) {
-    TRY_ENTRY();
-
+bool peerlist_manager::get_and_empty_anchor_peerlist(std::vector<anchor_peerlist_entry>& apl) try {
     std::lock_guard lock{m_peerlist_lock};
 
     auto begin = m_peers_anchor.get<by_time>().begin();
@@ -529,13 +486,13 @@ bool peerlist_manager::get_and_empty_anchor_peerlist(std::vector<anchor_peerlist
     m_peers_anchor.get<by_time>().clear();
 
     return true;
-
-    CATCH_ENTRY("peerlist_manager::get_and_empty_anchor_peerlist()", false);
+} catch (const std::exception& e) {
+    log::error(
+            logcat, "Exception in peerlist_manager::get_and_empty_anchor_peerlist(): {}", e.what());
+    return false;
 }
 //--------------------------------------------------------------------------------------------------
-bool peerlist_manager::remove_from_peer_anchor(const epee::net_utils::network_address& addr) {
-    TRY_ENTRY();
-
+bool peerlist_manager::remove_from_peer_anchor(const oxen::quic::Address& addr) try {
     std::lock_guard lock{m_peerlist_lock};
 
     anchor_peers_indexed::index_iterator<by_addr>::type iterator =
@@ -546,8 +503,9 @@ bool peerlist_manager::remove_from_peer_anchor(const epee::net_utils::network_ad
     }
 
     return true;
-
-    CATCH_ENTRY("peerlist_manager::remove_from_peer_anchor()", false);
+} catch (const std::exception& e) {
+    log::error(logcat, "Exception in peerlist_manager::remove_from_peer_anchor(): {}", e.what());
+    return false;
 }
 
 }  // namespace nodetool

@@ -10,8 +10,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "epee/int-util.h"
 #include "hash-ops.h"
+#include "int-util.h"
 
 static void local_abort(const char* msg) {
     fprintf(stderr, "%s\n", msg);

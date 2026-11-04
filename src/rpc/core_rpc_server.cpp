@@ -48,6 +48,7 @@
 #include "bls/bls_crypto.h"
 #include "common/command_line.h"
 #include "common/guts.h"
+#include "common/ipv4.h"
 #include "common/json_binary_proxy.h"
 #include "common/oxen.h"
 #include "common/random.h"
@@ -72,8 +73,6 @@
 #include "cryptonote_core/service_node_rules.h"
 #include "cryptonote_core/tx_sanity_check.h"
 #include "cryptonote_core/uptime_proof.h"
-#include "epee/net/network_throttle.hpp"
-#include "epee/string_tools.h"
 #include "l2_tracker/events.h"
 #include "l2_tracker/l2_tracker_proxy.h"
 #include "logging/oxen_logger.h"
@@ -85,6 +84,7 @@
 #include "rpc/common/rpc_args.h"
 #include "rpc/common/rpc_command.h"
 #include "serialization/json_archive.h"
+#include "serialization/levin_kv/levin_kv.h"
 #include "version.h"
 
 namespace cryptonote::rpc {
@@ -121,7 +121,7 @@ namespace {
         cmd->is_public = std::is_base_of_v<PUBLIC, RPC>;
         cmd->is_binary = true;
 
-        // Legacy binary request; these still use epee serialization, and should be considered
+        // Legacy binary request; these use levin_kv serialization, and should be considered
         // deprecated (tentatively to be removed in Oxen 11).
         cmd->invoke = [](rpc_request&& request,
                          core_rpc_server& server,
@@ -132,16 +132,14 @@ namespace {
             if (auto body = request.body_view())
                 data = *body;
             else
-                throw oxen::traced<std::runtime_error>{
+                throw std::runtime_error{
                         "Internal error: can't load binary a RPC command with non-string body"};
-            if (!epee::serialization::load_t_from_binary(req, data))
+            if (!levin_kv::decode(data, req))
                 throw parse_error{"Failed to parse binary data parameters"};
 
             auto res = server.invoke(std::move(req), std::move(request.context));
 
-            std::string response;
-            epee::serialization::store_t_to_binary(res, response);
-            respond(std::move(response));
+            respond(levin_kv::encode(res));
         };
 
         for (const auto& name : RPC::names())
@@ -176,10 +174,7 @@ void core_rpc_server::init_options(
     cryptonote::rpc_args::init_options(desc, hidden);
 }
 //------------------------------------------------------------------------------------------------------------------------------
-core_rpc_server::core_rpc_server(
-        core& cr,
-        nodetool::node_server<cryptonote::t_cryptonote_protocol_handler<cryptonote::core>>& p2p) :
-        m_core(cr), m_p2p(p2p) {}
+core_rpc_server::core_rpc_server(core& cr, nodetool::node_server& p2p) : m_core(cr), m_p2p(p2p) {}
 //------------------------------------------------------------------------------------------------------------------------------
 bool core_rpc_server::check_core_ready() {
     return m_p2p.get_payload_object().is_synchronized();
@@ -315,8 +310,8 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
         return;
     }
 
-    info.response["block_size_limit"] = bs.get_current_cumulative_block_weight_limit();
-    info.response["block_size_median"] = bs.get_current_cumulative_block_weight_median();
+    info.response["block_size_limit"] = BLOCK_WEIGHT_LIMIT;
+    info.response["block_size_median"] = BLOCK_GRANTED_FULL_REWARD_ZONE;
 
     auto ons_counts = bs.name_system_db().get_mapping_counts(height);
     info.response["ons_counts"] = std::array{
@@ -355,22 +350,12 @@ void core_rpc_server::invoke(GET_INFO& info, rpc_context context) {
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_NET_STATS& get_net_stats, rpc_context) {
     get_net_stats.response["start_time"] = m_core.get_start_time();
-    {
-        std::lock_guard lock{
-                epee::net_utils::network_throttle_manager::m_lock_get_global_throttle_in};
-        auto [packets, bytes] =
-                epee::net_utils::network_throttle_manager::get_global_throttle_in().get_stats();
-        get_net_stats.response["total_packets_in"] = packets;
-        get_net_stats.response["total_bytes_in"] = bytes;
-    }
-    {
-        std::lock_guard lock{
-                epee::net_utils::network_throttle_manager::m_lock_get_global_throttle_out};
-        auto [packets, bytes] =
-                epee::net_utils::network_throttle_manager::get_global_throttle_out().get_stats();
-        get_net_stats.response["total_packets_out"] = packets;
-        get_net_stats.response["total_bytes_out"] = bytes;
-    }
+    // "Packets" are levin frames
+    const auto traffic = m_p2p.get_traffic();
+    get_net_stats.response["total_packets_in"] = traffic.frames_in;
+    get_net_stats.response["total_bytes_in"] = traffic.bytes_in;
+    get_net_stats.response["total_packets_out"] = traffic.frames_out;
+    get_net_stats.response["total_bytes_out"] = traffic.bytes_out;
     get_net_stats.response["status"] = STATUS_OK;
 }
 namespace {
@@ -460,27 +445,6 @@ GET_BLOCKS_BIN::response core_rpc_server::invoke(GET_BLOCKS_BIN::request&& req, 
     }
 
     log::debug(logcat, "on_get_blocks: {} blocks, {} txes, size {}", bs.size(), ntxes, size);
-    res.status = STATUS_OK;
-    return res;
-}
-GET_ALT_BLOCKS_HASHES_BIN::response core_rpc_server::invoke(
-        GET_ALT_BLOCKS_HASHES_BIN::request&&, rpc_context) {
-    GET_ALT_BLOCKS_HASHES_BIN::response res{};
-
-    std::vector<block> blks;
-
-    if (!m_core.blockchain.get_alternative_blocks(blks)) {
-        res.status = "Failed";
-        return res;
-    }
-
-    res.blks_hashes.reserve(blks.size());
-
-    for (auto const& blk : blks) {
-        res.blks_hashes.push_back(tools::hex_guts(get_block_hash(blk)));
-    }
-
-    log::debug(logcat, "on_get_alt_blocks_hashes: {} blocks ", blks.size());
     res.status = STATUS_OK;
     return res;
 }
@@ -610,24 +574,6 @@ void core_rpc_server::invoke(GET_OUTPUTS& get_outputs, rpc_context context) {
     }
 
     get_outputs.response["status"] = STATUS_OK;
-}
-//------------------------------------------------------------------------------------------------------------------------------
-GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::response core_rpc_server::invoke(
-        GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::request&& req, rpc_context) {
-    GET_TX_GLOBAL_OUTPUTS_INDEXES_BIN::response res{};
-
-    bool r = m_core.blockchain.get_tx_outputs_gindexs(req.txid, res.o_indexes);
-    if (!r) {
-        // A transaction still known to exist but not found is one from before the history kept
-        if (const auto start = history_start(); start && m_core.blockchain.db().tx_exists(req.txid))
-            res.status = history_not_kept(start).message;
-        else
-            res.status = "Failed";
-        return res;
-    }
-    res.status = STATUS_OK;
-    log::debug(logcat, "GET_TX_GLOBAL_OUTPUTS_INDEXES: [{}]", res.o_indexes.size());
-    return res;
 }
 
 namespace {
@@ -992,14 +938,12 @@ void core_rpc_server::invoke(GET_TRANSACTIONS& get, rpc_context) {
             auto split_mempool_tx = [](std::pair<const crypto::hash, tx_info>& info) {
                 cryptonote::transaction tx;
                 if (!cryptonote::parse_and_validate_tx_from_blob(info.second.tx_blob, tx))
-                    throw oxen::traced<std::runtime_error>{
-                            "Unable to parse and validate tx from blob"};
+                    throw std::runtime_error{"Unable to parse and validate tx from blob"};
                 serialization::binary_string_archiver ba;
                 try {
                     tx.serialize_base(ba);
                 } catch (const std::exception& e) {
-                    throw oxen::traced<std::runtime_error>{
-                            "Failed to serialize transaction base: "s + e.what()};
+                    throw std::runtime_error{"Failed to serialize transaction base: "s + e.what()};
                 }
                 std::string pruned = ba.str();
                 std::string pruned2{info.second.tx_blob, pruned.size()};
@@ -1320,8 +1264,7 @@ void core_rpc_server::invoke(SUBMIT_TRANSACTION& tx, rpc_context) {
     // Why is is the RPC handler's responsibility to tell the p2p protocol to relay a transaction?!
     NOTIFY_NEW_TRANSACTIONS::request r{};
     r.txs.push_back(std::move(tx.request.tx));
-    cryptonote_connection_context fake_context{};
-    m_core.get_protocol()->relay_transactions(r, fake_context);
+    m_core.get_protocol()->relay_transactions(r, std::nullopt);
 
     tx.response["status"] = STATUS_OK;
 }
@@ -1434,7 +1377,7 @@ void core_rpc_server::invoke(SAVE_BC& save_bc, rpc_context) {
 static nlohmann::json json_peer_info(const nodetool::peerlist_entry& peer) {
     nlohmann::json p{
             {"id", peer.id},
-            {"host", peer.adr.host_str()},
+            {"host", peer.adr.host()},
             {"port", peer.adr.port()},
             {"last_seen", peer.last_seen}};
     if (peer.history)
@@ -1445,10 +1388,7 @@ static nlohmann::json json_peer_info(const nodetool::peerlist_entry& peer) {
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_PEER_LIST& pl, rpc_context) {
     std::vector<nodetool::peerlist_entry> white_list, gray_list;
-    if (pl.request.public_only)
-        m_p2p.get_public_peerlist(gray_list, white_list);
-    else
-        m_p2p.get_peerlist(gray_list, white_list);
+    m_p2p.get_peerlist(gray_list, white_list);
 
     std::transform(
             white_list.begin(),
@@ -1619,7 +1559,6 @@ static void fill_block_header_response(
     if (fill_pow_hash)
         response_hex["pow_hash"] = get_block_longhash_w_blockchain(
                 core.get_nettype(), &core.blockchain, blk, height, 0);
-    response["long_term_weight"] = db.get_block_long_term_weight(height);
     if (blk.major_version < feature::ETH_BLS)
         response_hex["service_node_winner"] =
                 cryptonote::get_service_node_winner_from_tx_extra(blk.miner_tx.value().extra);
@@ -1940,16 +1879,11 @@ void core_rpc_server::invoke(GET_BANS& get_bans, rpc_context) {
             get_bans.response["bans"].push_back(b);
         }
     }
-    std::map<epee::net_utils::ipv4_network_subnet, time_t> blocked_subnets =
-            m_p2p.get_blocked_subnets();
-    for (std::map<epee::net_utils::ipv4_network_subnet, time_t>::const_iterator i =
-                 blocked_subnets.begin();
-         i != blocked_subnets.end();
-         ++i) {
-        if (i->second > now) {
+    for (const auto& [subnet, expiry] : m_p2p.get_blocked_subnets()) {
+        if (expiry > now) {
             ban b;
-            b.host = i->first.host_str();
-            b.seconds = i->second - now;
+            b.host = subnet.to_string();
+            b.seconds = expiry - now;
             get_bans.response["bans"].push_back(b);
         }
     }
@@ -1961,10 +1895,9 @@ void core_rpc_server::invoke(BANNED& banned, rpc_context) {
     auto na_parsed = net::get_network_address(banned.request.address, 0);
     if (!na_parsed)
         throw rpc_error{ERROR_WRONG_PARAM, "Unsupported host type"};
-    epee::net_utils::network_address na = std::move(*na_parsed);
 
     time_t seconds;
-    if (m_p2p.is_host_blocked(na, &seconds)) {
+    if (m_p2p.is_host_blocked(*na_parsed, &seconds)) {
         banned.response["banned"] = true;
         banned.response["seconds"] = seconds;
     } else {
@@ -1976,9 +1909,8 @@ void core_rpc_server::invoke(BANNED& banned, rpc_context) {
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(SET_BANS& set_bans, rpc_context) {
-    epee::net_utils::network_address na;
     // try subnet first
-    auto ns_parsed = net::get_ipv4_subnet_address(set_bans.request.host);
+    auto ns_parsed = tools::parse_ipv4_range(set_bans.request.host, false);
     if (ns_parsed) {
         if (set_bans.request.ban)
             m_p2p.block_subnet(*ns_parsed, set_bans.request.seconds);
@@ -1992,11 +1924,10 @@ void core_rpc_server::invoke(SET_BANS& set_bans, rpc_context) {
     auto na_parsed = net::get_network_address(set_bans.request.host, 0);
     if (!na_parsed)
         throw rpc_error{ERROR_WRONG_PARAM, "Unsupported host/subnet type"};
-    na = std::move(*na_parsed);
     if (set_bans.request.ban)
-        m_p2p.block_host(na, set_bans.request.seconds);
+        m_p2p.block_host(*na_parsed, set_bans.request.seconds);
     else
-        m_p2p.unblock_host(na);
+        m_p2p.unblock_host(*na_parsed);
 
     set_bans.response["status"] = STATUS_OK;
 }
@@ -2092,12 +2023,12 @@ void core_rpc_server::invoke(GET_SERVICE_NODE_STATUS& sns, rpc_context) {
                 top_height,
                 nullptr);
     else {
-        sns.response["service_node_state"] = json{
-                {"public_ip", epee::string_tools::get_ip_string_from_int32(m_core.sn_public_ip())},
-                {"storage_port", m_core.storage_https_port()},
-                {"storage_lmq_port", m_core.storage_omq_port()},
-                {"quorumnet_port", m_core.quorumnet_port()},
-                {"service_node_version", OXEN_VERSION}};
+        sns.response["service_node_state"] =
+                json{{"public_ip", m_core.sn_public_ip().to_string()},
+                     {"storage_port", m_core.storage_https_port()},
+                     {"storage_lmq_port", m_core.storage_omq_port()},
+                     {"quorumnet_port", m_core.quorumnet_port()},
+                     {"service_node_version", OXEN_VERSION}};
         auto rhex = sns.response_hex["service_node_state"];
         rhex["service_node_pubkey"] = keys.pub;
         rhex["pubkey_ed25519"] = keys.pub_ed25519;
@@ -2132,8 +2063,7 @@ void core_rpc_server::invoke(GET_COINBASE_TX_SUM& get_coinbase_tx_sum, rpc_conte
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_FEE_ESTIMATE& get_fee_estimate, rpc_context) {
-    auto fees =
-            m_core.blockchain.get_dynamic_base_fee_estimate(get_fee_estimate.request.grace_blocks);
+    auto fees = m_core.blockchain.get_current_base_fee();
     get_fee_estimate.response["fee_per_byte"] = fees.first;
     get_fee_estimate.response["fee_per_output"] = fees.second;
     get_fee_estimate.response["blink_fee_fixed"] = oxen::BLINK_BURN_FIXED;
@@ -2186,26 +2116,28 @@ void core_rpc_server::invoke(GET_ALTERNATE_CHAINS& get_alternate_chains, rpc_con
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(GET_LIMIT& limit, rpc_context) {
     limit.response = {
-            {"limit_down", epee::net_utils::connection_basic::get_rate_down_limit()},
-            {"limit_up", epee::net_utils::connection_basic::get_rate_up_limit()},
+            {"limit_down", m_p2p.get_rate_down_limit()},
+            {"limit_up", m_p2p.get_rate_up_limit()},
             {"status", STATUS_OK}};
 }
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(SET_LIMIT& limit, rpc_context) {
     // -1 = reset to default
     //  0 = do not modify
-    if (limit.request.limit_down != 0)
-        epee::net_utils::connection_basic::set_rate_down_limit(
-                limit.request.limit_down == -1 ? p2p::DEFAULT_LIMIT_RATE_DOWN
-                                               : limit.request.limit_down);
-
-    if (limit.request.limit_up != 0)
-        epee::net_utils::connection_basic::set_rate_up_limit(
-                limit.request.limit_up == -1 ? p2p::DEFAULT_LIMIT_RATE_UP : limit.request.limit_up);
+    auto new_limit = [](int64_t requested, uint64_t current, uint64_t dflt) -> uint64_t {
+        return requested == 0 ? current : requested == -1 ? dflt : requested;
+    };
+    m_p2p.set_rate_limits(
+            new_limit(
+                    limit.request.limit_up, m_p2p.get_rate_up_limit(), p2p::DEFAULT_LIMIT_RATE_UP),
+            new_limit(
+                    limit.request.limit_down,
+                    m_p2p.get_rate_down_limit(),
+                    p2p::DEFAULT_LIMIT_RATE_DOWN));
 
     limit.response = {
-            {"limit_down", epee::net_utils::connection_basic::get_rate_down_limit()},
-            {"limit_up", epee::net_utils::connection_basic::get_rate_up_limit()},
+            {"limit_down", m_p2p.get_rate_down_limit()},
+            {"limit_up", m_p2p.get_rate_up_limit()},
             {"status", STATUS_OK}};
 }
 //------------------------------------------------------------------------------------------------------------------------------
@@ -2242,10 +2174,9 @@ void core_rpc_server::invoke(RELAY_TX& relay_tx, rpc_context) {
         }
 
         if (std::string txblob; m_core.mempool.get_transaction(txid, txblob)) {
-            cryptonote_connection_context fake_context{};
             NOTIFY_NEW_TRANSACTIONS::request r{};
             r.txs.push_back(txblob);
-            m_core.get_protocol()->relay_transactions(r, fake_context);
+            m_core.get_protocol()->relay_transactions(r, std::nullopt);
             // TODO: make sure that tx has reached other nodes here, probably wait to receive
             // reflections from other nodes
         } else {
@@ -2350,10 +2281,10 @@ namespace detail {
                     d.cached_to -= 10;
                     d.cached_top_hash = hash10;
                     d.cached_m10_hash = crypto::null<crypto::hash>;
-                    CHECK_AND_ASSERT_MES(
-                            d.cached_distribution.size() >= 10,
-                            std::nullopt,
-                            "Cached distribution size does not match cached bounds");
+                    if (d.cached_distribution.size() < 10) {
+                        log::error(logcat, "Cached distribution size does not match cached bounds");
+                        return std::nullopt;
+                    }
                     for (int p = 0; p < 10; ++p)
                         d.cached_distribution.pop_back();
                     can_extend = true;
@@ -2653,7 +2584,7 @@ void core_rpc_server::invoke(
     auto& amounts = get_service_node_registration_cmd.request.contributor_amounts;
 
     if (addresses.size() != amounts.size()) {
-        throw oxen::traced<std::runtime_error>("Mismatch in sizes of addresses and amounts");
+        throw std::runtime_error("Mismatch in sizes of addresses and amounts");
     }
 
     for (size_t i = 0; i < addresses.size(); ++i) {
@@ -3060,7 +2991,7 @@ void core_rpc_server::fill_sn_response_entry(
                     "version_tag",
                     OXEN_VERSION_TAG,
                     "public_ip",
-                    epee::string_tools::get_ip_string_from_int32(m_core.sn_public_ip()),
+                    m_core.sn_public_ip().to_string(),
                     "storage_port",
                     m_core.storage_https_port(),
                     "storage_lmq_port",
@@ -3076,7 +3007,7 @@ void core_rpc_server::fill_sn_response_entry(
                     m_core.get_service_keys().pub_x25519);
             set_if_requested(reqed, binary, "pubkey_bls", m_core.get_service_keys().pub_bls);
         } else {
-            if (proof.proof->public_ip != 0 || oxen10_compat_fields)
+            if (proof.proof->public_ip != oxen::quic::ipv4{} || oxen10_compat_fields)
                 set_if_requested(
                         reqed,
                         entry,
@@ -3089,7 +3020,7 @@ void core_rpc_server::fill_sn_response_entry(
                         "session_router_version",
                         proof.proof->session_router_version,
                         "public_ip",
-                        epee::string_tools::get_ip_string_from_int32(proof.proof->public_ip),
+                        proof.proof->public_ip.to_string(),
                         "storage_port",
                         proof.proof->storage_https_port,
                         "storage_lmq_port",

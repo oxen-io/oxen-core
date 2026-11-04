@@ -261,23 +261,23 @@ struct Wallet2CallbackImpl : public tools::i_wallet2_callback {
     }
 
     EXPORT
-    std::optional<epee::wipeable_string> on_device_pin_request() override {
+    std::optional<crypto::cleared_string> on_device_pin_request() override {
         if (m_listener) {
             auto pin = m_listener->onDevicePinRequest();
             if (pin) {
-                return std::make_optional(epee::wipeable_string(pin->data(), pin->size()));
+                return std::make_optional(crypto::cleared_string(pin->data(), pin->size()));
             }
         }
         return std::nullopt;
     }
 
     EXPORT
-    std::optional<epee::wipeable_string> on_device_passphrase_request(bool& on_device) override {
+    std::optional<crypto::cleared_string> on_device_passphrase_request(bool& on_device) override {
         if (m_listener) {
             auto passphrase = m_listener->onDevicePassphraseRequest(on_device);
             if (passphrase) {
                 return std::make_optional(
-                        epee::wipeable_string(passphrase->data(), passphrase->size()));
+                        crypto::cleared_string(passphrase->data(), passphrase->size()));
             }
         } else {
             on_device = true;
@@ -357,7 +357,7 @@ bool Wallet::keyValid(
     }
 
     crypto::secret_key key;
-    if (!tools::try_load_from_hex_guts(secret_key_string, unwrap(unwrap(key)))) {
+    if (!tools::try_load_from_hex_guts(secret_key_string, key)) {
         error = "Failed to parse key";
         return false;
     }
@@ -403,7 +403,6 @@ void Wallet::init(
         const char* default_log_base_name,
         const std::string& log_path,
         bool console) {
-    epee::string_tools::set_module_name_and_folder(argv0);
     oxen::logging::init(log_path.empty() ? default_log_base_name : log_path, "*=info", console);
 }
 
@@ -640,7 +639,7 @@ bool WalletImpl::recoverFromKeysWithPassword(
     // parse optional spend key
     crypto::secret_key spendkey;
     bool has_spendkey = !spendkey_string.empty();
-    if (has_spendkey && !tools::try_load_from_hex_guts(spendkey_string, unwrap(unwrap(spendkey)))) {
+    if (has_spendkey && !tools::try_load_from_hex_guts(spendkey_string, spendkey)) {
         setStatusError("failed to parse secret spend key");
         return false;
     }
@@ -657,7 +656,7 @@ bool WalletImpl::recoverFromKeysWithPassword(
         }
     }
     if (has_viewkey) {
-        if (!tools::try_load_from_hex_guts(viewkey_string, unwrap(unwrap(viewkey)))) {
+        if (!tools::try_load_from_hex_guts(viewkey_string, viewkey)) {
             setStatusError("failed to parse secret view key");
             return false;
         }
@@ -833,7 +832,7 @@ bool WalletImpl::close(bool store) {
 
 EXPORT
 std::string WalletImpl::seed() const {
-    epee::wipeable_string seed;
+    crypto::cleared_string seed;
     if (m_wallet_ptr)
         wallet()->get_seed(seed);
     return std::string(seed.data(), seed.size());  // TODO
@@ -877,7 +876,8 @@ EXPORT
 bool WalletImpl::setDevicePin(const std::string& pin) {
     clearStatus();
     try {
-        wallet()->get_account().get_device().set_pin(epee::wipeable_string(pin.data(), pin.size()));
+        wallet()->get_account().get_device().set_pin(
+                crypto::cleared_string(pin.data(), pin.size()));
     } catch (const std::exception& e) {
         setStatusError(e.what());
     }
@@ -889,7 +889,7 @@ bool WalletImpl::setDevicePassphrase(const std::string& passphrase) {
     clearStatus();
     try {
         wallet()->get_account().get_device().set_passphrase(
-                epee::wipeable_string(passphrase.data(), passphrase.size()));
+                crypto::cleared_string(passphrase.data(), passphrase.size()));
     } catch (const std::exception& e) {
         setStatusError(e.what());
     }
@@ -979,50 +979,12 @@ bool WalletImpl::init(
         uint64_t upper_transaction_size_limit,
         const std::string& daemon_username,
         const std::string& daemon_password,
-        bool use_ssl ENABLE_IF_LIGHT_WALLET(, bool lightWallet)) {
+        bool use_ssl) {
     clearStatus();
-#ifdef ENABLE_LIGHT_WALLET
-    wallet()->set_light_wallet(lightWallet);
-#endif
     if (daemon_username != "")
         m_daemon_login.emplace(daemon_username, daemon_password);
     return doInit(daemon_address, upper_transaction_size_limit, use_ssl);
 }
-
-#ifdef ENABLE_LIGHT_WALLET
-EXPORT
-bool WalletImpl::lightWalletLogin(bool& isNewWallet) const {
-    return wallet()->light_wallet_login(isNewWallet);
-}
-
-EXPORT
-bool WalletImpl::lightWalletImportWalletRequest(
-        std::string& payment_id,
-        uint64_t& fee,
-        bool& new_request,
-        bool& request_fulfilled,
-        std::string& payment_address,
-        std::string& status) {
-    try {
-        tools::light_rpc::IMPORT_WALLET_REQUEST::response response{};
-        if (!wallet()->light_wallet_import_wallet_request(response)) {
-            setStatusError("Failed to send import wallet request");
-            return false;
-        }
-        fee = response.import_fee;
-        payment_id = response.payment_id;
-        new_request = response.new_request;
-        request_fulfilled = response.request_fulfilled;
-        payment_address = response.payment_address;
-        status = response.status;
-    } catch (const std::exception& e) {
-        log::error(logcat, "Error sending import wallet request: {}", e.what());
-        setStatusError(e.what());
-        return false;
-    }
-    return true;
-}
-#endif
 
 EXPORT
 void WalletImpl::setRefreshFromBlockHeight(uint64_t refresh_from_block_height) {
@@ -1089,13 +1051,7 @@ std::vector<Wallet::stake_info>* WalletImpl::listCurrentStakes() const {
 EXPORT
 uint64_t WalletImpl::blockChainHeight() const {
     // This call is thread-safe
-    auto& w = m_wallet_ptr;
-#ifdef ENABLE_LIGHT_WALLET
-    if (w->light_wallet()) {
-        return w->get_light_wallet_scanned_block_height();
-    }
-#endif
-    return w->get_blockchain_current_height();
+    return m_wallet_ptr->get_blockchain_current_height();
 }
 EXPORT
 uint64_t WalletImpl::approximateBlockChainHeight() const {
@@ -1113,11 +1069,6 @@ uint64_t WalletImpl::daemonBlockChainHeight() const {
     // auto w = wallet();
     auto& w = m_wallet_ptr;
 
-#ifdef ENABLE_LIGHT_WALLET
-    if (w->light_wallet()) {
-        return w->get_light_wallet_scanned_block_height();
-    }
-#endif
     if (!m_is_connected)
         return 0;
     std::string err;
@@ -1138,11 +1089,6 @@ uint64_t WalletImpl::daemonBlockChainTargetHeight() const {
     // auto w = wallet();
     auto& w = m_wallet_ptr;
 
-#ifdef ENABLE_LIGHT_WALLET
-    if (w->light_wallet()) {
-        return w->get_light_wallet_blockchain_height();
-    }
-#endif
     if (!m_is_connected)
         return 0;
     std::string err;
@@ -1395,7 +1341,7 @@ std::string WalletImpl::makeMultisig(const std::vector<std::string>& info, uint3
         if (w->multisig())
             throw std::runtime_error("Wallet is already multisig");
 
-        return w->make_multisig(epee::wipeable_string(m_password), info, threshold);
+        return w->make_multisig(crypto::cleared_string(m_password), info, threshold);
     } catch (const std::exception& e) {
         log::error(logcat, "Error on making multisig wallet: {}", e.what());
         setStatusError(std::string("Failed to make multisig: ") + e.what());
@@ -1411,7 +1357,7 @@ std::string WalletImpl::exchangeMultisigKeys(const std::vector<std::string>& inf
         auto w = wallet();
         checkMultisigWalletNotReady(w);
 
-        return w->exchange_multisig_keys(epee::wipeable_string(m_password), info);
+        return w->exchange_multisig_keys(crypto::cleared_string(m_password), info);
     } catch (const std::exception& e) {
         log::error(logcat, "Error on exchanging multisig keys: {}", e.what());
         setStatusError(std::string("Failed to make multisig: ") + e.what());
@@ -1427,7 +1373,7 @@ bool WalletImpl::finalizeMultisig(const std::vector<std::string>& extraMultisigI
         auto w = wallet();
         checkMultisigWalletNotReady(w);
 
-        if (w->finalize_multisig(epee::wipeable_string(m_password), extraMultisigInfo)) {
+        if (w->finalize_multisig(crypto::cleared_string(m_password), extraMultisigInfo)) {
             return true;
         }
 
@@ -2180,12 +2126,7 @@ Wallet::ConnectionStatus WalletImpl::connected() const {
     m_is_connected = w->check_connection(&version, NULL, DEFAULT_CONNECTION_TIMEOUT_MILLIS);
     if (!m_is_connected)
         return Wallet::ConnectionStatus_Disconnected;
-    if (
-#ifdef ENABLE_LIGHT_WALLET
-            // Version check is not implemented in light wallets nodes/wallets
-            !w->light_wallet() &&
-#endif
-            version.first != rpc::VERSION.first)
+    if (version.first != rpc::VERSION.first)
         return Wallet::ConnectionStatus_WrongVersion;
     return Wallet::ConnectionStatus_Connected;
 }
@@ -2272,11 +2213,7 @@ void WalletImpl::doRefresh() {
 
             // Syncing daemon and refreshing wallet simultaneously is very resource intensive.
             // Disable refresh if wallet is disconnected or daemon isn't synced.
-            if (
-#ifdef ENABLE_LIGHT_WALLET
-                    w->light_wallet() ||
-#endif
-                    daemonSynced()) {
+            if (daemonSynced()) {
                 if (rescan)
                     w->rescan_blockchain(false);
                 w->refresh(trustedDaemon());
@@ -2492,11 +2429,11 @@ bool WalletImpl::blackballOutputs(const std::vector<std::string>& outputs, bool 
 EXPORT
 bool WalletImpl::blackballOutput(const std::string& amount, const std::string& offset) {
     uint64_t raw_amount, raw_offset;
-    if (!epee::string_tools::get_xtype_from_string(raw_amount, amount)) {
+    if (!tools::parse_int(amount, raw_amount)) {
         setStatusError("Failed to parse output amount");
         return false;
     }
-    if (!epee::string_tools::get_xtype_from_string(raw_offset, offset)) {
+    if (!tools::parse_int(offset, raw_offset)) {
         setStatusError("Failed to parse output offset");
         return false;
     }
@@ -2511,11 +2448,11 @@ bool WalletImpl::blackballOutput(const std::string& amount, const std::string& o
 EXPORT
 bool WalletImpl::unblackballOutput(const std::string& amount, const std::string& offset) {
     uint64_t raw_amount, raw_offset;
-    if (!epee::string_tools::get_xtype_from_string(raw_amount, amount)) {
+    if (!tools::parse_int(amount, raw_amount)) {
         setStatusError("Failed to parse output amount");
         return false;
     }
-    if (!epee::string_tools::get_xtype_from_string(raw_offset, offset)) {
+    if (!tools::parse_int(offset, raw_offset)) {
         setStatusError("Failed to parse output offset");
         return false;
     }

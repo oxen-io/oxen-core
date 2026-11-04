@@ -397,7 +397,7 @@ struct WalletListener {
  * @brief Interface for wallet operations.
  */
 struct Wallet {
-    enum Device { Device_Software = 0, Device_Ledger = 1, Device_Trezor = 2 };
+    enum Device { Device_Software = 0, Device_Ledger = 1 };
 
     enum Status { Status_Ok, Status_Error, Status_Critical };
 
@@ -506,7 +506,6 @@ struct Wallet {
      * \param upper_transaction_size_limit
      * \param daemon_username
      * \param daemon_password
-     * \param lightWallet - start wallet in light mode, connect to a openmonero compatible server.
      * \return  - true on success
      */
     virtual bool init(
@@ -514,12 +513,7 @@ struct Wallet {
             uint64_t upper_transaction_size_limit = 0,
             const std::string& daemon_username = "",
             const std::string& daemon_password = "",
-            bool use_ssl = false
-#ifdef ENABLE_LIGHT_WALLET
-            ,
-            bool lightWallet = false
-#endif
-            ) = 0;
+            bool use_ssl = false) = 0;
 
     /*!
      * \brief createWatchOnly - Creates a watch only wallet
@@ -1119,20 +1113,6 @@ struct Wallet {
 
     //! secondary key reuse mitigation
     virtual void keyReuseMitigation2(bool mitigation) = 0;
-
-#ifdef ENABLE_LIGHT_WALLET
-    //! Light wallet authenticate and login
-    virtual bool lightWalletLogin(bool& isNewWallet) const = 0;
-
-    //! Initiates a light wallet import wallet request
-    virtual bool lightWalletImportWalletRequest(
-            std::string& payment_id,
-            uint64_t& fee,
-            bool& new_request,
-            bool& request_fulfilled,
-            std::string& payment_address,
-            std::string& status) = 0;
-#endif
 
     //! locks/unlocks the keys file; returns true on success
     virtual bool lockKeysFile() = 0;

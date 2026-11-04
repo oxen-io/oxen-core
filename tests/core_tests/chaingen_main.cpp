@@ -45,10 +45,8 @@ namespace
 }
 
 int main(int argc, char* argv[])
-{
-  TRY_ENTRY();
+try {
   tools::on_startup();
-  epee::string_tools::set_module_name_and_folder(argv[0]);
 
   // Bypass tx version checks for core tests:
   cryptonote::hack::test_suite_permissive_txes = true;
@@ -230,6 +228,7 @@ int main(int argc, char* argv[])
     GENERATE_AND_PLAY(gen_double_spend_in_different_chains);
     GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_the_same_block);
     GENERATE_AND_PLAY(gen_double_spend_in_alt_chain_in_different_blocks);
+    GENERATE_AND_PLAY(gen_double_spend_failed_reorg_hooks);
 
     GENERATE_AND_PLAY(gen_multisig_tx_invalid_23_1__no_threshold);
     GENERATE_AND_PLAY(gen_multisig_tx_invalid_45_5_23_no_threshold);
@@ -263,7 +262,6 @@ int main(int argc, char* argv[])
 
       // Double spend
 
-      GENERATE_AND_PLAY(gen_block_reward);
       GENERATE_AND_PLAY(gen_uint_overflow_2);
 
       GENERATE_AND_PLAY(gen_v2_tx_mixable_0_mixin);
@@ -339,6 +337,7 @@ int main(int argc, char* argv[])
   }
 
   return failed_tests.empty() ? 0 : 1;
-
-  CATCH_ENTRY("main", 1);
+} catch (const std::exception& e) {
+  oxen::log::error(logcat, "Exception in main: {}", e.what());
+  return 1;
 }

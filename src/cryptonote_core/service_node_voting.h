@@ -37,6 +37,7 @@
 #include "common/periodic_task.h"
 #include "cryptonote_basic/cryptonote_basic.h"
 #include "cryptonote_basic/tx_extra.h"
+#include "serialization/levin_kv/fwd.h"
 
 namespace cryptonote {
 struct tx_verification_context;
@@ -82,7 +83,7 @@ struct quorum_vote_t {
         checkpoint_vote checkpoint;
     };
 
-    KV_MAP_SERIALIZABLE
+    void serialize(levin_kv::archive& ar);
 
     // TODO(oxen): idk exactly if I want to implement this, but need for core tests to compile. Not
     // sure I care about serializing for core tests at all.

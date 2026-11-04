@@ -31,13 +31,12 @@
 
 #include <sodium/crypto_generichash.h>
 
-#include "common/exception.h"
 #include "crypto/crypto.h"
+#include "crypto/int-util.h"
 #include "cryptonote_basic/account.h"
 #include "cryptonote_basic/subaddress_index.h"
 #include "cryptonote_config.h"
 #include "cryptonote_core/cryptonote_tx_utils.h"
-#include "epee/int-util.h"
 #include "ringct/rctOps.h"
 
 namespace hw::core {
@@ -89,7 +88,7 @@ bool device_default::generate_chacha_key(
         const cryptonote::account_keys& keys, crypto::chacha_key& key, uint64_t kdf_rounds) {
     const crypto::secret_key& view_key = keys.m_view_secret_key;
     const crypto::secret_key& spend_key = keys.m_spend_secret_key;
-    epee::mlocked<tools::scrubbed_arr<char, sizeof(view_key) + sizeof(spend_key) + 1>> data;
+    crypto::cleared_array<char, sizeof(view_key) + sizeof(spend_key) + 1> data;
     memcpy(data.data(), &view_key, sizeof(view_key));
     memcpy(data.data() + sizeof(view_key), &spend_key, sizeof(spend_key));
     data[sizeof(data) - 1] = cryptonote::hashkey::WALLET;
@@ -97,10 +96,10 @@ bool device_default::generate_chacha_key(
     return true;
 }
 bool device_default::get_public_address(cryptonote::account_public_address& pubkey) {
-    throw oxen::traced<std::runtime_error>{"device function not supported: get_public_address"};
+    throw std::runtime_error{"device function not supported: get_public_address"};
 }
 bool device_default::get_secret_keys(crypto::secret_key& viewkey, crypto::secret_key& spendkey) {
-    throw oxen::traced<std::runtime_error>{"device function not supported: get_secret_keys"};
+    throw std::runtime_error{"device function not supported: get_secret_keys"};
 }
 /* ======================================================================= */
 /*                               SUB ADDRESS                               */
@@ -134,7 +133,10 @@ crypto::public_key device_default::get_subaddress_spend_public_key(
 
 std::vector<crypto::public_key> device_default::get_subaddress_spend_public_keys(
         const cryptonote::account_keys& keys, uint32_t account, uint32_t begin, uint32_t end) {
-    CHECK_AND_ASSERT_THROW_MES(begin <= end, "begin > end");
+    if (begin > end) {
+        oxen::log::error(logcat, "begin > end");
+        throw std::runtime_error{"begin > end"};
+    }
 
     std::vector<crypto::public_key> pkeys;
     pkeys.reserve(end - begin);
@@ -142,9 +144,10 @@ std::vector<crypto::public_key> device_default::get_subaddress_spend_public_keys
 
     ge_p3 p3;
     ge_cached cached;
-    CHECK_AND_ASSERT_THROW_MES(
-            ge_frombytes_vartime(&p3, keys.m_account_address.m_spend_public_key.data()) == 0,
-            "ge_frombytes_vartime failed to convert spend public key");
+    if (ge_frombytes_vartime(&p3, keys.m_account_address.m_spend_public_key.data()) != 0) {
+        oxen::log::error(logcat, "ge_frombytes_vartime failed to convert spend public key");
+        throw std::runtime_error{"ge_frombytes_vartime failed to convert spend public key"};
+    }
     ge_p3_to_cached(&cached, &p3);
 
     for (uint32_t idx = begin; idx < end; ++idx) {
@@ -403,12 +406,14 @@ bool device_default::generate_output_ephemeral_keys(
         found_change = true;
         // sending change to yourself; derivation = a*R
         r = generate_key_derivation(txkey_pub, sender_account_keys.m_view_secret_key, derivation);
-        CHECK_AND_ASSERT_MES(
-                r,
-                false,
-                "at creation outs: failed to generate_key_derivation({}, {})",
-                txkey_pub,
-                tools::hex_guts(sender_account_keys.m_view_secret_key));
+        if (!r) {
+            oxen::log::error(
+                    logcat,
+                    "at creation outs: failed to generate_key_derivation({}, {})",
+                    txkey_pub,
+                    tools::hex_guts(sender_account_keys.m_view_secret_key));
+            return false;
+        }
 
     } else {
         // sending to the recipient; derivation = r*A (or s*C in the subaddress scheme)
@@ -416,14 +421,16 @@ bool device_default::generate_output_ephemeral_keys(
                 dst_entr.addr.m_view_public_key,
                 dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec : tx_key,
                 derivation);
-        CHECK_AND_ASSERT_MES(
-                r,
-                false,
-                "at creation outs: failed to generate_key_derivation({}, {})",
-                dst_entr.addr.m_view_public_key,
-                tools::hex_guts(
-                        dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec
-                                                                         : tx_key));
+        if (!r) {
+            oxen::log::error(
+                    logcat,
+                    "at creation outs: failed to generate_key_derivation({}, {})",
+                    dst_entr.addr.m_view_public_key,
+                    tools::hex_guts(
+                            dst_entr.is_subaddress && need_additional_txkeys ? additional_txkey.sec
+                                                                             : tx_key));
+            return false;
+        }
     }
 
     if (need_additional_txkeys) {
@@ -438,13 +445,15 @@ bool device_default::generate_output_ephemeral_keys(
 
     r = derive_public_key(
             derivation, output_index, dst_entr.addr.m_spend_public_key, out_eph_public_key);
-    CHECK_AND_ASSERT_MES(
-            r,
-            false,
-            "at creation outs: failed to derive_public_key({}, {}, {})",
-            derivation,
-            output_index,
-            dst_entr.addr.m_spend_public_key);
+    if (!r) {
+        oxen::log::error(
+                logcat,
+                "at creation outs: failed to derive_public_key({}, {}, {})",
+                derivation,
+                output_index,
+                dst_entr.addr.m_spend_public_key);
+        return false;
+    }
     return r;
 }
 

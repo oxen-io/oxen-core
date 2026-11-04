@@ -32,26 +32,19 @@
 
 #include "crypto/crypto.h"
 #include "cryptonote_basic.h"
-#include "epee/serialization/keyvalue_serialization.h"
+#include "serialization/levin_kv/fwd.h"
 
 namespace cryptonote {
 
 struct account_keys {
     account_public_address m_account_address;
-    crypto::secret_key m_spend_secret_key;
-    crypto::secret_key m_view_secret_key;
+    crypto::secret_key m_spend_secret_key{};
+    crypto::secret_key m_view_secret_key{};
     std::vector<crypto::secret_key> m_multisig_keys;
     hw::device* m_device = &hw::get_device("default");
     crypto::chacha_iv m_encryption_iv;
 
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(m_account_address)
-    KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(m_spend_secret_key)
-    KV_SERIALIZE_VAL_POD_AS_BLOB_FORCE(m_view_secret_key)
-    KV_SERIALIZE_CONTAINER_POD_AS_BLOB(m_multisig_keys)
-    const crypto::chacha_iv default_iv{{0, 0, 0, 0, 0, 0, 0, 0}};
-    KV_SERIALIZE_VAL_POD_AS_BLOB_OPT(m_encryption_iv, default_iv)
-    END_KV_SERIALIZE_MAP()
+    void serialize(levin_kv::archive& ar);
 
     void encrypt(const crypto::chacha_key& key);
     void decrypt(const crypto::chacha_key& key);
@@ -118,10 +111,7 @@ class account_base {
         a & m_creation_timestamp;
     }
 
-    BEGIN_KV_SERIALIZE_MAP()
-    KV_SERIALIZE(m_keys)
-    KV_SERIALIZE(m_creation_timestamp)
-    END_KV_SERIALIZE_MAP()
+    void serialize(levin_kv::archive& ar);
 
   private:
     void set_null();

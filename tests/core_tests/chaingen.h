@@ -46,7 +46,6 @@
 #include "common/boost_serialization_helper.h"
 #include "common/command_line.h"
 #include "common/threadpool.h"
-#include "epee/misc_log_ex.h"
 
 #include "cryptonote_basic/account_boost_serialization.h"
 #include "cryptonote_basic/cryptonote_basic.h"
@@ -64,9 +63,6 @@
 #include "blockchain_db/testdb.h"
 
 #include "../rewards_db_test.h"
-
-#undef OXEN_DEFAULT_LOG_CATEGORY
-#define OXEN_DEFAULT_LOG_CATEGORY "tests.core"
 
 #define TESTS_DEFAULT_FEE ((uint64_t)200000000) // 2 * pow(10, 8)
 #define TEST_DEFAULT_DIFFICULTY 1
@@ -329,14 +325,13 @@ public:
   explicit test_generator(hf hf_version = hf::hf7) : m_hf_version(hf_version) {}
   void get_block_chain(std::vector<block_info>& blockchain,        const crypto::hash& head, size_t n) const;
   void get_block_chain(std::vector<cryptonote::block>& blockchain, const crypto::hash& head, size_t n) const;
-  void get_last_n_block_weights(std::vector<uint64_t>& block_weights, const crypto::hash& head, size_t n) const;
   uint64_t get_already_generated_coins(const crypto::hash& blk_id) const;
   uint64_t get_already_generated_coins(const cryptonote::block& blk) const;
 
-  void add_block(const cryptonote::block& blk, size_t tsx_size, std::vector<uint64_t>& block_weights, uint64_t already_generated_coins);
+  void add_block(const cryptonote::block& blk, size_t tsx_size, uint64_t already_generated_coins);
   bool construct_block(cryptonote::block& blk, uint64_t height, const crypto::hash& prev_id,
     const cryptonote::account_base& miner_acc, uint64_t timestamp, uint64_t already_generated_coins,
-    std::vector<uint64_t>& block_weights, const std::list<cryptonote::transaction>& tx_list, const service_nodes::payout &block_leader = {});
+    const std::list<cryptonote::transaction>& tx_list, const service_nodes::payout &block_leader = {});
   bool construct_block(cryptonote::block& blk, const cryptonote::account_base& miner_acc, uint64_t timestamp);
   bool construct_block(cryptonote::block& blk, const cryptonote::block& blk_prev, const cryptonote::account_base& miner_acc,
     const std::list<cryptonote::transaction>& tx_list = std::list<cryptonote::transaction>(), const service_nodes::payout &block_leader = {});
@@ -945,8 +940,7 @@ private:
 //--------------------------------------------------------------------------
 template<class t_test_class>
 inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::vector<test_event_entry>& events, t_test_class& validator, bool reinit=true)
-{
-  TRY_ENTRY();
+try {
   // start with a clean pool
   std::vector<crypto::hash> pool_txs;
   cr.mempool.get_transaction_hashes(pool_txs);
@@ -954,8 +948,10 @@ inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::ve
 
   //init core here
   if (reinit) {
-    CHECK_AND_ASSERT_MES(std::holds_alternative<cryptonote::block>(events[0]), false,
-                         "First event must be genesis block creation");
+    if (!(std::holds_alternative<cryptonote::block>(events[0]))) {
+      oxen::log::error(logcat, "First event must be genesis block creation");
+      return false;
+    }
     cr.blockchain.reset_and_set_genesis_block(std::get<cryptonote::block>(events[0]));
   }
 
@@ -968,14 +964,15 @@ inline bool replay_events_through_core_plain(cryptonote::core& cr, const std::ve
   }
 
   return r;
-
-  CATCH_ENTRY("replay_events_through_core", false);
+} catch (const std::exception& e) {
+  oxen::log::error(logcat, "Exception in replay_events_through_core: {}", e.what());
+  return false;
 }
 //--------------------------------------------------------------------------
 template<typename t_test_class>
 struct get_test_options {
   const cryptonote::test_options test_options = {
-      std::vector<cryptonote::hard_fork>{{cryptonote::hf::hf7, 0, 0, 0}}, 0
+      std::vector<cryptonote::hard_fork>{{cryptonote::hf::hf7, 0, 0, 0}}
   };
 };
 //--------------------------------------------------------------------------
@@ -1022,7 +1019,6 @@ inline bool do_replay_events_get_core(std::vector<test_event_entry>& events, cry
   const cryptonote::test_options derived_test_options =
   {
     derived_hardforks,
-    gto.test_options.long_term_block_weight_window,
   };
 
   // FIXME: make sure that vm has arg_testnet_on set to true or false if
@@ -1062,7 +1058,10 @@ inline bool do_replay_file(const std::string& filename)
     account.generate();
 
 #define GENERATE_MULTISIG_ACCOUNT(account, threshold, total) \
-    CHECK_AND_ASSERT_MES(threshold >= 2 && threshold <= total, false, "Invalid multisig scheme"); \
+    if (threshold < 2 || threshold > total) { \
+      oxen::log::error(logcat, "Invalid multisig scheme"); \
+      return false; \
+    } \
     std::vector<cryptonote::account_base> account(total); \
     do \
     { \
@@ -1283,10 +1282,11 @@ inline bool do_replay_file(const std::string& filename)
 
 #define QUOTEME(x) #x
 #define DEFINE_TESTS_ERROR_CONTEXT(text) const char* perr_context = text;
-#define CHECK_TEST_CONDITION(cond) CHECK_AND_ASSERT_MES(cond, false, "[{}] failed: \"{}\"", perr_context, QUOTEME(cond))
-#define CHECK_TEST_CONDITION_MSG(cond, ...) CHECK_AND_ASSERT_MES(cond, false, "[{}] failed: \"{}\", msg: {}", perr_context, QUOTEME(cond), fmt::format(__VA_ARGS__))
-#define CHECK_EQ(v1, v2) CHECK_AND_ASSERT_MES(v1 == v2, false, "[{}] failed: \"{} == {}\", {} != {}", perr_context, QUOTEME(v1), QUOTEME(v2), v1, v2)
-#define CHECK_NOT_EQ(v1, v2) CHECK_AND_ASSERT_MES(!(v1 == v2), false, "[{}] failed: \"{} != {}\", {} == {}", perr_context, QUOTEME(v1), QUOTEME(v2), v1, v2)
+#define CHECK_TEST_FAIL_IF(failed, ...) do { if (failed) { oxen::log::error(logcat, __VA_ARGS__); return false; } } while (0)
+#define CHECK_TEST_CONDITION(cond) CHECK_TEST_FAIL_IF(!(cond), "[{}] failed: \"{}\"", perr_context, QUOTEME(cond))
+#define CHECK_TEST_CONDITION_MSG(cond, ...) CHECK_TEST_FAIL_IF(!(cond), "[{}] failed: \"{}\", msg: {}", perr_context, QUOTEME(cond), fmt::format(__VA_ARGS__))
+#define CHECK_EQ(v1, v2) CHECK_TEST_FAIL_IF(!((v1) == (v2)), "[{}] failed: \"{} == {}\", {} != {}", perr_context, QUOTEME(v1), QUOTEME(v2), v1, v2)
+#define CHECK_NOT_EQ(v1, v2) CHECK_TEST_FAIL_IF((v1) == (v2), "[{}] failed: \"{} != {}\", {} == {}", perr_context, QUOTEME(v1), QUOTEME(v2), v1, v2)
 #define MK_COINS(amount) (UINT64_C(amount) * oxen::COIN)
 
 inline std::string make_junk() {
@@ -1465,7 +1465,6 @@ struct oxen_create_block_params
   oxen_blockchain_entry                prev;
   cryptonote::account_base             miner_acc;
   uint64_t                             timestamp;
-  std::vector<uint64_t>                block_weights;
   std::vector<cryptonote::transaction> tx_list;
   service_nodes::payout                block_leader;
   uint64_t                             total_fee;
@@ -1565,7 +1564,6 @@ struct oxen_chain_generator
   bool                                                 process_registration_tx(cryptonote::transaction& tx, uint64_t block_height, hf hf_version);
 
   hf                                                   get_hf_version_at(uint64_t height) const;
-  std::vector<uint64_t>                                last_n_block_weights(uint64_t height, uint64_t num) const;
   const cryptonote::account_base&                      first_miner() const { return first_miner_; }
 
   oxen_chain_generator& operator=(const oxen_chain_generator& other)

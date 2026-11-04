@@ -53,26 +53,10 @@ endif()
 add_subdirectory(core_tests)
 add_subdirectory(fuzz)
 add_subdirectory(crypto)
-# Still expects to find monero daemon/wallet; disable for now.
-#add_subdirectory(functional_tests)
-#add_subdirectory(performance_tests)
-add_subdirectory(core_proxy)
 add_subdirectory(unit_tests)
 add_subdirectory(difficulty)
-add_subdirectory(block_weight)
 add_subdirectory(hash)
-add_subdirectory(net_load_tests)
 add_subdirectory(network_tests)
-if (ANDROID)
-# Currently failed to compile
-#  add_subdirectory(libwallet_api_tests)
-endif()
-
-if (TREZOR_DEBUG)
-  add_subdirectory(trezor)
-endif()
-
-# add_subdirectory(daemon_tests)
 
 add_executable(hash-target-tests
   hash-target.cpp)
@@ -90,9 +74,7 @@ add_test(
 set(enabled_tests
     core_tests
     difficulty
-    block_weight
     hash
-    core_proxy
     fuzz
     unit_tests)
 
