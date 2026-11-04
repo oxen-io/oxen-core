@@ -42,8 +42,6 @@
 #include "common/string_util.h"
 #include "common/util.h"
 #include "cryptonote_basic/cryptonote_format_utils.h"
-#include "epee/storages/portable_storage_template_helper.h"
-#include "epee/string_tools.h"
 
 #define AUTODETECT_WINDOW 10             // seconds
 #define AUTODETECT_GAIN_THRESHOLD 1.02f  // 2%
@@ -73,8 +71,7 @@ miner::miner(
         m_handle_block_found{std::move(found)},
         m_create_next_miner_block_template{std::move(create)} {
     if (!(m_get_block_hash && m_handle_block_found && m_create_next_miner_block_template))
-        throw oxen::traced<std::invalid_argument>{
-                "Invalid miner constructor: required callbacks cannot be null"};
+        throw std::invalid_argument{"Invalid miner constructor: required callbacks cannot be null"};
 }
 
 //-----------------------------------------------------------------------------------------------------

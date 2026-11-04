@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <iostream>
 #include <optional>
@@ -38,8 +39,7 @@
 #include <vector>
 
 #include "base.h"
-#include "epee/memwipe.h"
-#include "epee/mlocker.h"
+#include "cleared.h"
 #include "hash.h"
 
 extern "C" {
@@ -64,7 +64,7 @@ struct ec_scalar : bytes<32> {
 struct public_key : ec_point {};
 
 struct secret_key_ : ec_scalar {};
-using secret_key = epee::mlocked<tools::scrubbed<secret_key_>>;
+using secret_key = sodium_cleared<secret_key_>;
 
 template <>
 inline const secret_key null<secret_key>{};
@@ -91,7 +91,7 @@ struct ed25519_public_key : ec_point {};
 
 // 64 = crypto_sign_ed25519_SECRETKEYBYTES (but we don't depend on libsodium header here)
 struct ed25519_secret_key_ : bytes<64> {};
-using ed25519_secret_key = epee::mlocked<tools::scrubbed<ed25519_secret_key_>>;
+using ed25519_secret_key = sodium_cleared<ed25519_secret_key_>;
 
 struct ed25519_signature : bytes<64, true> {
     // Returns true if non-null, i.e. not 0.
@@ -101,7 +101,7 @@ struct ed25519_signature : bytes<64, true> {
 struct x25519_public_key : ec_point {};
 
 struct x25519_secret_key_ : bytes<32> {};
-using x25519_secret_key = epee::mlocked<tools::scrubbed<x25519_secret_key_>>;
+using x25519_secret_key = sodium_cleared<x25519_secret_key_>;
 
 void hash_to_scalar(const void* data, size_t length, ec_scalar& res);
 ec_scalar hash_to_scalar(const void* data, size_t length);

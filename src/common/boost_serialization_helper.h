@@ -34,53 +34,62 @@
 #include <boost/archive/portable_binary_iarchive.hpp>
 #include <boost/archive/portable_binary_oarchive.hpp>
 #include <fstream>
+#include <oxen/log.hpp>
 
-#include "epee/misc_log_ex.h"
 #include "fs.h"
 
 namespace tools {
 template <class T>
 bool serialize_obj_to_file(T& obj, const fs::path& file_path) {
-    auto logcat = oxen::log::Cat("serialization");
-    TRY_ENTRY();
-    std::ofstream data_file{file_path, std::ios::binary | std::ios::trunc};
-    if (data_file.fail())
+    try {
+        std::ofstream data_file{file_path, std::ios::binary | std::ios::trunc};
+        if (data_file.fail())
+            return false;
+
+        boost::archive::portable_binary_oarchive{data_file} << obj;
+
+        if (data_file.fail())
+            return false;
+
+        data_file.flush();
+
+        return true;
+    } catch (const std::exception& e) {
+        oxen::log::error(
+                oxen::log::Cat("serialization"),
+                "Exception in serialize_obj_to_file: {}",
+                e.what());
         return false;
-
-    boost::archive::portable_binary_oarchive{data_file} << obj;
-
-    if (data_file.fail())
-        return false;
-
-    data_file.flush();
-
-    return true;
-    CATCH_ENTRY("serialize_obj_to_file", false);
+    }
 }
 
 template <class T>
 bool unserialize_obj_from_file(T& obj, const fs::path& file_path) {
-    auto logcat = oxen::log::Cat("serialization");
-    TRY_ENTRY();
-
-    std::ifstream data_file{file_path, std::ios_base::binary};
-    if (data_file.fail())
-        return false;
     try {
-        // first try reading in portable mode
-        boost::archive::portable_binary_iarchive{data_file} >> obj;
-    } catch (...) {
-        // if failed, try reading in unportable mode
-        auto unportable = file_path;
-        unportable += ".unportable";
-        fs::copy_file(file_path, unportable, fs::copy_options::overwrite_existing);
-        data_file.close();
-        data_file.open(file_path, std::ios_base::binary);
+        std::ifstream data_file{file_path, std::ios_base::binary};
         if (data_file.fail())
             return false;
-        boost::archive::binary_iarchive{data_file} >> obj;
+        try {
+            // first try reading in portable mode
+            boost::archive::portable_binary_iarchive{data_file} >> obj;
+        } catch (...) {
+            // if failed, try reading in unportable mode
+            auto unportable = file_path;
+            unportable += ".unportable";
+            fs::copy_file(file_path, unportable, fs::copy_options::overwrite_existing);
+            data_file.close();
+            data_file.open(file_path, std::ios_base::binary);
+            if (data_file.fail())
+                return false;
+            boost::archive::binary_iarchive{data_file} >> obj;
+        }
+        return !data_file.fail();
+    } catch (const std::exception& e) {
+        oxen::log::error(
+                oxen::log::Cat("serialization"),
+                "Exception in unserialize_obj_from_file: {}",
+                e.what());
+        return false;
     }
-    return !data_file.fail();
-    CATCH_ENTRY("unserialize_obj_from_file", false);
 }
 }  // namespace tools

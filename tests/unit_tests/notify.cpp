@@ -32,7 +32,6 @@
 
 #include "gtest/gtest.h"
 
-#include "epee/string_tools.h"
 #include "common/file.h"
 #include "common/notify.h"
 
@@ -62,11 +61,7 @@ TEST(notify, works)
   ASSERT_TRUE(fd >= 0);
   close(fd);
 
-  const std::string spec = epee::string_tools::get_current_module_folder() + "/test_notifier"
-#ifdef _WIN32
-      + ".exe"
-#endif
-      + " " + name_template + " %s";
+  const std::string spec = TEST_NOTIFIER " "s + name_template + " %s";
 
   tools::Notify notify(spec);
   notify.notify("%s", "1111111111111111111111111111111111111111111111111111111111111111");

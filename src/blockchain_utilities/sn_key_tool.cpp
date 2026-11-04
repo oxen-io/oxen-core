@@ -545,7 +545,6 @@ to use the '{}' command instead.
 }
 
 int main(int argc, char* argv[]) {
-    oxen::set_terminate_handler();
     arg0 = argv[0];
     if (argc < 2)
         return usage(1, "No command specified!");

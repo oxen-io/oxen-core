@@ -563,7 +563,7 @@ pubkey_aggregator::~pubkey_aggregator() = default;
 void pubkey_aggregator::add(const bls_public_key& pubkey, bool _negate) {
     bn256::g1 g1;
     if (auto ec = g1.unmarshal(tools::span_guts(pubkey)); ec != std::error_code{})
-        throw oxen::traced<std::invalid_argument>{"Invalid BLS public key: " + ec.message()};
+        throw std::invalid_argument{"Invalid BLS public key: " + ec.message()};
     if (_negate)
         g1 = g1.neg();
 
@@ -578,8 +578,7 @@ void pubkey_aggregator::subtract(const bls_public_key& pubkey) {
 
 bls_public_key pubkey_aggregator::get() const {
     if (!aggregate_)
-        throw oxen::traced<std::invalid_argument>{
-                "Cannot extract aggregate pubkey: no pubkeys added"};
+        throw std::invalid_argument{"Cannot extract aggregate pubkey: no pubkeys added"};
     bls_public_key agg;
     aggregate_->marshal(tools::span_guts(agg));
     return agg;
@@ -592,7 +591,7 @@ void signature_aggregator::add(const bls_signature& signature, bool _negate) {
     bn256::g2 g2;
     auto sig_swapped = swap_xy(tools::span_guts(signature));
     if (auto ec = g2.unmarshal(sig_swapped); ec != std::error_code{})
-        throw oxen::traced<std::invalid_argument>{"Invalid BLS signature: " + ec.message()};
+        throw std::invalid_argument{"Invalid BLS signature: " + ec.message()};
     if (_negate)
         g2 = g2.neg();
     if (!aggregate_)
@@ -606,8 +605,7 @@ void signature_aggregator::subtract(const bls_signature& signature) {
 
 bls_signature signature_aggregator::get() const {
     if (!aggregate_)
-        throw oxen::traced<std::invalid_argument>{
-                "Cannot extract aggregate signature: no signatures added"};
+        throw std::invalid_argument{"Cannot extract aggregate signature: no signatures added"};
     bls_signature agg;
     auto span = tools::span_guts(agg);
     aggregate_->marshal(span);

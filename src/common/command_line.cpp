@@ -33,7 +33,7 @@
 #include "networks.h"
 
 #ifdef HAVE_READLINE
-#include "epee/readline_buffer.h"
+#include "readline_buffer.h"
 #else
 #ifdef _WIN32
 #include "windows.h"
