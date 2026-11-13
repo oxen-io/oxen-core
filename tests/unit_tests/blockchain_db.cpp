@@ -1944,7 +1944,7 @@ TEST(BlockchainSQLite, reset_keeps_others_tables)
   s.db.reset();
 
   EXPECT_EQ(s.committed("SELECT MAX(height) FROM rewards_snapshot_heights"), 60);
-  EXPECT_EQ(s.committed("SELECT value FROM properties WHERE key = 'rewards_fixup_version'"), 2);
+  EXPECT_EQ(s.committed("SELECT value FROM properties WHERE key = 'rewards_fixup_version'"), 3);
 }
 
 TEST(history, parse)
