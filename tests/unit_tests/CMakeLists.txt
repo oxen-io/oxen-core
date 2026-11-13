@@ -74,6 +74,7 @@ add_executable(unit_tests
   peer_history.cpp
   random.cpp
   rpc_history.cpp
+  rpc_responder.cpp
   serialization.cpp
   service_nodes.cpp
   service_nodes_swarm.cpp
