@@ -300,7 +300,7 @@ TEST(SQLITE, NewRewardsFixupVersion)
   // A database's user_version isn't the rewards' to take, if it already has one of its own
   sql.conn().sql.exec("PRAGMA user_version = 1");
   cryptonote::RewardsDB rewardsDB(cryptonote::network_type::FAKECHAIN, sql);
-  EXPECT_EQ(int_property(sql, "rewards_fixup_version"), 2);
+  EXPECT_EQ(int_property(sql, "rewards_fixup_version"), 3);
   EXPECT_EQ(sql.conn().prepared_get<int>("PRAGMA user_version"), 1);
 }
 

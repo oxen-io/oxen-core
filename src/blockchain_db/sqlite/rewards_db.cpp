@@ -249,8 +249,12 @@ CREATE INDEX {table}_height_idx ON {table}(height);
 
 // Values of the rewards_fixup_version property for DB fixup handling:
 constexpr int FIXUP_DELAYED_PAYMENT_REWARDS = 2;
+// The mainnet archive database download was marked as FIXUP_DELAYED_PAYMENT_REWARDS without having
+// had that fixup's rescan, and has wrong rewards: this gives the sqlite archive nodes whose
+// snapshots fail its checksums that rescan.
+constexpr int FIXUP_ARCHIVE_CHECKSUMS = 3;
 
-constexpr int FIXUP_MAX = FIXUP_DELAYED_PAYMENT_REWARDS;
+constexpr int FIXUP_MAX = FIXUP_ARCHIVE_CHECKSUMS;
 
 // The correct checksums (see snapshot_checksum) of the mainnet rewards snapshots at some archive
 // heights.
@@ -272,6 +276,21 @@ static std::optional<int64_t> snapshot_checksum(Connection& conn, int64_t height
     constexpr int64_t CSUM_MOD = 789012345678901;
     return conn.prepared_get<std::optional<int64_t>>(
             "SELECT SUM(amount % ?) FROM rewards_snapshots WHERE height = ?", CSUM_MOD, height);
+}
+
+// Whether any stored snapshot at a height of MAINNET_CHECKSUMS fails its checksum.
+static bool has_failed_checksum(Connection& conn) {
+    for (const auto& [height, checksum] : MAINNET_CHECKSUMS)
+        if (auto csum = snapshot_checksum(conn, height); csum && *csum != checksum) {
+            log::warning(
+                    logcat,
+                    "The rewards snapshot at height {} fails its checksum (db: {}, expected: {})",
+                    height,
+                    *csum,
+                    checksum);
+            return true;
+        }
+    return false;
 }
 
 static std::optional<int> get_fixup_version(Connection& conn) {
@@ -1915,10 +1934,20 @@ std::optional<uint64_t> RewardsDB::fixup(bool recheck, SQLite::Transaction* acti
 
     auto prev_db_version = get_fixup_version(conn).value_or(0);
     if (!recheck) {
-        if (prev_db_version >= FIXUP_DELAYED_PAYMENT_REWARDS)
+        if (prev_db_version >= FIXUP_ARCHIVE_CHECKSUMS)
             return with_commit(std::nullopt);
 
-        set_fixup_version(conn, FIXUP_DELAYED_PAYMENT_REWARDS);
+        if (prev_db_version >= FIXUP_DELAYED_PAYMENT_REWARDS) {
+            // Raised in the same transaction as the rescan's deletions below, which leave no
+            // snapshot that fails a checksum, so that a node stopped during the rescan carries on
+            // from correct snapshots.
+            set_fixup_version(conn, FIXUP_ARCHIVE_CHECKSUMS);
+            if (nettype != cryptonote::network_type::MAINNET || !shares_blockchain_db ||
+                kept_history || !has_failed_checksum(conn))
+                return with_commit(std::nullopt);
+        } else {
+            set_fixup_version(conn, FIXUP_DELAYED_PAYMENT_REWARDS);
+        }
     } else {
         assert(prev_db_version >= FIXUP_DELAYED_PAYMENT_REWARDS);
     }

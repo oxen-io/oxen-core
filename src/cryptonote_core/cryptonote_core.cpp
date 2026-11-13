@@ -730,6 +730,7 @@ bool core::init(
     }
     auto rewards_db = std::make_unique<cryptonote::RewardsDB>(m_nettype, *rewards_sql);
     rewards_db->kept_history = db->history();
+    rewards_db->shares_blockchain_db = !separate_sql;
 
     // We need this hook to get added before the block hook below, so that it fires first and
     // catches the start of a reorg before the block hook fires for the block in the reorg.

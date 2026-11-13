@@ -269,6 +269,10 @@ class RewardsDB {
     // archived (as the blocks to replay from an archived snapshot aren't kept).
     uint64_t kept_history = 0;
 
+    // Whether the rewards tables are in the blockchain database itself (as they are with the
+    // sqlite blockchain backend), rather than in a database of their own.
+    bool shares_blockchain_db = false;
+
   protected:
     // Makes this a copy of `other`'s in-memory state (as the core tests' chain generator copies
     // its rewards along with its chain).
