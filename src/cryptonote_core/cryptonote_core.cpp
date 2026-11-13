@@ -1451,10 +1451,11 @@ void core::deinit() {
 #ifdef ENABLE_SYSTEMD
     sd_notify(0, "STOPPING=1\nSTATUS=Shutting down");
 #endif
-    if (m_quorumnet_state)
-        quorumnet_delete(m_quorumnet_state);
     delete m_omq;
     m_omq = nullptr;
+    // After the OxenMQ, as its quorumnet handlers and the pulse timer use it
+    if (m_quorumnet_state)
+        quorumnet_delete(m_quorumnet_state);
     service_node_list.store();
     miner.stop();
     mempool.deinit();
