@@ -246,7 +246,9 @@ class RewardsDB {
 
     // Checks the database for any needed fixes and applies them, returning an optional detach
     // block number that should be applied to rescan the chain if non-nullopt.  When it returns
-    // one, the rewards have already been restored to the newest valid snapshot at or below it.
+    // one, the rewards have already been restored to it (or, when everything has been deleted to
+    // be rescanned from the start, to the empty state before HF19, which it is in).  Only for
+    // startup: the in-memory rewards must be those of the newest stored snapshot.
     //
     // NB: the returned value is the block number of the block that we want to *keep*, that is,
     // after the detach, the "lmdb blockchain height" should be that number plus 1.
@@ -268,6 +270,10 @@ class RewardsDB {
     // to anywhere in it, as the SN list can) rather than just the newest few, and none are
     // archived (as the blocks to replay from an archived snapshot aren't kept).
     uint64_t kept_history = 0;
+
+    // Whether the rewards tables are in the blockchain database itself (as they are with the
+    // sqlite blockchain backend), rather than in a database of their own.
+    bool shares_blockchain_db = false;
 
   protected:
     // Makes this a copy of `other`'s in-memory state (as the core tests' chain generator copies
