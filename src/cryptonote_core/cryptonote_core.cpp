@@ -306,7 +306,10 @@ core::core() :
 #pragma GCC diagnostic pop
     m_checkpoints_updating.clear();
 }
-core::~core() = default;
+core::~core() {
+    delete m_omq;
+    m_omq = nullptr;
+}
 void core::set_cryptonote_protocol(i_cryptonote_protocol* pprotocol) {
     if (pprotocol)
         m_pprotocol = pprotocol;
@@ -1388,7 +1391,7 @@ oxenmq::AuthLevel core::omq_allow(
 
 void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     using namespace oxenmq;
-    m_omq = std::make_shared<OxenMQ>(
+    m_omq = new OxenMQ(
             tools::copy_guts(m_service_keys.pub_x25519),
             tools::copy_guts(m_service_keys.key_x25519),
             m_service_node,
@@ -1450,7 +1453,8 @@ void core::deinit() {
 #endif
     if (m_quorumnet_state)
         quorumnet_delete(m_quorumnet_state);
-    m_omq.reset();
+    delete m_omq;
+    m_omq = nullptr;
     service_node_list.store();
     miner.stop();
     mempool.deinit();
