@@ -31,6 +31,7 @@ add_executable(unit_tests
   account.cpp
   account_kv.cpp
   apply_permutation.cpp
+  archive_rewards_checksums.cpp
   base58.cpp
   blockchain_db.cpp
   block_queue.cpp
@@ -73,6 +74,7 @@ add_executable(unit_tests
   peer_history.cpp
   random.cpp
   rpc_history.cpp
+  rpc_responder.cpp
   serialization.cpp
   service_nodes.cpp
   service_nodes_swarm.cpp
