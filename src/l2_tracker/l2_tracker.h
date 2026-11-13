@@ -222,7 +222,7 @@ class L2Tracker {
     // Returns true if this L2Tracker is in oxend-proxied mode, in which case L2 state from events
     // is dictated by the configured proxy, and active requests (get_all_service_node_ids() and
     // get_non_signers()) are not available.
-    bool proxied() const { return static_cast<bool>(provider); }
+    bool proxied() const { return !provider; }
 
     // Numbers of states we track behind the current L2 height before discarding them.  The default
     // is enough to have the last hour of history (for an L2 such as Arbitrum with its 0.25s block

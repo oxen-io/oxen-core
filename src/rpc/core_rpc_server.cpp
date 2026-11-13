@@ -2616,6 +2616,10 @@ void core_rpc_server::invoke(
     get_service_node_blacklisted_key_images.response["blacklist"] = blacklist;
 }
 
+// Completes a BLS signing RPC with the aggregated signature, once the contract has said which
+// nodes didn't sign.  The responder's error is set from the start (see preset_bls_error): this
+// replaces it with a more specific one on a known failure, and clears it only once the response is
+// complete, so that no other way of not getting there can send an empty result.
 void set_contract_signature(
         nlohmann::json& response,
         tools::json_binary_proxy& response_hex,
@@ -2631,65 +2635,80 @@ void set_contract_signature(
         return;
     }
 
-    l2_tracker.get_non_signers(
-            std::ranges::views::keys(sig.signatures),
-            [&response,
-             &response_hex,
-             sig_ptr,
-             responder = std::move(responder),
-             success_cb = std::move(success_cb)](std::optional<eth::NonSigners> non_signers) {
-                if (!non_signers) {
-                    responder->error.emplace(
-                            ERROR_BLS_SIG, "Failed to retrieve contract pubkey list");
-                    return;
-                }
-
-                response["status"] = STATUS_OK;
-                auto& sig = *sig_ptr;
-                response_hex["msg_to_sign"] = std::string_view(
-                        reinterpret_cast<const char*>(sig.msg_to_sign.data()),
-                        sig.msg_to_sign.size());
-
-                if (const auto& unwanted = non_signers->unwanted; !unwanted.empty()) {
-                    log::debug(
-                            logcat,
-                            "Found {} unwanted BLS signatures from non-contract pubkeys; "
-                            "de-aggregating them",
-                            unwanted.size());
-                    eth::pubkey_aggregator pk_agg;
-                    eth::signature_aggregator sig_agg;
-                    pk_agg.add(sig.aggregate_pubkey);
-                    sig_agg.add(sig.signature);
-                    for (auto& remove_pk : unwanted) {
-                        pk_agg.subtract(remove_pk);
-                        sig_agg.subtract(sig.signatures.at(remove_pk));
+    try {
+        l2_tracker.get_non_signers(
+                std::ranges::views::keys(sig.signatures),
+                [&response, &response_hex, sig_ptr, responder, success_cb = std::move(success_cb)](
+                        std::optional<eth::NonSigners> non_signers) {
+                    if (!non_signers) {
+                        responder->error.emplace(
+                                ERROR_BLS_SIG, "Failed to retrieve contract pubkey list");
+                        return;
                     }
-                    auto final_pk = pk_agg.get();
-                    auto final_sig = sig_agg.get();
-                    response_hex["aggregate_pubkey"] = final_pk;
-                    response_hex["signature"] = final_sig;
-                    log::debug(
-                            logcat,
-                            "Final BLS aggregate pubkey: {}, signature: {}",
-                            final_pk,
-                            final_sig);
-                } else {
-                    response_hex["aggregate_pubkey"] = sig.aggregate_pubkey;
-                    response_hex["signature"] = sig.signature;
-                }
-                response["non_signer_indices"] = std::move(non_signers->missing_ids);
-                success_cb();
-            });
+
+                    response["status"] = STATUS_OK;
+                    auto& sig = *sig_ptr;
+                    response_hex["msg_to_sign"] = std::string_view(
+                            reinterpret_cast<const char*>(sig.msg_to_sign.data()),
+                            sig.msg_to_sign.size());
+
+                    if (const auto& unwanted = non_signers->unwanted; !unwanted.empty()) {
+                        log::debug(
+                                logcat,
+                                "Found {} unwanted BLS signatures from non-contract pubkeys; "
+                                "de-aggregating them",
+                                unwanted.size());
+                        eth::pubkey_aggregator pk_agg;
+                        eth::signature_aggregator sig_agg;
+                        pk_agg.add(sig.aggregate_pubkey);
+                        sig_agg.add(sig.signature);
+                        for (auto& remove_pk : unwanted) {
+                            pk_agg.subtract(remove_pk);
+                            sig_agg.subtract(sig.signatures.at(remove_pk));
+                        }
+                        auto final_pk = pk_agg.get();
+                        auto final_sig = sig_agg.get();
+                        response_hex["aggregate_pubkey"] = final_pk;
+                        response_hex["signature"] = final_sig;
+                        log::debug(
+                                logcat,
+                                "Final BLS aggregate pubkey: {}, signature: {}",
+                                final_pk,
+                                final_sig);
+                    } else {
+                        response_hex["aggregate_pubkey"] = sig.aggregate_pubkey;
+                        response_hex["signature"] = sig.signature;
+                    }
+                    response["non_signer_indices"] = std::move(non_signers->missing_ids);
+                    success_cb();
+                    responder->error.reset();
+                });
+    } catch (const std::exception& e) {
+        responder->error.emplace(
+                ERROR_BLS_SIG, "Failed to retrieve contract pubkey list: {}"_format(e.what()));
+    }
+}
+
+// The BLS signing RPCs end by asking the rewards contract which nodes didn't sign, which only an L2
+// tracker with its own provider can do (not one proxied through another oxend).
+static void require_l2_provider(cryptonote::core& core) {
+    if (!core.have_l2_tracker() || core.l2_tracker().proxied())
+        throw rpc_error{
+                ERROR_NO_L2_TRACKER,
+                "Unable to process request: this RPC node is not configured with an ETH L2 "
+                "provider"};
+}
+
+// The error a BLS signing RPC sends unless set_contract_signature completes its response.
+static void preset_bls_error(responder& r) {
+    r.error.emplace(ERROR_BLS_SIG, "Failed to obtain a BLS signature from the network");
 }
 
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
         BLS_REWARDS_REQUEST& rpc, rpc_context, std::shared_ptr<responder> keepalive) {
-    if (!m_core.have_l2_tracker())
-        throw rpc_error{
-                ERROR_NO_L2_TRACKER,
-                "Unable to process request: this RPC node is not configured with an ETH L2 "
-                "provider"};
+    require_l2_provider(m_core);
+    preset_bls_error(*keepalive);
 
     try {
         if (rpc.request.height <= 0)
@@ -2748,12 +2767,8 @@ void core_rpc_server::invoke(BLS_EXIT_LIQUIDATION_LIST& rpc, rpc_context) {
 //------------------------------------------------------------------------------------------------------------------------------
 void core_rpc_server::invoke(
         BLS_EXIT_LIQUIDATION_REQUEST& rpc, rpc_context, std::shared_ptr<responder> keepalive) {
-
-    if (!m_core.have_l2_tracker())
-        throw rpc_error{
-                ERROR_NO_L2_TRACKER,
-                "Unable to process request: this RPC node is not configured with an ETH L2 "
-                "provider"};
+    require_l2_provider(m_core);
+    preset_bls_error(*keepalive);
 
     try {
         m_core.bls_exit_liquidation_request(
