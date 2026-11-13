@@ -31,6 +31,7 @@ add_executable(unit_tests
   account.cpp
   account_kv.cpp
   apply_permutation.cpp
+  archive_rewards_checksums.cpp
   base58.cpp
   blockchain_db.cpp
   block_queue.cpp
