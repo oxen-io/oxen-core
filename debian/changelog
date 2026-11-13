@@ -1,3 +1,28 @@
+oxen (11.7.3-1~deb12) bookworm; urgency=medium
+
+  * Updated build dep versions, and liboxen-quic-dev
+  * Bump service node metapackage depends versions
+  * Find system quic-event as well as quic-utils
+  * Switch libquic repo to final stable 1.14.0 commit
+  * Rediff patches
+  * Log a skipped request for more objects at debug level
+  * Move the rewards snapshot checksums out of fixup()
+  * Rescan sqlite archive nodes' rewards that fail the archive checksums
+  * Test the archive checksum rescan fixup
+  * Stop the payload handler before the p2p transport
+  * Keep the OxenMQ pointer set while the OxenMQ is destroyed
+  * Delete the quorumnet state after the OxenMQ
+  * Update the rewards snapshot generator for the current tables
+  * Restart a failed archive checksum rescan from 2,240,000
+  * Test the archive checksum rescan from 2,240,000
+  * Log invalid levin data at info level
+  * Make L2Tracker::proxied() true in oxend-proxied mode
+  * Reject BLS signing requests a proxied L2 tracker can't complete
+  * Version bump
+  * Rediff patches
+
+ -- Jason Rhinelander <jason@session.foundation>  Fri, 13 Nov 2026 00:43:48 -0400
+
 oxen (11.7.2-1~deb12) bookworm; urgency=medium
 
   * Add libquic submodule for its addr/IP and event loop
