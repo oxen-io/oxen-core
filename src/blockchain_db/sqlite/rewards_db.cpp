@@ -249,24 +249,40 @@ CREATE INDEX {table}_height_idx ON {table}(height);
 
 // Values of the rewards_fixup_version property for DB fixup handling:
 constexpr int FIXUP_DELAYED_PAYMENT_REWARDS = 2;
-// The mainnet archive database download was marked as FIXUP_DELAYED_PAYMENT_REWARDS without having
-// had that fixup's rescan, and has wrong rewards: this gives the sqlite archive nodes whose
-// snapshots fail its checksums that rescan.
+// The mainnet archive database download was marked as FIXUP_DELAYED_PAYMENT_REWARDS but has wrong
+// rewards from 1,860,000 on: this rescans the rewards of a sqlite archive node from before the
+// first of its snapshots that fails a checksum.
 constexpr int FIXUP_ARCHIVE_CHECKSUMS = 3;
 
 constexpr int FIXUP_MAX = FIXUP_ARCHIVE_CHECKSUMS;
 
-// The correct checksums (see snapshot_checksum) of the mainnet rewards snapshots at some archive
-// heights.
+// The correct checksums (see snapshot_checksum) of the mainnet rewards snapshots at the archive
+// heights from 1,860,000 (the first with an HF21 snapshot) to snapshots::height, in height order.
 struct checksum_record {
     int64_t height;
     int64_t checksum;
 };
-constexpr std::array<checksum_record, 4> MAINNET_CHECKSUMS{{
-        {1'860'000, 212'642'223'336'227'860},
-        {1'870'000, 227'908'952'909'310'216},
-        {1'880'000, 19'447'225'076'325'721},
-        {1'890'000, 22'402'200'527'873'036},
+constexpr std::array<checksum_record, 39> MAINNET_CHECKSUMS{{
+        {1'860'000, 212'642'223'336'227'860}, {1'870'000, 227'908'952'909'310'216},
+        {1'880'000, 19'447'225'076'325'721},  {1'890'000, 22'402'200'527'873'036},
+        {1'900'000, 24'227'072'664'503'685},  {1'910'000, 23'860'853'818'958'980},
+        {1'920'000, 27'534'593'382'687'497},  {1'930'000, 29'253'180'577'013'453},
+        {1'940'000, 31'933'704'756'741'930},  {1'950'000, 34'736'651'785'730'985},
+        {1'960'000, 36'287'420'229'288'355},  {1'970'000, 36'611'760'226'901'877},
+        {1'980'000, 38'022'934'578'710'028},  {1'990'000, 39'017'719'130'647'325},
+        {2'000'000, 39'860'866'628'109'437},  {2'010'000, 43'290'759'366'518'042},
+        {2'020'000, 45'043'692'416'950'367},  {2'030'000, 46'320'117'026'002'907},
+        {2'040'000, 46'473'969'571'403'962},  {2'050'000, 48'621'523'485'447'662},
+        {2'060'000, 48'272'155'438'725'171},  {2'070'000, 48'798'802'543'353'351},
+        {2'080'000, 50'815'376'759'119'774},  {2'090'000, 54'780'042'152'017'372},
+        {2'100'000, 55'250'916'449'225'306},  {2'110'000, 58'361'398'351'142'910},
+        {2'120'000, 60'457'123'437'610'027},  {2'130'000, 62'024'676'414'820'651},
+        {2'140'000, 62'448'751'416'072'635},  {2'150'000, 62'548'375'345'799'869},
+        {2'160'000, 63'410'909'250'518'518},  {2'170'000, 64'535'602'137'212'010},
+        {2'180'000, 65'519'978'870'898'550},  {2'190'000, 66'252'351'043'857'805},
+        {2'200'000, 67'472'280'985'292'949},  {2'210'000, 67'701'447'115'653'979},
+        {2'220'000, 68'742'426'205'637'843},  {2'230'000, 69'357'224'226'298'703},
+        {2'240'000, 69'742'265'256'895'630},
 }};
 
 // The checksum of the stored snapshot at `height`, or nullopt if there is none.  A straight sum of
@@ -278,8 +294,8 @@ static std::optional<int64_t> snapshot_checksum(Connection& conn, int64_t height
             "SELECT SUM(amount % ?) FROM rewards_snapshots WHERE height = ?", CSUM_MOD, height);
 }
 
-// Whether any stored snapshot at a height of MAINNET_CHECKSUMS fails its checksum.
-static bool has_failed_checksum(Connection& conn) {
+// The lowest height of MAINNET_CHECKSUMS whose stored snapshot fails its checksum, if any.
+static std::optional<int64_t> first_failed_checksum(Connection& conn) {
     for (const auto& [height, checksum] : MAINNET_CHECKSUMS)
         if (auto csum = snapshot_checksum(conn, height); csum && *csum != checksum) {
             log::warning(
@@ -288,9 +304,9 @@ static bool has_failed_checksum(Connection& conn) {
                     height,
                     *csum,
                     checksum);
-            return true;
+            return height;
         }
-    return false;
+    return std::nullopt;
 }
 
 static std::optional<int> get_fixup_version(Connection& conn) {
@@ -1932,155 +1948,83 @@ std::optional<uint64_t> RewardsDB::fixup(bool recheck, SQLite::Transaction* acti
         return ret;
     };
 
-    auto prev_db_version = get_fixup_version(conn).value_or(0);
-    if (!recheck) {
-        if (prev_db_version >= FIXUP_ARCHIVE_CHECKSUMS)
-            return with_commit(std::nullopt);
-
-        if (prev_db_version >= FIXUP_DELAYED_PAYMENT_REWARDS) {
-            // Raised in the same transaction as the rescan's deletions below, which leave no
-            // snapshot that fails a checksum, so that a node stopped during the rescan carries on
-            // from correct snapshots.
-            set_fixup_version(conn, FIXUP_ARCHIVE_CHECKSUMS);
-            if (nettype != cryptonote::network_type::MAINNET || !shares_blockchain_db ||
-                kept_history || !has_failed_checksum(conn))
-                return with_commit(std::nullopt);
-        } else {
-            set_fixup_version(conn, FIXUP_DELAYED_PAYMENT_REWARDS);
+    if (recheck) {
+        if (auto failed = first_failed_checksum(conn)) {
+            log::critical(
+                    logcat,
+                    "Database fixup recheck failed: the rewards snapshot at height {} still fails "
+                    "its checksum",
+                    *failed);
+            return with_commit(0);  // any non-nullopt signifies the failure
         }
-    } else {
-        assert(prev_db_version >= FIXUP_DELAYED_PAYMENT_REWARDS);
+        return with_commit(std::nullopt);
     }
+
+    const auto prev_db_version = get_fixup_version(conn).value_or(0);
+    if (prev_db_version >= FIXUP_MAX)
+        return with_commit(std::nullopt);
+
+    // Raised in the same transaction as the deletions below, which leave nothing that would need
+    // them again, so that a node stopped during the rescan carries on from what is left.
+    set_fixup_version(conn, FIXUP_MAX);
 
     if (nettype != cryptonote::network_type::MAINNET)
         return with_commit(std::nullopt);
 
-    auto hf21_started = get_hard_fork_heights(nettype, hf::hf21_eth).first.value();
-    if (height < hf21_started)
-        // If we're before HF21 then there are no fixups to apply because we already have to rescan
-        // the entirety of HF21+ which should get everything right.
-        return with_commit(std::nullopt);
-
-    // If we can't find a way to do better, the fallback option is to require a rescan from HF21:
-    int64_t detach = hf21_started - 1;
-
-    // We are *always* going to force delete all HF21+ snapshots other than those at the archive
-    // heights checked below, because we just don't know if they are correct and we need to rescan
-    // from one of the known-correct archive heights (or from our reproduced 1890k snapshot, if your
-    // node has an invalid 1890k value).
-    if (!recheck) {
-        std::string checked;
-        for (const auto& r : MAINNET_CHECKSUMS)
-            checked += "{}{}"_format(checked.empty() ? "" : ", ", r.height);
-        conn.prepared_exec(
-                "DELETE FROM rewards_snapshot_heights WHERE height >= ? AND height NOT IN ({})"_format(
-                        checked),
-                as_i64(hf21_started));
-    }
-
-    //
-    // If any of the archive checksums don't match the above then we will delete it because it isn't
-    // correct and we don't ever want you to use it (e.g. if you every roll back into the range).
-    bool have_snapshot_height = false;
-    for (const auto& [archive_height, checksum] : MAINNET_CHECKSUMS) {
-        auto db_csum = snapshot_checksum(conn, archive_height);
-        if (!db_csum)
-            continue;
-        if (db_csum == checksum) {
-            detach = archive_height;
-            if (archive_height == snapshots::height)
-                have_snapshot_height = true;
-            continue;
-        }
-        if (recheck) {
-            log::critical(
-                    logcat,
-                    "Database fixup recheck failed: still have invalid reward archive checksum "
-                    "at block {} (db: {}, expected: {})",
-                    archive_height,
-                    *db_csum,
-                    checksum);
-            return with_commit(0);  // any non-nullopt signifies the failure
-        }
-
-        log::warning(
-                logcat,
-                "Deleting invalid reward archive at blk {} (checksum failed)",
-                archive_height);
-        conn.prepared_exec("DELETE FROM rewards_snapshot_heights WHERE height = ?", archive_height);
-    }
-
-    if (recheck)
-        return with_commit(std::nullopt);  // Passed all rechecks
-
-    if (height >= static_cast<uint64_t>(snapshots::height) && !have_snapshot_height) {
-        // As long as we are synced above 1'890'000 then we can load our hard-coded snapshot data
-        // to rescan from there even if you had invalid 1'890'000 reward data.
-        detach = snapshots::height;
-        conn.prepared_exec(
-                "INSERT INTO rewards_snapshot_heights (height) VALUES (?)", snapshots::height);
-        for (auto& r : snapshots::batched_payments)
-            conn.prepared_exec(
-                    "INSERT INTO rewards_snapshots (height, {}) VALUES (?, ?, ?, NULL, ?, ?, ?, ?)"_format(
-                            BATCHED_PAYMENTS_COLS),
-                    snapshots::height,
-                    span_guts(r.addr),
-                    r.amount,
-                    r.lifetime_locked_stakes,
-                    r.lifetime_unlocked_stakes,
-                    r.lifetime_liquidated_stakes,
-                    r.lifetime_rewards);
-
-        log::warning(logcat, "Loaded reward archive snapshot for height {}", snapshots::height);
-    }
-
-    // Earlier versions had a bug where the delayed_payments table could end up with missing rows
-    // (which then later cause missing rewards when the row should have been released into the
-    // reward table).  Rather than forcing a rescan from the beginning of HF21 we instead load a
-    // hard-coded list of values that include all values up to 1'890'000, so that the rescan doesn't
-    // have to cover as much.
-    conn.sql.exec("DELETE FROM delayed_payments");
-    int count = 0;
-    for (auto& [addr, amt, pay_h, h, block_h, block_tx, contr_i, liq] :
-         snapshots::delayed_payments) {
-        // Values are sorted by `height`, and so once we find a height above the height
-        // we're going to detach to there is no need to continue
-        if (h > detach)
-            break;
-        conn.prepared_exec(
-                "INSERT INTO delayed_payments ("
-                "eth_address, amount, payout_height, height, block_height, block_tx_index, "
-                "contributor_index, liquidation_amount"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                span_guts(addr),
-                amt,
-                pay_h,
-                h,
-                block_h,
-                block_tx,
-                contr_i,
-                liq);
-        count++;
-    }
-    log::warning(
-            logcat,
-            "Repopulated {} delayed_payments rows from snapshot up to height {}",
-            count,
-            detach);
-
-    // The in-memory values (from above `detach`) are among those we don't trust, so the rewards go
-    // back to the newest snapshot we do; the detach that follows then goes no higher than that.
-    if (auto restore = conn.prepared_get<std::optional<int64_t>>(
-                "SELECT MAX(height) FROM rewards_snapshot_heights WHERE height <= ?", detach))
-        load_stored(conn, as_u64(*restore));
-    else
+    uint64_t restored;
+    if (prev_db_version < FIXUP_DELAYED_PAYMENT_REWARDS) {
+        // Older versions could leave rows out of delayed_payments (which go missing from the
+        // rewards when they should have paid out), and those errors are in every snapshot after
+        // them: rescan everything (unless there is nothing yet from HF21 on to have them).
+        if (height < get_hard_fork_heights(nettype, hf::hf21_eth).first.value())
+            return with_commit(std::nullopt);
+        log::warning(logcat, "Deleting all stored rewards, to be rescanned from the start");
         reset_to(conn, 0);
+        restored = hf19_height() - 1;
+    } else {
+        if (!shares_blockchain_db || kept_history)
+            return with_commit(std::nullopt);
+        auto failed = first_failed_checksum(conn);
+        if (!failed)
+            return with_commit(std::nullopt);
+
+        log::warning(logcat, "Deleting the rewards snapshots from height {}", *failed);
+        conn.prepared_exec("DELETE FROM rewards_snapshot_heights WHERE height >= ?", *failed);
+
+        if (height >= static_cast<uint64_t>(snapshots::height)) {
+            conn.prepared_exec(
+                    "INSERT INTO rewards_snapshot_heights (height) VALUES (?)", snapshots::height);
+            for (auto& r : snapshots::batched_payments)
+                conn.prepared_exec(
+                        "INSERT INTO rewards_snapshots (height, {}) VALUES (?, ?, ?, NULL, ?, ?, ?, ?)"_format(
+                                BATCHED_PAYMENTS_COLS),
+                        snapshots::height,
+                        span_guts(r.addr),
+                        r.amount,
+                        r.lifetime_locked_stakes,
+                        r.lifetime_unlocked_stakes,
+                        r.lifetime_liquidated_stakes,
+                        r.lifetime_rewards);
+            log::warning(logcat, "Loaded reward archive snapshot for height {}", snapshots::height);
+        }
+
+        // The delayed payments added above the restored height are deleted by load_stored, and
+        // added again by the rescan.
+        if (auto newest = conn.prepared_get<std::optional<int64_t>>(
+                    "SELECT MAX(height) FROM rewards_snapshot_heights")) {
+            restored = as_u64(*newest);
+            load_stored(conn, restored);
+        } else {
+            reset_to(conn, 0);
+            restored = hf19_height() - 1;
+        }
+    }
 
     if (tx)
         tx->commit();
 
-    log::warning(logcat, "Forcing rescan from block {} to ensure correct reward values", detach);
-    return static_cast<uint64_t>(detach);
+    log::warning(logcat, "Forcing rescan from block {} to ensure correct reward values", restored);
+    return restored;
 }
 
 }  // namespace cryptonote
