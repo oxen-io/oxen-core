@@ -739,9 +739,11 @@ bool node_server::store_config() try {
 //-----------------------------------------------------------------------------------
 bool node_server::send_stop_signal() {
     log::debug(logcat, "[node] sending stop signal");
+    // The payload handler first: stopping the transport lets run() return and the teardown start,
+    // by which point the chain jobs adding blocks must already know to stop (and not reschedule).
+    m_payload_handler.stop();
     m_transport.stop();
     log::debug(logcat, "[node] Stop signal sent");
-    m_payload_handler.stop();
     return true;
 }
 //-----------------------------------------------------------------------------------
