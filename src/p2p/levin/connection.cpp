@@ -175,7 +175,7 @@ void connection::on_read(bufferevent* bev, void* self_) {
         try {
             frames = self.parser_.feed({buf.data(), static_cast<size_t>(n)});
         } catch (const parse_error& e) {
-            log::warning(
+            log::info(
                     logcat,
                     "Invalid data from {}: {}; closing the connection",
                     self.remote_,

@@ -931,7 +931,11 @@ class core final {
     std::vector<oxen::quic::ipv4_range> m_force_unreachable;
 
     /// OxenMQ main object.  Gets created during init().
-    std::shared_ptr<oxenmq::OxenMQ> m_omq;
+    ///
+    /// A bare pointer, deleted by deinit() (or else the destructor) and only cleared once that has
+    /// returned, so that it stays usable while the OxenMQ is destroyed: its destructor waits for
+    /// the jobs running on its threads, which may still use it through omq() until they finish.
+    oxenmq::OxenMQ* m_omq = nullptr;
 
     // Internal opaque data object managed by cryptonote_protocol/quorumnet.cpp.  void pointer to
     // avoid linking issues (protocol does not link against core).

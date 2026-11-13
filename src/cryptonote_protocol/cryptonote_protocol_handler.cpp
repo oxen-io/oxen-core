@@ -2062,7 +2062,7 @@ bool protocol_handler::request_missing_objects(
     // still outstanding for the second would get the peer dropped as having "returned not all
     // requested objects".
     if (context.request_outstanding()) {
-        log::warning(
+        log::debug(
                 logcat,
                 "{}not requesting more objects (from {}): a {} request is still outstanding",
                 context,
