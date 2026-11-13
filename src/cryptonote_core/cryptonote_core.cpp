@@ -306,7 +306,10 @@ core::core() :
 #pragma GCC diagnostic pop
     m_checkpoints_updating.clear();
 }
-core::~core() = default;
+core::~core() {
+    delete m_omq;
+    m_omq = nullptr;
+}
 void core::set_cryptonote_protocol(i_cryptonote_protocol* pprotocol) {
     if (pprotocol)
         m_pprotocol = pprotocol;
@@ -730,6 +733,7 @@ bool core::init(
     }
     auto rewards_db = std::make_unique<cryptonote::RewardsDB>(m_nettype, *rewards_sql);
     rewards_db->kept_history = db->history();
+    rewards_db->shares_blockchain_db = !separate_sql;
 
     // We need this hook to get added before the block hook below, so that it fires first and
     // catches the start of a reorg before the block hook fires for the block in the reorg.
@@ -1387,7 +1391,7 @@ oxenmq::AuthLevel core::omq_allow(
 
 void core::init_oxenmq(const boost::program_options::variables_map& vm) {
     using namespace oxenmq;
-    m_omq = std::make_shared<OxenMQ>(
+    m_omq = new OxenMQ(
             tools::copy_guts(m_service_keys.pub_x25519),
             tools::copy_guts(m_service_keys.key_x25519),
             m_service_node,
@@ -1447,9 +1451,11 @@ void core::deinit() {
 #ifdef ENABLE_SYSTEMD
     sd_notify(0, "STOPPING=1\nSTATUS=Shutting down");
 #endif
+    delete m_omq;
+    m_omq = nullptr;
+    // After the OxenMQ, as its quorumnet handlers and the pulse timer use it
     if (m_quorumnet_state)
         quorumnet_delete(m_quorumnet_state);
-    m_omq.reset();
     service_node_list.store();
     miner.stop();
     mempool.deinit();
