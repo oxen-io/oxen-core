@@ -252,6 +252,28 @@ constexpr int FIXUP_DELAYED_PAYMENT_REWARDS = 2;
 
 constexpr int FIXUP_MAX = FIXUP_DELAYED_PAYMENT_REWARDS;
 
+// The correct checksums (see snapshot_checksum) of the mainnet rewards snapshots at some archive
+// heights.
+struct checksum_record {
+    int64_t height;
+    int64_t checksum;
+};
+constexpr std::array<checksum_record, 4> MAINNET_CHECKSUMS{{
+        {1'860'000, 212'642'223'336'227'860},
+        {1'870'000, 227'908'952'909'310'216},
+        {1'880'000, 19'447'225'076'325'721},
+        {1'890'000, 22'402'200'527'873'036},
+}};
+
+// The checksum of the stored snapshot at `height`, or nullopt if there is none.  A straight sum of
+// the amounts would overflow, so this is the sum of each modulo a large (but not too large) prime,
+// which verifies the aggregate without needing 128-bit math.
+static std::optional<int64_t> snapshot_checksum(Connection& conn, int64_t height) {
+    constexpr int64_t CSUM_MOD = 789012345678901;
+    return conn.prepared_get<std::optional<int64_t>>(
+            "SELECT SUM(amount % ?) FROM rewards_snapshots WHERE height = ?", CSUM_MOD, height);
+}
+
 static std::optional<int> get_fixup_version(Connection& conn) {
     return conn.prepared_maybe_get<int>(
             "SELECT value FROM properties WHERE key = 'rewards_fixup_version'");
@@ -1910,21 +1932,6 @@ std::optional<uint64_t> RewardsDB::fixup(bool recheck, SQLite::Transaction* acti
         // the entirety of HF21+ which should get everything right.
         return with_commit(std::nullopt);
 
-    // If we select a straight sum of all amounts then we would overflow, so select the sum of
-    // values modulo a large (but not too large) prime as a checksum to verify the aggregate amount
-    // without having to resort to 128-bit math:
-    constexpr int64_t CSUM_MOD = 789012345678901;
-    struct fixup_record {
-        int64_t height;
-        int64_t checksum;
-    };
-    constexpr std::array<fixup_record, 4> RECORDS{{
-            {1'860'000, 212'642'223'336'227'860},
-            {1'870'000, 227'908'952'909'310'216},
-            {1'880'000, 19'447'225'076'325'721},
-            {1'890'000, 22'402'200'527'873'036},
-    }};
-
     // If we can't find a way to do better, the fallback option is to require a rescan from HF21:
     int64_t detach = hf21_started - 1;
 
@@ -1934,7 +1941,7 @@ std::optional<uint64_t> RewardsDB::fixup(bool recheck, SQLite::Transaction* acti
     // node has an invalid 1890k value).
     if (!recheck) {
         std::string checked;
-        for (const auto& r : RECORDS)
+        for (const auto& r : MAINNET_CHECKSUMS)
             checked += "{}{}"_format(checked.empty() ? "" : ", ", r.height);
         conn.prepared_exec(
                 "DELETE FROM rewards_snapshot_heights WHERE height >= ? AND height NOT IN ({})"_format(
@@ -1946,13 +1953,9 @@ std::optional<uint64_t> RewardsDB::fixup(bool recheck, SQLite::Transaction* acti
     // If any of the archive checksums don't match the above then we will delete it because it isn't
     // correct and we don't ever want you to use it (e.g. if you every roll back into the range).
     bool have_snapshot_height = false;
-    for (const auto& [archive_height, checksum] : RECORDS) {
-        auto [db_csum, db_count] = conn.prepared_get<std::optional<int64_t>, int>(
-                "SELECT SUM(amount % ?), COUNT(*) FROM rewards_snapshots WHERE height = ?",
-                CSUM_MOD,
-                archive_height);
-
-        if (!db_count)
+    for (const auto& [archive_height, checksum] : MAINNET_CHECKSUMS) {
+        auto db_csum = snapshot_checksum(conn, archive_height);
+        if (!db_csum)
             continue;
         if (db_csum == checksum) {
             detach = archive_height;
@@ -1966,7 +1969,7 @@ std::optional<uint64_t> RewardsDB::fixup(bool recheck, SQLite::Transaction* acti
                     "Database fixup recheck failed: still have invalid reward archive checksum "
                     "at block {} (db: {}, expected: {})",
                     archive_height,
-                    db_csum.value_or(0),
+                    *db_csum,
                     checksum);
             return with_commit(0);  // any non-nullopt signifies the failure
         }
