@@ -64,7 +64,7 @@ def deb(arch):
                     "cd debian",
                     'eatmydata mk-build-deps -i -r --tool="' + apt_get + ' -o Debug::pkgProblemResolver=yes --no-install-recommends -y" control',
                     "cd ..",
-                    "eatmydata gbp buildpackage --git-no-pbuilder --git-builder='debuild --prepend-path=/usr/lib/ccache --preserve-envvar=CCACHE_*' --git-upstream-tag=HEAD -us -uc -b -j%d" % jobs[platform],
+                    "eatmydata gbp buildpackage --git-no-pbuilder --git-no-create-orig --git-builder='debuild --prepend-path=/usr/lib/ccache --preserve-envvar=CCACHE_*' --git-upstream-tag=HEAD -us -uc -b -j%d" % jobs[platform],
                 ],
             },
             {
