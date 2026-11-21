@@ -1,6 +1,6 @@
 #include "string_util.h"
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <array>
 #include <cassert>
