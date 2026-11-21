@@ -1,0 +1,78 @@
+From: Jason Rhinelander <jason@imaginary.ca>
+Date: Sat, 21 Nov 2026 17:05:19 -0400
+Subject: Fix includes for fmt 12 and GCC 16
+
+GCC 16's libstdc++ no longer pulls in <cstring> or <stdexcept>
+transitively, so crypto/base.h and crypto/hash.h (std::memcpy) and
+common/meta.h (std::runtime_error) now include them directly.
+
+fmt 12 made fmt/core.h equivalent to fmt/base.h, so string_util.cpp,
+which uses fmt::format, includes fmt/format.h instead; formattable.h
+already includes fmt/format.h and drops the redundant fmt/core.h.
+---
+ src/common/formattable.h   | 1 -
+ src/common/meta.h          | 1 +
+ src/common/string_util.cpp | 2 +-
+ src/crypto/base.h          | 1 +
+ src/crypto/hash.h          | 1 +
+ 5 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/src/common/formattable.h b/src/common/formattable.h
+index d09081e..39f777d 100644
+--- a/src/common/formattable.h
++++ b/src/common/formattable.h
+@@ -1,6 +1,5 @@
+ #pragma once
+ 
+-#include <fmt/core.h>
+ #include <fmt/format.h>
+ #include <oxenc/base32z.h>
+ #include <oxenc/base64.h>
+diff --git a/src/common/meta.h b/src/common/meta.h
+index d2b7cfb..322f8a1 100644
+--- a/src/common/meta.h
++++ b/src/common/meta.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <array>
++#include <stdexcept>
+ #include <string>
+ #include <typeinfo>
+ #include <variant>
+diff --git a/src/common/string_util.cpp b/src/common/string_util.cpp
+index 7bd3505..65d2b39 100644
+--- a/src/common/string_util.cpp
++++ b/src/common/string_util.cpp
+@@ -1,6 +1,6 @@
+ #include "string_util.h"
+ 
+-#include <fmt/core.h>
++#include <fmt/format.h>
+ 
+ #include <array>
+ #include <cassert>
+diff --git a/src/crypto/base.h b/src/crypto/base.h
+index f7b4265..0c9cfbb 100644
+--- a/src/crypto/base.h
++++ b/src/crypto/base.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <array>
++#include <cstring>
+ #include <type_traits>
+ 
+ #include "common/format.h"
+diff --git a/src/crypto/hash.h b/src/crypto/hash.h
+index f461ca1..0066dd7 100644
+--- a/src/crypto/hash.h
++++ b/src/crypto/hash.h
+@@ -31,6 +31,7 @@
+ #pragma once
+ 
+ #include <cstddef>
++#include <cstring>
+ #include <span>
+ #include <type_traits>
+ 
