@@ -1,3 +1,9 @@
+oxen (11.7.3-1~deb14+1) forky; urgency=medium
+
+  * Rebuild against current forky libraries
+
+ -- Jason Rhinelander <jason@session.foundation>  Wed, 25 Nov 2026 19:37:50 -0400
+
 oxen (11.7.3-1~deb14) forky; urgency=medium
 
   * Updated build dep versions, and liboxen-quic-dev
